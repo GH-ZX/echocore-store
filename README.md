@@ -22,7 +22,7 @@
 ### 1. استنسخ المستودع
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/GH-ZX/echocore-store.git
 cd echocore-store
 ```
 
