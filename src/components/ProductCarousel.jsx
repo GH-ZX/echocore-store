@@ -10,6 +10,27 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
   const placeholderCover = new URL('../assets/placeholder-cover.png', import.meta.url).href;
   const [emblaRef, embla] = useEmblaCarousel({ loop: true, skipSnaps: false });
   const [activeSlide, setActiveSlide] = useState(0);
+  const [dominantColor, setDominantColor] = useState('rgba(34, 211, 238, 0.5)');
+
+  // Extract dominant color from current slide image
+  const extractDominantColor = (imgSrc) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, 1, 1);
+      const imageData = ctx.getImageData(0, 0, 1, 1).data;
+      const [r, g, b] = imageData;
+      setDominantColor(`rgba(${r}, ${g}, ${b}, 0.5)`);
+    };
+    img.onerror = () => {
+      setDominantColor('rgba(34, 211, 238, 0.5)');
+    };
+    img.src = imgSrc;
+  };
 
   useEffect(() => {
     if (!embla) return;
@@ -24,6 +45,16 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
     const autoplay = window.setInterval(() => embla.scrollNext(), 10000);
     return () => window.clearInterval(autoplay);
   }, [embla]);
+
+  // Extract color when active slide changes
+  useEffect(() => {
+    if (slides[activeSlide]) {
+      const currentImage = slides[activeSlide].image || (slides[activeSlide].coverFile ? (() => {
+        try { return new URL(`../assets/${slides[activeSlide].coverFile}`, import.meta.url).href; } catch { return placeholderCover; }
+      })() : placeholderCover);
+      extractDominantColor(currentImage);
+    }
+  }, [activeSlide, slides]);
 
   return (
     <section className="mt-8 rounded-[2rem] border border-slate-800 bg-[#060b19] p-4 md:p-6 shadow-2xl shadow-cyan-900/20">
@@ -79,42 +110,58 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
           </div>
         </div>
 
-        <div className="mt-4 px-4 sm:px-6">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {slides.map((item, index) => {
-              let logoSrc = item.logo || (item.image || placeholderLogo);
-              if (item.logoFile) {
-                try {
-                  logoSrc = new URL(`../assets/${item.logoFile}`, import.meta.url).href;
-                } catch {
-                  logoSrc = item.logo || item.image || placeholderLogo;
+        <div className="mt-0 px-0 relative">
+          {/* Smart colored blur layer from current image */}
+          <div 
+            className="absolute -bottom-20 left-0 right-0 h-32 blur-3xl pointer-events-none"
+            style={{
+              background: `radial-gradient(ellipse at center, ${dominantColor} 0%, transparent 70%)`,
+            }}
+          />
+          
+          {/* Button bar */}
+          <div className="relative z-10 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-t border-b border-slate-800">
+            <div className="flex overflow-x-auto gap-0 py-2 px-2 snap-x">
+              {slides.map((item, index) => {
+                let logoSrc = item.logo || (item.image || placeholderLogo);
+                if (item.logoFile) {
+                  try {
+                    logoSrc = new URL(`../assets/${item.logoFile}`, import.meta.url).href;
+                  } catch {
+                    logoSrc = item.logo || item.image || placeholderLogo;
+                  }
                 }
-              }
 
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => embla?.scrollTo(index)}
-                  className={`group inline-flex items-center justify-center rounded-full border p-1 transition ${
-                    index === activeSlide
-                      ? 'border-cyan-400 bg-cyan-500/10 text-white'
-                      : 'border-slate-700 bg-slate-950/90 text-slate-300 hover:border-cyan-400 hover:text-white'
-                  }`}
-                  aria-label={lang === 'ar' ? `انتقل الى ${item.name_ar}` : `Switch to ${item.name_en}`}
-                >
-                  <div className={`flex items-center justify-center rounded-full border border-slate-700 bg-gradient-to-br overflow-hidden p-1`}>
-                    {logoSrc ? (
-                      <img src={logoSrc} alt={item.name_en} className="h-auto w-auto max-h-12 max-w-[3rem] object-contain" onError={(e) => { e.currentTarget.src = placeholderLogo; }} />
-                    ) : item.icon === 'Gift' ? (
-                      <Gift className="h-6 w-6 text-white drop-shadow-xl" />
-                    ) : (
-                      <Gamepad2 className="h-6 w-6 text-white drop-shadow-xl" />
-                    )}
-                  </div>
-                </button>
-              );
-            })}
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => embla?.scrollTo(index)}
+                    className={`flex-shrink-0 h-16 px-8 py-1 flex items-center justify-center transition-all duration-200 cursor-pointer snap-center border-r border-white/80 ${
+                      index === activeSlide
+                        ? ' border-cyan-400'
+                        : ' border-transparent hover:border-cyan-400/50'
+                    }`}
+                    aria-label={lang === 'ar' ? `انتقل الى ${item.name_ar}` : `Switch to ${item.name_en}`}
+                  >
+                    <div className="flex items-center justify-center h-full overflow-hidden transition-all">
+                      {logoSrc ? (
+                        <img 
+                          src={logoSrc} 
+                          alt={item.name_en} 
+                          className="h-full w-auto max-w-[80px] object-contain opacity-80 hover:opacity-100 transition-opacity" 
+                          onError={(e) => { e.currentTarget.src = placeholderLogo; }} 
+                        />
+                      ) : item.icon === 'Gift' ? (
+                        <Gift className="h-6 w-6 text-white drop-shadow-xl" />
+                      ) : (
+                        <Gamepad2 className="h-6 w-6 text-white drop-shadow-xl" />
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 

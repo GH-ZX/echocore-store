@@ -1,6 +1,7 @@
 import React from 'react';
 import { Gift, Gamepad2, ShoppingCart } from 'lucide-react';
 import ProductCarousel from './ProductCarousel';
+import heroImage from '../assets/hero.png';
 
 export default function HomeView({
   t,
@@ -13,6 +14,8 @@ export default function HomeView({
   onSelectProduct,
   addToCart
 }) {
+  const placeholderCover = new URL('../assets/placeholder-cover.png', import.meta.url).href;
+  
   const filteredProducts = products.filter(p => {
     const query = searchQuery.toLowerCase();
     const matchesSearch = p.name_ar.toLowerCase().includes(query) || p.name_en.toLowerCase().includes(query);
@@ -42,10 +45,16 @@ export default function HomeView({
               key={product.id}
               onClick={() => onSelectProduct(product)}
               className="bg-[#0a1329] rounded-2xl border border-slate-800 overflow-hidden hover:border-cyan-500/50 hover:shadow-[0_10px_30px_rgba(34,211,238,0.1)] transition-all duration-300 group flex flex-col cursor-pointer">
-              <div className={`w-full h-40 relative bg-gradient-to-br ${product.color} flex items-center justify-center overflow-hidden`}>
-                <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors"></div>
-                {product.icon === 'Gift' ? <Gift className="w-20 h-20 text-white drop-shadow-xl transform group-hover:scale-110 transition-transform duration-500" /> : <Gamepad2 className="w-20 h-20 text-white drop-shadow-xl transform group-hover:scale-110 transition-transform duration-500" />}
-                <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-white/50 to-transparent"></div>
+              <div className="w-full h-40 relative bg-slate-950 flex items-center justify-center overflow-hidden">
+                <img
+                  src={product.image || (product.coverFile ? (() => {
+                    try { return new URL(`../assets/${product.coverFile}`, import.meta.url).href; } catch { return placeholderCover; }
+                  })() : placeholderCover)}
+                  alt={lang === 'ar' ? product.name_ar : product.name_en}
+                  className="w-full h-full object-cover brightness-75 group-hover:brightness-100 group-hover:scale-110 transition-all duration-500"
+                  onError={(e) => { e.currentTarget.src = placeholderCover; }}
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-40 group-hover:opacity-20 transition-opacity"></div>
               </div>
               <div className="p-6 flex-1 flex flex-col justify-between relative">
                 <div>
