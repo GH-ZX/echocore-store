@@ -1,0 +1,46 @@
+name: Deploy React to GitHub Pages
+
+on:
+  push:
+    branches: 'main' # Or 'master', depending on your default branch
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: 'pages'
+  cancel-in-progress: true
+
+jobs:
+  build_deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm # or pnpm / yarn
+
+      - name: Install dependencies
+        run: npm install # Use pnpm install or yarn install if applicable
+
+      - name: Build
+        run: npm run build # Use pnpm build or yarn build if applicable
+
+      - name: Upload Artifacts
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # This assumes your Vite output directory is 'dist'. Change if configured otherwise.
+          path: './dist' 
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
