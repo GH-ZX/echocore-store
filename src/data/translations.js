@@ -37,7 +37,8 @@ export const translations = {
     securePayment: "دفع آمن 100%",
     all: "الكل",
     back: "رجوع",
-    instantDelivery: "تسليم فوري وآمن 100% لتستمتع بألعابك المفضلة على حاسبك."
+    instantDelivery: "تسليم فوري وآمن 100% لتستمتع بألعابك المفضلة على حاسبك.",
+    empty: "لا توجد منتجات. قم بإضافتها من لوحة الإدارة."
   },
   en: {
     storeName: "ECHOCORE",
@@ -77,6 +78,7 @@ export const translations = {
     securePayment: "100% Secure Payment",
     all: "All",
     back: "Back",
-    instantDelivery: "Instant and 100% secure delivery for your PC gaming needs."
+    instantDelivery: "Instant and 100% secure delivery for your PC gaming needs.",
+    empty: "No products found. Add some from the Admin panel."
   }
 };

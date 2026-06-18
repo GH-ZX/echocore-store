@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
 import { ChevronLeft, ChevronRight, ShoppingCart, Gamepad2, Gift } from 'lucide-react';
 
@@ -83,14 +83,19 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
   }, [activeSlide]);
 
   const getImg = (item) => {
+    if (item.image_url) return item.image_url;
     if (item.image) return item.image;
     if (item.coverFile) try { return new URL(`../assets/${item.coverFile}`, import.meta.url).href; } catch {}
     return placeholderCover;
   };
 
   const getLogo = (item) => {
+    // Bottom carousel strip should ALWAYS prefer a small logo, NEVER the full cover photo.
+    if (item.logo_url) return item.logo_url;
     if (item.logoFile) try { return new URL(`../assets/${item.logoFile}`, import.meta.url).href; } catch {}
-    return item.logo || item.image || placeholderLogo;
+    // Do NOT fall back to image_url here — that would show the full photo.
+    // Use dedicated placeholder instead.
+    return item.logo || placeholderLogo;
   };
 
   const ac = (a) => `rgba(${accent.r},${accent.g},${accent.b},${a})`;
@@ -309,15 +314,15 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
                 }}
                 aria-label={lang === 'ar' ? `انتقل الى ${item.name_ar}` : `Switch to ${item.name_en}`}
               >
-                {/* Logo */}
+                {/* Logo (bottom strip) — always a logo, never the full cover photo */}
                 <div
-                  className="h-7 flex items-center transition-all duration-300"
+                  className="h-8 flex items-center transition-all duration-300"
                   style={{ opacity: isActive ? 1 : 0.32, transform: isActive ? 'scale(1.08)' : 'scale(1)' }}
                 >
                   <img
                     src={logoSrc}
                     alt={item.name_en}
-                    className="h-full w-auto max-w-[60px] object-contain"
+                    className="h-full w-auto max-w-[70px] object-contain"
                     onError={(e) => { e.currentTarget.src = placeholderLogo; }}
                   />
                 </div>

@@ -1,81 +1,101 @@
-import React from 'react';
-import { Gift, Gamepad2, ShoppingCart } from 'lucide-react';
+
 import ProductCarousel from './ProductCarousel';
-import heroImage from '../assets/hero.png';
 
 export default function HomeView({
   t,
   lang,
-  products,
-  searchQuery,
-  selectedCategory,
-  setSearchQuery,
-  setSelectedCategory,
-  onSelectProduct,
-  addToCart
+  games = [],
+  loading = false,
+  addToCart,
+  onSelectGame
 }) {
-  const placeholderCover = new URL('../assets/placeholder-cover.png', import.meta.url).href;
-  
-  const filteredProducts = products.filter(p => {
-    const query = searchQuery.toLowerCase();
-    const matchesSearch = p.name_ar.toLowerCase().includes(query) || p.name_en.toLowerCase().includes(query);
-    const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  // Format games for the carousel
+  // Main slide uses full cover (image_url)
+  // Bottom strip MUST use dedicated logo (not full photo)
+  const getLocalLogo = (slug) => {
+    if (!slug) return null;
+    const s = slug.toLowerCase();
+    try {
+      if (s.includes('valorant')) return new URL('../assets/valorant-logo.png', import.meta.url).href;
+      if (s.includes('league') || s.includes('lol')) return new URL('../assets/lol-logo.png', import.meta.url).href;
+      if (s.includes('xbox')) return new URL('../assets/xbox-logo.png', import.meta.url).href;
+    } catch {}
+    return null;
+  };
+
+  const carouselItems = games.map(g => ({
+    id: g.id,
+    name_en: g.name_en,
+    name_ar: g.name_ar,
+    image_url: g.image_url,           // full cover for main big slide
+    logo_url: g.logo_url || getLocalLogo(g.slug),  // dedicated logo for bottom strip
+    category: 'games',
+    price: 0
+  }));
 
   return (
     <div className="space-y-12 animate-fade-in">
-      <ProductCarousel products={products} lang={lang} onSelectProduct={onSelectProduct} />
+      {/* CAROUSEL at the top */}
+      {games.length > 0 && (
+        <ProductCarousel 
+          products={carouselItems} 
+          lang={lang} 
+          onSelectProduct={(item) => onSelectGame && onSelectGame(games.find(g => g.id === item.id))} 
+        />
+      )}
 
-      <div className="flex flex-wrap items-center gap-4 mb-8 justify-center">
-        {[{id: 'all', name: t.all}, {id: 'games', name: t.games}, {id: 'cards', name: t.giftCards}].map(cat => (
-          <button
-            key={cat.id}
-            onClick={() => setSelectedCategory(cat.id)}
-            className={`px-8 py-3 rounded-xl font-bold transition-all ${selectedCategory === cat.id ? 'bg-cyan-500 text-slate-900 shadow-[0_0_20px_rgba(34,211,238,0.4)]' : 'bg-[#0a1329] text-slate-400 border border-slate-800 hover:border-cyan-500/50 hover:text-cyan-400'}`}>
-            {cat.name}
-          </button>
-        ))}
+      {/* Value props */}
+      <div className="flex flex-wrap justify-center gap-x-8 gap-y-2 text-sm text-[var(--text-sec)]">
+        <div className="flex items-center gap-2">⚡ Instant digital delivery</div>
+        <div className="flex items-center gap-2">🔒 Secure payments</div>
+        <div className="flex items-center gap-2">🌍 Arabic & English support</div>
       </div>
 
-      <div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredProducts.map((product) => (
+      {/* GAMES SECTION - below the carousel */}
+      <h2 className="text-2xl font-bold text-center">Choose a Game</h2>
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="card h-[200px] animate-pulse bg-[var(--bg-surface)]" />
+          ))}
+        </div>
+      ) : games.length === 0 ? (
+        <div className="text-center py-10 text-[var(--text-sec)]">
+          No games yet. Add games in Supabase.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {games.map((game) => (
             <div
-              key={product.id}
-              onClick={() => onSelectProduct(product)}
-              className="bg-[#0a1329] rounded-2xl border border-slate-800 overflow-hidden hover:border-cyan-500/50 hover:shadow-[0_10px_30px_rgba(34,211,238,0.1)] transition-all duration-300 group flex flex-col cursor-pointer">
-              <div className="w-full h-40 relative bg-slate-950 flex items-center justify-center overflow-hidden">
-                <img
-                  src={product.image || (product.coverFile ? (() => {
-                    try { return new URL(`../assets/${product.coverFile}`, import.meta.url).href; } catch { return placeholderCover; }
-                  })() : placeholderCover)}
-                  alt={lang === 'ar' ? product.name_ar : product.name_en}
-                  className="w-full h-full object-cover brightness-75 group-hover:brightness-100 group-hover:scale-110 transition-all duration-500"
-                  onError={(e) => { e.currentTarget.src = placeholderCover; }}
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-40 group-hover:opacity-20 transition-opacity"></div>
-              </div>
-              <div className="p-6 flex-1 flex flex-col justify-between relative">
-                <div>
-                  <div className="text-xs font-bold text-cyan-500 mb-3 uppercase tracking-widest bg-cyan-500/10 inline-block px-2 py-1 rounded">
-                    {lang === 'ar' ? (product.category === 'games' ? 'شحن ألعاب' : 'بطاقات رقمية') : product.category}
+              key={game.id}
+              onClick={() => onSelectGame && onSelectGame(game)}
+              className="card group overflow-hidden cursor-pointer hover:border-[var(--accent)] transition-all duration-300 hover:shadow-[0_25px_50px_-12px_rgb(0,0,0)] active:scale-[0.985]"
+            >
+              <div className="relative h-40">
+                {game.image_url ? (
+                  <img 
+                    src={game.image_url} 
+                    alt={lang === 'ar' ? game.name_ar : game.name_en} 
+                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                ) : (
+                  <div className="absolute inset-0 bg-[var(--bg-elevated)]" />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-4">
+                  <div className="font-bold text-xl text-white">
+                    {lang === 'ar' ? game.name_ar : game.name_en}
                   </div>
-                  <h3 className="text-lg font-bold text-slate-100 mb-2 leading-snug">{lang === 'ar' ? product.name_ar : product.name_en}</h3>
-                </div>
-                <div className="mt-6 flex items-center justify-between">
-                  <span className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400">${parseFloat(product.price).toFixed(2)}</span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); addToCart(product); }}
-                    className="bg-slate-800/80 hover:bg-cyan-500 text-cyan-400 hover:text-slate-900 border border-cyan-900/50 p-3 rounded-xl font-bold transition-all shadow-lg">
-                    <ShoppingCart className="w-5 h-5" />
-                  </button>
+                  <div className="text-sm text-white/70 mt-0.5">
+                    {game.points_name} top-ups
+                  </div>
                 </div>
               </div>
             </div>
           ))}
         </div>
-      </div>
+      )}
     </div>
   );
 }
+

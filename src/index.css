@@ -1,4 +1,198 @@
 @import "tailwindcss";
 
-.no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { scrollbar-width: none; }
+/* ============================================
+   ECHOCORE — UNIVERSAL THEME SYSTEM
+   Change colors here and it propagates everywhere.
+   ============================================ */
+
+:root {
+  /* Core Backgrounds */
+  --bg-primary: #040812;
+  --bg-surface: #0a1329;
+  --bg-elevated: #111c36;
+  --bg-header: rgba(6, 11, 25, 0.92);
+
+  /* Text */
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  /* Accent / Brand (Cyber Cyan) */
+  --accent: #22d3ee;
+  --accent-hover: #67e8f9;
+  --accent-dark: #164e63;
+
+  /* Borders & Dividers */
+  --border: #1e293b;
+  --border-strong: #334155;
+
+  /* Status */
+  --success: #22c55e;
+  --error: #ef4444;
+  --warning: #eab308;
+
+  /* Gradients */
+  --gradient-accent: linear-gradient(to right, #22d3ee, #3b82f6);
+  --gradient-surface: linear-gradient(to bottom, #0a1329, #040812);
+
+  /* Effects */
+  --shadow-glow: 0 0 20px rgba(34, 211, 238, 0.25);
+  --shadow-card: 0 10px 30px -15px rgba(0, 0, 0, 0.6);
+  --radius: 16px;
+  --radius-sm: 12px;
+  --radius-lg: 24px;
+
+  /* Typography */
+  --font-sans: 'Cairo', ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Dark base */
+html, body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+
+/* RTL support for Arabic */
+[dir="rtl"] {
+  font-family: var(--font-sans);
+}
+
+/* Reusable surface / card base */
+.card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  transition: all 0.2s ease;
+}
+
+.card:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.65), var(--shadow-glow);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--gradient-accent);
+  color: #040812;
+  padding: 0.75rem 1.75rem;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.1);
+  box-shadow: var(--shadow-glow);
+}
+
+.btn-secondary {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 0.625rem 1.25rem;
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.btn-ghost:hover {
+  color: var(--accent);
+}
+
+/* Input fields */
+.input {
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 0.75rem 1rem;
+  transition: border-color 0.2s;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.1);
+}
+
+/* Category pills, badges */
+.badge {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  background: rgba(34, 211, 238, 0.12);
+  color: var(--accent);
+  border: 1px solid rgba(34, 211, 238, 0.3);
+}
+
+/* Notification toast */
+.toast {
+  background: var(--bg-surface);
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 20px rgba(34, 211, 238, 0.3);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+/* Utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+/* Animations */
+.animate-fade-in {
+  animation: fadeIn 0.18s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Product image treatment */
+.product-image {
+  transition: transform 0.5s cubic-bezier(0.23, 1.0, 0.32, 1), 
+              filter 0.4s ease;
+}
+
+.group:hover .product-image {
+  transform: scale(1.06);
+  filter: brightness(1.05) saturate(1.1);
+}

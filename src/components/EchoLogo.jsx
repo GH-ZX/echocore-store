@@ -1,4 +1,4 @@
-import React from 'react';
+
 
 export default function EchoLogo({ className = 'w-10 h-10' }) {
   return (

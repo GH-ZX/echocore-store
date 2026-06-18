@@ -1,6 +1,27 @@
-# ECHOCORE Store
+# ECHOCORE Store — Real Digital Gaming Store
 
-متجر ألعاب وبطاقات رقمية حديث مبني بـ React و Vite، يوفر واجهة مستخدم سلسة وآمنة لشراء الألعاب والبطاقات الرقمية
+متجر ألعاب وبطاقات رقمية حديث مبني بـ React + Vite + **Supabase**.
+
+## ✅ Now a Real Project
+
+- Full Supabase database (products, orders, auth)
+- Real authentication (no more fake logins)
+- Universal theme system (change in one place)
+- Universal `ProductCard` component powered by database
+- Orders are saved in the database
+- Admin panel fully manages live DB products
+
+**See full setup instructions:** [SUPABASE_SETUP.md](./SUPABASE_SETUP.md)
+
+Quick start after cloning:
+
+```bash
+npm install
+cp .env.example .env     # fill your Supabase keys
+npm run dev
+```
+
+Then run the SQL in Supabase → SQL Editor from the setup file.
 
 
 لتصفح الموقع: https://echo-core-store.netlify.app/
