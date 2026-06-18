@@ -17,6 +17,7 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
   const [isPaused, setIsPaused] = useState(false);
   const [progress, setProgress] = useState(0);
   const [accent, setAccent] = useState({ r: 34, g: 211, b: 238 });
+  const [logoAccent, setLogoAccent] = useState({ r: 34, g: 211, b: 238 });
 
   // Single combined timer — resets on slide change or pause toggle
   useEffect(() => {
@@ -73,6 +74,36 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
     img.src = src;
   }, []);
 
+  const extractLogoColor = useCallback((src) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 48;
+        canvas.height = 48;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, 48, 48);
+        const d = ctx.getImageData(0, 0, 48, 48).data;
+        let r = 0, g = 0, b = 0, n = 0;
+        for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+        // Boost vivid channel
+        const raw = { r: r / n, g: g / n, b: b / n };
+        const mx = Math.max(raw.r, raw.g, raw.b);
+        const boost = mx > 30 ? Math.min(255 / mx, 2.2) : 1;
+        setLogoAccent({
+          r: Math.min(255, Math.round(raw.r * boost)),
+          g: Math.min(255, Math.round(raw.g * boost)),
+          b: Math.min(255, Math.round(raw.b * boost)),
+        });
+      } catch {
+        setLogoAccent({ r: 34, g: 211, b: 238 });
+      }
+    };
+    img.onerror = () => setLogoAccent({ r: 34, g: 211, b: 238 });
+    img.src = src;
+  }, []);
+
   useEffect(() => {
     const item = slides[activeSlide];
     if (!item) return;
@@ -80,6 +111,11 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
       ? (() => { try { return new URL(`../assets/${item.coverFile}`, import.meta.url).href; } catch { return placeholderCover; } })()
       : placeholderCover);
     extractColor(src);
+    // Extract color from logo for the bottom strip's active indicator line
+    const logoSrc = item.logo_url || (item.logoFile
+      ? (() => { try { return new URL(`../assets/${item.logoFile}`, import.meta.url).href; } catch { return placeholderLogo; } })()
+      : (item.logo || placeholderLogo));
+    extractLogoColor(logoSrc);
   }, [activeSlide]);
 
   const getImg = (item) => {
@@ -100,15 +136,22 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
 
   const ac = (a) => `rgba(${accent.r},${accent.g},${accent.b},${a})`;
   const acSolid = `rgb(${accent.r},${accent.g},${accent.b})`;
+  const logoAcSolid = `rgb(${logoAccent.r},${logoAccent.g},${logoAccent.b})`;
   const isDark = (accent.r * 0.299 + accent.g * 0.587 + accent.b * 0.114) > 160;
   const textOnAccent = isDark ? '#060b19' : '#ffffff';
 
   const pad = (n) => String(n + 1).padStart(2, '0');
 
+  const currentItem = slides[activeSlide] || slides[0];
+  const carouselBg = currentItem ? getImg(currentItem) : placeholderCover;
+
   return (
     <section
       className="mt-8 rounded-2xl overflow-hidden"
       style={{
+        backgroundImage: `url(${carouselBg})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
         boxShadow: `0 0 0 1px ${ac(0.2)}, 0 8px 60px ${ac(0.12)}, 0 20px 100px ${ac(0.06)}`,
         transition: 'box-shadow 0.8s ease',
       }}
@@ -152,7 +195,7 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
               <div
                 key={item.id}
                 className="relative flex-none w-full overflow-hidden cursor-pointer"
-                style={{ height: 'clamp(380px, 50vw, 580px)' }}
+                style={{ height: 'clamp(380px, 68vh, 780px)' }}
                 role="button"
                 tabIndex={0}
                 onClick={() => onSelectProduct?.(item)}
@@ -163,24 +206,15 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
                   }
                 }}
               >
-                {/* BG image */}
-                <img
-                  src={getImg(item)}
-                  alt={lang === 'ar' ? item.name_ar : item.name_en}
-                  className="absolute inset-0 h-full w-full object-cover"
-                  style={{ filter: 'brightness(0.48) saturate(1.15)' }}
-                  onError={(e) => { e.currentTarget.src = placeholderCover; }}
-                />
-
                 {/* Gradient overlays */}
                 <div
                   className="absolute inset-0"
                   style={{
                     background: lang === 'ar'
-                      ? `linear-gradient(260deg, rgba(6,11,25,0.94) 0%, rgba(6,11,25,0.55) 45%, rgba(6,11,25,0.1) 100%),
-                         linear-gradient(0deg, rgba(6,11,25,0.65) 0%, transparent 45%)`
-                      : `linear-gradient(100deg, rgba(6,11,25,0.94) 0%, rgba(6,11,25,0.55) 45%, rgba(6,11,25,0.1) 100%),
-                         linear-gradient(0deg, rgba(6,11,25,0.65) 0%, transparent 45%)`,
+                      ? `linear-gradient(260deg, rgba(6,11,25,0.75) 0%, rgba(6,11,25,0.35) 45%, rgba(6,11,25,0.05) 100%),
+                         linear-gradient(0deg, rgba(6,11,25,0.45) 0%, transparent 45%)`
+                      : `linear-gradient(100deg, rgba(6,11,25,0.75) 0%, rgba(6,11,25,0.35) 45%, rgba(6,11,25,0.05) 100%),
+                         linear-gradient(0deg, rgba(6,11,25,0.45) 0%, transparent 45%)`,
                   }}
                 />
 
@@ -189,15 +223,15 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
                   className="absolute inset-0 pointer-events-none"
                   style={{
                     background: lang === 'ar'
-                      ? `radial-gradient(ellipse at 95% 80%, ${ac(0.22)} 0%, transparent 55%)`
-                      : `radial-gradient(ellipse at 5% 80%, ${ac(0.22)} 0%, transparent 55%)`,
+                      ? `radial-gradient(ellipse at 95% 80%, ${ac(0.12)} 0%, transparent 55%)`
+                      : `radial-gradient(ellipse at 5% 80%, ${ac(0.12)} 0%, transparent 55%)`,
                     transition: 'background 0.8s ease',
                   }}
                 />
 
                 {/* Slide content */}
                 <div
-                  className={`absolute inset-0 flex flex-col justify-end p-7 md:p-14 ${
+                  className={`absolute inset-0 flex flex-col justify-end p-5 md:p-10 ${
                     lang === 'ar' ? 'items-end text-right' : 'items-start text-left'
                   }`}
                 >
@@ -230,7 +264,7 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
                   <h2
                     className="font-black leading-[0.88] tracking-tight text-white mb-4 max-w-[640px]"
                     style={{
-                      fontSize: 'clamp(2.4rem, 6vw, 5.5rem)',
+                      fontSize: 'clamp(1.9rem, 8vw, 4.5rem)',
                       textShadow: '0 2px 24px rgba(0,0,0,0.6)',
                     }}
                   >
@@ -247,7 +281,7 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
                   {/* CTA */}
                   <button
                     type="button"
-                    className="inline-flex items-center gap-2.5 rounded-full text-sm font-bold px-7 py-3.5 transition-all duration-200 hover:scale-105 active:scale-95"
+                    className="inline-flex items-center gap-2.5 rounded-full text-xs sm:text-sm font-bold px-5 py-3 sm:px-7 sm:py-3.5 transition-all duration-200 hover:scale-105 active:scale-95"
                     style={{ background: acSolid, color: textOnAccent, transition: 'background 0.6s ease, color 0.3s ease' }}
                     onClick={(e) => { e.stopPropagation(); onSelectProduct?.(item); }}
                   >
@@ -264,7 +298,7 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
         <button
           type="button"
           onClick={() => embla?.scrollPrev()}
-          className="absolute left-4 md:left-5 top-1/2 z-20 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/50 backdrop-blur-sm text-white transition-all duration-200 hover:border-white/50 hover:bg-black/70 hover:scale-110 active:scale-95 shadow-[0_2px_16px_rgba(0,0,0,0.5)]"
+          className="absolute left-3 sm:left-4 md:left-5 top-1/2 z-20 -translate-y-1/2 flex h-9 w-9 md:h-11 md:w-11 items-center justify-center rounded-full border border-white/20 bg-black/50 backdrop-blur-sm text-white transition-all duration-200 hover:border-white/50 hover:bg-black/70 hover:scale-110 active:scale-95 shadow-[0_2px_16px_rgba(0,0,0,0.5)]"
           aria-label={lang === 'ar' ? 'السابق' : 'Previous'}
         >
           <ChevronLeft className="w-5 h-5" />
@@ -272,7 +306,7 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
         <button
           type="button"
           onClick={() => embla?.scrollNext()}
-          className="absolute right-4 md:right-5 top-1/2 z-20 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/50 backdrop-blur-sm text-white transition-all duration-200 hover:border-white/50 hover:bg-black/70 hover:scale-110 active:scale-95 shadow-[0_2px_16px_rgba(0,0,0,0.5)]"
+          className="absolute right-3 sm:right-4 md:right-5 top-1/2 z-20 -translate-y-1/2 flex h-9 w-9 md:h-11 md:w-11 items-center justify-center rounded-full border border-white/20 bg-black/50 backdrop-blur-sm text-white transition-all duration-200 hover:border-white/50 hover:bg-black/70 hover:scale-110 active:scale-95 shadow-[0_2px_16px_rgba(0,0,0,0.5)]"
           aria-label={lang === 'ar' ? 'التالي' : 'Next'}
         >
           <ChevronRight className="w-5 h-5" />
@@ -282,19 +316,30 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
       {/* ── Thumbnail strip ── */}
       <div
         className="relative"
-        style={{ background: 'linear-gradient(180deg, #080e1e 0%, #060b19 100%)' }}
+        style={{
+          background: 'transparent',
+        }}
       >
-        {/* Ambient color wash from above */}
+        {/* Ambient color wash from above (photo color tint) */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
-            background: `radial-gradient(ellipse at 50% 0%, ${ac(0.35)} 0%, transparent 65%)`,
+            background: `radial-gradient(ellipse at 50% 0%, ${ac(0.3)} 0%, transparent 50%)`,
             transition: 'background 0.8s ease',
           }}
         />
         <div
           className="absolute top-0 left-0 right-0 h-[1px] opacity-50"
           style={{ background: `linear-gradient(90deg, transparent, ${acSolid}, transparent)`, transition: 'background 0.6s ease' }}
+        />
+
+        {/* Black filter + blur on the entire bottom strip (shared photo from section) */}
+        <div 
+          className="absolute inset-0 bg-black" 
+          style={{ 
+            opacity: 0.75,
+            backdropFilter: 'blur(20px)'
+          }} 
         />
 
         <div className="relative flex overflow-x-auto no-scrollbar">
@@ -306,34 +351,28 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
                 key={item.id}
                 type="button"
                 onClick={() => embla?.scrollTo(index)}
-                className="group relative flex-shrink-0 flex flex-col items-center gap-2 px-5 py-4 min-w-[96px] transition-all duration-300 border-t-2"
+                className="group relative flex-shrink-0 flex flex-col items-center gap-1 px-4 py-3 sm:px-5 sm:py-4 min-w-[80px] sm:min-w-[96px] transition-all duration-300 border-t-2"
                 style={{
-                  borderTopColor: isActive ? acSolid : 'transparent',
-                  background: isActive ? ac(0.1) : 'transparent',
-                  transition: 'border-top-color 0.4s ease, background 0.3s ease',
+                  borderTopColor: isActive ? logoAcSolid : 'transparent',
+                  background: 'transparent',
+                  boxShadow: isActive ? `0 4px 12px ${ac(0.1)}` : 'none',
+                  transition: 'border-top-color 0.4s ease, background 0.3s ease, box-shadow 0.3s ease',
                 }}
                 aria-label={lang === 'ar' ? `انتقل الى ${item.name_ar}` : `Switch to ${item.name_en}`}
               >
                 {/* Logo (bottom strip) — always a logo, never the full cover photo */}
                 <div
-                  className="h-8 flex items-center transition-all duration-300"
+                  className="h-8 sm:h-10 flex items-center transition-all duration-300"
                   style={{ opacity: isActive ? 1 : 0.32, transform: isActive ? 'scale(1.08)' : 'scale(1)' }}
                 >
                   <img
                     src={logoSrc}
                     alt={item.name_en}
                     className="h-full w-auto max-w-[70px] object-contain"
+                    style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' }}
                     onError={(e) => { e.currentTarget.src = placeholderLogo; }}
                   />
                 </div>
-
-                {/* Name label */}
-                <span
-                  className="text-[10px] font-semibold whitespace-nowrap max-w-[84px] overflow-hidden text-ellipsis transition-colors duration-300"
-                  style={{ color: isActive ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.28)' }}
-                >
-                  {lang === 'ar' ? item.name_ar : item.name_en}
-                </span>
 
                 {/* Active dot */}
                 {isActive && (

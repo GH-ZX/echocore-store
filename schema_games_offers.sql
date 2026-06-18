@@ -30,7 +30,7 @@ create table if not exists public.games (
 -- Optional unique on slug
 create unique index if not exists games_slug_key on public.games (slug);
 
--- 3. OFFERS (no amount, no image_url on purpose)
+-- 3. OFFERS (no amount, no main image_url on purpose; sale fields for is_sale offers)
 create table if not exists public.offers (
   id uuid primary key default gen_random_uuid(),
   game_id uuid references public.games(id) on delete cascade,
@@ -41,6 +41,10 @@ create table if not exists public.offers (
   description_en text,
   description_ar text,
   active boolean default true,
+  -- Sale offer fields (added for separate sale offers + dedicated photo + crossed price)
+  sale_image_url text,
+  is_sale boolean default false,
+  original_price numeric(10,2),
   created_at timestamptz default now()
 );
 
@@ -62,6 +66,15 @@ create table if not exists public.order_items (
   price numeric(10,2) not null,
   quantity integer default 1
 );
+
+-- =====================================================
+-- ADD MISSING COLUMNS (run if you have older schema without sale fields)
+-- Safe to run multiple times
+-- =====================================================
+ALTER TABLE public.offers 
+  ADD COLUMN IF NOT EXISTS sale_image_url text,
+  ADD COLUMN IF NOT EXISTS is_sale boolean default false,
+  ADD COLUMN IF NOT EXISTS original_price numeric(10,2);
 
 -- =====================================================
 -- RLS (critical for admin inserts to work)
@@ -203,8 +216,64 @@ BEGIN
      true);
 END $$;
 
--- After running:
--- 1. Make "product-images" bucket PUBLIC in Storage
--- 2. Set your own profile row role = 'admin'
--- 3. Re-login in the app (or use Admin panel to add more)
+-- =====================================================
+-- STORAGE BUCKET POLICIES (FIXES "new row violates row-level security policy")
+-- Run these AFTER you have created the "product-images" bucket in Supabase Storage
+-- and set it to PUBLIC (for read URLs). 
+-- These policies allow authenticated ADMIN users to upload/edit images.
+-- =====================================================
+
+-- 1. Public read for all images (so product urls work for everyone, including anon)
+drop policy if exists "Public read product-images" on storage.objects;
+create policy "Public read product-images"
+  on storage.objects for select
+  using (bucket_id = 'product-images');
+
+-- 2. Admin-only upload (INSERT) - matches table RLS using profiles.role
+drop policy if exists "Admins can upload to product-images" on storage.objects;
+create policy "Admins can upload to product-images"
+  on storage.objects for insert
+  to authenticated
+  with check (
+    bucket_id = 'product-images' 
+    and exists (
+      select 1 from public.profiles 
+      where profiles.id = auth.uid() and profiles.role = 'admin'
+    )
+  );
+
+-- 3. Admin-only update (for replacing images)
+drop policy if exists "Admins can update product-images" on storage.objects;
+create policy "Admins can update product-images"
+  on storage.objects for update
+  to authenticated
+  using (
+    bucket_id = 'product-images' 
+    and exists (
+      select 1 from public.profiles 
+      where profiles.id = auth.uid() and profiles.role = 'admin'
+    )
+  );
+
+-- 4. Admin-only delete (optional cleanup)
+drop policy if exists "Admins can delete from product-images" on storage.objects;
+create policy "Admins can delete from product-images"
+  on storage.objects for delete
+  to authenticated
+  using (
+    bucket_id = 'product-images' 
+    and exists (
+      select 1 from public.profiles 
+      where profiles.id = auth.uid() and profiles.role = 'admin'
+    )
+  );
+
+-- =====================================================
+-- AFTER RUNNING THE SCHEMA + STORAGE POLICIES:
+-- 1. Storage → Buckets → Ensure "product-images" exists and is PUBLIC
+-- 2. Table Editor → profiles → set your user's role = 'admin'
+-- 3. Re-login in the app (important after role change)
+-- 4. Now uploads for game logos/covers + sale photos (is_sale) will work
+--
+-- For a quick targeted fix (without full re-seed), run: fix_sale_upload_rls.sql
 -- =====================================================

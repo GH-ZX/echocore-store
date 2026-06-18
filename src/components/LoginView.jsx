@@ -39,11 +39,11 @@ export default function LoginView({ t, handleAuthLogin, handleAuthSignup, onLogi
   };
 
   return (
-    <div className="max-w-md mx-auto mt-16 animate-fade-in">
-      <div className="card p-10">
+    <div className="max-w-md mx-auto mt-8 sm:mt-16 animate-fade-in px-2">
+      <div className="card p-6 sm:p-10">
         <div className="text-center mb-8">
-          <EchoLogo className="w-16 h-16 mx-auto mb-5" />
-          <h2 className="text-3xl font-black mb-1">{isSignup ? 'Create Account' : t.login}</h2>
+          <EchoLogo className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-4 sm:mb-5" />
+          <h2 className="text-2xl sm:text-3xl font-black mb-1">{isSignup ? 'Create Account' : t.login}</h2>
           <p className="text-[var(--text-sec)] text-sm">{t.loginDesc}</p>
         </div>
 

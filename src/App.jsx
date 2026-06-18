@@ -30,12 +30,12 @@ function GameDetail({ games, offers, lang, navigate, addToCart }) {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <button onClick={() => navigate('/')} className="mb-6 btn btn-secondary">
+      <button onClick={() => navigate('/')} className="mb-4 sm:mb-6 btn btn-secondary text-sm sm:text-base">
         ← Back to Home
       </button>
 
       <div className="card overflow-hidden mb-8">
-        <div className="relative h-80 md:h-96">
+        <div className="relative h-72 md:h-96">
           {game.image_url && (
             <img
               src={game.image_url}
@@ -44,16 +44,16 @@ function GameDetail({ games, offers, lang, navigate, addToCart }) {
             />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
-          <div className="absolute bottom-0 p-8">
-            <h1 className="text-5xl font-black text-white">
+          <div className="absolute bottom-0 p-6 md:p-8">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-white">
               {lang === 'ar' ? game.name_ar : game.name_en}
             </h1>
-            <p className="text-white/70 text-xl mt-2">{game.points_name} Top-ups</p>
+            <p className="text-white/70 text-lg mt-1">{game.points_name} Top-ups</p>
           </div>
         </div>
       </div>
 
-      <h2 className="text-3xl font-bold mb-6">Available Offers</h2>
+      <h2 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6">Available Offers</h2>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {gameOffers.length > 0 ? (
@@ -61,15 +61,23 @@ function GameDetail({ games, offers, lang, navigate, addToCart }) {
             <div
               key={offer.id}
               onClick={() => navigate(`/offer/${offer.id}`)}
-              className="card p-5 cursor-pointer group hover:shadow-[0_25px_50px_-12px_rgb(0,0,0)] active:scale-[0.985] transition-all"
+              className="card p-4 sm:p-5 cursor-pointer group hover:shadow-[0_25px_50px_-12px_rgb(0,0,0)] active:scale-[0.985] transition-all"
             >
-              <div className="font-bold text-lg mb-1">
+              <div className="font-bold text-base sm:text-lg mb-1">
                 {lang === 'ar' ? offer.name_ar : offer.name_en}
               </div>
               {offer.region && <div className="text-xs text-[var(--text-sec)] mb-3">Region: {offer.region}</div>}
-              <div className="text-3xl font-black text-[var(--accent)] mt-auto">
-                ${parseFloat(offer.price).toFixed(2)}
-              </div>
+              {offer.is_sale && offer.original_price ? (
+                <div className="mt-auto">
+                  <div className="text-sm line-through text-[var(--text-sec)]">${parseFloat(offer.original_price).toFixed(2)}</div>
+                  <div className="text-2xl sm:text-3xl font-black text-[var(--accent)]">${parseFloat(offer.price).toFixed(2)}</div>
+                  <div className="text-[10px] px-1.5 py-0.5 bg-red-500/10 text-red-400 rounded mt-1 inline-block">SALE</div>
+                </div>
+              ) : (
+                <div className="text-2xl sm:text-3xl font-black text-[var(--accent)] mt-auto">
+                  ${parseFloat(offer.price).toFixed(2)}
+                </div>
+              )}
               <div className="mt-4 text-sm text-[var(--text-sec)]">Click for details &amp; how to apply</div>
             </div>
           ))
@@ -99,16 +107,16 @@ function OfferDetail({ games, offers, lang, navigate, addToCart }) {
     <div className="max-w-4xl mx-auto">
       <button
         onClick={() => (game ? navigate(`/game/${game.slug || game.id}`) : navigate('/'))}
-        className="mb-6 btn btn-secondary"
+        className="mb-4 sm:mb-6 btn btn-secondary text-sm sm:text-base"
       >
         ← Back to {game ? (lang === 'ar' ? game.name_ar : game.name_en) : 'Game'}
       </button>
 
       <div className="card overflow-hidden mb-8">
-        <div className="relative h-72 md:h-80">
-          {offer.image_url ? (
+        <div className="relative h-64 md:h-80">
+          {(offer.sale_image_url || offer.image_url) ? (
             <img
-              src={offer.image_url}
+              src={offer.sale_image_url || offer.image_url}
               alt={lang === 'ar' ? offer.name_ar : offer.name_en}
               className="absolute inset-0 w-full h-full object-cover"
             />
@@ -136,7 +144,15 @@ function OfferDetail({ games, offers, lang, navigate, addToCart }) {
         <div className="md:col-span-1 card p-6 h-fit">
           <div>
             <div className="text-[var(--text-sec)] text-sm">Price</div>
-            <div className="text-5xl font-black text-[var(--accent)]">${parseFloat(offer.price).toFixed(2)}</div>
+            {offer.is_sale && offer.original_price ? (
+              <>
+                <div className="text-sm line-through text-[var(--text-sec)]">${parseFloat(offer.original_price).toFixed(2)}</div>
+                <div className="text-4xl sm:text-5xl font-black text-[var(--accent)]">${parseFloat(offer.price).toFixed(2)}</div>
+              </>
+            ) : (
+              <div className="text-4xl sm:text-5xl font-black text-[var(--accent)]">${parseFloat(offer.price).toFixed(2)}</div>
+            )}
+            {offer.is_sale && <div className="text-[10px] mt-1 px-2 py-0.5 bg-red-500/10 text-red-400 rounded inline-block">SALE</div>}
           </div>
 
           {offer.amount && (
@@ -155,7 +171,7 @@ function OfferDetail({ games, offers, lang, navigate, addToCart }) {
 
           <button
             onClick={() => addToCart(offer)}
-            className="btn btn-primary w-full mt-8 py-4 text-lg"
+            className="btn btn-primary w-full mt-6 sm:mt-8 py-3.5 sm:py-4 text-base sm:text-lg"
           >
             Add to Cart
           </button>
@@ -455,8 +471,11 @@ export default function App() {
       price: parseFloat(productData.price),
       region: productData.region || null,
       description_en: productData.description_en || '',
-      description_ar: productData.description_ar || ''
-      // No amount, no image_url for offers (one description is enough)
+      description_ar: productData.description_ar || '',
+      sale_image_url: productData.sale_image_url || null,
+      is_sale: !!productData.is_sale,
+      original_price: productData.is_sale ? (parseFloat(productData.original_price) || null) : null
+      // No amount, no main image_url for offers
     };
 
     const { data, error } = await supabase
@@ -498,8 +517,11 @@ export default function App() {
         price: parseFloat(payload.price),
         region: payload.region || null,
         description_en: payload.description_en || '',
-        description_ar: payload.description_ar || ''
-        // amount and image_url intentionally omitted (not needed for offers)
+        description_ar: payload.description_ar || '',
+        sale_image_url: payload.sale_image_url || null,
+        is_sale: !!payload.is_sale,
+        original_price: payload.is_sale ? (parseFloat(payload.original_price) || null) : null
+        // amount and main image_url intentionally omitted
       })
       .eq('id', id)
       .select()
@@ -511,6 +533,27 @@ export default function App() {
     }
 
     setOffers(prev => prev.map(p => p.id === id ? data : p));
+  };
+
+  const updateGame = async (gameData) => {
+    const { id, ...payload } = gameData;
+
+    const { error } = await supabase
+      .from('games')
+      .update({
+        name_en: payload.name_en,
+        name_ar: payload.name_ar || payload.name_en,
+        slug: payload.slug,
+        points_name: payload.points_name || 'Points',
+        logo_url: payload.logo_url || null,
+        image_url: payload.image_url || null,
+      })
+      .eq('id', id);
+
+    if (error) {
+      console.error('Update game error:', error);
+      throw new Error(`Failed to update game: ${error.message}`);
+    }
   };
 
   // ============================================
@@ -711,9 +754,11 @@ export default function App() {
                     t={t}
                     lang={lang}
                     games={games}
+                    offers={offers}
                     loading={loadingGames}
                     addToCart={addToCart}
                     onSelectGame={(game) => navigate(`/game/${game.slug || game.id}`)}
+                    onSelectOffer={(offer) => navigate(`/offer/${offer.id}`)}
                   />
                 }
               />
@@ -798,6 +843,7 @@ export default function App() {
                   createProduct={createProduct}
                   updateProduct={updateProduct}
                   deleteProduct={deleteProduct}
+                  updateGame={updateGame}
                   refreshProducts={fetchGames}
                   refreshOffers={fetchOffers}
                   refreshOrders={fetchOrders}

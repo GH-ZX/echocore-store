@@ -12,12 +12,12 @@ export default function Header({
 }) {
   return (
     <header className="sticky top-0 z-50 bg-[var(--bg-header)] backdrop-blur-xl border-b border-[var(--border)]">
-      <div className="container mx-auto px-4 h-20 flex items-center justify-between">
+      <div className="container mx-auto px-4 h-16 md:h-20 flex items-center justify-between">
         <div className="flex items-center gap-3 cursor-pointer group" onClick={() => navigate('/')}>
-          <EchoLogo className="w-10 h-10 md:w-12 md:h-12 transition-transform group-hover:scale-105" />
+          <EchoLogo className="w-9 h-9 md:w-12 md:h-12 transition-transform group-hover:scale-105" />
           <div className="flex flex-col">
-            <span className="text-2xl font-black tracking-[2px] text-transparent bg-clip-text bg-gradient-to-r from-[var(--accent)] to-blue-400">{t.storeName}</span>
-            <span className="text-[10px] text-[var(--accent)]/70 tracking-[3px] font-semibold -mt-1">STORE</span>
+            <span className="text-xl md:text-2xl font-black tracking-[2px] text-transparent bg-clip-text bg-gradient-to-r from-[var(--accent)] to-blue-400">{t.storeName}</span>
+            <span className="text-[9px] md:text-[10px] text-[var(--accent)]/70 tracking-[3px] font-semibold -mt-1">STORE</span>
           </div>
         </div>
 

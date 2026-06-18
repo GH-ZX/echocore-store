@@ -26,7 +26,7 @@ export default function CheckoutView({ t, cart, submitOrder, onComplete }) {
   };
 
   return (
-    <div className="max-w-xl mx-auto mt-6 animate-fade-in">
+    <div className="max-w-xl mx-auto mt-4 sm:mt-6 px-2 animate-fade-in">
       <div className="card p-8 md:p-12">
         <h2 className="text-3xl font-black mb-2 text-center">{t.paymentMethod}</h2>
         <div className="text-center text-sm text-[var(--text-sec)] mb-8">Order total: <span className="font-mono font-bold text-[var(--accent)]">${total}</span></div>

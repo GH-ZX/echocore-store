@@ -2,7 +2,7 @@ import { Trash2 } from 'lucide-react';
 
 export default function CartView({ t, lang, cart, getCartTotal, onRemoveItem, onCheckout }) {
   return (
-    <div className="max-w-5xl mx-auto mt-6 animate-fade-in">
+    <div className="max-w-5xl mx-auto mt-4 sm:mt-6 px-2 animate-fade-in">
       <h2 className="text-3xl font-black mb-6 flex items-center gap-3">{t.cart}</h2>
 
       {cart.length === 0 ? (

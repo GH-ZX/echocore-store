@@ -12,6 +12,7 @@ export default function AdminView({
   createProduct, 
   updateProduct,
   deleteProduct,
+  updateGame,
   refreshProducts,
   refreshOffers,
   refreshOrders 
@@ -25,10 +26,14 @@ export default function AdminView({
     region: '',
     image_url: '',
     description_en: '',
-    description_ar: ''
+    description_ar: '',
+    sale_image_url: '',
+    is_sale: false,
+    original_price: ''
   });
   const [coverFile, setCoverFile] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [saleCoverFile, setSaleCoverFile] = useState(null);
 
   // Editing state
   const [editingId, setEditingId] = useState(null);
@@ -47,6 +52,9 @@ export default function AdminView({
   const [gameCoverFile, setGameCoverFile] = useState(null);
   const [gameLogoFile, setGameLogoFile] = useState(null);
   const [gameUploading, setGameUploading] = useState(false);
+
+  // Game editing
+  const [editingGameId, setEditingGameId] = useState(null);
 
   // Filter offers list by game
   const [filterGameId, setFilterGameId] = useState('');
@@ -75,7 +83,7 @@ export default function AdminView({
     setUploading(false);
 
     if (error) {
-      alert('Image upload failed: ' + error.message + '\nMake sure storage policies allow authenticated uploads.');
+      alert('Image upload failed: ' + error.message + '\nMake sure storage policies allow authenticated uploads.\n\nRun fix_sale_upload_rls.sql (or full schema_games_offers.sql) in Supabase SQL editor.');
       return null;
     }
 
@@ -120,37 +128,55 @@ export default function AdminView({
         active: true
       };
 
-      const { error } = await supabase
-        .from('games')
-        .insert(gameData);
+      if (editingGameId) {
+        // Update existing game
+        if (updateGame) {
+          await updateGame({ ...gameData, id: editingGameId });
+        } else {
+          const { error } = await supabase
+            .from('games')
+            .update(gameData)
+            .eq('id', editingGameId);
+          if (error) throw error;
+        }
+        alert('Game updated successfully!');
+      } else {
+        // Insert new game
+        const { error } = await supabase
+          .from('games')
+          .insert(gameData);
 
-      if (error) {
-        console.error('Add game error:', error);
-        alert('Failed to add game: ' + error.message);
-        return;
+        if (error) {
+          console.error('Add game error:', error);
+          alert('Failed to add game: ' + error.message);
+          return;
+        }
+
+        // Auto-select the new game in the offer form
+        const { data: newG } = await supabase
+          .from('games')
+          .select('id')
+          .eq('slug', gameData.slug)
+          .limit(1);
+
+        if (newG && newG[0]) {
+          setNewProduct(prev => ({ ...prev, game_id: newG[0].id }));
+        }
+
+        alert('Game added successfully! It is now selected in the offer form below.');
       }
 
-      // Auto-select the new game in the offer form
-      const { data: newG } = await supabase
-        .from('games')
-        .select('id')
-        .eq('slug', gameData.slug)
-        .limit(1);
-
-      if (newG && newG[0]) {
-        setNewProduct(prev => ({ ...prev, game_id: newG[0].id }));
-      }
-
-      alert('Game added successfully! It is now selected in the offer form below.');
+      // Reset form
       setNewGame({ name_en: '', slug: '', points_name: '', logo_url: '', image_url: '' });
       setGameLogoFile(null);
       setGameCoverFile(null);
+      setEditingGameId(null);
       if (refreshProducts) await refreshProducts();
       if (refreshOffers) await refreshOffers();
     } catch (err) {
       setGameUploading(false);
       console.error(err);
-      alert('Failed to add game.');
+      alert('Failed to save game.');
     }
   };
 
@@ -166,6 +192,28 @@ export default function AdminView({
     if (refreshOffers) await refreshOffers();
   };
 
+  const startEditGame = (game) => {
+    setEditingGameId(game.id);
+    setNewGame({
+      name_en: game.name_en || '',
+      slug: game.slug || '',
+      points_name: game.points_name || '',
+      logo_url: game.logo_url || '',
+      image_url: game.image_url || ''
+    });
+    setGameLogoFile(null);
+    setGameCoverFile(null);
+    // Scroll to form
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelEditGame = () => {
+    setEditingGameId(null);
+    setNewGame({ name_en: '', slug: '', points_name: '', logo_url: '', image_url: '' });
+    setGameLogoFile(null);
+    setGameCoverFile(null);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setProductFormError('');
@@ -173,11 +221,23 @@ export default function AdminView({
       setProductFormError('Game, Name (English) and price are required.');
       return;
     }
+    if (newProduct.is_sale && !newProduct.original_price) {
+      setProductFormError('Original price is required for sale offers.');
+      return;
+    }
 
     const desc = (newProduct.description_en || '').trim();
 
     try {
-      // Offers do not use image or amount. One description used for both languages.
+      // Handle sale photo upload
+      let finalSaleImage = newProduct.sale_image_url;
+      if (saleCoverFile) {
+        const uploaded = await uploadImage(saleCoverFile, 'sale');
+        if (uploaded) finalSaleImage = uploaded;
+      }
+
+      // Offers do not use main image or amount. One description used for both languages.
+      // Optional sale_image_url for dedicated sale offer cards.
       const productData = {
         game_id: newProduct.game_id,
         name_en: newProduct.name_en.trim(),
@@ -187,7 +247,10 @@ export default function AdminView({
         amount: null,
         image_url: null,
         description_en: desc,
-        description_ar: desc
+        description_ar: desc,
+        sale_image_url: finalSaleImage || null,
+        is_sale: !!newProduct.is_sale,
+        original_price: newProduct.is_sale ? (parseFloat(newProduct.original_price) || null) : null
       };
 
       if (editingId) {
@@ -212,9 +275,13 @@ export default function AdminView({
     setNewProduct({
       game_id: '',
       name_en: '', name_ar: '', price: '', region: '',
-      image_url: '', description_en: '', description_ar: ''
+      image_url: '', description_en: '', description_ar: '',
+      sale_image_url: '',
+      is_sale: false,
+      original_price: ''
     });
     setCoverFile(null);
+    setSaleCoverFile(null);
     setEditingId(null);
     setProductFormError('');
     setProductFormSuccess('');
@@ -230,9 +297,13 @@ export default function AdminView({
       region: product.region || '',
       image_url: product.image_url || '',
       description_en: product.description_en || product.description_ar || '',
-      description_ar: product.description_ar || product.description_en || ''
+      description_ar: product.description_ar || product.description_en || '',
+      sale_image_url: product.sale_image_url || '',
+      is_sale: !!product.is_sale,
+      original_price: product.original_price || ''
     });
     setCoverFile(null);
+    setSaleCoverFile(null);
     // Scroll to form or switch tab if needed
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -288,7 +359,7 @@ export default function AdminView({
         <div className="space-y-8">
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="card p-6">
+            <div className="card p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-[var(--text-sec)] text-sm">Total Offers</div>
@@ -298,7 +369,7 @@ export default function AdminView({
               </div>
             </div>
 
-            <div className="card p-6">
+            <div className="card p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-[var(--text-sec)] text-sm">Total Orders</div>
@@ -308,7 +379,7 @@ export default function AdminView({
               </div>
             </div>
 
-            <div className="card p-6">
+            <div className="card p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-[var(--text-sec)] text-sm">Total Revenue</div>
@@ -318,7 +389,7 @@ export default function AdminView({
               </div>
             </div>
 
-            <div className="card p-6">
+            <div className="card p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-[var(--text-sec)] text-sm">Avg. Order Value</div>
@@ -383,14 +454,21 @@ export default function AdminView({
           <div className="card p-6">
             <div className="flex items-center gap-2 mb-4">
               <Plus className="w-5 h-5 text-[var(--accent)]" />
-              <h3 className="text-xl font-bold">Add New Game</h3>
+              <h3 className="text-xl font-bold">{editingGameId ? 'Edit Game' : 'Add New Game'}</h3>
             </div>
 
             <form onSubmit={handleAddGame} className="space-y-4">
               <input 
                 placeholder="Game Name (English)" 
                 value={newGame.name_en} 
-                onChange={e => setNewGame({ ...newGame, name_en: e.target.value, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })} 
+                onChange={e => {
+                  const val = e.target.value;
+                  if (editingGameId) {
+                    setNewGame({ ...newGame, name_en: val });
+                  } else {
+                    setNewGame({ ...newGame, name_en: val, slug: val.toLowerCase().replace(/\s+/g, '-') });
+                  }
+                }} 
                 className="input" 
                 required 
               />
@@ -456,20 +534,31 @@ export default function AdminView({
                 )}
               </div>
 
-              <button 
-                type="submit" 
-                disabled={gameUploading} 
-                className="btn btn-primary py-3"
-              >
-                {gameUploading ? 'Uploading...' : 'Add New Game'}
-              </button>
+              <div className="flex gap-2">
+                <button 
+                  type="submit" 
+                  disabled={gameUploading} 
+                  className="btn btn-primary py-3 flex-1"
+                >
+                  {gameUploading ? 'Uploading...' : (editingGameId ? 'Update Game' : 'Add New Game')}
+                </button>
+                {editingGameId && (
+                  <button 
+                    type="button" 
+                    onClick={cancelEditGame} 
+                    className="btn btn-secondary px-6"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
             </form>
-            <p className="text-xs text-[var(--text-muted)] mt-3">English name only. Logo appears at bottom of home carousel. Cover used for game cards.</p>
+            <p className="text-xs text-[var(--text-muted)] mt-3">English name only. Logo appears at bottom of home carousel. Cover used for game cards. Edit existing games from the list below.</p>
           </div>
 
           {/* GAMES LIST */}
           <div className="card p-6">
-            <h4 className="font-bold mb-4">Existing Games</h4>
+            <h4 className="font-bold mb-4">Existing Games <span className="text-xs font-normal text-[var(--text-muted)]">(click edit to update photo/logo)</span></h4>
             {games.length === 0 ? (
               <div className="text-[var(--text-sec)]">No games yet.</div>
             ) : (
@@ -477,9 +566,14 @@ export default function AdminView({
                 {games.map(g => (
                   <div key={g.id} className="flex justify-between items-center p-2 bg-[var(--bg-primary)] rounded">
                     <span>{lang === 'ar' ? g.name_ar : g.name_en} ({g.points_name})</span>
-                    <button onClick={() => deleteGame(g.id)} className="p-1 text-red-400 hover:text-red-500">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => startEditGame(g)} className="p-1 text-[var(--accent)] hover:text-white">
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => deleteGame(g.id)} className="p-1 text-red-400 hover:text-red-500">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -524,6 +618,30 @@ export default function AdminView({
                 <input placeholder="Region (optional)" value={newProduct.region || ''} onChange={e => setNewProduct({ ...newProduct, region: e.target.value })} className="input" />
               </div>
 
+              <div className="flex items-center gap-2">
+                <input 
+                  type="checkbox" 
+                  checked={!!newProduct.is_sale} 
+                  onChange={e => setNewProduct({ ...newProduct, is_sale: e.target.checked, original_price: e.target.checked ? newProduct.original_price : '' })} 
+                  className="accent-[var(--accent)]" 
+                />
+                <label className="text-xs font-semibold text-[var(--text-sec)]">This is a Sale Offer (has discount)</label>
+              </div>
+
+              {newProduct.is_sale && (
+                <div>
+                  <input 
+                    required 
+                    type="number" 
+                    step="0.01" 
+                    placeholder="Original Price (before discount)" 
+                    value={newProduct.original_price || ''} 
+                    onChange={e => setNewProduct({ ...newProduct, original_price: e.target.value })} 
+                    className="input" 
+                  />
+                </div>
+              )}
+
               <div>
                 <label className="text-xs font-semibold text-[var(--text-sec)] mb-1.5 block">Description (one is enough for both languages)</label>
                 <textarea 
@@ -532,6 +650,28 @@ export default function AdminView({
                   onChange={e => setNewProduct({ ...newProduct, description_en: e.target.value })} 
                   className="input w-full h-20 text-sm resize-y" 
                 />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-[var(--text-sec)] mb-1.5 block">Sale Photo (optional - used in sale offers section below carousel)</label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={e => setSaleCoverFile(e.target.files?.[0] || null)} 
+                    className="input flex-1 text-sm file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-[var(--accent)] file:text-[#040812]" 
+                  />
+                  <input 
+                    placeholder="Or paste sale photo URL" 
+                    value={newProduct.sale_image_url || ''} 
+                    onChange={e => setNewProduct({ ...newProduct, sale_image_url: e.target.value })} 
+                    className="input flex-1 text-sm" 
+                  />
+                </div>
+                {saleCoverFile && <div className="text-xs text-emerald-400 mt-1">✓ Will upload sale photo: {saleCoverFile.name}</div>}
+                {newProduct.sale_image_url && !saleCoverFile && (
+                  <img src={newProduct.sale_image_url} alt="sale preview" className="mt-2 h-16 w-auto object-cover rounded border" />
+                )}
               </div>
 
               {productFormError && (
@@ -596,7 +736,7 @@ export default function AdminView({
               {filteredOffersForList.length > 0 ? (
                 filteredOffersForList.map(offer => {
                   const game = gamesMap[offer.game_id];
-                  const img = offer.image_url;
+                  const img = offer.sale_image_url || offer.image_url;
                   return (
                     <div key={offer.id} className="flex items-center gap-4 p-3 bg-[var(--bg-primary)] rounded-2xl border border-[var(--border)] hover:border-[var(--accent)]/40 group">
                       {img && (
@@ -611,7 +751,15 @@ export default function AdminView({
                         <div className="font-semibold truncate">{lang === 'ar' ? offer.name_ar : offer.name_en}</div>
                         <div className="text-xs text-[var(--text-muted)] flex gap-2 flex-wrap">
                           {game && <span className="text-[var(--accent)]">{lang === 'ar' ? game.name_ar : game.name_en}</span>}
-                          <span>${parseFloat(offer.price).toFixed(2)}</span>
+                          {offer.is_sale && offer.original_price ? (
+                            <>
+                              <span className="line-through">${parseFloat(offer.original_price).toFixed(2)}</span>
+                              <span className="font-semibold text-red-400">${parseFloat(offer.price).toFixed(2)}</span>
+                            </>
+                          ) : (
+                            <span>${parseFloat(offer.price).toFixed(2)}</span>
+                          )}
+                          {offer.is_sale && <span className="px-1 py-0.5 bg-red-500/10 text-red-400 rounded text-[10px]">SALE</span>}
                           {offer.amount && <span>{offer.amount} {game?.points_name}</span>}
                           {offer.region && <span>• {offer.region}</span>}
                         </div>
