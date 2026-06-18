@@ -1,18 +1,23 @@
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
 import { ChevronLeft, ChevronRight, ShoppingCart, Gamepad2, Gift } from 'lucide-react';
 
 const AUTOPLAY_MS = 6000;
 const TICK_MS = 40;
 
-export default function ProductCarousel({ products, lang, onSelectProduct }) {
+export default function ProductCarousel({ products, t = {}, lang, onSelectProduct }) {
   const gameSlides = products.filter((p) => p.category === 'games');
   const slides = gameSlides.length ? gameSlides : products;
 
   const placeholderLogo = new URL('../assets/placeholder-logo.png', import.meta.url).href;
   const placeholderCover = new URL('../assets/placeholder-cover.png', import.meta.url).href;
 
-  const [emblaRef, embla] = useEmblaCarousel({ loop: true, skipSnaps: false });
+  const [emblaRef, embla] = useEmblaCarousel({ 
+    loop: true, 
+    skipSnaps: false,
+    align: 'start',
+    containScroll: 'trimSnaps'
+  });
   const [activeSlide, setActiveSlide] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -143,15 +148,11 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
   const pad = (n) => String(n + 1).padStart(2, '0');
 
   const currentItem = slides[activeSlide] || slides[0];
-  const carouselBg = currentItem ? getImg(currentItem) : placeholderCover;
 
   return (
     <section
       className="mt-8 rounded-2xl overflow-hidden"
       style={{
-        backgroundImage: `url(${carouselBg})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
         boxShadow: `0 0 0 1px ${ac(0.2)}, 0 8px 60px ${ac(0.12)}, 0 20px 100px ${ac(0.06)}`,
         transition: 'box-shadow 0.8s ease',
       }}
@@ -195,7 +196,12 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
               <div
                 key={item.id}
                 className="relative flex-none w-full overflow-hidden cursor-pointer"
-                style={{ height: 'clamp(380px, 68vh, 780px)' }}
+                style={{ 
+                  height: 'clamp(380px, 68vh, 780px)',
+                  backgroundImage: `url(${getImg(item)})`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                }}
                 role="button"
                 tabIndex={0}
                 onClick={() => onSelectProduct?.(item)}
@@ -250,8 +256,8 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
                         ? <Gamepad2 className="w-3 h-3" />
                         : <Gift className="w-3 h-3" />}
                       {item.category === 'games'
-                        ? (lang === 'ar' ? 'ألعاب' : 'Game')
-                        : (lang === 'ar' ? 'بطاقات رقمية' : 'Digital Card')}
+                        ? (t.game || (lang === 'ar' ? 'ألعاب' : 'Game'))
+                        : (t.digitalCard || (lang === 'ar' ? 'بطاقات رقمية' : 'Digital Card'))}
                     </span>
                     {item.price > 0 && (
                       <span className="text-[11px] font-bold rounded-full px-3 py-1.5 bg-white/[0.12] border border-white/20 text-white backdrop-blur-sm">
@@ -271,23 +277,10 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
                     {lang === 'ar' ? item.name_ar : item.name_en}
                   </h2>
 
-                  {/* Subtle tagline */}
-                  <p className="text-white/45 text-sm mb-7 max-w-[300px] leading-relaxed">
-                    {lang === 'ar'
-                      ? 'توصيل رقمي فوري · أفضل الأسعار مضمونة'
-                      : 'Instant digital delivery · Best prices guaranteed'}
+                  {/* Real per-game description */}
+                  <p className="text-white/70 text-sm mb-5 max-w-[420px] leading-relaxed">
+                    {(lang === 'ar' ? item.description_ar : item.description_en) || (lang === 'ar' ? 'اكتشف عروض الشحن الحصرية لهذه اللعبة.' : 'Discover exclusive top-up offers for this game.')}
                   </p>
-
-                  {/* CTA */}
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-2.5 rounded-full text-xs sm:text-sm font-bold px-5 py-3 sm:px-7 sm:py-3.5 transition-all duration-200 hover:scale-105 active:scale-95"
-                    style={{ background: acSolid, color: textOnAccent, transition: 'background 0.6s ease, color 0.3s ease' }}
-                    onClick={(e) => { e.stopPropagation(); onSelectProduct?.(item); }}
-                  >
-                    <ShoppingCart className="w-4 h-4" />
-                    {lang === 'ar' ? 'تسوق الآن' : 'Shop Now'}
-                  </button>
                 </div>
               </div>
             ))}
@@ -318,6 +311,7 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
         className="relative"
         style={{
           background: 'transparent',
+          boxShadow: '0 1px 0 rgba(255,255,255,0.05), 0 -8px 20px rgba(0,0,0,0.4)',
         }}
       >
         {/* Ambient color wash from above (photo color tint) */}
@@ -329,59 +323,92 @@ export default function ProductCarousel({ products, lang, onSelectProduct }) {
           }}
         />
         <div
-          className="absolute top-0 left-0 right-0 h-[1px] opacity-50"
+          className="absolute top-0 left-0 right-0 h-[1px] opacity-40"
+          style={{ background: `linear-gradient(90deg, transparent, ${acSolid}, transparent)`, transition: 'background 0.6s ease' }}
+        />
+        <div
+          className="absolute bottom-0 left-0 right-0 h-[1px] opacity-25"
           style={{ background: `linear-gradient(90deg, transparent, ${acSolid}, transparent)`, transition: 'background 0.6s ease' }}
         />
 
         {/* Black filter + blur on the entire bottom strip (shared photo from section) */}
         <div 
-          className="absolute inset-0 bg-black" 
+          className="absolute inset-0" 
           style={{ 
-            opacity: 0.75,
-            backdropFilter: 'blur(20px)'
+            background: 'linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.88) 100%)',
+            backdropFilter: 'blur(18px)'
           }} 
         />
 
-        <div className="relative flex overflow-x-auto no-scrollbar">
+        <div className="relative flex overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory">
           {slides.map((item, index) => {
             const isActive = index === activeSlide;
             const logoSrc = getLogo(item);
             return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => embla?.scrollTo(index)}
-                className="group relative flex-shrink-0 flex flex-col items-center gap-1 px-4 py-3 sm:px-5 sm:py-4 min-w-[80px] sm:min-w-[96px] transition-all duration-300 border-t-2"
-                style={{
-                  borderTopColor: isActive ? logoAcSolid : 'transparent',
-                  background: 'transparent',
-                  boxShadow: isActive ? `0 4px 12px ${ac(0.1)}` : 'none',
-                  transition: 'border-top-color 0.4s ease, background 0.3s ease, box-shadow 0.3s ease',
-                }}
-                aria-label={lang === 'ar' ? `انتقل الى ${item.name_ar}` : `Switch to ${item.name_en}`}
-              >
-                {/* Logo (bottom strip) — always a logo, never the full cover photo */}
-                <div
-                  className="h-8 sm:h-10 flex items-center transition-all duration-300"
-                  style={{ opacity: isActive ? 1 : 0.32, transform: isActive ? 'scale(1.08)' : 'scale(1)' }}
+              <React.Fragment key={item.id}>
+                <button
+                  type="button"
+                  onClick={() => embla?.scrollTo(index)}
+                  className="group relative flex-shrink-0 flex flex-col items-center gap-1 px-4 py-3 sm:px-5 sm:py-4 min-w-[80px] sm:min-w-[96px] transition-all duration-300 snap-start hover:bg-white/[0.03]"
+                  style={{
+                    borderTopColor: isActive ? logoAcSolid : 'transparent',
+                    background: isActive ? 'rgba(255,255,255,0.04)' : 'transparent',
+                    boxShadow: isActive ? `0 4px 12px ${ac(0.1)}` : 'none',
+                    transition: 'border-top-color 0.4s ease, background 0.3s ease, box-shadow 0.3s ease',
+                  }}
+                  aria-label={lang === 'ar' ? `انتقل الى ${item.name_ar}` : `Switch to ${item.name_en}`}
                 >
-                  <img
-                    src={logoSrc}
-                    alt={item.name_en}
-                    className="h-full w-auto max-w-[70px] object-contain"
-                    style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' }}
-                    onError={(e) => { e.currentTarget.src = placeholderLogo; }}
-                  />
-                </div>
-
-                {/* Active dot */}
-                {isActive && (
+                  {/* Logo (bottom strip) — always a logo, never the full cover photo */}
                   <div
-                    className="absolute bottom-1.5 rounded-full w-1 h-1"
-                    style={{ background: acSolid, boxShadow: `0 0 6px ${acSolid}` }}
+                    className="h-8 sm:h-10 flex items-center justify-center px-1.5 transition-all duration-300 group-hover:brightness-110 group-hover:scale-[1.02]"
+                    style={{ 
+                      opacity: isActive ? 1 : 0.32, 
+                      transform: isActive ? 'scale(1.08)' : 'scale(1)'
+                    }}
+                  >
+                    <img
+                      src={logoSrc}
+                      alt={item.name_en}
+                      className="h-full w-auto max-w-[70px] object-contain transition-all duration-300"
+                      style={{ 
+                        filter: isActive 
+                          ? `drop-shadow(0 1px 2px rgba(0,0,0,0.5)) drop-shadow(0 0 2px ${logoAcSolid})` 
+                          : 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' 
+                      }}
+                      onError={(e) => { e.currentTarget.src = placeholderLogo; }}
+                    />
+                  </div>
+
+                  {/* Active theme-colored underline bar */}
+                  {isActive && (
+                    <div
+                      className="h-[2px] w-8 rounded-full mt-1.5"
+                      style={{ 
+                        background: logoAcSolid
+                      }}
+                    />
+                  )}
+
+                  {/* Active dot */}
+                  {isActive && (
+                    <div
+                      className="absolute bottom-1.5 rounded-full w-1 h-1"
+                      style={{ background: acSolid }}
+                    />
+                  )}
+                </button>
+
+                {/* Separator line between bottom items, colored with active game's theme */}
+                {index < slides.length - 1 && (
+                  <div 
+                    className="flex-shrink-0 self-center w-px h-5 mx-0.5 rounded-full"
+                    style={{ 
+                      background: `linear-gradient(to bottom, transparent, ${acSolid}, transparent)`, 
+                      opacity: 0.4 
+                    }} 
                   />
                 )}
-              </button>
+              </React.Fragment>
             );
           })}
         </div>

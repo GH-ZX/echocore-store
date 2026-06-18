@@ -9,19 +9,22 @@ import { ShoppingCart } from 'lucide-react';
  * - lang: 'ar' | 'en'
  * - onSelect: (product) => void
  * - onAddToCart: (product) => void
+ * - onBuyNow: (product) => void   // NEW: direct buy with UID page
  * - compact?: boolean
  */
 export default function ProductCard({ 
   product, 
+  t = {}, 
   lang = 'ar', 
   onSelect, 
   onAddToCart, 
+  onBuyNow, 
   compact = false 
 }) {
   const name = lang === 'ar' ? product.name_ar : product.name_en;
   const categoryLabel = product.category === 'games' 
-    ? (lang === 'ar' ? 'شحن ألعاب' : 'PC Games') 
-    : (lang === 'ar' ? 'بطاقات رقمية' : 'Digital Cards');
+    ? (t.game || (lang === 'ar' ? 'شحن ألعاب' : 'PC Games')) 
+    : (t.digitalCard || (lang === 'ar' ? 'بطاقات رقمية' : 'Digital Cards'));
 
   // Fallback image (use placeholder or external)
   const placeholder = new URL('../assets/placeholder-cover.png', import.meta.url).href;
@@ -29,7 +32,13 @@ export default function ProductCard({
 
   const handleAdd = (e) => {
     e.stopPropagation();
-    onAddToCart?.(product);
+    onAddToCart?.(product, e);
+  };
+
+  const handleBuyNow = (e) => {
+    e.stopPropagation();
+    if (onBuyNow) onBuyNow(product);
+    else onSelect?.(product);
   };
 
   return (
@@ -71,25 +80,35 @@ export default function ProductCard({
           {!compact && (
             <p className="text-[13px] text-text-sec line-clamp-2 mb-3">
               {lang === 'ar' ? product.description_ar : product.description_en || 
-                'توصيل فوري • آمن 100%'}
+                (t.instantDelivery || 'توصيل فوري • آمن 100%')}
             </p>
           )}
         </div>
 
-        <div className="flex items-center justify-between mt-auto pt-3 border-t border-border">
+        <div className="flex items-center justify-between mt-auto pt-3 border-t border-border gap-2">
           <div>
             <span className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-accent to-blue-400">
               ${parseFloat(product.price).toFixed(2)}
             </span>
           </div>
 
-          <button
-            onClick={handleAdd}
-            className="btn btn-secondary p-3 active:scale-[0.985]"
-            title={lang === 'ar' ? 'أضف للسلة' : 'Add to cart'}
-          >
-            <ShoppingCart className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onBuyNow && (
+              <button
+                onClick={handleBuyNow}
+                className="btn btn-primary px-3 py-2 text-xs active:scale-[0.985]"
+              >
+                {lang === 'ar' ? 'اشترِ' : 'Buy'}
+              </button>
+            )}
+            <button
+              onClick={handleAdd}
+              className="btn btn-secondary p-3 active:scale-[0.985]"
+              title={t.addToCart || (lang === 'ar' ? 'أضف للسلة' : 'Add to cart')}
+            >
+              <ShoppingCart className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
     </div>

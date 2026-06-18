@@ -2,14 +2,16 @@
 import ProductCarousel from './ProductCarousel';
 
 export default function HomeView({
-  t,
+  t = {},
   lang,
   games = [],
   offers = [],
   loading = false,
   addToCart,
   onSelectGame,
-  onSelectOffer
+  onSelectOffer,
+  searchQuery = '',
+  onSearchChange
 }) {
   // Format games for the carousel
   // Main slide uses full cover (image_url)
@@ -31,16 +33,26 @@ export default function HomeView({
     name_ar: g.name_ar,
     image_url: g.image_url,           // full cover for main big slide
     logo_url: g.logo_url || getLocalLogo(g.slug),  // dedicated logo for bottom strip
+    description_en: g.description_en || '',
+    description_ar: g.description_ar || '',
     category: 'games',
     price: 0
   }));
 
+  const filteredGames = searchQuery.trim()
+    ? games.filter(g =>
+        (g.name_en || '').toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
+        (g.name_ar || '').toLowerCase().includes(searchQuery.toLowerCase().trim())
+      )
+    : games;
+
   return (
-    <div className="space-y-12 animate-fade-in">
+    <div className="space-y-10 animate-fade-in">
       {/* CAROUSEL at the top */}
       {games.length > 0 && (
         <ProductCarousel 
           products={carouselItems} 
+          t={t}
           lang={lang} 
           onSelectProduct={(item) => onSelectGame && onSelectGame(games.find(g => g.id === item.id))} 
         />
@@ -49,8 +61,11 @@ export default function HomeView({
       {/* SALE OFFERS - directly below the carousel */}
       {offers.some(o => o.is_sale) && (
         <div>
-          <h2 className="text-xl md:text-2xl font-bold text-center">Sale Offers</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
+          <h2 className="text-center mb-3">
+            <span className="text-lg md:text-xl font-semibold tracking-tight text-red-300">{t.saleOffers || 'Sale Offers'}</span>
+          </h2>
+          <div className="h-px w-8 bg-red-400/60 mx-auto mb-4" />
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {(() => {
               // Prioritize offers with dedicated sale photo, then by price
               const sorted = [...offers].sort((a, b) => parseFloat(a.price) - parseFloat(b.price));
@@ -91,12 +106,20 @@ export default function HomeView({
                           )}
                           {offer.is_sale && <div className="text-[10px] px-1.5 py-0.5 bg-red-500/10 text-red-400 rounded">SALE</div>}
                         </div>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); addToCart(offer); }}
-                          className="mt-2 w-full btn btn-primary text-xs py-1.5"
-                        >
-                          Add to Cart
-                        </button>
+                        <div className="mt-2 flex gap-2">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); onSelectOffer(offer); }}
+                            className="flex-1 btn btn-secondary text-xs py-1.5"
+                          >
+                            {t.details || (lang === 'ar' ? 'تفاصيل' : 'Details')}
+                          </button>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); window.location.href = `/buy/${offer.id}`; }}
+                            className="flex-1 btn btn-primary text-xs py-1.5 font-semibold"
+                          >
+                            {lang === 'ar' ? 'اشترِ الآن' : 'Buy Now'}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -108,20 +131,27 @@ export default function HomeView({
       )}
 
       {/* GAMES SECTION - below the carousel */}
-      <h2 className="text-xl md:text-2xl font-bold text-center">Choose a Game</h2>
+      <h2 className="text-center mb-3">
+        <span className="text-lg md:text-xl font-semibold tracking-tight text-[var(--text-secondary)]">
+          {searchQuery.trim() ? (t.searchResults || 'Search Results') : (t.chooseGame || 'Choose a Game')}
+        </span>
+      </h2>
+      <div className="h-px w-8 bg-[var(--accent)]/50 mx-auto mb-5" />
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="card h-48 sm:h-52 animate-pulse bg-[var(--bg-surface)]" />
           ))}
         </div>
-      ) : games.length === 0 ? (
+      ) : filteredGames.length === 0 ? (
         <div className="text-center py-10 text-[var(--text-sec)]">
-          No games yet. Make sure your Supabase tables have data and the correct VITE_SUPABASE_URL / ANON_KEY are set in Netlify.
+          {searchQuery.trim()
+            ? (t.noResults || 'No games match your search.')
+            : (t.noGamesAvailable || 'No games yet. Make sure your Supabase tables have data and the correct VITE_SUPABASE_URL / ANON_KEY are set in Netlify.')}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {games.map((game) => (
+          {filteredGames.map((game) => (
             <div
               key={game.id}
               onClick={() => onSelectGame && onSelectGame(game)}

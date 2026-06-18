@@ -23,6 +23,8 @@ create table if not exists public.games (
   points_name text default 'Points',
   image_url text,      -- full cover / hero for cards + game page
   logo_url text,       -- small logo for carousel bottom thumbnails
+  description_en text,  -- real description shown on carousel slide
+  description_ar text,
   active boolean default true,
   created_at timestamptz default now()
 );
@@ -75,6 +77,11 @@ ALTER TABLE public.offers
   ADD COLUMN IF NOT EXISTS sale_image_url text,
   ADD COLUMN IF NOT EXISTS is_sale boolean default false,
   ADD COLUMN IF NOT EXISTS original_price numeric(10,2);
+
+-- Add descriptions for carousel (run once)
+ALTER TABLE public.games 
+  ADD COLUMN IF NOT EXISTS description_en text,
+  ADD COLUMN IF NOT EXISTS description_ar text;
 
 -- =====================================================
 -- RLS (critical for admin inserts to work)

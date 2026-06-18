@@ -59,7 +59,7 @@ export default function ProductView({ t, lang, selectedProduct, onBack, addToCar
             </div>
 
             <button 
-              onClick={() => addToCart(selectedProduct)} 
+              onClick={(e) => addToCart(selectedProduct, e)} 
               className="btn btn-primary text-xl py-5 px-10 w-full sm:w-auto"
             >
               <ShoppingCart className="w-5 h-5" /> {t.addToCart}

@@ -23,6 +23,10 @@ npm run dev
 
 Then run the SQL in Supabase → SQL Editor from the setup file.
 
+### For User Balance + Recharge feature:
+Run `add_balance_transactions.sql` in Supabase SQL Editor (adds balance column + transactions table + secure RPC helpers).
+Recharge page at /recharge supports simulated Binance Pay / ShamCash / Cards (see SQL file + RechargeView.jsx for real API implementation notes).
+
 
 لتصفح الموقع: https://echo-core-store.netlify.app/
 
