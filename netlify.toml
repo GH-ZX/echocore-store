@@ -3,7 +3,7 @@
   publish = "dist"
 
 [build.environment]
-  NODE_VERSION = "18"
+  NODE_VERSION = "20"   # Vite 8+ requires Node 20.19+ or 22.12+
 
 # SPA redirect for React Router
 [[redirects]]
