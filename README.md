@@ -1,7 +1,8 @@
 # ECHOCORE Store — Real Digital Gaming Store
 
-متجر ألعاب وبطاقات رقمية حديث مبني بـ React + Vite + **Supabase**.
+متجر ألعاب وبطاقات رقمية 
 
+للتجربة:  https://gh-zx.github.io/echocore-store/
 ## ✅ Now a Real Project
 
 - Full Supabase database (products, orders, auth)
