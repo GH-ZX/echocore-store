@@ -19,8 +19,8 @@ export default function FAQView({ t = {}, lang = 'en' }) {
     {
       q: isAr ? 'ما هي طرق الدفع المتاحة؟' : 'What payment methods are available?',
       a: isAr 
-        ? 'ندعم الدفع عبر شام كاش، بايننس باي (USDT)، ماستر كارد وفيزا.'
-        : 'We support ShamCash, Binance Pay (USDT), MasterCard and Visa.'
+        ? 'ندعم الدفع عبر شام كاش والرصيد. بايننس باي والبطاقات الائتمانية قريباً.'
+        : 'We support ShamCash and account balance. Binance Pay and cards are coming soon.'
     },
     {
       q: isAr ? 'هل يمكنني استخدام الكود على أي حساب؟' : 'Can I use the code on any account?',

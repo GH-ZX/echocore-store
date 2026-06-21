@@ -6,7 +6,7 @@ export default function ProductView({ t, lang, selectedProduct, onBack, addToCar
 
   const name = lang === 'ar' ? selectedProduct.name_ar : selectedProduct.name_en;
   const desc = lang === 'ar' ? selectedProduct.description_ar : selectedProduct.description_en;
-  const placeholder = new URL('../assets/placeholder-cover.png', import.meta.url).href;
+  const placeholder = new URL('../assets/placeholder-cover.svg', import.meta.url).href;
   const img = selectedProduct.image_url || placeholder;
 
   return (

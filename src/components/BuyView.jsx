@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { ArrowLeft, Loader2, CheckCircle, User, Server } from 'lucide-react';
-import { Bitcoin, CreditCard, Wallet, WalletCards } from 'lucide-react';
+import { buildPaymentMethods, getDefaultPaymentMethod } from '../lib/paymentMethods';
 
 export default function BuyView({ 
   t = {}, 
@@ -11,7 +11,8 @@ export default function BuyView({
   games = [], 
   offers = [], 
   currentBalance = 0, 
-  onPurchase 
+  onPurchase,
+  paymentConfig = {},
 }) {
   const { offerId } = useParams();
 
@@ -22,10 +23,10 @@ export default function BuyView({
 
   const [playerUid, setPlayerUid] = useState('');
   const [playerServer, setPlayerServer] = useState('');
-  const [selectedMethod, setSelectedMethod] = useState('binance');
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSimModal, setShowSimModal] = useState(false);
   const [simRef, setSimRef] = useState('');
+  const merchantName = paymentConfig.shamcashMerchantName || 'ECHOCORE Store';
 
   // For games with 'both' redemption, user must choose one
   const [redemptionChoice, setRedemptionChoice] = useState('uid');
@@ -48,19 +49,25 @@ export default function BuyView({
   const total = price.toFixed(2);
   const hasEnough = currentBalance >= price;
 
-  const paymentMethods = [
-    { id: 'balance', name: t.payFromBalance || (lang === 'ar' ? 'الدفع من الرصيد' : 'Pay from Balance'), icon: WalletCards, color: 'text-emerald-400', requiresBalance: true },
-    { id: 'binance', name: t.binance || 'Binance Pay (USDT)', icon: Bitcoin, color: 'text-[#FCD535]' },
-    { id: 'ShamCash', name: t.shamCash || 'ShamCash', icon: Wallet, color: 'text-green-500' },
-    { id: 'mastercard', name: t.mastercard || 'MasterCard / Visa', icon: CreditCard, color: 'text-blue-500' },
-  ];
+  const paymentMethods = useMemo(
+    () => buildPaymentMethods(t, lang, paymentConfig, { includeBalance: true, currentBalance: hasEnough ? currentBalance : 0 }),
+    [t, lang, paymentConfig, hasEnough, currentBalance]
+  );
 
-  const availableMethods = paymentMethods.filter(m => {
-    if (m.id === 'balance') return hasEnough;
-    return true;
+  const usableMethods = paymentMethods.filter((m) => !m.disabled && !m.comingSoon);
+
+  const [selectedMethod, setSelectedMethod] = useState(() => {
+    const methods = buildPaymentMethods(t, lang, paymentConfig, { includeBalance: true, currentBalance });
+    return hasEnough ? 'balance' : getDefaultPaymentMethod(methods);
   });
 
-  const currentMethod = availableMethods.find(m => m.id === selectedMethod) || availableMethods[0];
+  useEffect(() => {
+    if (!usableMethods.some((m) => m.id === selectedMethod)) {
+      setSelectedMethod(hasEnough ? 'balance' : getDefaultPaymentMethod(paymentMethods));
+    }
+  }, [paymentMethods, selectedMethod, usableMethods, hasEnough]);
+
+  const currentMethod = paymentMethods.find((m) => m.id === selectedMethod) || usableMethods[0];
 
   const playerInfo = {
     player_uid: showUidForm ? playerUid.trim() || null : null,
@@ -72,10 +79,9 @@ export default function BuyView({
   const canProceed = isUidComplete && isServerComplete && !!currentMethod;
 
   // Simulate payment like in recharge
-  const simulatePayment = async (method, amount) => {
-    await new Promise(r => setTimeout(r, 1350));
-    const ref = `${method.slice(0,4).toUpperCase()}-${Date.now().toString().slice(-8)}`;
-    return { success: true, reference: ref };
+  const simulatePayment = async () => {
+    await new Promise((r) => setTimeout(r, 1200));
+    return { success: true, reference: `ECHOCORE-${Date.now().toString(36).toUpperCase()}` };
   };
 
   const startPurchase = async () => {
@@ -97,7 +103,11 @@ export default function BuyView({
       return;
     }
 
-    // External method → show simulation modal
+    if (!usableMethods.some((m) => m.id === selectedMethod)) {
+      alert(lang === 'ar' ? 'طريقة الدفع غير متاحة' : 'Payment method unavailable');
+      return;
+    }
+
     setShowSimModal(true);
     setSimRef('');
   };
@@ -105,7 +115,7 @@ export default function BuyView({
   const confirmExternalPayment = async () => {
     setIsProcessing(true);
     try {
-      const sim = await simulatePayment(selectedMethod, price);
+      const sim = await simulatePayment();
 
       // Now actually create the order (no balance deduction)
       const result = await onPurchase(offer, selectedMethod, playerInfo);
@@ -260,17 +270,29 @@ export default function BuyView({
         <div className="mb-6">
           <div className="font-semibold mb-3 text-sm text-[var(--text-sec)]">{t.paymentMethod}</div>
           <div className="space-y-2">
-            {availableMethods.map((m) => {
+            {paymentMethods.map((m) => {
               const Icon = m.icon;
               const active = selectedMethod === m.id;
+              const isDisabled = m.disabled || m.comingSoon;
               return (
                 <div
                   key={m.id}
-                  onClick={() => setSelectedMethod(m.id)}
-                  className={`flex items-center p-4 rounded-2xl cursor-pointer border transition ${active ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border)] hover:border-[var(--accent)]/50'}`}
+                  onClick={() => !isDisabled && setSelectedMethod(m.id)}
+                  className={`flex items-center p-4 rounded-2xl border transition ${
+                    isDisabled
+                      ? 'border-[var(--border)] opacity-50 cursor-not-allowed'
+                      : `cursor-pointer ${active ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border)] hover:border-[var(--accent)]/50'}`
+                  }`}
                 >
-                  <Icon className={`w-7 h-7 ${m.color} mr-4`} />
-                  <div className="font-bold">{m.name}</div>
+                  <Icon className={`w-7 h-7 ${m.color} mr-4 flex-shrink-0`} />
+                  <div className="font-bold flex items-center gap-2 min-w-0">
+                    {m.name}
+                    {m.comingSoon && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-elevated)] text-[var(--text-muted)]">
+                        {t.comingSoon || (lang === 'ar' ? 'قريباً' : 'Coming soon')}
+                      </span>
+                    )}
+                  </div>
                   {m.id === 'balance' && <div className="ml-auto text-xs text-emerald-400">(${currentBalance.toFixed(2)})</div>}
                 </div>
               );
@@ -298,36 +320,24 @@ export default function BuyView({
       </div>
 
       {/* Simulation Modal (for external payment methods) */}
-      {showSimModal && (
+      {showSimModal && selectedMethod === 'ShamCash' && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[80] p-4" onClick={() => !isProcessing && setShowSimModal(false)}>
           <div className="card max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
             <h3 className="text-center font-bold text-xl mb-4">
-              {lang === 'ar' ? 'إتمام الدفع' : 'Complete Payment'}
+              {lang === 'ar' ? 'إتمام الدفع عبر ShamCash' : 'Complete ShamCash Payment'}
             </h3>
 
             <div className="mb-4 text-center text-sm text-[var(--text-sec)]">
-              ${total} via <span className="font-semibold">{currentMethod?.name}</span>
+              ${total} → {merchantName}
             </div>
 
-            {/* Method specific visuals */}
-            {selectedMethod === 'binance' && (
-              <div className="p-4 bg-black/70 rounded-xl mb-5 text-center">
-                <div className="mx-auto w-32 h-32 bg-white flex items-center justify-center rounded mb-3 text-[10px] text-black font-mono">QR CODE<br/>SCAN IN BINANCE</div>
-                <p className="text-xs text-[var(--text-muted)]">Simulated — in production this would be a real Binance Pay QR</p>
-              </div>
-            )}
-            {selectedMethod === 'ShamCash' && (
-              <div className="p-4 bg-black/70 rounded-xl mb-5 text-center">
-                <div className="text-green-400 mb-1 text-sm">SHAM CASH INVOICE</div>
-                <div className="font-mono text-2xl tracking-widest">INV-{Date.now().toString().slice(-8)}</div>
-                <p className="text-xs mt-2 text-[var(--text-muted)]">Pay this reference inside the ShamCash app</p>
-              </div>
-            )}
-            {selectedMethod === 'mastercard' && (
-              <div className="p-4 bg-black/70 rounded-xl mb-5 text-xs text-center">
-                Card details simulated.<br />Real integration uses Stripe Payment Element.
-              </div>
-            )}
+            <div className="p-4 bg-black/70 rounded-xl mb-5 text-center">
+              <div className="text-green-400 mb-1 text-sm">SHAMCASH REFERENCE</div>
+              <div className="font-mono text-2xl tracking-widest">ECHOCORE-{Date.now().toString().slice(-8)}</div>
+              <p className="text-xs mt-2 text-[var(--text-muted)]">
+                {lang === 'ar' ? 'ادفع عبر تطبيق ShamCash ثم أكّد' : 'Pay in ShamCash app, then confirm'}
+              </p>
+            </div>
 
             {!simRef ? (
               <button 

@@ -1,29 +1,150 @@
-import { useState, useEffect, useRef } from 'react';
-import { CheckCircle } from 'lucide-react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import AdminEditButton from './components/AdminEditButton';
+import { getCarouselGames, sortGamesByCarousel } from './lib/carouselUtils';
+import { CheckCircle, Loader2, Globe } from 'lucide-react';
 import { supabase, getUserProfile } from './lib/supabase';
+import { fetchPaymentMethods } from './lib/storeSettings';
+import { applyTheme, fetchSiteTheme, normalizeThemeOverrides } from './lib/theme';
+import { DEFAULT_HOME_LAYOUT, fetchHomeLayout, normalizeHomeLayout } from './lib/homeLayout';
 import { translations } from './data/translations';
 import { Routes, Route, useNavigate, useParams, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import Header from './components/Header';
 import HomeView from './components/HomeView';
-import ProductView from './components/ProductView';
-import LoginView from './components/LoginView';
-import CartView from './components/CartView';
-import CheckoutView from './components/CheckoutView';
-import AdminView from './components/AdminView';
 import Footer from './components/Footer';
-import AllGamesView from './components/AllGamesView';
-import SaleOffersView from './components/SaleOffersView';
-import FAQView from './components/FAQView';
-import HowItWorksView from './components/HowItWorksView';
-import ContactView from './components/ContactView';
-import RechargeView from './components/RechargeView';
-import BuyView from './components/BuyView';
+
+const LoginView = lazy(() => import('./components/LoginView'));
+const CartView = lazy(() => import('./components/CartView'));
+const CheckoutView = lazy(() => import('./components/CheckoutView'));
+const AdminView = lazy(() => import('./components/AdminView'));
+const AllGamesView = lazy(() => import('./components/AllGamesView'));
+const SaleOffersView = lazy(() => import('./components/SaleOffersView'));
+const FAQView = lazy(() => import('./components/FAQView'));
+const HowItWorksView = lazy(() => import('./components/HowItWorksView'));
+const ContactView = lazy(() => import('./components/ContactView'));
+const RechargeView = lazy(() => import('./components/RechargeView'));
+const BuyView = lazy(() => import('./components/BuyView'));
+const ProfileView = lazy(() => import('./components/ProfileView'));
+const AdminOfferEditModal = lazy(() => import('./components/AdminOfferEditModal'));
+const AdminGameEditModal = lazy(() => import('./components/AdminGameEditModal'));
+const AdminCarouselManager = lazy(() => import('./components/AdminCarouselManager'));
+
+function PageLoader({ lang = 'ar' }) {
+  return (
+    <div className="flex items-center justify-center min-h-[40vh]">
+      <div className="text-[var(--text-sec)] animate-pulse">
+        {lang === 'ar' ? 'جاري التحميل...' : 'Loading...'}
+      </div>
+    </div>
+  );
+}
+
+const LANG_SWITCH_FADE_OUT_MS = 280;
+const LANG_SWITCH_LOADING_MS = 380;
+const LANG_SWITCH_FADE_IN_MS = 280;
+
+function RouteNavigationIndicator({ active, message }) {
+  return (
+    <AnimatePresence>
+      {active && (
+        <>
+          <motion.div
+            key="route-nav-bar"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed top-0 left-0 right-0 z-[240] h-1 bg-[var(--border)] overflow-hidden"
+          >
+            <motion.div
+              className="h-full bg-[var(--accent)] shadow-[0_0_12px_var(--accent)]"
+              initial={{ width: '8%' }}
+              animate={{ width: ['8%', '72%', '92%'] }}
+              transition={{ duration: 1.1, ease: 'easeInOut', times: [0, 0.65, 1] }}
+            />
+          </motion.div>
+          <motion.div
+            key="route-nav-pill"
+            initial={{ opacity: 0, y: -10, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.98 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[240] flex items-center gap-2.5 px-4 py-2.5 rounded-full border border-[var(--accent)]/35 bg-[var(--bg-surface)]/95 backdrop-blur-md shadow-lg"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="w-4 h-4 text-[var(--accent)] animate-spin flex-shrink-0" />
+            <span className="text-sm font-semibold text-white whitespace-nowrap">{message}</span>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function LangSwitchOverlay({ lang, active }) {
+  const isAr = lang === 'ar';
+  return (
+    <AnimatePresence>
+      {active && (
+        <motion.div
+          key="lang-switch-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.22, ease: 'easeOut' }}
+          className="fixed inset-0 z-[250] flex flex-col items-center justify-center bg-[var(--bg-primary)]/96 backdrop-blur-md px-6"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <motion.div
+            initial={{ scale: 0.85, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.04, duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            className="flex flex-col items-center text-center max-w-sm"
+          >
+            <div className="relative mb-6">
+              <div className="absolute inset-0 rounded-full bg-[var(--accent)]/20 blur-xl scale-150" />
+              <div className="relative w-16 h-16 rounded-2xl border border-[var(--accent)]/30 bg-[var(--bg-surface)] flex items-center justify-center">
+                <Globe className="w-8 h-8 text-[var(--accent)]" />
+              </div>
+            </div>
+            <Loader2 className="w-9 h-9 text-[var(--accent)] animate-spin mb-4" />
+            <p className="text-lg font-bold text-white mb-1">
+              {isAr ? 'جاري تبديل اللغة...' : 'Switching language...'}
+            </p>
+            <p className="text-sm text-[var(--text-sec)]">
+              {isAr ? 'يتم إعادة تحميل الصفحة' : 'Reloading the page'}
+            </p>
+            <div className="lang-switch-progress mt-8 h-1 w-48 rounded-full overflow-hidden bg-[var(--border)]">
+              <div className="lang-switch-progress-bar h-full rounded-full bg-[var(--accent)]" />
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
 
 // Standalone route page components (receive data via props)
-function GameDetail({ games, offers, t = {}, lang, navigate, addToCart }) {
+function GameDetail({ games, offers, t = {}, lang, navigate, addToCart, user, updateProduct, updateGame, loadingGames = false }) {
   const { slug } = useParams();
   const game = games.find((g) => (g.slug || g.id) === slug) || games.find((g) => g.id === slug);
+  const isAdmin = user?.role === 'admin';
+  const [editingOffer, setEditingOffer] = useState(null);
+  const [editingGame, setEditingGame] = useState(false);
+
+  if (loadingGames || (!game && games.length === 0)) {
+    return (
+      <div className="max-w-4xl mx-auto py-16 sm:py-20">
+        <div className="flex flex-col items-center justify-center gap-3">
+          <Loader2 className="w-9 h-9 text-[var(--accent)] animate-spin" />
+          <p className="text-[var(--text-sec)]">
+            {lang === 'ar' ? 'جاري تحميل اللعبة...' : 'Loading game...'}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (!game) {
     return (
@@ -38,9 +159,17 @@ function GameDetail({ games, offers, t = {}, lang, navigate, addToCart }) {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <button onClick={() => navigate('/')} className="mb-4 sm:mb-6 btn btn-secondary text-sm sm:text-base">
-        ← Back to Home
-      </button>
+      <div className="mb-4 sm:mb-6 flex flex-wrap items-center justify-between gap-2">
+        <button onClick={() => navigate('/')} className="btn btn-secondary text-sm sm:text-base">
+          ← Back to Home
+        </button>
+        {isAdmin && (
+          <AdminEditButton
+            label={t.editGame || 'Edit Game'}
+            onClick={() => setEditingGame(true)}
+          />
+        )}
+      </div>
 
       <div className="card overflow-hidden mb-8">
         <div className="relative h-72 md:h-96">
@@ -73,8 +202,17 @@ function GameDetail({ games, offers, t = {}, lang, navigate, addToCart }) {
             <div
               key={offer.id}
               onClick={() => navigate(`/offer/${offer.id}`)}
-              className="card p-4 sm:p-5 cursor-pointer group hover:border-[var(--accent)]/70 hover:shadow-[0_20px_45px_-10px_rgb(0,0,0)] active:scale-[0.985] transition-all flex flex-col"
+              className="card p-4 sm:p-5 cursor-pointer group hover:border-[var(--accent)]/70 hover:shadow-[0_20px_45px_-10px_rgb(0,0,0)] active:scale-[0.985] transition-all flex flex-col relative"
             >
+              {isAdmin && (
+                <div className="absolute top-3 right-3 z-10">
+                  <AdminEditButton
+                    iconOnly
+                    label={t.edit || 'Edit'}
+                    onClick={() => setEditingOffer(offer)}
+                  />
+                </div>
+              )}
               {/* Game logo + name header */}
               <div className="flex items-center gap-2.5 mb-2.5">
                 {game.logo_url && (
@@ -137,14 +275,41 @@ function GameDetail({ games, offers, t = {}, lang, navigate, addToCart }) {
           <div className="text-[var(--text-sec)] col-span-full">{t.noOffers}</div>
         )}
       </div>
+
+      {isAdmin && editingGame && (
+        <Suspense fallback={null}>
+          <AdminGameEditModal
+            game={game}
+            lang={lang}
+            t={t}
+            onClose={() => setEditingGame(false)}
+            onSave={updateGame}
+          />
+        </Suspense>
+      )}
+      {isAdmin && editingOffer && (
+        <Suspense fallback={null}>
+          <AdminOfferEditModal
+            offer={editingOffer}
+            games={games}
+            lang={lang}
+            t={t}
+            onClose={() => setEditingOffer(null)}
+            onSave={updateProduct}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
 
-function OfferDetail({ games, offers, t = {}, lang, navigate, addToCart }) {
+function OfferDetail({ games, offers, t = {}, lang, navigate, addToCart, user, updateProduct, updateGame }) {
   const { id } = useParams();
   const offer = offers.find((o) => String(o.id) === String(id));
   const game = offer ? games.find((g) => g.id === offer.game_id) : null;
+  const isAdmin = user?.role === 'admin';
+  const [editingOffer, setEditingOffer] = useState(false);
+  const [editingGame, setEditingGame] = useState(false);
 
   if (!offer) {
     return (
@@ -157,12 +322,22 @@ function OfferDetail({ games, offers, t = {}, lang, navigate, addToCart }) {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <button
-        onClick={() => (game ? navigate(`/game/${game.slug || game.id}`) : navigate('/'))}
-        className="mb-4 sm:mb-6 btn btn-secondary text-sm sm:text-base"
-      >
-        ← Back to {game ? (lang === 'ar' ? game.name_ar : game.name_en) : 'Game'}
-      </button>
+      <div className="mb-4 sm:mb-6 flex flex-wrap items-center justify-between gap-2">
+        <button
+          onClick={() => (game ? navigate(`/game/${game.slug || game.id}`) : navigate('/'))}
+          className="btn btn-secondary text-sm sm:text-base"
+        >
+          ← Back to {game ? (lang === 'ar' ? game.name_ar : game.name_en) : 'Game'}
+        </button>
+        {isAdmin && (
+          <div className="flex flex-wrap items-center gap-2">
+            <AdminEditButton label={t.editOffer || 'Edit Offer'} onClick={() => setEditingOffer(true)} />
+            {game && (
+              <AdminEditButton label={t.editGame || 'Edit Game'} onClick={() => setEditingGame(true)} />
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="card overflow-hidden mb-8">
         <div className="relative h-64 md:h-80">
@@ -246,7 +421,15 @@ function OfferDetail({ games, offers, t = {}, lang, navigate, addToCart }) {
         {/* Description + How to Apply */}
         <div className="md:col-span-2 space-y-8">
           <div className="card p-6">
-            <h3 className="font-bold text-xl mb-4">{t.description}</h3>
+            <div className="flex items-center justify-between gap-2 mb-4">
+              <h3 className="font-bold text-xl">{t.description}</h3>
+              {isAdmin && (
+                <AdminEditButton
+                  label={t.edit || 'Edit'}
+                  onClick={() => setEditingOffer(true)}
+                />
+              )}
+            </div>
             <p className="text-[var(--text-sec)] leading-relaxed">
               {lang === 'ar' ? offer.description_ar : offer.description_en || t.instantDeliveryNote}
             </p>
@@ -293,6 +476,30 @@ function OfferDetail({ games, offers, t = {}, lang, navigate, addToCart }) {
           </div>
         </div>
       </div>
+
+      {isAdmin && editingOffer && (
+        <Suspense fallback={null}>
+          <AdminOfferEditModal
+            offer={offer}
+            games={games}
+            lang={lang}
+            t={t}
+            onClose={() => setEditingOffer(false)}
+            onSave={updateProduct}
+          />
+        </Suspense>
+      )}
+      {isAdmin && editingGame && game && (
+        <Suspense fallback={null}>
+          <AdminGameEditModal
+            game={game}
+            lang={lang}
+            t={t}
+            onClose={() => setEditingGame(false)}
+            onSave={updateGame}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
@@ -487,18 +694,82 @@ export default function App() {
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [cart, setCart] = useState([]);
+  const [paymentConfig, setPaymentConfig] = useState({
+    shamcash: true,
+    binance: false,
+    mastercard: false,
+    shamcashMerchantName: 'ECHOCORE Store',
+    shamcashConfigured: false,
+  });
+  const [homeLayout, setHomeLayout] = useState(DEFAULT_HOME_LAYOUT);
   const [notification, setNotification] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [flyingItems, setFlyingItems] = useState([]);
+  const [adminEditOffer, setAdminEditOffer] = useState(null);
+  const [adminEditGame, setAdminEditGame] = useState(null);
+  const [adminCarouselOpen, setAdminCarouselOpen] = useState(false);
+  const [langSwitching, setLangSwitching] = useState(false);
+  const [overlayLang, setOverlayLang] = useState(() => {
+    const saved = localStorage.getItem('echocore-lang');
+    return saved === 'en' || saved === 'ar' ? saved : 'ar';
+  });
+  const [routeLoading, setRouteLoading] = useState(null);
+  const routeLoadingStartedAt = useRef(0);
+  const isAdmin = user?.role === 'admin';
 
   const t = translations[lang];
 
-  const toggleLanguage = () => {
-    const newLang = lang === 'ar' ? 'en' : 'ar';
-    setLang(newLang);
-    localStorage.setItem('echocore-lang', newLang);
+  const navigateWithFeedback = (path, message) => {
+    routeLoadingStartedAt.current = Date.now();
+    setRouteLoading({
+      path,
+      message: message || (lang === 'ar' ? 'جاري فتح الصفحة...' : 'Opening page...'),
+    });
+    navigate(path);
   };
+
+  const openGame = (game) => {
+    if (!game) return;
+    const name = lang === 'ar' ? game.name_ar : game.name_en;
+    navigateWithFeedback(
+      `/game/${game.slug || game.id}`,
+      lang === 'ar' ? `جاري فتح ${name}...` : `Opening ${name}...`,
+    );
+  };
+
+  useEffect(() => {
+    if (!routeLoading) return undefined;
+
+    const targetPath = routeLoading.path.split('?')[0];
+    if (location.pathname !== targetPath) return undefined;
+
+    const elapsed = Date.now() - routeLoadingStartedAt.current;
+    const remaining = Math.max(280, 520 - elapsed);
+    const timer = window.setTimeout(() => setRouteLoading(null), remaining);
+    return () => window.clearTimeout(timer);
+  }, [location.pathname, routeLoading, loadingGames]);
+
+  const toggleLanguage = async () => {
+    if (langSwitching) return;
+
+    const newLang = lang === 'ar' ? 'en' : 'ar';
+    setLangSwitching(true);
+
+    await new Promise((resolve) => setTimeout(resolve, LANG_SWITCH_FADE_OUT_MS));
+
+    setLang(newLang);
+    setOverlayLang(newLang);
+    localStorage.setItem('echocore-lang', newLang);
+    window.scrollTo({ top: 0, behavior: 'auto' });
+
+    await new Promise((resolve) => setTimeout(resolve, LANG_SWITCH_LOADING_MS));
+
+    setLangSwitching(false);
+    await new Promise((resolve) => setTimeout(resolve, LANG_SWITCH_FADE_IN_MS));
+  };
+
+
 
   // ============================================
   // LOAD PRODUCTS FROM SUPABASE (REAL DB)
@@ -516,7 +787,7 @@ export default function App() {
         console.error('Failed to load games:', error);
         setGames([]);
       } else {
-        setGames(data || []);
+        setGames(sortGamesByCarousel(data || []));
       }
     } catch (err) {
       console.error('Error fetching games:', err);
@@ -935,7 +1206,7 @@ export default function App() {
   const updateGame = async (gameData) => {
     const { id, ...payload } = gameData;
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('games')
       .update({
         name_en: payload.name_en,
@@ -948,12 +1219,81 @@ export default function App() {
         servers: payload.servers || [],
         description_en: payload.description_en || '',
         description_ar: payload.description_ar || '',
+        carousel_focus_x: payload.carousel_focus_x ?? 50,
+        carousel_focus_y: payload.carousel_focus_y ?? 50,
       })
-      .eq('id', id);
+      .eq('id', id)
+      .select()
+      .single();
 
     if (error) {
       console.error('Update game error:', error);
       throw new Error(`Failed to update game: ${error.message}`);
+    }
+
+    setGames(prev => sortGamesByCarousel(prev.map(g => g.id === id ? data : g)));
+  };
+
+  const reorderCarouselGames = async (updates) => {
+    for (const item of updates) {
+      const { error } = await supabase
+        .from('games')
+        .update({
+          carousel_order: item.carousel_order,
+          show_in_carousel: item.show_in_carousel,
+        })
+        .eq('id', item.id);
+
+      if (error) {
+        const msg = error.message || '';
+        if (msg.includes('carousel_order') || msg.includes('show_in_carousel')) {
+          throw new Error('Run add_carousel_order.sql in Supabase SQL Editor first.');
+        }
+        throw new Error(msg || 'Failed to update carousel order.');
+      }
+    }
+
+    setGames((prev) => {
+      const updated = prev.map((g) => {
+        const u = updates.find((x) => x.id === g.id);
+        return u ? { ...g, carousel_order: u.carousel_order, show_in_carousel: u.show_in_carousel } : g;
+      });
+      return sortGamesByCarousel(updated);
+    });
+  };
+
+  const moveCarouselGame = async (gameId, direction) => {
+    const carouselGames = getCarouselGames(games);
+    const index = carouselGames.findIndex((g) => g.id === gameId);
+    if (index < 0) return;
+
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= carouselGames.length) return;
+
+    const reordered = [...carouselGames];
+    [reordered[index], reordered[newIndex]] = [reordered[newIndex], reordered[index]];
+
+    const updates = reordered.map((g, i) => ({
+      id: g.id,
+      carousel_order: i,
+      show_in_carousel: true,
+    }));
+
+    games
+      .filter((g) => g.show_in_carousel === false)
+      .forEach((g, i) => {
+        updates.push({
+          id: g.id,
+          carousel_order: reordered.length + i,
+          show_in_carousel: false,
+        });
+      });
+
+    try {
+      await reorderCarouselGames(updates);
+      showNotification(t.carouselUpdated || 'Carousel order saved');
+    } catch (err) {
+      alert(err.message);
     }
   };
 
@@ -980,11 +1320,8 @@ export default function App() {
           };
           setUser(userData);
 
-          // Clean the ugly token from the URL
-          window.history.replaceState(null, document.title, window.location.pathname);
-
-          // For confirmation links we can safely navigate to home
-          navigate('/');
+          // For confirmation links we can safely navigate to home (respects router basename)
+          navigate('/', { replace: true });
 
           // Only show the welcome toast once (for magic links / email confirm)
           if (!hasShownLoginToast.current) {
@@ -1049,11 +1386,41 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, [t]);
 
+  const refreshPaymentConfig = async () => {
+    const config = await fetchPaymentMethods();
+    setPaymentConfig(config);
+  };
+
+  const refreshSiteTheme = async (overrides) => {
+    if (overrides) {
+      applyTheme(normalizeThemeOverrides(overrides));
+      return;
+    }
+    const theme = await fetchSiteTheme();
+    if (theme) {
+      applyTheme(normalizeThemeOverrides(theme));
+    }
+  };
+
+  const refreshHomeLayout = async (layout) => {
+    if (layout) {
+      setHomeLayout(normalizeHomeLayout(layout));
+      return;
+    }
+    const nextLayout = await fetchHomeLayout();
+    if (nextLayout) {
+      setHomeLayout(nextLayout);
+    }
+  };
+
   // Load games, offers and orders
   useEffect(() => {
     fetchGames();
     fetchOffers();
     fetchOrders();
+    refreshPaymentConfig();
+    refreshSiteTheme();
+    refreshHomeLayout();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1145,6 +1512,16 @@ export default function App() {
     navigate('/');
   };
 
+  const updateUserName = async (newName) => {
+    if (!user?.id) throw new Error('Not logged in');
+    const { error } = await supabase
+      .from('profiles')
+      .update({ name: newName })
+      .eq('id', user.id);
+    if (error) throw new Error(error.message || 'Failed to update name');
+    setUser((prev) => (prev ? { ...prev, name: newName } : prev));
+  };
+
   const handleCheckoutComplete = async (orderResult) => {
     setCart([]);
     if (orderResult?.orderId) {
@@ -1160,14 +1537,30 @@ export default function App() {
 
   return (
     <div 
-      className={`min-h-screen font-sans text-[var(--text-primary)] selection:bg-cyan-500/30 ${lang === 'ar' ? 'dir-rtl' : 'dir-ltr'}`} 
+      className={`min-h-screen overflow-x-hidden font-sans text-[var(--text-primary)] selection:bg-cyan-500/30 ${lang === 'ar' ? 'dir-rtl' : 'dir-ltr'}`}
       style={{ backgroundColor: 'var(--bg-primary)' }}
       dir={lang === 'ar' ? 'rtl' : 'ltr'}
     >
+      <LangSwitchOverlay lang={overlayLang} active={langSwitching} />
+      <RouteNavigationIndicator
+        active={!!routeLoading && !langSwitching}
+        message={routeLoading?.message}
+      />
+
+      <motion.div
+        animate={{
+          opacity: langSwitching ? 0 : 1,
+          filter: langSwitching ? 'blur(6px)' : 'blur(0px)',
+          scale: langSwitching ? 0.985 : 1,
+        }}
+        transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+        className={langSwitching ? 'pointer-events-none select-none' : ''}
+      >
       <Header
         t={t}
         lang={lang}
         onLangToggle={toggleLanguage}
+        langSwitching={langSwitching}
         user={user}
         cartLength={cart.length}
         onLogout={handleLogout}
@@ -1178,19 +1571,19 @@ export default function App() {
         cartRef={cartIconRef}
       />
 
-      <main className="container mx-auto px-4 pb-24">
+      <main className="container mx-auto px-3 sm:px-4 pb-20 sm:pb-24 max-w-full">
         <AnimatePresence mode="wait">
           <motion.div
             key={`${location.pathname}-${lang}`}
-            initial={{ opacity: 0, y: 32, scale: 0.93 }}
+            initial={{ opacity: 0, y: 28, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ 
-              type: 'spring',
-              stiffness: 260,
-              damping: 18,
-              mass: 0.9
+            exit={{ opacity: 0, y: -18, scale: 0.98 }}
+            transition={{
+              duration: langSwitching ? 0.34 : 0.38,
+              ease: [0.22, 1, 0.36, 1],
             }}
           >
+            <Suspense fallback={<PageLoader lang={lang} />}>
             <Routes location={location}>
               <Route
                 path="/"
@@ -1202,10 +1595,17 @@ export default function App() {
                     offers={offers}
                     loading={loadingGames}
                     addToCart={addToCart}
-                    onSelectGame={(game) => navigate(`/game/${game.slug || game.id}`)}
+                    onSelectGame={openGame}
                     onSelectOffer={(offer) => navigate(`/offer/${offer.id}`)}
+                    onBuyNow={(offer) => navigate(`/buy/${offer.id}`)}
+                    onEditOffer={isAdmin ? setAdminEditOffer : undefined}
+                    onEditGame={isAdmin ? setAdminEditGame : undefined}
+                    onManageCarousel={isAdmin ? () => setAdminCarouselOpen(true) : undefined}
+                    onMoveCarouselGame={isAdmin ? moveCarouselGame : undefined}
+                    isAdmin={isAdmin}
                     searchQuery={searchQuery}
                     onSearchChange={setSearchQuery}
+                    homeLayout={homeLayout}
                   />
                 }
               />
@@ -1219,7 +1619,9 @@ export default function App() {
                 t={t}
                 lang={lang}
                 loading={loadingGames}
-                onSelectGame={(game) => navigate(`/game/${game.slug || game.id}`)}
+                onSelectGame={openGame}
+                onEditGame={isAdmin ? setAdminEditGame : undefined}
+                isAdmin={isAdmin}
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
               />
@@ -1236,6 +1638,9 @@ export default function App() {
                 t={t}
                 lang={lang}
                 onSelectOffer={(offer) => navigate(`/offer/${offer.id}`)}
+                onBuyNow={(offer) => navigate(`/buy/${offer.id}`)}
+                onEditOffer={isAdmin ? setAdminEditOffer : undefined}
+                isAdmin={isAdmin}
                 addToCart={addToCart}
               />
             }
@@ -1276,6 +1681,10 @@ export default function App() {
                 lang={lang}
                 navigate={navigate}
                 addToCart={addToCart}
+                user={user}
+                updateProduct={updateProduct}
+                updateGame={updateGame}
+                loadingGames={loadingGames}
               />
             }
           />
@@ -1291,6 +1700,9 @@ export default function App() {
                 lang={lang}
                 navigate={navigate}
                 addToCart={addToCart}
+                user={user}
+                updateProduct={updateProduct}
+                updateGame={updateGame}
               />
             }
           />
@@ -1331,6 +1743,7 @@ export default function App() {
                 submitOrder={submitOrder}
                 onComplete={handleCheckoutComplete}
                 currentBalance={user?.balance || 0}
+                paymentConfig={paymentConfig}
               />
             }
           />
@@ -1348,6 +1761,28 @@ export default function App() {
             }
           />
 
+          {/* User Profile */}
+          <Route
+            path="/profile"
+            element={
+              loadingAuth ? (
+                <PageLoader lang={lang} />
+              ) : user ? (
+                <ProfileView
+                  t={t}
+                  lang={lang}
+                  user={user}
+                  navigate={navigate}
+                  onLogout={handleLogout}
+                  onRecharge={() => navigate('/recharge')}
+                  onUpdateName={updateUserName}
+                />
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
+          />
+
           {/* Recharge Balance Page */}
           <Route
             path="/recharge"
@@ -1359,6 +1794,7 @@ export default function App() {
                 user={user}
                 currentBalance={user?.balance || 0}
                 onRechargeComplete={handleRecharge}
+                paymentConfig={paymentConfig}
               />
             }
           />
@@ -1376,6 +1812,7 @@ export default function App() {
                 offers={offers}
                 currentBalance={user?.balance || 0}
                 onPurchase={submitPurchase}
+                paymentConfig={paymentConfig}
               />
             }
           />
@@ -1402,6 +1839,9 @@ export default function App() {
                   refreshProducts={fetchGames}
                   refreshOffers={fetchOffers}
                   refreshOrders={fetchOrders}
+                  onPaymentSettingsSaved={refreshPaymentConfig}
+                  onThemeSaved={refreshSiteTheme}
+                  onHomeLayoutSaved={refreshHomeLayout}
                 />
               ) : (
                 <Navigate to="/" replace />
@@ -1418,6 +1858,7 @@ export default function App() {
           {/* Catch all */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
         </motion.div>
         </AnimatePresence>
       </main>
@@ -1463,6 +1904,48 @@ export default function App() {
       })}
 
       <Footer lang={lang} t={t} />
+      </motion.div>
+
+      {isAdmin && adminEditOffer && (
+        <Suspense fallback={null}>
+          <AdminOfferEditModal
+            offer={adminEditOffer}
+            games={games}
+            lang={lang}
+            t={t}
+            onClose={() => setAdminEditOffer(null)}
+            onSave={updateProduct}
+          />
+        </Suspense>
+      )}
+
+      {isAdmin && adminEditGame && (
+        <Suspense fallback={null}>
+          <AdminGameEditModal
+            game={adminEditGame}
+            lang={lang}
+            t={t}
+            onClose={() => setAdminEditGame(null)}
+            onSave={updateGame}
+          />
+        </Suspense>
+      )}
+
+      {isAdmin && adminCarouselOpen && (
+        <Suspense fallback={null}>
+          <AdminCarouselManager
+            games={games}
+            lang={lang}
+            t={t}
+            onClose={() => setAdminCarouselOpen(false)}
+            onSave={reorderCarouselGames}
+            onEditGame={(game) => {
+              setAdminCarouselOpen(false);
+              setAdminEditGame(game);
+            }}
+          />
+        </Suspense>
+      )}
 
       {notification && (
         <div className="fixed bottom-8 right-8 left-8 sm:left-auto sm:w-80 toast text-white px-6 py-4 rounded-2xl flex items-center gap-3 z-50 animate-bounce">
@@ -1470,10 +1953,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Font import only — theme lives in src/index.css */}
       <style dangerouslySetInnerHTML={{ __html: `
-        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800;900&display=swap');
-
         .cart-bump {
           animation: cartPop 0.45s ease;
         }
@@ -1499,6 +1979,17 @@ export default function App() {
           padding: 4px 8px;
           white-space: nowrap;
           overflow: hidden;
+        }
+
+        .lang-switch-progress-bar {
+          width: 35%;
+          animation: langSwitchProgress 0.9s ease-in-out infinite;
+        }
+
+        @keyframes langSwitchProgress {
+          0% { transform: translateX(-120%); }
+          50% { transform: translateX(180%); }
+          100% { transform: translateX(320%); }
         }
       ` }} />
     </div>

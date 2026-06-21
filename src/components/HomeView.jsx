@@ -1,5 +1,8 @@
-
 import ProductCarousel from './ProductCarousel';
+import SaleOfferCard from './SaleOfferCard';
+import HomeGameCard from './HomeGameCard';
+import { getCarouselGames } from '../lib/carouselUtils';
+import { DEFAULT_HOME_LAYOUT, getSectionLabel, normalizeHomeLayout } from '../lib/homeLayout';
 
 export default function HomeView({
   t = {},
@@ -10,12 +13,16 @@ export default function HomeView({
   addToCart,
   onSelectGame,
   onSelectOffer,
+  onEditOffer,
+  onEditGame,
+  onManageCarousel,
+  onMoveCarouselGame,
+  onBuyNow,
+  isAdmin = false,
   searchQuery = '',
-  onSearchChange
+  onSearchChange,
+  homeLayout = DEFAULT_HOME_LAYOUT,
 }) {
-  // Format games for the carousel
-  // Main slide uses full cover (image_url)
-  // Bottom strip MUST use dedicated logo (not full photo)
   const getLocalLogo = (slug) => {
     if (!slug) return null;
     const s = slug.toLowerCase();
@@ -27,161 +34,173 @@ export default function HomeView({
     return null;
   };
 
-  const carouselItems = games.map(g => ({
+  const layout = normalizeHomeLayout(homeLayout);
+  const carouselGames = getCarouselGames(games);
+
+  const carouselItems = carouselGames.map((g) => ({
     id: g.id,
     name_en: g.name_en,
     name_ar: g.name_ar,
-    image_url: g.image_url,           // full cover for main big slide
-    logo_url: g.logo_url || getLocalLogo(g.slug),  // dedicated logo for bottom strip
+    image_url: g.image_url,
+    logo_url: g.logo_url || getLocalLogo(g.slug),
     description_en: g.description_en || '',
     description_ar: g.description_ar || '',
+    carousel_focus_x: g.carousel_focus_x ?? 50,
+    carousel_focus_y: g.carousel_focus_y ?? 50,
     category: 'games',
-    price: 0
+    price: 0,
   }));
 
   const filteredGames = searchQuery.trim()
-    ? games.filter(g =>
+    ? games.filter((g) =>
         (g.name_en || '').toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
         (g.name_ar || '').toLowerCase().includes(searchQuery.toLowerCase().trim())
       )
     : games;
 
-  return (
-    <div className="space-y-10 animate-fade-in">
-      {/* CAROUSEL at the top */}
-      {games.length > 0 && (
-        <ProductCarousel 
-          products={carouselItems} 
-          t={t}
-          lang={lang} 
-          onSelectProduct={(item) => onSelectGame && onSelectGame(games.find(g => g.id === item.id))} 
-        />
-      )}
+  const renderSectionHeading = (section, style = 'sale') => {
+    const title = getSectionLabel(section, lang);
+    const isGamesStyle = style === 'games';
+    const wrapperClass = isGamesStyle ? 'games-section' : 'sale-offers-section';
+    const titleClass = isGamesStyle ? 'games-section-title' : 'sale-offers-title';
+    const dividerClass = isGamesStyle ? 'games-section-divider' : 'sale-offers-divider';
 
-      {/* SALE OFFERS - directly below the carousel */}
-      {offers.some(o => o.is_sale) && (
-        <div>
-          <h2 className="text-center mb-3">
-            <span className="text-lg md:text-xl font-semibold tracking-tight text-red-300">{t.saleOffers || 'Sale Offers'}</span>
-          </h2>
-          <div className="h-px w-8 bg-red-400/60 mx-auto mb-4" />
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {(() => {
-              // Prioritize offers with dedicated sale photo, then by price
-              const sorted = [...offers].sort((a, b) => parseFloat(a.price) - parseFloat(b.price));
-              const saleFirst = sorted.filter(o => o.is_sale).slice(0, 4);
-              return saleFirst.map((offer) => {
-                // Find the game for this offer
-                const game = games.find(g => g.id === offer.game_id);
-                if (!game) return null;
-                return (
-                  <div
-                    key={offer.id}
-                    onClick={() => onSelectOffer && onSelectOffer(offer)}
-                    className="card group overflow-hidden cursor-pointer hover:border-[var(--accent)] transition-all duration-300 hover:shadow-[0_25px_50px_-12px_rgb(0,0,0)] active:scale-[0.985]"
-                  >
-                    <div className="relative h-48 sm:h-52">
-                      {offer.sale_image_url || game.image_url ? (
-                        <img 
-                          src={offer.sale_image_url || game.image_url} 
-                          alt={game.name_en} 
-                          className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                        />
-                      ) : (
-                        <div className="absolute inset-0 bg-[var(--bg-elevated)]" />
-                      )}
-                      <div className="absolute inset-0 bg-black/25" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-                      <div className="absolute bottom-0 left-0 right-0 p-3">
-                        <div className="text-xs text-white/70 mb-0.5">{game.name_en}</div>
-                        <div className="font-semibold text-sm text-white mb-1 line-clamp-1">{offer.name_en}</div>
-                        <div className="flex items-baseline gap-2">
-                          {offer.is_sale && offer.original_price ? (
-                            <>
-                              <div className="text-sm line-through text-white/60">${parseFloat(offer.original_price).toFixed(2)}</div>
-                              <div className="text-xl font-black text-[var(--accent)]">${parseFloat(offer.price).toFixed(2)}</div>
-                            </>
-                          ) : (
-                            <div className="text-xl font-black text-[var(--accent)]">${parseFloat(offer.price).toFixed(2)}</div>
-                          )}
-                          {offer.is_sale && <div className="text-[10px] px-1.5 py-0.5 bg-red-500/10 text-red-400 rounded">SALE</div>}
-                        </div>
-                        <div className="mt-2 flex gap-2">
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); onSelectOffer(offer); }}
-                            className="flex-1 btn btn-secondary text-xs py-1.5"
-                          >
-                            {t.details || (lang === 'ar' ? 'تفاصيل' : 'Details')}
-                          </button>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); window.location.href = `/buy/${offer.id}`; }}
-                            className="flex-1 btn btn-primary text-xs py-1.5 font-semibold"
-                          >
-                            {lang === 'ar' ? 'اشترِ الآن' : 'Buy Now'}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              });
-            })()}
-          </div>
-        </div>
-      )}
+    return (
+      <>
+        <h2 className="text-center mb-3">
+          <span className={`${titleClass} text-lg md:text-xl font-semibold tracking-tight`}>{title}</span>
+        </h2>
+        <div className={`${dividerClass} h-px w-8 mx-auto ${isGamesStyle ? 'mb-5' : 'mb-4'}`} />
+      </>
+    );
+  };
 
-      {/* GAMES SECTION - below the carousel */}
-      <h2 className="text-center mb-3">
-        <span className="text-lg md:text-xl font-semibold tracking-tight text-[var(--text-secondary)]">
-          {searchQuery.trim() ? (t.searchResults || 'Search Results') : (t.chooseGame || 'Choose a Game')}
-        </span>
-      </h2>
-      <div className="h-px w-8 bg-[var(--accent)]/50 mx-auto mb-5" />
+  const renderGamesGrid = (items, section) => (
+    <div className={`games-section ${section?.id ? '' : ''}`}>
+      {section && renderSectionHeading(section, 'games')}
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="card h-48 sm:h-52 animate-pulse bg-[var(--bg-surface)]" />
           ))}
         </div>
-      ) : filteredGames.length === 0 ? (
+      ) : items.length === 0 ? (
         <div className="text-center py-10 text-[var(--text-sec)]">
           {searchQuery.trim()
             ? (t.noResults || 'No games match your search.')
-            : (t.noGamesAvailable || 'No games yet. Make sure your Supabase tables have data and the correct VITE_SUPABASE_URL / ANON_KEY are set in Netlify.')}
+            : (t.noGamesAvailable || 'No games available yet.')}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredGames.map((game) => (
-            <div
+          {items.map((game) => (
+            <HomeGameCard
               key={game.id}
-              onClick={() => onSelectGame && onSelectGame(game)}
-              className="card group overflow-hidden cursor-pointer hover:border-[var(--accent)] transition-all duration-300 hover:shadow-[0_25px_50px_-12px_rgb(0,0,0)] active:scale-[0.985]"
-            >
-              <div className="relative h-48 sm:h-52">
-                {game.image_url ? (
-                  <img 
-                    src={game.image_url} 
-                    alt={lang === 'ar' ? game.name_ar : game.name_en} 
-                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                ) : (
-                  <div className="absolute inset-0 bg-[var(--bg-elevated)]" />
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
-                <div className="absolute bottom-0 left-0 right-0 p-4">
-                  <div className="font-bold text-lg sm:text-xl text-white">
-                    {lang === 'ar' ? game.name_ar : game.name_en}
-                  </div>
-                  <div className="text-xs sm:text-sm text-white/70 mt-0.5">
-                    {game.points_name} top-ups
-                  </div>
-                </div>
-              </div>
-            </div>
+              game={game}
+              lang={lang}
+              t={t}
+              onSelectGame={onSelectGame}
+              onEditGame={onEditGame}
+              isAdmin={isAdmin}
+            />
           ))}
         </div>
       )}
     </div>
   );
-}
 
+  const renderOfferCards = (items, section) => {
+    if (items.length === 0) return null;
+
+    return (
+      <div className="sale-offers-section">
+        {renderSectionHeading(section, 'sale')}
+        <div className="flex sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory pb-1 -mx-3 px-3 sm:mx-0 sm:px-0 sm:overflow-visible">
+          {items.map((offer) => {
+            const game = games.find((g) => g.id === offer.game_id);
+            return (
+              <SaleOfferCard
+                key={offer.id}
+                offer={offer}
+                game={game}
+                t={t}
+                lang={lang}
+                onSelectOffer={onSelectOffer}
+                onBuyNow={onBuyNow}
+                onEditOffer={onEditOffer}
+                isAdmin={isAdmin}
+                className="snap-start shrink-0 w-[min(78vw,280px)] sm:w-auto sm:shrink"
+              />
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderSection = (section) => {
+    if (!section.enabled) return null;
+
+    switch (section.type) {
+      case 'carousel': {
+        if (carouselGames.length === 0) return null;
+        return (
+          <ProductCarousel
+            key={section.id}
+            products={carouselItems}
+            t={t}
+            lang={lang}
+            isAdmin={isAdmin}
+            onManageCarousel={onManageCarousel}
+            onEditGame={(item) => {
+              const game = games.find((g) => g.id === item.id);
+              if (game) onEditGame?.(game);
+            }}
+            onMoveCarouselGame={onMoveCarouselGame}
+            onSelectProduct={(item) => onSelectGame && onSelectGame(games.find((g) => g.id === item.id))}
+          />
+        );
+      }
+
+      case 'sale_offers': {
+        const sorted = [...offers].sort((a, b) => parseFloat(a.price) - parseFloat(b.price));
+        const saleItems = sorted.filter((o) => o.is_sale).slice(0, section.limit ?? 4);
+        return renderOfferCards(saleItems, section);
+      }
+
+      case 'offer_picks': {
+        const picked = (section.offer_ids || [])
+          .map((id) => offers.find((offer) => offer.id === id))
+          .filter(Boolean);
+        return renderOfferCards(picked, section);
+      }
+
+      case 'games': {
+        const gamesSection = {
+          ...section,
+          title_en: searchQuery.trim() ? (t.searchResults || 'Search Results') : (section.title_en || t.chooseGame || 'Choose a Game'),
+          title_ar: searchQuery.trim() ? (t.searchResults || 'نتائج البحث') : (section.title_ar || t.chooseGame || 'اختر لعبتك'),
+        };
+        return renderGamesGrid(filteredGames, gamesSection);
+      }
+
+      case 'game_picks': {
+        const picked = (section.game_ids || [])
+          .map((id) => games.find((game) => game.id === id))
+          .filter(Boolean);
+        if (picked.length === 0) return null;
+        return renderGamesGrid(picked, section);
+      }
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="space-y-6 sm:space-y-10 animate-fade-in">
+      {layout.map((section) => (
+        <div key={section.id}>{renderSection(section)}</div>
+      ))}
+    </div>
+  );
+}

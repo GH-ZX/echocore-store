@@ -1,22 +1,32 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
-import { ChevronLeft, ChevronRight, ShoppingCart, Gamepad2, Gift } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Gamepad2, Gift, Settings2, ChevronUp, ChevronDown } from 'lucide-react';
+import AdminEditButton from './AdminEditButton';
 
 const AUTOPLAY_MS = 6000;
 const TICK_MS = 40;
 
-export default function ProductCarousel({ products, t = {}, lang, onSelectProduct }) {
+export default function ProductCarousel({
+  products,
+  t = {},
+  lang,
+  onSelectProduct,
+  isAdmin = false,
+  onManageCarousel,
+  onEditGame,
+  onMoveCarouselGame,
+}) {
   const gameSlides = products.filter((p) => p.category === 'games');
   const slides = gameSlides.length ? gameSlides : products;
 
   const placeholderLogo = new URL('../assets/placeholder-logo.png', import.meta.url).href;
-  const placeholderCover = new URL('../assets/placeholder-cover.png', import.meta.url).href;
+  const placeholderCover = new URL('../assets/placeholder-cover.svg', import.meta.url).href;
 
-  const [emblaRef, embla] = useEmblaCarousel({ 
-    loop: true, 
+  const [emblaRef, embla] = useEmblaCarousel({
+    loop: true,
     skipSnaps: false,
     align: 'start',
-    containScroll: 'trimSnaps'
+    containScroll: 'trimSnaps',
   });
   const [activeSlide, setActiveSlide] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
@@ -24,7 +34,6 @@ export default function ProductCarousel({ products, t = {}, lang, onSelectProduc
   const [accent, setAccent] = useState({ r: 34, g: 211, b: 238 });
   const [logoAccent, setLogoAccent] = useState({ r: 34, g: 211, b: 238 });
 
-  // Single combined timer — resets on slide change or pause toggle
   useEffect(() => {
     if (!embla) return;
     setProgress(0);
@@ -39,7 +48,6 @@ export default function ProductCarousel({ products, t = {}, lang, onSelectProduc
     return () => clearInterval(id);
   }, [embla, activeSlide, isPaused]);
 
-  // Track active slide
   useEffect(() => {
     if (!embla) return;
     const onSelect = () => setActiveSlide(embla.selectedScrollSnap());
@@ -48,7 +56,6 @@ export default function ProductCarousel({ products, t = {}, lang, onSelectProduc
     return () => embla.off('select', onSelect);
   }, [embla]);
 
-  // Extract dominant color from slide image
   const extractColor = useCallback((src) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -62,7 +69,6 @@ export default function ProductCarousel({ products, t = {}, lang, onSelectProduc
         const d = ctx.getImageData(0, 0, 48, 48).data;
         let r = 0, g = 0, b = 0, n = 0;
         for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
-        // Boost vivid channel
         const raw = { r: r / n, g: g / n, b: b / n };
         const mx = Math.max(raw.r, raw.g, raw.b);
         const boost = mx > 30 ? Math.min(255 / mx, 2.2) : 1;
@@ -92,7 +98,6 @@ export default function ProductCarousel({ products, t = {}, lang, onSelectProduc
         const d = ctx.getImageData(0, 0, 48, 48).data;
         let r = 0, g = 0, b = 0, n = 0;
         for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
-        // Boost vivid channel
         const raw = { r: r / n, g: g / n, b: b / n };
         const mx = Math.max(raw.r, raw.g, raw.b);
         const boost = mx > 30 ? Math.min(255 / mx, 2.2) : 1;
@@ -112,38 +117,22 @@ export default function ProductCarousel({ products, t = {}, lang, onSelectProduc
   useEffect(() => {
     const item = slides[activeSlide];
     if (!item) return;
-    const src = item.image || (item.coverFile
-      ? (() => { try { return new URL(`../assets/${item.coverFile}`, import.meta.url).href; } catch { return placeholderCover; } })()
-      : placeholderCover);
+    const src = item.image_url || item.image || placeholderCover;
     extractColor(src);
-    // Extract color from logo for the bottom strip's active indicator line
-    const logoSrc = item.logo_url || (item.logoFile
-      ? (() => { try { return new URL(`../assets/${item.logoFile}`, import.meta.url).href; } catch { return placeholderLogo; } })()
-      : (item.logo || placeholderLogo));
+    const logoSrc = item.logo_url || item.logo || placeholderLogo;
     extractLogoColor(logoSrc);
-  }, [activeSlide]);
+  }, [activeSlide, slides, extractColor, extractLogoColor, placeholderCover, placeholderLogo]);
 
-  const getImg = (item) => {
-    if (item.image_url) return item.image_url;
-    if (item.image) return item.image;
-    if (item.coverFile) try { return new URL(`../assets/${item.coverFile}`, import.meta.url).href; } catch {}
-    return placeholderCover;
-  };
+  const getImg = (item) => item.image_url || item.image || placeholderCover;
 
   const getLogo = (item) => {
-    // Bottom carousel strip should ALWAYS prefer a small logo, NEVER the full cover photo.
     if (item.logo_url) return item.logo_url;
-    if (item.logoFile) try { return new URL(`../assets/${item.logoFile}`, import.meta.url).href; } catch {}
-    // Do NOT fall back to image_url here — that would show the full photo.
-    // Use dedicated placeholder instead.
     return item.logo || placeholderLogo;
   };
 
   const ac = (a) => `rgba(${accent.r},${accent.g},${accent.b},${a})`;
   const acSolid = `rgb(${accent.r},${accent.g},${accent.b})`;
   const logoAcSolid = `rgb(${logoAccent.r},${logoAccent.g},${logoAccent.b})`;
-  const isDark = (accent.r * 0.299 + accent.g * 0.587 + accent.b * 0.114) > 160;
-  const textOnAccent = isDark ? '#060b19' : '#ffffff';
 
   const pad = (n) => String(n + 1).padStart(2, '0');
 
@@ -151,7 +140,7 @@ export default function ProductCarousel({ products, t = {}, lang, onSelectProduc
 
   return (
     <section
-      className="mt-8 rounded-2xl overflow-hidden"
+      className="mt-4 sm:mt-8 rounded-xl sm:rounded-2xl overflow-hidden relative"
       style={{
         boxShadow: `0 0 0 1px ${ac(0.2)}, 0 8px 60px ${ac(0.12)}, 0 20px 100px ${ac(0.06)}`,
         transition: 'box-shadow 0.8s ease',
@@ -159,9 +148,27 @@ export default function ProductCarousel({ products, t = {}, lang, onSelectProduc
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
     >
-      {/* ── Slide area ── */}
+      {isAdmin && (
+        <div className="absolute top-3 left-3 z-40 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onManageCarousel?.(); }}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--accent)]/40 bg-black/60 backdrop-blur-md px-3 py-1.5 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/20 transition-all"
+          >
+            <Settings2 className="w-3.5 h-3.5" />
+            {t.manageCarousel || 'Manage Carousel'}
+          </button>
+          {currentItem && (
+            <AdminEditButton
+              label={t.editSlide || 'Edit Slide'}
+              onClick={() => onEditGame?.(currentItem)}
+              className="bg-black/60 backdrop-blur-md"
+            />
+          )}
+        </div>
+      )}
+
       <div className="relative">
-        {/* Progress bar */}
         <div
           className="absolute top-0 left-0 right-0 z-30 h-[3px]"
           style={{ background: 'rgba(255,255,255,0.08)' }}
@@ -177,7 +184,6 @@ export default function ProductCarousel({ products, t = {}, lang, onSelectProduc
           />
         </div>
 
-        {/* Slide counter */}
         <div
           className="absolute top-5 right-5 z-20 select-none pointer-events-none"
           style={{ fontFamily: 'ui-monospace, monospace' }}
@@ -189,105 +195,106 @@ export default function ProductCarousel({ products, t = {}, lang, onSelectProduc
           <span className="text-white/30 text-sm">{pad(slides.length - 1)}</span>
         </div>
 
-        {/* Embla viewport */}
         <div className="overflow-hidden" ref={emblaRef} dir="ltr">
           <div className="flex" dir="ltr">
-            {slides.map((item) => (
-              <div
-                key={item.id}
-                className="relative flex-none w-full overflow-hidden cursor-pointer"
-                style={{ 
-                  height: 'clamp(380px, 68vh, 780px)',
-                  backgroundImage: `url(${getImg(item)})`,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                }}
-                role="button"
-                tabIndex={0}
-                onClick={() => onSelectProduct?.(item)}
-                onKeyDown={(e) => {
-                  if ((e.key === 'Enter' || e.key === ' ') && onSelectProduct) {
-                    e.preventDefault();
-                    onSelectProduct(item);
-                  }
-                }}
-              >
-                {/* Gradient overlays */}
-                <div
-                  className="absolute inset-0"
-                  style={{
-                    background: lang === 'ar'
-                      ? `linear-gradient(260deg, rgba(6,11,25,0.75) 0%, rgba(6,11,25,0.35) 45%, rgba(6,11,25,0.05) 100%),
-                         linear-gradient(0deg, rgba(6,11,25,0.45) 0%, transparent 45%)`
-                      : `linear-gradient(100deg, rgba(6,11,25,0.75) 0%, rgba(6,11,25,0.35) 45%, rgba(6,11,25,0.05) 100%),
-                         linear-gradient(0deg, rgba(6,11,25,0.45) 0%, transparent 45%)`,
-                  }}
-                />
+            {slides.map((item, slideIndex) => {
+              const focusX = item.carousel_focus_x ?? 50;
+              const focusY = item.carousel_focus_y ?? 50;
+              const isActiveSlide = slideIndex === activeSlide;
+              const imgSrc = getImg(item);
 
-                {/* Accent color corner glow */}
+              return (
                 <div
-                  className="absolute inset-0 pointer-events-none"
-                  style={{
-                    background: lang === 'ar'
-                      ? `radial-gradient(ellipse at 95% 80%, ${ac(0.12)} 0%, transparent 55%)`
-                      : `radial-gradient(ellipse at 5% 80%, ${ac(0.12)} 0%, transparent 55%)`,
-                    transition: 'background 0.8s ease',
+                  key={item.id}
+                  className="carousel-slide relative flex-none w-full overflow-hidden cursor-pointer"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onSelectProduct?.(item)}
+                  onKeyDown={(e) => {
+                    if ((e.key === 'Enter' || e.key === ' ') && onSelectProduct) {
+                      e.preventDefault();
+                      onSelectProduct(item);
+                    }
                   }}
-                />
-
-                {/* Slide content */}
-                <div
-                  className={`absolute inset-0 flex flex-col justify-end p-5 md:p-10 ${
-                    lang === 'ar' ? 'items-end text-right' : 'items-start text-left'
-                  }`}
                 >
-                  {/* Badges */}
-                  <div className={`flex items-center gap-2.5 mb-4 ${lang === 'ar' ? 'flex-row-reverse' : ''}`}>
-                    <span
-                      className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.18em] rounded-full px-3 py-1.5"
+                  <div
+                    className={`absolute inset-[-6%] ${isActiveSlide ? 'carousel-slide-ken-burns' : ''} ${isPaused ? 'paused' : ''}`}
+                    style={{
+                      backgroundImage: `url(${imgSrc})`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: `${focusX}% ${focusY}%`,
+                      backgroundRepeat: 'no-repeat',
+                      '--focus-x': `${focusX}%`,
+                      '--focus-y': `${focusY}%`,
+                    }}
+                    aria-hidden="true"
+                  />
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      background: lang === 'ar'
+                        ? `linear-gradient(260deg, rgba(6,11,25,0.75) 0%, rgba(6,11,25,0.35) 45%, rgba(6,11,25,0.05) 100%),
+                           linear-gradient(0deg, rgba(6,11,25,0.45) 0%, transparent 45%)`
+                        : `linear-gradient(100deg, rgba(6,11,25,0.75) 0%, rgba(6,11,25,0.35) 45%, rgba(6,11,25,0.05) 100%),
+                           linear-gradient(0deg, rgba(6,11,25,0.45) 0%, transparent 45%)`,
+                    }}
+                  />
+                  <div
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                      background: lang === 'ar'
+                        ? `radial-gradient(ellipse at 95% 80%, ${ac(0.12)} 0%, transparent 55%)`
+                        : `radial-gradient(ellipse at 5% 80%, ${ac(0.12)} 0%, transparent 55%)`,
+                      transition: 'background 0.8s ease',
+                    }}
+                  />
+                  <div
+                    className={`absolute inset-0 flex flex-col justify-end p-4 sm:p-5 md:p-10 ${
+                      lang === 'ar' ? 'items-end text-right' : 'items-start text-left'
+                    }`}
+                  >
+                    <div className={`flex items-center gap-2.5 mb-4 ${lang === 'ar' ? 'flex-row-reverse' : ''}`}>
+                      <span
+                        className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.18em] rounded-full px-3 py-1.5"
+                        style={{
+                          background: ac(0.18),
+                          border: `1px solid ${ac(0.5)}`,
+                          color: acSolid,
+                          transition: 'background 0.6s ease, border-color 0.6s ease, color 0.6s ease',
+                        }}
+                      >
+                        {item.category === 'games'
+                          ? <Gamepad2 className="w-3 h-3" />
+                          : <Gift className="w-3 h-3" />}
+                        {item.category === 'games'
+                          ? (t.game || (lang === 'ar' ? 'ألعاب' : 'Game'))
+                          : (t.digitalCard || (lang === 'ar' ? 'بطاقات رقمية' : 'Digital Card'))}
+                      </span>
+                      {item.price > 0 && (
+                        <span className="text-[11px] font-bold rounded-full px-3 py-1.5 bg-white/[0.12] border border-white/20 text-white backdrop-blur-sm">
+                          ${parseFloat(item.price).toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                    <h2
+                      className="font-black leading-[0.88] tracking-tight text-white mb-4 max-w-[640px]"
                       style={{
-                        background: ac(0.18),
-                        border: `1px solid ${ac(0.5)}`,
-                        color: acSolid,
-                        transition: 'background 0.6s ease, border-color 0.6s ease, color 0.6s ease',
+                        fontSize: 'clamp(1.9rem, 8vw, 4.5rem)',
+                        textShadow: '0 2px 24px rgba(0,0,0,0.6)',
                       }}
                     >
-                      {item.category === 'games'
-                        ? <Gamepad2 className="w-3 h-3" />
-                        : <Gift className="w-3 h-3" />}
-                      {item.category === 'games'
-                        ? (t.game || (lang === 'ar' ? 'ألعاب' : 'Game'))
-                        : (t.digitalCard || (lang === 'ar' ? 'بطاقات رقمية' : 'Digital Card'))}
-                    </span>
-                    {item.price > 0 && (
-                      <span className="text-[11px] font-bold rounded-full px-3 py-1.5 bg-white/[0.12] border border-white/20 text-white backdrop-blur-sm">
-                        ${parseFloat(item.price).toFixed(2)}
-                      </span>
-                    )}
+                      {lang === 'ar' ? item.name_ar : item.name_en}
+                    </h2>
+                    <p className="text-white/70 text-xs sm:text-sm mb-4 sm:mb-5 max-w-[420px] leading-relaxed line-clamp-2 sm:line-clamp-none">
+                      {(lang === 'ar' ? item.description_ar : item.description_en) || (lang === 'ar' ? 'اكتشف عروض الشحن الحصرية لهذه اللعبة.' : 'Discover exclusive top-up offers for this game.')}
+                    </p>
                   </div>
-
-                  {/* Title */}
-                  <h2
-                    className="font-black leading-[0.88] tracking-tight text-white mb-4 max-w-[640px]"
-                    style={{
-                      fontSize: 'clamp(1.9rem, 8vw, 4.5rem)',
-                      textShadow: '0 2px 24px rgba(0,0,0,0.6)',
-                    }}
-                  >
-                    {lang === 'ar' ? item.name_ar : item.name_en}
-                  </h2>
-
-                  {/* Real per-game description */}
-                  <p className="text-white/70 text-sm mb-5 max-w-[420px] leading-relaxed">
-                    {(lang === 'ar' ? item.description_ar : item.description_en) || (lang === 'ar' ? 'اكتشف عروض الشحن الحصرية لهذه اللعبة.' : 'Discover exclusive top-up offers for this game.')}
-                  </p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
-        {/* Prev / Next */}
         <button
           type="button"
           onClick={() => embla?.scrollPrev()}
@@ -306,7 +313,6 @@ export default function ProductCarousel({ products, t = {}, lang, onSelectProduc
         </button>
       </div>
 
-      {/* ── Thumbnail strip ── */}
       <div
         className="relative"
         style={{
@@ -314,7 +320,6 @@ export default function ProductCarousel({ products, t = {}, lang, onSelectProduc
           boxShadow: '0 1px 0 rgba(255,255,255,0.05), 0 -8px 20px rgba(0,0,0,0.4)',
         }}
       >
-        {/* Ambient color wash from above (photo color tint) */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
@@ -330,82 +335,99 @@ export default function ProductCarousel({ products, t = {}, lang, onSelectProduc
           className="absolute bottom-0 left-0 right-0 h-[1px] opacity-25"
           style={{ background: `linear-gradient(90deg, transparent, ${acSolid}, transparent)`, transition: 'background 0.6s ease' }}
         />
-
-        {/* Black filter + blur on the entire bottom strip (shared photo from section) */}
-        <div 
-          className="absolute inset-0" 
-          style={{ 
+        <div
+          className="absolute inset-0"
+          style={{
             background: 'linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.88) 100%)',
-            backdropFilter: 'blur(18px)'
-          }} 
+            backdropFilter: 'blur(18px)',
+          }}
         />
 
-        <div className="relative flex overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory">
+        <div className="relative flex overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory" dir="ltr">
           {slides.map((item, index) => {
             const isActive = index === activeSlide;
             const logoSrc = getLogo(item);
             return (
               <React.Fragment key={item.id}>
-                <button
-                  type="button"
-                  onClick={() => embla?.scrollTo(index)}
-                  className="group relative flex-shrink-0 flex flex-col items-center gap-1 px-4 py-3 sm:px-5 sm:py-4 min-w-[80px] sm:min-w-[96px] transition-all duration-300 snap-start hover:bg-white/[0.03]"
-                  style={{
-                    borderTopColor: isActive ? logoAcSolid : 'transparent',
-                    background: isActive ? 'rgba(255,255,255,0.04)' : 'transparent',
-                    boxShadow: isActive ? `0 4px 12px ${ac(0.1)}` : 'none',
-                    transition: 'border-top-color 0.4s ease, background 0.3s ease, box-shadow 0.3s ease',
-                  }}
-                  aria-label={lang === 'ar' ? `انتقل الى ${item.name_ar}` : `Switch to ${item.name_en}`}
-                >
-                  {/* Logo (bottom strip) — always a logo, never the full cover photo */}
-                  <div
-                    className="h-8 sm:h-10 flex items-center justify-center px-1.5 transition-all duration-300 group-hover:brightness-110 group-hover:scale-[1.02]"
-                    style={{ 
-                      opacity: isActive ? 1 : 0.32, 
-                      transform: isActive ? 'scale(1.08)' : 'scale(1)'
+                <div className="relative flex-shrink-0 flex flex-col items-center">
+                  <button
+                    type="button"
+                    onClick={() => embla?.scrollTo(index)}
+                    className="group relative flex flex-col items-center gap-1 px-4 py-3 sm:px-5 sm:py-4 min-w-[80px] sm:min-w-[96px] transition-all duration-300 snap-start hover:bg-white/[0.03] overflow-hidden"
+                    style={{
+                      background: isActive ? 'rgba(255,255,255,0.04)' : 'transparent',
+                      boxShadow: isActive ? `0 4px 12px ${ac(0.1)}` : 'none',
+                      transition: 'background 0.3s ease, box-shadow 0.3s ease',
                     }}
+                    aria-label={lang === 'ar' ? `انتقل الى ${item.name_ar}` : `Switch to ${item.name_en}`}
                   >
-                    <img
-                      src={logoSrc}
-                      alt={item.name_en}
-                      className="h-full w-auto max-w-[70px] object-contain transition-all duration-300"
-                      style={{ 
-                        filter: isActive 
-                          ? `drop-shadow(0 1px 2px rgba(0,0,0,0.5)) drop-shadow(0 0 2px ${logoAcSolid})` 
-                          : 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' 
-                      }}
-                      onError={(e) => { e.currentTarget.src = placeholderLogo; }}
-                    />
-                  </div>
-
-                  {/* Active theme-colored underline bar */}
-                  {isActive && (
+                    {isActive && (
+                      <div
+                        className="absolute top-0 left-0 right-0 h-px"
+                        style={{
+                          background: logoAcSolid,
+                          boxShadow: `0 0 6px ${logoAcSolid}`,
+                        }}
+                      />
+                    )}
                     <div
-                      className="h-[2px] w-8 rounded-full mt-1.5"
-                      style={{ 
-                        background: logoAcSolid
+                      className="h-8 sm:h-10 flex items-center justify-center px-1.5 transition-all duration-300 group-hover:brightness-110 group-hover:scale-[1.02]"
+                      style={{
+                        opacity: isActive ? 1 : 0.32,
+                        transform: isActive ? 'scale(1.08)' : 'scale(1)',
                       }}
-                    />
+                    >
+                      <img
+                        src={logoSrc}
+                        alt={item.name_en}
+                        className="h-full w-auto max-w-[70px] object-contain transition-all duration-300"
+                        style={{
+                          filter: isActive
+                            ? `drop-shadow(0 1px 2px rgba(0,0,0,0.5)) drop-shadow(0 0 2px ${logoAcSolid})`
+                            : 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))',
+                        }}
+                        onError={(e) => { e.currentTarget.src = placeholderLogo; }}
+                      />
+                    </div>
+                  </button>
+                  {isAdmin && (
+                    <div className="flex items-center gap-0.5 pb-1">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onMoveCarouselGame?.(item.id, -1); }}
+                        disabled={index === 0}
+                        className="p-1 rounded text-white/50 hover:text-[var(--accent)] disabled:opacity-20"
+                        aria-label="Move left"
+                      >
+                        <ChevronUp className="w-3 h-3 rotate-[-90deg]" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onEditGame?.(item); }}
+                        className="p-1 rounded text-[var(--accent)]/70 hover:text-[var(--accent)] text-[9px] font-bold"
+                      >
+                        {t.edit || 'Edit'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onMoveCarouselGame?.(item.id, 1); }}
+                        disabled={index === slides.length - 1}
+                        className="p-1 rounded text-white/50 hover:text-[var(--accent)] disabled:opacity-20"
+                        aria-label="Move right"
+                      >
+                        <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
+                      </button>
+                    </div>
                   )}
+                </div>
 
-                  {/* Active dot */}
-                  {isActive && (
-                    <div
-                      className="absolute bottom-1.5 rounded-full w-1 h-1"
-                      style={{ background: acSolid }}
-                    />
-                  )}
-                </button>
-
-                {/* Separator line between bottom items, colored with active game's theme */}
                 {index < slides.length - 1 && (
-                  <div 
+                  <div
                     className="flex-shrink-0 self-center w-px h-5 mx-0.5 rounded-full"
-                    style={{ 
-                      background: `linear-gradient(to bottom, transparent, ${acSolid}, transparent)`, 
-                      opacity: 0.4 
-                    }} 
+                    style={{
+                      background: `linear-gradient(to bottom, transparent, ${acSolid}, transparent)`,
+                      opacity: 0.4,
+                    }}
                   />
                 )}
               </React.Fragment>

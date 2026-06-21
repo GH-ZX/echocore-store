@@ -1,10 +1,13 @@
 import React from 'react';
+import AdminEditButton from './AdminEditButton';
 
 export default function AllGamesView({ 
   games = [], 
   t = {}, 
   lang = 'en', 
   onSelectGame,
+  onEditGame,
+  isAdmin = false,
   loading = false,
   searchQuery = '',
   onSearchChange
@@ -21,12 +24,12 @@ export default function AllGamesView({
   return (
     <div className="max-w-7xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-3xl md:text-4xl font-black mb-2">
+        <h1 className="games-page-title text-3xl md:text-4xl font-black mb-2">
           {searchQuery.trim() 
             ? (isAr ? t.searchResults || 'نتائج البحث' : t.searchResults || 'Search Results') 
             : (isAr ? t.allGames || 'جميع الألعاب' : t.allGames || 'All Games')}
         </h1>
-        <p className="text-[var(--text-secondary)]">
+        <p className="games-page-subtitle">
           {searchQuery.trim()
             ? (isAr ? `${t.resultsFor || 'نتائج لـ'} "${searchQuery}"` : `${t.resultsFor || 'Results for'} "${searchQuery}"`)
             : (isAr 
@@ -53,8 +56,18 @@ export default function AllGamesView({
             <div
               key={game.id}
               onClick={() => onSelectGame && onSelectGame(game)}
-              className="card group overflow-hidden cursor-pointer hover:border-[var(--accent)] transition-all duration-300 hover:shadow-[0_25px_50px_-12px_rgb(0,0,0)] active:scale-[0.985]"
+              className="games-card card group overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-[0_25px_50px_-12px_rgb(0,0,0)] active:scale-[0.985] relative"
             >
+              {isAdmin && onEditGame && (
+                <div className="absolute top-3 right-3 z-10">
+                  <AdminEditButton
+                    iconOnly
+                    label={t.edit || 'Edit'}
+                    onClick={() => onEditGame(game)}
+                    className="bg-black/50 backdrop-blur-sm"
+                  />
+                </div>
+              )}
               <div className="relative h-48 sm:h-52">
                 {game.image_url ? (
                   <img 

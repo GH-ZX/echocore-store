@@ -27,7 +27,7 @@ export default function ProductCard({
     : (t.digitalCard || (lang === 'ar' ? 'بطاقات رقمية' : 'Digital Cards'));
 
   // Fallback image (use placeholder or external)
-  const placeholder = new URL('../assets/placeholder-cover.png', import.meta.url).href;
+  const placeholder = new URL('../assets/placeholder-cover.svg', import.meta.url).href;
   const imgSrc = product.image_url || placeholder;
 
   const handleAdd = (e) => {

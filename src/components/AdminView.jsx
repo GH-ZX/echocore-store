@@ -1,6 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Trash2, Upload, Link as LinkIcon, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Trash2, Upload, Link as LinkIcon, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import ImageFocusPicker from './ImageFocusPicker';
+import GameImageSearch from './GameImageSearch';
+import AdminPaymentsSettings from './AdminPaymentsSettings';
+import AdminThemeSettings from './AdminThemeSettings';
+import AdminHomeLayoutSettings from './AdminHomeLayoutSettings';
 
 export default function AdminView({ 
   t, 
@@ -15,7 +20,10 @@ export default function AdminView({
   updateGame,
   refreshProducts,
   refreshOffers,
-  refreshOrders 
+  refreshOrders,
+  onPaymentSettingsSaved,
+  onThemeSaved,
+  onHomeLayoutSaved,
 }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [newProduct, setNewProduct] = useState({
@@ -54,9 +62,12 @@ export default function AdminView({
     redemption_method: 'both',
     servers: [],   // admin-defined list of servers/regions (e.g. Europe, Turkey, Global)
     description_en: '',
-    description_ar: ''
+    description_ar: '',
+    carousel_focus_x: 50,
+    carousel_focus_y: 50,
   });
   const [gameCoverFile, setGameCoverFile] = useState(null);
+  const [gameCoverPreviewUrl, setGameCoverPreviewUrl] = useState(null);
   const [gameLogoFile, setGameLogoFile] = useState(null);
   const [gameUploading, setGameUploading] = useState(false);
 
@@ -87,6 +98,17 @@ export default function AdminView({
   const filteredOffersForList = filterGameId 
     ? offers.filter(o => o.game_id === filterGameId) 
     : offers;
+
+  useEffect(() => {
+    if (gameCoverFile) {
+      const url = URL.createObjectURL(gameCoverFile);
+      setGameCoverPreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    setGameCoverPreviewUrl(newGame.image_url || null);
+  }, [gameCoverFile, newGame.image_url]);
+
+  const gameCoverForFocus = useMemo(() => gameCoverPreviewUrl, [gameCoverPreviewUrl]);
 
   // Upload helper
   const uploadImage = async (file, prefix = 'product') => {
@@ -150,6 +172,8 @@ export default function AdminView({
         servers: Array.isArray(newGame.servers) ? newGame.servers : [],
         description_en: newGame.description_en || '',
         description_ar: newGame.description_ar || newGame.description_en || '',
+        carousel_focus_x: newGame.carousel_focus_x ?? 50,
+        carousel_focus_y: newGame.carousel_focus_y ?? 50,
         active: true
       };
 
@@ -228,7 +252,9 @@ export default function AdminView({
       redemption_method: game.redemption_method || 'both',
       servers: Array.isArray(game.servers) ? game.servers : [],
       description_en: game.description_en || '',
-      description_ar: game.description_ar || ''
+      description_ar: game.description_ar || '',
+      carousel_focus_x: game.carousel_focus_x ?? 50,
+      carousel_focus_y: game.carousel_focus_y ?? 50,
     });
     setGameLogoFile(null);
     setGameCoverFile(null);
@@ -238,7 +264,7 @@ export default function AdminView({
 
   const cancelEditGame = () => {
     setEditingGameId(null);
-    setNewGame({ name_en: '', slug: '', points_name: '', logo_url: '', image_url: '', redemption_method: 'both', servers: [], description_en: '', description_ar: '' });
+    setNewGame({ name_en: '', slug: '', points_name: '', logo_url: '', image_url: '', redemption_method: 'both', servers: [], description_en: '', description_ar: '', carousel_focus_x: 50, carousel_focus_y: 50 });
     setGameLogoFile(null);
     setGameCoverFile(null);
     setGameFormError('');
@@ -367,7 +393,10 @@ export default function AdminView({
         {[
           { id: 'overview', label: t.overview, icon: BarChart3 },
           { id: 'products', label: t.gamesAndOffers, icon: Package },
-          { id: 'orders', label: t.ordersTab, icon: ShoppingCart }
+          { id: 'orders', label: t.ordersTab, icon: ShoppingCart },
+          { id: 'payments', label: t.paymentsTab || (lang === 'ar' ? 'المدفوعات' : 'Payments'), icon: Wallet },
+          { id: 'theme', label: t.themeTab || (lang === 'ar' ? 'الثيم' : 'Theme'), icon: Palette },
+          { id: 'home', label: t.homeLayoutTab || (lang === 'ar' ? 'الرئيسية' : 'Home'), icon: LayoutGrid },
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -604,6 +633,25 @@ export default function AdminView({
                   </p>
                 </div>
 
+                <GameImageSearch
+                  gameName={newGame.name_en}
+                  t={t}
+                  lang={lang}
+                  onSelectCover={(url) => {
+                    setGameCoverFile(null);
+                    setNewGame((prev) => ({
+                      ...prev,
+                      image_url: url,
+                      carousel_focus_x: 50,
+                      carousel_focus_y: 50,
+                    }));
+                  }}
+                  onSelectLogo={(url) => {
+                    setGameLogoFile(null);
+                    setNewGame((prev) => ({ ...prev, logo_url: url }));
+                  }}
+                />
+
                 <div>
                   <label className="text-xs font-semibold text-[var(--text-sec)] mb-1.5 block flex items-center gap-1">
                     <Upload className="w-3 h-3" /> {t.logoForCarousel}
@@ -636,7 +684,11 @@ export default function AdminView({
                     <input 
                       type="file" 
                       accept="image/*" 
-                      onChange={e => setGameCoverFile(e.target.files?.[0] || null)} 
+                      onChange={e => {
+                        const file = e.target.files?.[0] || null;
+                        setGameCoverFile(file);
+                        if (file) setNewGame(prev => ({ ...prev, carousel_focus_x: 50, carousel_focus_y: 50 }));
+                      }} 
                       className="input flex-1 text-sm file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-[var(--accent)] file:text-[#040812]" 
                     />
                     <input 
@@ -651,6 +703,17 @@ export default function AdminView({
                     <img src={newGame.image_url} alt={t.preview} className="mt-2 h-16 w-auto object-cover rounded border" />
                   )}
                 </div>
+
+                {gameCoverForFocus && (
+                  <ImageFocusPicker
+                    imageSrc={gameCoverForFocus}
+                    focusX={newGame.carousel_focus_x ?? 50}
+                    focusY={newGame.carousel_focus_y ?? 50}
+                    onChange={({ x, y }) => setNewGame(prev => ({ ...prev, carousel_focus_x: x, carousel_focus_y: y }))}
+                    t={t}
+                    lang={lang}
+                  />
+                )}
 
                 {gameFormError && (
                   <div className="bg-red-500/10 border border-red-500/60 text-red-400 p-2 rounded text-xs">
@@ -1029,6 +1092,32 @@ export default function AdminView({
             </div>
           )}
         </div>
+      )}
+
+      {activeTab === 'payments' && (
+        <AdminPaymentsSettings
+          t={t}
+          lang={lang}
+          onSaved={onPaymentSettingsSaved}
+        />
+      )}
+
+      {activeTab === 'theme' && (
+        <AdminThemeSettings
+          t={t}
+          lang={lang}
+          onSaved={onThemeSaved}
+        />
+      )}
+
+      {activeTab === 'home' && (
+        <AdminHomeLayoutSettings
+          t={t}
+          lang={lang}
+          games={games}
+          offers={offers}
+          onSaved={onHomeLayoutSaved}
+        />
       )}
 
       <div className="text-xs text-center text-[var(--text-muted)] mt-8">

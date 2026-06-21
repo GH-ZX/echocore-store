@@ -77,7 +77,7 @@ export default function Footer({ lang = 'en' }) {
 
   return (
     <footer className="border-t border-[var(--border)] bg-[var(--bg-elevated)] pt-10 pb-8 text-sm">
-      <div className="max-w-7xl mx-auto px-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
         {/* Main footer grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-10">
           {/* Brand */}

@@ -22,8 +22,8 @@ export default function HowItWorksView({ t = {}, lang = 'en' }) {
       number: '03',
       title: isAr ? 'أضف إلى السلة وادفع' : 'Add to Cart & Checkout',
       desc: isAr 
-        ? 'أضف العرض إلى سلة التسوق، ثم انتقل إلى الدفع. ندعم شام كاش، بايننس باي (USDT)، والبطاقات الائتمانية.'
-        : 'Add the offer to your cart, then proceed to checkout. We support ShamCash, Binance Pay (USDT), and credit cards.'
+        ? 'أضف العرض إلى سلة التسوق، ثم انتقل إلى الدفع عبر شام كاش أو رصيد حسابك.'
+        : 'Add the offer to your cart, then checkout with ShamCash or your account balance.'
     },
     {
       number: '04',
