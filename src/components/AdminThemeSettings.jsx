@@ -1,25 +1,374 @@
 import { useState, useEffect, useRef } from 'react';
-import { Palette, Loader2, CheckCircle, AlertCircle, RefreshCw, Save, RotateCcw, Sparkles } from 'lucide-react';
+import { Palette, Loader2, CheckCircle, AlertCircle, RefreshCw, Save, RotateCcw, Sparkles, Sparkle, ImageIcon } from 'lucide-react';
 import { fetchStoreSettings, saveStoreSettings } from '../lib/storeSettings';
-import echoCoreLogo from '../assets/echo-core-logo.png';
+import { uploadImage } from '../lib/uploadImage';
+import EchoLogo from './EchoLogo';
+
 import {
   DEFAULT_THEME,
   THEME_PRESETS,
   THEME_FIELD_GROUPS,
   EDITABLE_THEME_FIELDS,
+  BACKGROUND_TYPES,
   applyTheme,
   buildFullTheme,
   normalizeThemeOverrides,
   detectPresetId,
+  pickAppearanceOverrides,
+  parseLogoGlow,
+  formatLogoGlow,
+  glowToHex,
+  parseHueDegrees,
 } from '../lib/theme';
 
-function ColorField({ field, value, onChange, isAr }) {
+function SliderField({ label, value, min, max, step, onChange }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <label className="text-xs text-[var(--text-muted)] block">
+          {label}
+        </label>
+        <span className="text-xs font-mono text-[var(--accent)]">{value}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-[var(--border)] accent-[var(--accent)] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--accent)] [&::-webkit-slider-thumb]:shadow-[0_0_8px_var(--accent)]"
+      />
+    </div>
+  );
+}
+
+function ToggleField({ label, value, onChange }) {
+  return (
+    <div className="flex items-center justify-between py-1.5">
+      <span className="text-xs text-[var(--text-primary)] font-medium">
+        {label}
+      </span>
+      <button
+        type="button"
+        onClick={() => onChange(value === 'true' ? 'false' : 'true')}
+        className={`relative w-11 h-6 rounded-full transition-all duration-200 ${
+          value === 'true' ? 'bg-[var(--accent)]' : 'bg-[var(--border)]'
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-all duration-200 shadow-sm ${
+            value === 'true' ? 'translate-x-5' : 'translate-x-0'
+          }`}
+        />
+      </button>
+    </div>
+  );
+}
+
+function BackgroundSettings({ form, t, lang, onChange }) {
+  const isAr = lang === 'ar';
+  const bgType = form['background-type'] ?? 'aurora';
+  const auroraEnabled = form['aurora-enabled'] ?? 'true';
+  const auroraResponsive = form['aurora-responsive'] ?? 'true';
+  const auroraAmplitude = form['aurora-amplitude'] ?? '0.6';
+  const auroraSpeed = form['aurora-speed'] ?? '0.4';
+  const auroraBlend = form['aurora-blend'] ?? '0.36';
+  const auroraIntensity = form['aurora-intensity'] ?? '1';
+  const effectOpacity = form['bg-effect-opacity'] ?? '0.4';
+
+  return (
+    <div className="mt-8 pt-6 border-t border-[var(--border)]">
+      <h3 className="text-lg font-black flex items-center gap-2 mb-1">
+        <Sparkle className="w-4.5 h-4.5 text-[var(--accent)]" />
+        {t.backgroundSettings}
+      </h3>
+      <p className="text-xs text-[var(--text-muted)] mb-4">
+        {t.backgroundSettingsHelp}
+      </p>
+
+      <div className="flex flex-wrap gap-2 mb-5">
+        {Object.values(BACKGROUND_TYPES).map((bg) => {
+          const active = bgType === bg.id;
+          return (
+            <button
+              key={bg.id}
+              type="button"
+              onClick={() => onChange('background-type', bg.id)}
+              className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-all ${
+                active
+                  ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10'
+                  : 'border-[var(--border)] text-[var(--text-sec)] hover:border-[var(--accent)]/35'
+              }`}
+            >
+              {isAr ? bg.labelAr : bg.labelEn}
+            </button>
+          );
+        })}
+      </div>
+
+      <SliderField
+        label={t.effectIntensity}
+        value={effectOpacity}
+        min="0.1"
+        max="1.0"
+        step="0.05"
+        onChange={(v) => onChange('bg-effect-opacity', v)}
+      />
+
+      {bgType === 'aurora' && (
+        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4 mt-4">
+          <ToggleField
+            label={t.enableAurora}
+            value={auroraEnabled}
+            onChange={(v) => onChange('aurora-enabled', v)}
+          />
+
+          <ToggleField
+            label={t.auroraTouchResponsive}
+            value={auroraResponsive}
+            onChange={(v) => onChange('aurora-responsive', v)}
+          />
+
+          <SliderField
+            label={t.waveHeight}
+            value={auroraAmplitude}
+            min="0.2"
+            max="0.9"
+            step="0.02"
+            onChange={(v) => onChange('aurora-amplitude', v)}
+          />
+
+          <SliderField
+            label={t.animationSpeed}
+            value={auroraSpeed}
+            min="0.1"
+            max="0.8"
+            step="0.02"
+            onChange={(v) => onChange('aurora-speed', v)}
+          />
+
+          <SliderField
+            label={t.edgeSoftness}
+            value={auroraBlend}
+            min="0.15"
+            max="0.65"
+            step="0.01"
+            onChange={(v) => onChange('aurora-blend', v)}
+          />
+
+          <SliderField
+            label={t.auroraBrightness}
+            value={auroraIntensity}
+            min="0.3"
+            max="1.2"
+            step="0.05"
+            onChange={(v) => onChange('aurora-intensity', v)}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LogoSettings({ form, displayTheme, t, onChange, onClearLogo }) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+
+  const logoUrl = form['logo-url'] || '';
+  const logoAuto = (form['logo-filter-auto'] ?? displayTheme['logo-filter-auto'] ?? 'true') !== 'false';
+  const hue = parseHueDegrees(form['logo-hue-rotate'] ?? displayTheme['logo-hue-rotate']);
+  const glow = parseLogoGlow(form['logo-glow'] ?? displayTheme['logo-glow']);
+  const glowHex = glowToHex(form['logo-glow'] ?? displayTheme['logo-glow']);
+  const saturate = parseFloat(form['logo-saturate'] ?? displayTheme['logo-saturate'] ?? '1.04');
+  const brightness = parseFloat(form['logo-brightness'] ?? displayTheme['logo-brightness'] ?? '1.02');
+  const zoom = parseFloat(form['logo-zoom'] ?? displayTheme['logo-zoom'] ?? '1.7');
+  const previewSrc = logoUrl.trim() || undefined;
+
+  const setManual = (key, value) => {
+    onChange(key, value);
+    if (logoAuto && key !== 'logo-filter-auto') {
+      onChange('logo-filter-auto', 'false');
+    }
+  };
+
+  const handleLogoUpload = async (file) => {
+    if (!file) return;
+    setUploading(true);
+    setUploadError('');
+    try {
+      const url = await uploadImage(file, 'store-logo');
+      if (url) onChange('logo-url', url);
+    } catch (err) {
+      setUploadError(err.message || t.logoUploadFailed);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="mb-6 pt-6 border-t border-[var(--border)]">
+      <h3 className="text-lg font-black flex items-center gap-2 mb-1">
+        <ImageIcon className="w-4.5 h-4.5 text-[var(--accent)]" />
+        {t.logoSettings}
+      </h3>
+      <p className="text-xs text-[var(--text-muted)] mb-4">
+        {t.logoSettingsHelp}
+      </p>
+
+      <div className="grid lg:grid-cols-[auto_1fr] gap-5 items-start">
+        <div
+          className="flex items-center justify-center w-24 h-24 rounded-2xl border border-[var(--border)] overflow-hidden mx-auto lg:mx-0"
+          style={{
+            background: `radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--accent) 14%, var(--bg-surface)), var(--bg-surface))`,
+          }}
+        >
+          <EchoLogo className="w-16 h-16" alt="ECHOCORE" src={previewSrc} />
+        </div>
+
+        <div className="space-y-4 min-w-0">
+          <div>
+            <label className="text-xs font-semibold text-[var(--text-sec)] mb-1.5 block">
+              {t.logoFile}
+            </label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="file"
+                accept="image/png,image/webp,image/jpeg,image/svg+xml"
+                disabled={uploading}
+                onChange={(e) => handleLogoUpload(e.target.files?.[0] || null)}
+                className="input flex-1 text-sm file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-[var(--accent)] file:text-[#040812]"
+              />
+              <input
+                type="url"
+                placeholder={t.logoUrlPlaceholder}
+                value={logoUrl}
+                onChange={(e) => onChange('logo-url', e.target.value)}
+                className="input flex-1 text-sm font-mono"
+              />
+            </div>
+            {uploading && (
+              <p className="text-xs text-[var(--accent)] mt-1.5 flex items-center gap-1.5">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                {t.uploading}
+              </p>
+            )}
+            {uploadError && <p className="text-xs text-red-400 mt-1.5">{uploadError}</p>}
+            <div className="flex flex-wrap gap-2 mt-2">
+              <button
+                type="button"
+                onClick={onClearLogo}
+                className="action-chip text-xs gap-1.5 !h-9 !min-h-9"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                {t.resetLogoFile}
+              </button>
+              {logoUrl && (
+                <a href={logoUrl} target="_blank" rel="noreferrer" className="text-xs text-[var(--accent)] hover:underline self-center">
+                  {t.viewLogo}
+                </a>
+              )}
+            </div>
+            <p className="text-[10px] text-[var(--text-muted)] mt-2">
+              {t.logoFileHelp}
+            </p>
+          </div>
+
+          <SliderField
+            label={t.logoZoom}
+            value={Number.isFinite(zoom) ? zoom.toFixed(2) : '1.7'}
+            min="1"
+            max="2.5"
+            step="0.05"
+            onChange={(v) => onChange('logo-zoom', v)}
+          />
+
+          <ToggleField
+            label={t.logoAutoTint}
+            value={logoAuto ? 'true' : 'false'}
+            onChange={(v) => onChange('logo-filter-auto', v)}
+          />
+
+          {!logoAuto && (
+            <div className="grid sm:grid-cols-2 gap-4 pt-1">
+              <SliderField
+                label={t.logoHueShift}
+                value={String(hue)}
+                min="-90"
+                max="90"
+                step="1"
+                onChange={(v) => setManual('logo-hue-rotate', `${v}deg`)}
+              />
+              <SliderField
+                label={t.logoSaturation}
+                value={Number.isFinite(saturate) ? saturate.toFixed(2) : '1.04'}
+                min="0.5"
+                max="2"
+                step="0.02"
+                onChange={(v) => setManual('logo-saturate', v)}
+              />
+              <SliderField
+                label={t.logoBrightness}
+                value={Number.isFinite(brightness) ? brightness.toFixed(2) : '1.02'}
+                min="0.7"
+                max="1.4"
+                step="0.02"
+                onChange={(v) => setManual('logo-brightness', v)}
+              />
+              <div className="space-y-1.5">
+                <label className="text-xs text-[var(--text-muted)] block">
+                  {t.logoGlowColor}
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={glowHex}
+                    onChange={(e) => {
+                      const hex = e.target.value;
+                      const r = parseInt(hex.slice(1, 3), 16);
+                      const g = parseInt(hex.slice(3, 5), 16);
+                      const b = parseInt(hex.slice(5, 7), 16);
+                      setManual('logo-glow', formatLogoGlow(r, g, b, glow.a));
+                    }}
+                    className="w-11 h-11 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] cursor-pointer p-1"
+                  />
+                  <span className="text-xs font-mono text-[var(--accent)] flex-1 truncate">
+                    {form['logo-glow'] || displayTheme['logo-glow']}
+                  </span>
+                </div>
+              </div>
+              <SliderField
+                label={t.logoGlowOpacity}
+                value={glow.a.toFixed(2)}
+                min="0"
+                max="0.8"
+                step="0.02"
+                onChange={(v) => setManual('logo-glow', formatLogoGlow(glow.r, glow.g, glow.b, parseFloat(v)))}
+              />
+            </div>
+          )}
+
+          {logoAuto && (
+            <p className="text-xs text-[var(--text-muted)]">
+              {t.logoThemeNote}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ColorField({ field, value, onChange, t, lang }) {
+  const isAr = lang === 'ar';
   const pickerValue = value?.startsWith('#') && value.length >= 7 ? value.slice(0, 7) : '#040812';
+  const labelKey = `themeField_${field.key.replace(/-/g, '_')}`;
+  const label = t[labelKey] || (isAr ? field.labelAr : field.labelEn);
 
   return (
     <div className="space-y-1.5">
       <label className="text-xs text-[var(--text-muted)] block">
-        {isAr ? field.labelAr : field.labelEn}
+        {label}
       </label>
       <div className="flex items-center gap-2">
         <input
@@ -39,7 +388,8 @@ function ColorField({ field, value, onChange, isAr }) {
   );
 }
 
-function ThemePreview({ theme, isAr }) {
+function ThemePreview({ theme, t, lang }) {
+  const isAr = lang === 'ar';
   const full = buildFullTheme(theme);
 
   return (
@@ -58,7 +408,7 @@ function ThemePreview({ theme, isAr }) {
         }}
       >
         <div className="flex items-center gap-2">
-          <img src={echoCoreLogo} alt="" className="echo-logo w-8 h-8 object-contain" />
+          <EchoLogo className="w-8 h-8" alt="" src={full['logo-url']?.trim() || undefined} />
           <div className="font-black tracking-wide" style={{ color: full.accent }}>
             ECHOCORE
           </div>
@@ -76,7 +426,7 @@ function ThemePreview({ theme, isAr }) {
               border: `1px solid color-mix(in srgb, ${full.accent} 35%, ${full.border})`,
             }}
           >
-            {isAr ? 'شراء' : 'Buy'}
+            {t.themePreviewBuy}
           </div>
         </div>
       </div>
@@ -91,10 +441,10 @@ function ThemePreview({ theme, isAr }) {
           }}
         >
           <div className="text-sm font-bold mb-1" style={{ color: full['text-primary'] }}>
-            {isAr ? 'بطاقة رقمية' : 'Digital Card'}
+            {t.digitalCard}
           </div>
           <div className="text-xs mb-3" style={{ color: full['text-secondary'] }}>
-            {isAr ? 'توصيل فوري بعد الدفع' : 'Instant delivery after payment'}
+            {t.instantDeliveryAfterPayment}
           </div>
           <div className="flex items-center justify-between">
             <span className="font-mono font-bold" style={{ color: full.accent }}>
@@ -107,7 +457,7 @@ function ThemePreview({ theme, isAr }) {
                 color: full.success,
               }}
             >
-              {isAr ? 'متوفر' : 'In stock'}
+              {t.inStock}
             </span>
           </div>
         </div>
@@ -115,7 +465,7 @@ function ThemePreview({ theme, isAr }) {
         <div className="grid grid-cols-2 gap-3 pt-1">
           <div className="text-center">
             <div className="text-sm font-semibold mb-1" style={{ color: full['sale-title'] }}>
-              {isAr ? 'عروض الخصم' : 'Sale Offers'}
+              {t.saleOffers}
             </div>
             <div className="h-px w-8 mx-auto mb-2" style={{ background: full['sale-divider'] }} />
             <span
@@ -127,7 +477,7 @@ function ThemePreview({ theme, isAr }) {
           </div>
           <div className="text-center">
             <div className="text-sm font-semibold mb-1" style={{ color: full['games-title'] }}>
-              {isAr ? 'الألعاب' : 'Games'}
+              {t.themePreviewGames}
             </div>
             <div className="h-px w-8 mx-auto mb-2" style={{ background: full['games-divider'] }} />
             <div
@@ -138,15 +488,15 @@ function ThemePreview({ theme, isAr }) {
                 background: full['bg-surface'],
               }}
             >
-              Game
+              {t.game}
             </div>
           </div>
         </div>
 
         <div className="flex gap-2 text-[10px] font-semibold">
-          <span style={{ color: full.error }}>{isAr ? 'خطأ' : 'Error'}</span>
-          <span style={{ color: full.warning }}>{isAr ? 'تحذير' : 'Warning'}</span>
-          <span style={{ color: full.success }}>{isAr ? 'نجاح' : 'Success'}</span>
+          <span style={{ color: full.error }}>{t.statusError}</span>
+          <span style={{ color: full.warning }}>{t.statusWarning}</span>
+          <span style={{ color: full.success }}>{t.statusSuccess}</span>
         </div>
       </div>
     </div>
@@ -172,7 +522,7 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
       savedRef.current = overrides;
       setForm(overrides);
       setPresetId(detectPresetId(overrides));
-      applyTheme(overrides);
+      applyTheme(overrides, { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -183,7 +533,7 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
   useEffect(() => {
     load();
     return () => {
-      applyTheme(savedRef.current);
+      applyTheme(savedRef.current, { replace: true });
     };
   }, []);
 
@@ -197,16 +547,31 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
   };
 
   const applyPreset = (preset) => {
-    const next = { ...preset.overrides };
-    setForm(next);
-    setPresetId(preset.id);
-    applyTheme(next);
+    setForm((prev) => {
+      const next = {
+        ...pickAppearanceOverrides(prev),
+        ...preset.overrides,
+      };
+      setPresetId(preset.id);
+      applyTheme(next);
+      return next;
+    });
   };
 
   const handleReset = () => {
     setForm({});
     setPresetId('cyber');
-    applyTheme({});
+    applyTheme({}, { replace: true });
+  };
+
+  const handleClearLogo = () => {
+    setForm((prev) => {
+      const next = { ...prev };
+      delete next['logo-url'];
+      setPresetId('custom');
+      applyTheme(next);
+      return next;
+    });
   };
 
   const handleSave = async () => {
@@ -218,14 +583,14 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
       const overrides = normalizeThemeOverrides(form);
       await saveStoreSettings({ ...current, theme: overrides });
       savedRef.current = overrides;
-      setSuccess(t.themeSettingsSaved || (isAr ? 'تم حفظ الثيم لجميع المستخدمين' : 'Theme saved for all users'));
+      setSuccess(t.themeSettingsSaved);
       onSaved?.(overrides);
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
-      applyTheme(savedRef.current);
+      applyTheme(savedRef.current, { replace: true });
       setForm(savedRef.current);
       setPresetId(detectPresetId(savedRef.current));
-      setError(err.message || (isAr ? 'فشل الحفظ' : 'Save failed'));
+      setError(err.message || t.saveFailed);
     } finally {
       setSaving(false);
     }
@@ -248,23 +613,21 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
           <div>
             <h2 className="text-xl font-black flex items-center gap-2">
               <Palette className="w-5 h-5 text-[var(--accent)]" />
-              {t.themeSettings || (isAr ? 'ثيم الموقع' : 'Site Theme')}
+              {t.themeSettings}
             </h2>
             <p className="text-sm text-[var(--text-sec)] mt-1 max-w-2xl">
-              {t.themeSettingsHelp || (isAr
-                ? 'غيّر ألوان الموقع لجميع الزوار. التغييرات تُطبَّق فور الحفظ.'
-                : 'Change the store colors for every visitor. Changes apply globally after you save.')}
+              {t.themeSettingsHelp}
             </p>
           </div>
           <div className="text-xs px-3 py-1.5 rounded-full border border-[var(--border)] text-[var(--text-muted)]">
-            {t.livePreview || (isAr ? 'معاينة مباشرة' : 'Live preview')}
+            {t.livePreview}
           </div>
         </div>
 
         <div className="mb-6">
           <div className="text-xs text-[var(--text-muted)] mb-2 flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5" />
-            {t.themePresets || (isAr ? 'قوالب جاهزة' : 'Presets')}
+            {t.themePresets}
           </div>
           <div className="flex flex-wrap gap-2">
             {Object.values(THEME_PRESETS).map((preset) => {
@@ -291,32 +654,26 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
             })}
             {presetId === 'custom' && (
               <span className="px-3 py-2 rounded-xl border border-dashed border-[var(--border)] text-xs text-[var(--text-muted)]">
-                {t.customTheme || (isAr ? 'مخصص' : 'Custom')}
+                {t.customTheme}
               </span>
             )}
           </div>
         </div>
 
+        <LogoSettings
+          form={form}
+          displayTheme={displayTheme}
+          t={t}
+          onChange={handleFieldChange}
+          onClearLogo={handleClearLogo}
+        />
+
         <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-6">
           <div className="space-y-5">
-            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-4">
-              <div className="text-xs text-[var(--text-muted)] mb-3">
-                {t.logoThemeNote || (isAr
-                  ? 'الشعار يتلون تلقائياً حسب لون التمييز عبر فلتر الثيم.'
-                  : 'The logo auto-tints from the accent color via the theme filter.')}
-              </div>
-              <div className="flex items-center gap-3">
-                <img src={echoCoreLogo} alt="ECHOCORE" className="echo-logo w-14 h-14 object-contain" />
-                <div className="text-sm text-[var(--text-secondary)]">
-                  {isAr ? 'معاينة الشعار مع الثيم الحالي' : 'Logo preview with current theme'}
-                </div>
-              </div>
-            </div>
-
             {THEME_FIELD_GROUPS.map((group) => (
               <div key={group.id}>
                 <h3 className="text-sm font-bold text-[var(--text-primary)] mb-3">
-                  {isAr ? group.labelAr : group.labelEn}
+                  {t[`themeGroup_${group.id}`] || (isAr ? group.labelAr : group.labelEn)}
                 </h3>
                 <div className="grid sm:grid-cols-2 gap-4">
                   {EDITABLE_THEME_FIELDS.filter((field) => field.group === group.id).map((field) => (
@@ -325,7 +682,8 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
                       field={field}
                       value={form[field.key] || displayTheme[field.key] || ''}
                       onChange={handleFieldChange}
-                      isAr={isAr}
+                      t={t}
+                      lang={lang}
                     />
                   ))}
                 </div>
@@ -333,36 +691,43 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
             ))}
           </div>
 
-          <ThemePreview theme={form} isAr={isAr} />
+          <ThemePreview theme={form} t={t} lang={lang} />
         </div>
 
-        <div className="flex flex-wrap gap-2 mt-6 pt-4 border-t border-[var(--border)]">
-          <button type="button" onClick={handleSave} disabled={saving} className="btn btn-primary action-chip gap-2 !border-0">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {t.saveTheme || (isAr ? 'حفظ الثيم للجميع' : 'Save Theme for Everyone')}
-          </button>
-          <button type="button" onClick={handleReset} className="action-chip gap-2">
-            <RotateCcw className="w-4 h-4" />
-            {t.resetTheme || (isAr ? 'إعادة الافتراضي' : 'Reset to Default')}
-          </button>
-          <button type="button" onClick={load} className="action-chip gap-2">
-            <RefreshCw className="w-4 h-4" />
-            {t.refresh || (isAr ? 'تحديث' : 'Refresh')}
-          </button>
-        </div>
+        <BackgroundSettings
+          form={form}
+          t={t}
+          lang={lang}
+          onChange={handleFieldChange}
+        />
 
         {error && (
-          <div className="mt-4 flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 text-sm">
+          <div className="mt-6 flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 text-sm">
             <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
             {error}
           </div>
         )}
         {success && (
-          <div className="mt-4 flex items-center gap-2 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-sm">
+          <div className="mt-6 flex items-center gap-2 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-sm">
             <CheckCircle className="w-4 h-4" />
             {success}
           </div>
         )}
+
+        <div className="flex flex-wrap gap-2 mt-6 pt-4 border-t border-[var(--border)]">
+          <button type="button" onClick={handleSave} disabled={saving} className="btn btn-primary action-chip gap-2 !border-0">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {t.saveTheme}
+          </button>
+          <button type="button" onClick={handleReset} className="action-chip gap-2">
+            <RotateCcw className="w-4 h-4" />
+            {t.resetTheme}
+          </button>
+          <button type="button" onClick={load} className="action-chip gap-2">
+            <RefreshCw className="w-4 h-4" />
+            {t.refresh}
+          </button>
+        </div>
       </div>
     </div>
   );

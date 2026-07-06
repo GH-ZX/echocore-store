@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Mail, Lock, User } from 'lucide-react';
 import EchoLogo from './EchoLogo';
 
-export default function LoginView({ t, handleAuthLogin, handleAuthSignup, onLoginSuccess }) {
+export default function LoginView({ t, lang = 'ar', handleAuthLogin, handleAuthSignup, onLoginSuccess }) {
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,7 +24,7 @@ export default function LoginView({ t, handleAuthLogin, handleAuthSignup, onLogi
           // Email confirmation is disabled in Supabase → auto login
           onLoginSuccess(result.userData);
         } else {
-          setSuccessMsg(result.message || 'Account created! Check your email to confirm.');
+          setSuccessMsg(result.message || (t.createAccount + '. ' + (lang === 'ar' ? 'تحقق من بريدك الإلكتروني للتأكيد.' : 'Check your email to confirm.')));
           setIsSignup(false);
         }
       } else {
@@ -43,7 +43,7 @@ export default function LoginView({ t, handleAuthLogin, handleAuthSignup, onLogi
       <div className="card p-6 sm:p-10">
         <div className="text-center mb-8">
           <EchoLogo className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-4 sm:mb-5" />
-          <h2 className="text-2xl sm:text-3xl font-black mb-1">{isSignup ? 'Create Account' : t.login}</h2>
+          <h2 className="text-2xl sm:text-3xl font-black mb-1">{isSignup ? t.createAccount : t.login}</h2>
           <p className="text-[var(--text-sec)] text-sm">{t.loginDesc}</p>
         </div>
 
@@ -54,7 +54,7 @@ export default function LoginView({ t, handleAuthLogin, handleAuthSignup, onLogi
           {isSignup && (
             <div>
               <label className="text-sm font-semibold flex items-center gap-2 mb-1.5 text-[var(--text-sec)]">
-                <User className="w-4 h-4 text-[var(--accent)]" /> Name
+                <User className="w-4 h-4 text-[var(--accent)]" /> {t.yourName}
               </label>
               <input 
                 type="text" 
@@ -62,7 +62,7 @@ export default function LoginView({ t, handleAuthLogin, handleAuthSignup, onLogi
                 value={name} 
                 onChange={e => setName(e.target.value)} 
                 className="input w-full" 
-                placeholder="Your name" 
+                placeholder={t.yourName} 
               />
             </div>
           )}
@@ -98,20 +98,20 @@ export default function LoginView({ t, handleAuthLogin, handleAuthSignup, onLogi
             disabled={isLoading} 
             className="btn btn-primary w-full py-4 disabled:opacity-60"
           >
-            {isLoading ? '...' : (isSignup ? 'Create Account' : t.login)}
+            {isLoading ? (t.processing || '...') : (isSignup ? t.createAccount : t.login)}
           </button>
         </form>
 
         <div className="mt-6 text-center text-sm">
           {isSignup ? (
-            <>Already have an account? <button onClick={() => setIsSignup(false)} className="text-[var(--accent)] font-semibold hover:underline">Log in</button></>
+            <>{t.alreadyHaveAccount} <button onClick={() => setIsSignup(false)} className="text-[var(--accent)] font-semibold hover:underline">{t.logInLink}</button></>
           ) : (
-            <>New here? <button onClick={() => setIsSignup(true)} className="text-[var(--accent)] font-semibold hover:underline">Create account</button></>
+            <>{t.newHere} <button onClick={() => setIsSignup(true)} className="text-[var(--accent)] font-semibold hover:underline">{t.createAccount}</button></>
           )}
         </div>
 
         <div className="text-[10px] text-center text-[var(--text-muted)] mt-6">
-          Demo store — Use any email. Create an admin in Supabase dashboard.
+          {t.demoStoreNote}
         </div>
       </div>
     </div>

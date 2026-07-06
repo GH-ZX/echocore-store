@@ -38,9 +38,6 @@ export default defineConfig(({ command, mode }) => {
                 return 'vendor-icons'
               }
             }
-            if (id.includes('/AdminView') || id.includes('/AdminGameEditModal') || id.includes('/AdminOfferEditModal') || id.includes('/AdminCarouselManager') || id.includes('/GameImageSearch') || id.includes('/ImageFocusPicker') || id.includes('/gameImageSearch')) {
-              return 'admin'
-            }
           },
         },
       },

@@ -1,5 +1,6 @@
 import React from 'react';
 import AdminEditButton from './AdminEditButton';
+import BorderGlow from './BorderGlow';
 
 export default function AllGamesView({ 
   games = [], 
@@ -23,13 +24,13 @@ export default function AllGamesView({
 
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="mb-8">
-        <h1 className="games-page-title text-3xl md:text-4xl font-black mb-2">
+      <div className="mb-8 md:mb-10">
+        <h1 className="games-page-title section-heading text-3xl md:text-4xl font-black mb-2">
           {searchQuery.trim() 
             ? (isAr ? t.searchResults || 'نتائج البحث' : t.searchResults || 'Search Results') 
             : (isAr ? t.allGames || 'جميع الألعاب' : t.allGames || 'All Games')}
         </h1>
-        <p className="games-page-subtitle">
+        <p className="games-page-subtitle section-subheading text-left mx-0 max-w-[50ch]">
           {searchQuery.trim()
             ? (isAr ? `${t.resultsFor || 'نتائج لـ'} "${searchQuery}"` : `${t.resultsFor || 'Results for'} "${searchQuery}"`)
             : (isAr 
@@ -53,10 +54,18 @@ export default function AllGamesView({
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filteredGames.map((game) => (
-            <div
+            <BorderGlow
               key={game.id}
+              edgeSensitivity={25}
+              borderRadius={16}
+              glowRadius={30}
+              glowIntensity={0.8}
+              coneSpread={25}
+              fillOpacity={0.35}
+            >
+            <div
               onClick={() => onSelectGame && onSelectGame(game)}
-              className="games-card card group overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-[0_25px_50px_-12px_rgb(0,0,0)] active:scale-[0.985] relative"
+              className="games-card group cursor-pointer transition-all duration-300 active:scale-[0.985]"
             >
               {isAdmin && onEditGame && (
                 <div className="absolute top-3 right-3 z-10">
@@ -89,6 +98,7 @@ export default function AllGamesView({
                 </div>
               </div>
             </div>
+            </BorderGlow>
           ))}
         </div>
       )}

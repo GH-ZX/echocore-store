@@ -1,4 +1,5 @@
 import { ShoppingCart } from 'lucide-react';
+import BorderGlow from './BorderGlow';
 
 /**
  * Universal Product Card — fully DB driven.
@@ -42,9 +43,17 @@ export default function ProductCard({
   };
 
   return (
+    <BorderGlow
+      edgeSensitivity={25}
+      borderRadius={16}
+      glowRadius={30}
+      glowIntensity={0.8}
+      coneSpread={25}
+      fillOpacity={0.35}
+    >
     <div 
       onClick={() => onSelect?.(product)}
-      className="card group flex flex-col overflow-hidden cursor-pointer h-full"
+      className="group flex flex-col cursor-pointer h-full"
     >
       {/* Image */}
       <div className="relative h-44 w-full bg-[#02050f] overflow-hidden">
@@ -112,5 +121,6 @@ export default function ProductCard({
         </div>
       </div>
     </div>
+    </BorderGlow>
   );
 }

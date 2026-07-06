@@ -1,5 +1,6 @@
 import React from 'react';
 import AdminEditButton from './AdminEditButton';
+import BorderGlow from './BorderGlow';
 
 export default function SaleOfferCard({
   offer,
@@ -25,9 +26,18 @@ export default function SaleOfferCard({
       : null;
 
   return (
+    <BorderGlow
+      edgeSensitivity={25}
+      borderRadius={16}
+      glowRadius={30}
+      glowIntensity={0.8}
+      coneSpread={25}
+      fillOpacity={0.35}
+      className={className}
+    >
     <div
       onClick={() => onSelectOffer?.(offer)}
-      className={`card group flex flex-col overflow-hidden cursor-pointer hover:border-[var(--accent)]/50 transition-all duration-300 hover:shadow-[0_20px_40px_-12px_rgb(0,0,0)] active:scale-[0.99] ${className}`}
+      className="group flex flex-col cursor-pointer transition-all duration-300 active:scale-[0.99]"
     >
       {/* Image */}
       <div className="relative aspect-[16/10] sm:aspect-[4/3] overflow-hidden bg-[var(--bg-elevated)] flex-shrink-0">
@@ -45,10 +55,12 @@ export default function SaleOfferCard({
 
         <div className="absolute top-2 left-2 right-2 flex items-start justify-between gap-1.5">
           <div className="flex items-center gap-1.5">
-          <span className="sale-offer-badge px-2 py-0.5 text-[10px] font-bold rounded-md shadow-sm">
-            {t.sale || 'SALE'}
-          </span>
-          {discount != null && discount > 0 && (
+          {offer.is_sale && (
+            <span className="sale-offer-badge px-2 py-0.5 text-[10px] font-bold rounded-md shadow-sm">
+              {t.sale || 'SALE'}
+            </span>
+          )}
+          {offer.is_sale && discount != null && discount > 0 && (
             <span className="sale-offer-discount px-2 py-0.5 bg-black/50 backdrop-blur-sm text-[10px] font-bold rounded-md border">
               -{discount}%
             </span>
@@ -67,7 +79,7 @@ export default function SaleOfferCard({
 
       {/* Content */}
       <div className="flex flex-col flex-1 p-3 sm:p-3.5 gap-1.5 min-w-0">
-        <p className="text-[10px] sm:text-xs text-[var(--text-muted)] uppercase tracking-wide truncate">
+        <p className="text-[11px] sm:text-xs text-[var(--text-muted)] truncate font-medium">
           {gameName}
         </p>
         <h3 className="font-semibold text-sm sm:text-base leading-snug text-[var(--text-primary)] line-clamp-2 min-h-[2.5rem]">
@@ -75,7 +87,7 @@ export default function SaleOfferCard({
         </h3>
 
         <div className="flex items-baseline gap-2 flex-wrap mt-auto pt-1">
-          {originalPrice && (
+          {offer.is_sale && originalPrice && (
             <span className="text-xs sm:text-sm line-through text-[var(--text-muted)]">
               ${originalPrice}
             </span>
@@ -109,5 +121,6 @@ export default function SaleOfferCard({
         </div>
       </div>
     </div>
+    </BorderGlow>
   );
 }

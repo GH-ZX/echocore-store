@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
-import { ChevronLeft, ChevronRight, Gamepad2, Gift, Settings2, ChevronUp, ChevronDown } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Gamepad2, Gift, Settings2, ChevronUp, ChevronDown, Plus } from 'lucide-react';
 import AdminEditButton from './AdminEditButton';
+import AdminAddCard from './AdminAddCard';
+import BorderGlow from './BorderGlow';
 
 const AUTOPLAY_MS = 6000;
 const TICK_MS = 40;
@@ -15,6 +17,7 @@ export default function ProductCarousel({
   onManageCarousel,
   onEditGame,
   onMoveCarouselGame,
+  onAddGame,
 }) {
   const gameSlides = products.filter((p) => p.category === 'games');
   const slides = gameSlides.length ? gameSlides : products;
@@ -134,19 +137,23 @@ export default function ProductCarousel({
   const acSolid = `rgb(${accent.r},${accent.g},${accent.b})`;
   const logoAcSolid = `rgb(${logoAccent.r},${logoAccent.g},${logoAccent.b})`;
 
-  const pad = (n) => String(n + 1).padStart(2, '0');
-
   const currentItem = slides[activeSlide] || slides[0];
 
   return (
+    <BorderGlow
+      className="mt-4 sm:mt-8"
+      edgeSensitivity={22}
+      borderRadius={20}
+      glowRadius={40}
+      glowIntensity={0.9}
+      coneSpread={28}
+      fillOpacity={0.4}
+    >
     <section
-      className="mt-4 sm:mt-8 rounded-xl sm:rounded-2xl overflow-hidden relative"
-      style={{
-        boxShadow: `0 0 0 1px ${ac(0.2)}, 0 8px 60px ${ac(0.12)}, 0 20px 100px ${ac(0.06)}`,
-        transition: 'box-shadow 0.8s ease',
-      }}
+      className="relative overflow-hidden rounded-[inherit]"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
+      aria-label={lang === 'ar' ? 'سلايدر الألعاب المميزة' : 'Featured games carousel'}
     >
       {isAdmin && (
         <div className="absolute top-3 left-3 z-40 flex flex-wrap items-center gap-2">
@@ -168,6 +175,18 @@ export default function ProductCarousel({
         </div>
       )}
 
+      {slides.length === 0 && isAdmin && onAddGame ? (
+        <div className="p-4 sm:p-6 md:p-8">
+          <div className="max-w-sm mx-auto">
+            <AdminAddCard
+              variant="game"
+              className="w-full"
+              ariaLabel={t.addGame || (lang === 'ar' ? 'إضافة لعبة' : 'Add game')}
+              onClick={() => onAddGame({ showInCarousel: true })}
+            />
+          </div>
+        </div>
+      ) : slides.length > 0 && (
       <div className="relative">
         <div
           className="absolute top-0 left-0 right-0 z-30 h-[3px]"
@@ -182,17 +201,6 @@ export default function ProductCarousel({
               transition: 'background 0.6s ease, box-shadow 0.6s ease',
             }}
           />
-        </div>
-
-        <div
-          className="absolute top-5 right-5 z-20 select-none pointer-events-none"
-          style={{ fontFamily: 'ui-monospace, monospace' }}
-        >
-          <span className="text-2xl font-black text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.9)]">
-            {pad(activeSlide)}
-          </span>
-          <span className="text-white/30 text-sm mx-1.5">/</span>
-          <span className="text-white/30 text-sm">{pad(slides.length - 1)}</span>
         </div>
 
         <div className="overflow-hidden" ref={emblaRef} dir="ltr">
@@ -255,7 +263,7 @@ export default function ProductCarousel({
                   >
                     <div className={`flex items-center gap-2.5 mb-4 ${lang === 'ar' ? 'flex-row-reverse' : ''}`}>
                       <span
-                        className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.18em] rounded-full px-3 py-1.5"
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-full px-3 py-1.5"
                         style={{
                           background: ac(0.18),
                           border: `1px solid ${ac(0.5)}`,
@@ -264,11 +272,11 @@ export default function ProductCarousel({
                         }}
                       >
                         {item.category === 'games'
-                          ? <Gamepad2 className="w-3 h-3" />
-                          : <Gift className="w-3 h-3" />}
+                          ? <Gamepad2 className="w-3.5 h-3.5" strokeWidth={2} />
+                          : <Gift className="w-3.5 h-3.5" strokeWidth={2} />}
                         {item.category === 'games'
-                          ? (t.game || (lang === 'ar' ? 'ألعاب' : 'Game'))
-                          : (t.digitalCard || (lang === 'ar' ? 'بطاقات رقمية' : 'Digital Card'))}
+                          ? (t.game || (lang === 'ar' ? 'ألعاب' : 'Games'))
+                          : (t.digitalCard || (lang === 'ar' ? 'بطاقات رقمية' : 'Digital cards'))}
                       </span>
                       {item.price > 0 && (
                         <span className="text-[11px] font-bold rounded-full px-3 py-1.5 bg-white/[0.12] border border-white/20 text-white backdrop-blur-sm">
@@ -277,16 +285,16 @@ export default function ProductCarousel({
                       )}
                     </div>
                     <h2
-                      className="font-black leading-[0.88] tracking-tight text-white mb-4 max-w-[640px]"
+                      className="section-heading font-black leading-[1.05] tracking-tight text-white mb-3 max-w-[min(640px,90vw)]"
                       style={{
-                        fontSize: 'clamp(1.9rem, 8vw, 4.5rem)',
+                        fontSize: 'clamp(1.75rem, 6.5vw, 3.75rem)',
                         textShadow: '0 2px 24px rgba(0,0,0,0.6)',
                       }}
                     >
                       {lang === 'ar' ? item.name_ar : item.name_en}
                     </h2>
-                    <p className="text-white/70 text-xs sm:text-sm mb-4 sm:mb-5 max-w-[420px] leading-relaxed line-clamp-2 sm:line-clamp-none">
-                      {(lang === 'ar' ? item.description_ar : item.description_en) || (lang === 'ar' ? 'اكتشف عروض الشحن الحصرية لهذه اللعبة.' : 'Discover exclusive top-up offers for this game.')}
+                    <p className="text-white/75 text-sm sm:text-base max-w-[min(420px,85vw)] leading-relaxed line-clamp-2 sm:line-clamp-3">
+                      {(lang === 'ar' ? item.description_ar : item.description_en) || (lang === 'ar' ? 'عروض شحن فورية وآمنة لهذه اللعبة.' : 'Instant, secure top-up offers for this game.')}
                     </p>
                   </div>
                 </div>
@@ -312,6 +320,7 @@ export default function ProductCarousel({
           <ChevronRight className="w-5 h-5" />
         </button>
       </div>
+      )}
 
       <div
         className="relative"
@@ -433,8 +442,28 @@ export default function ProductCarousel({
               </React.Fragment>
             );
           })}
+
+          {isAdmin && onAddGame && (
+            <div className="relative flex-shrink-0 flex flex-col items-center snap-start">
+              <button
+                type="button"
+                onClick={() => onAddGame({ showInCarousel: true })}
+                className="group relative flex flex-col items-center justify-center gap-1 px-4 py-3 sm:px-5 sm:py-4 min-w-[80px] sm:min-w-[96px] transition-all duration-300 snap-start hover:bg-white/[0.03]"
+                aria-label={t.addGame || (lang === 'ar' ? 'إضافة لعبة' : 'Add game')}
+              >
+                <div className="h-8 sm:h-10 flex items-center justify-center px-1.5 transition-all duration-300 opacity-50 group-hover:opacity-100 group-hover:scale-[1.02]">
+                  <Plus
+                    className="w-7 h-7 sm:w-8 sm:h-8 text-[var(--accent)] transition-all duration-300"
+                    style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' }}
+                    strokeWidth={2.25}
+                  />
+                </div>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </section>
+    </BorderGlow>
   );
 }

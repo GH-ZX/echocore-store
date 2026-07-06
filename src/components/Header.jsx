@@ -1,19 +1,15 @@
-import { ShoppingCart, User, LogOut, Globe, ShieldCheck, Search, X, Menu, Home, Gamepad2, Flame, HelpCircle, BookOpen, Mail, Loader2, Wallet } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import {
+  ShoppingCart, User, LogOut, Globe, ShieldCheck, Search, X, Menu,
+  Loader2, Wallet, ChevronDown,
+} from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import EchoLogo from './EchoLogo';
+import SiteNav, { MobileNavLinks } from './SiteNav';
 
-const NAV_ITEMS = [
-  { path: '/', icon: Home, labelKey: 'home', fallbackEn: 'Home', fallbackAr: 'الرئيسية' },
-  { path: '/games', icon: Gamepad2, labelKey: 'allGames', fallbackEn: 'All Games', fallbackAr: 'جميع الألعاب' },
-  { path: '/sale', icon: Flame, labelKey: 'saleOffers', fallbackEn: 'Sale Offers', fallbackAr: 'عروض الخصم' },
-  { path: '/how', icon: BookOpen, labelKey: 'howItWorks', fallbackEn: 'How it Works', fallbackAr: 'كيف يعمل' },
-  { path: '/faq', icon: HelpCircle, labelKey: 'faq', fallbackEn: 'FAQ', fallbackAr: 'الأسئلة الشائعة' },
-  { path: '/contact', icon: Mail, labelKey: 'contact', fallbackEn: 'Contact', fallbackAr: 'اتصل بنا' },
-];
-
-const iconBtn = (extra = '') => `header-control header-control-icon ${extra}`.trim();
+const iconBtn = (extra = '') => `header-btn header-btn-icon ${extra}`.trim();
 
 export default function Header({
   t,
@@ -32,18 +28,21 @@ export default function Header({
   const location = useLocation();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const searchRef = useRef(null);
   const inputRef = useRef(null);
+  const profileRef = useRef(null);
+  const menuRef = useRef(null);
 
-  const getNavLabel = (item) => {
-    if (t[item.labelKey]) return t[item.labelKey];
-    return lang === 'ar' ? item.fallbackAr : item.fallbackEn;
-  };
-
-  useEffect(() => {
+  const closeAll = useCallback(() => {
     setIsMenuOpen(false);
     setIsSearchOpen(false);
-  }, [location.pathname]);
+    setProfileOpen(false);
+  }, []);
+
+  useEffect(() => {
+    closeAll();
+  }, [location.pathname, closeAll]);
 
   useEffect(() => {
     document.body.style.overflow = isMenuOpen ? 'hidden' : '';
@@ -51,14 +50,25 @@ export default function Header({
   }, [isMenuOpen]);
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
+    const handlePointerDown = (event) => {
       if (searchRef.current && !searchRef.current.contains(event.target)) {
         setIsSearchOpen(false);
       }
+      if (profileRef.current && !profileRef.current.contains(event.target)) {
+        setProfileOpen(false);
+      }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') closeAll();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [closeAll]);
 
   useEffect(() => {
     if (isSearchOpen && inputRef.current) {
@@ -66,23 +76,14 @@ export default function Header({
     }
   }, [isSearchOpen]);
 
-  const handleSearchToggle = () => {
-    setIsSearchOpen((prev) => !prev);
-  };
-
-  const handleClear = () => {
+  const handleClearSearch = () => {
     onSearchChange('');
     setIsSearchOpen(false);
   };
 
   const handleNav = (path) => {
     navigate(path);
-    setIsMenuOpen(false);
-  };
-
-  const handleLogoutClick = () => {
-    setIsMenuOpen(false);
-    onLogout();
+    closeAll();
   };
 
   const getInitials = (name, email) => {
@@ -95,50 +96,131 @@ export default function Header({
   const cartButton = (extraClass = '') => (
     <button
       ref={cartRef}
+      type="button"
       onClick={() => navigate('/cart')}
-      className={iconBtn(`relative ${extraClass}`)}
-      aria-label="Cart"
+      className={`header-btn header-btn-icon relative ${extraClass}`}
+      aria-label={t.cart || 'Cart'}
     >
-      <ShoppingCart />
+      <ShoppingCart strokeWidth={2} />
       {cartLength > 0 && (
-        <span className="header-cart-badge">{cartLength}</span>
+        <span className="header-cart-badge" aria-hidden="true">{cartLength}</span>
       )}
     </button>
   );
 
-  const profileButton = (compact = false) => (
-    <button
-      type="button"
-      onClick={() => { navigate('/profile'); setIsMenuOpen(false); }}
-      className={`header-control header-control-pill group ${
-        compact ? 'flex-1 min-w-0 !h-12 !min-h-12 !px-3' : 'pl-1.5 pr-3'
-      }`}
-      aria-label={t.myProfile || (lang === 'ar' ? 'ملفي الشخصي' : 'My Profile')}
-    >
-      <div className="header-avatar">
-        {getInitials(user.name, user.email)}
-      </div>
-      <div className={`text-left leading-tight min-w-0 ${compact ? 'flex-1' : 'hidden lg:block'}`}>
-        <div className="text-[10px] text-[var(--text-muted)] group-hover:text-[var(--text-secondary)] transition-colors">
-          {t.myProfile || (lang === 'ar' ? 'ملفي' : 'Profile')}
+  const profileDropdown = user ? (
+    <div ref={profileRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setProfileOpen((prev) => !prev)}
+        className={`header-btn header-profile-trigger ${profileOpen ? 'header-btn--accent' : ''}`}
+        aria-label={t.myProfile || 'Profile'}
+        aria-expanded={profileOpen}
+        aria-haspopup="menu"
+      >
+        <div className="header-avatar" aria-hidden="true">
+          {getInitials(user.name, user.email)}
         </div>
-        <div className="text-sm font-bold text-[var(--accent)] truncate max-w-[100px]">{user.name}</div>
-      </div>
-    </button>
-  );
+        <span className="hidden lg:inline text-sm font-bold text-[var(--text-primary)] max-w-[88px] truncate">
+          {user.name}
+        </span>
+        <ChevronDown
+          className={`w-3.5 h-3.5 transition-transform duration-200 ${profileOpen ? 'rotate-180' : ''}`}
+          strokeWidth={2.5}
+          aria-hidden="true"
+        />
+      </button>
 
-  const desktopActions = (
+      <AnimatePresence>
+        {profileOpen && (
+          <motion.div
+            key="profile-dropdown"
+            role="menu"
+            initial={{ opacity: 0, y: 6, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 4, scale: 0.96 }}
+            transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
+            className="header-profile-dropdown"
+          >
+            <div className="px-3.5 pt-3 pb-2">
+              <div className="flex items-center gap-2.5">
+                <div className="header-avatar w-9 h-9 text-sm" aria-hidden="true">
+                  {getInitials(user.name, user.email)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-bold text-[var(--text-primary)] truncate">{user.name}</div>
+                  <div className="text-[11px] text-[var(--text-muted)] truncate">{user.email}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="header-profile-dd-divider" />
+
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { onRecharge(); setProfileOpen(false); }}
+              className="header-profile-dd-item justify-between"
+            >
+              <span className="flex items-center gap-2.5">
+                <Wallet className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
+                {t.recharge || 'Balance'}
+              </span>
+              <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
+            </button>
+
+            {user?.role === 'admin' && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => handleNav('/dashboard')}
+                className="header-profile-dd-item header-profile-dd-item--accent"
+              >
+                <ShieldCheck className="w-4 h-4" strokeWidth={2} />
+                {t.adminDash}
+              </button>
+            )}
+
+            <div className="header-profile-dd-divider" />
+
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => handleNav('/profile')}
+              className="header-profile-dd-item"
+            >
+              <User className="w-4 h-4" strokeWidth={2} />
+              {t.myProfile || 'My Profile'}
+            </button>
+
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { closeAll(); onLogout(); }}
+              className="header-profile-dd-item header-profile-dd-item--danger"
+            >
+              <LogOut className="w-4 h-4" strokeWidth={2} />
+              {t.logout || 'Sign Out'}
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  ) : null;
+
+  const desktopToolbar = (
     <div className="header-actions">
       <div ref={searchRef} className="header-toolbar">
         <AnimatePresence mode="wait">
           {!isSearchOpen ? (
             <motion.button
               key="search-button"
-              onClick={handleSearchToggle}
+              type="button"
+              onClick={() => setIsSearchOpen(true)}
               className={iconBtn()}
-              aria-label="Search for a game"
+              aria-label={lang === 'ar' ? 'بحث عن لعبة' : 'Search games'}
             >
-              <Search />
+              <Search strokeWidth={2} />
             </motion.button>
           ) : (
             <motion.div
@@ -148,36 +230,29 @@ export default function Header({
               exit={{ width: 0, opacity: 0 }}
               transition={{ type: 'spring', stiffness: 340, damping: 22, mass: 0.85 }}
               className="header-search-field"
-              style={{ minWidth: '170px' }}
             >
-              <div className="pl-2.5 text-[var(--accent)]">
+              <div className="pl-2.5 text-[var(--accent)]" aria-hidden="true">
                 <Search className="w-4 h-4" strokeWidth={2} />
               </div>
               <input
                 ref={inputRef}
-                type="text"
+                type="search"
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
                 placeholder={lang === 'ar' ? 'ابحث عن لعبة...' : 'Search games...'}
-                className="w-[150px] md:w-[190px]"
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') setIsSearchOpen(false);
-                }}
+                className="header-search-input"
+                onKeyDown={(e) => { if (e.key === 'Escape') setIsSearchOpen(false); }}
+                aria-label={lang === 'ar' ? 'بحث عن لعبة' : 'Search games'}
               />
               {searchQuery && (
-                <button
-                  type="button"
-                  onClick={handleClear}
-                  className="header-search-btn"
-                  aria-label="Clear search"
-                >
+                <button type="button" onClick={handleClearSearch} className="header-search-btn" aria-label="Clear search">
                   <X className="w-3.5 h-3.5" strokeWidth={2} />
                 </button>
               )}
               <button
                 type="button"
                 onClick={() => setIsSearchOpen(false)}
-                className="header-search-btn border-l border-[var(--border)] mr-0.5"
+                className="header-search-btn border-l border-[var(--border)]"
                 aria-label="Close search"
               >
                 <X className="w-3.5 h-3.5" strokeWidth={2} />
@@ -189,6 +264,7 @@ export default function Header({
         {!isSearchOpen && <span className="header-toolbar-divider" aria-hidden="true" />}
 
         <button
+          type="button"
           onClick={onLangToggle}
           disabled={langSwitching}
           className={iconBtn()}
@@ -196,229 +272,208 @@ export default function Header({
           aria-busy={langSwitching}
         >
           {langSwitching ? (
-            <Loader2 className="animate-spin text-[var(--accent)]" />
+            <Loader2 className="animate-spin text-[var(--accent)]" strokeWidth={2} />
           ) : (
-            <motion.div
-              key={lang}
-              initial={{ rotate: -120, opacity: 0 }}
-              animate={{ rotate: 0, opacity: 1 }}
-              transition={{ type: 'spring', stiffness: 320, damping: 18 }}
-            >
-              <Globe />
-            </motion.div>
+            <Globe strokeWidth={2} />
           )}
         </button>
-
-        {cartButton()}
       </div>
 
-      {user?.role === 'admin' && (
-        <button
-          type="button"
-          onClick={() => navigate('/dashboard')}
-          className="header-control header-control-pill header-control--accent"
-        >
-          <ShieldCheck />
-          <span className="hidden sm:inline">{t.adminDash}</span>
-        </button>
-      )}
+      {cartButton()}
 
       {user ? (
-        <div className="header-toolbar">
-          <button
-            type="button"
-            onClick={onRecharge}
-            className="header-control header-control-pill"
-            title={t.recharge || 'Recharge Balance'}
-            aria-label={`${t.recharge || 'Recharge'}: $${(user.balance || 0).toFixed(2)}`}
-          >
-            <Wallet />
-            <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
-          </button>
-          <span className="header-toolbar-divider" aria-hidden="true" />
-          {profileButton()}
-          <span className="header-toolbar-divider" aria-hidden="true" />
-          <button
-            type="button"
-            onClick={onLogout}
-            className={iconBtn('header-control--danger')}
-            aria-label="Logout"
-          >
-            <LogOut />
-          </button>
-        </div>
+        profileDropdown
       ) : (
         <button
           type="button"
           onClick={() => navigate('/login')}
-          className="header-control header-control-pill btn btn-primary px-4 text-sm gap-1.5 !py-0 !border-0 shadow-[var(--shadow-glow)]"
+          className="header-btn header-btn--accent gap-1.5 px-3.5 lg:px-4"
         >
-          <User /> {t.login}
+          <User className="w-4 h-4" strokeWidth={2} />
+          <span className="text-sm font-bold">{t.login}</span>
         </button>
       )}
     </div>
   );
 
   return (
-    <header className="sticky top-0 z-50 bg-[var(--bg-header)] backdrop-blur-xl border-b border-[var(--border)] shadow-[0_8px_30px_rgba(0,0,0,0.18)]" dir="ltr">
-      <div className="container mx-auto px-3 sm:px-4 h-14 md:h-20 flex items-center justify-between gap-2">
-        <div
-          className="flex items-center gap-2 sm:gap-3 cursor-pointer group flex-shrink-0 min-w-0"
+    <header className="header-shell sticky top-0" dir="ltr">
+      <div className="header-inner">
+        {/* Logo */}
+        <button
+          type="button"
           onClick={() => navigate('/')}
+          className="header-brand flex-shrink-0 min-w-0 group"
+          aria-label={lang === 'ar' ? 'الصفحة الرئيسية' : 'Home'}
         >
-          <EchoLogo className="w-8 h-8 sm:w-9 sm:h-9 md:w-12 md:h-12 transition-transform group-hover:scale-105 flex-shrink-0" />
-          <div className="flex flex-col min-w-0">
-            <span className="text-base sm:text-xl md:text-2xl font-black tracking-[1px] sm:tracking-[2px] text-transparent bg-clip-text bg-gradient-to-r from-[var(--accent)] to-blue-400 truncate">
-              {t.storeName}
-            </span>
-            <span className="hidden sm:block text-[9px] md:text-[10px] text-[var(--accent)]/70 tracking-[3px] font-semibold -mt-1">STORE</span>
-          </div>
+          <span className="header-brand-mark">
+            <EchoLogo className="header-brand-logo" />
+          </span>
+          <span className="header-brand-text flex flex-col min-w-0 text-left">
+            <span className="header-brand-name truncate">{t.storeName}</span>
+            <span className="header-brand-tag">STORE</span>
+          </span>
+        </button>
+
+        {/* Desktop nav — centered */}
+        <SiteNav
+          t={t}
+          lang={lang}
+          navigate={navigate}
+          className="header-site-nav"
+        />
+
+        {/* Desktop utilities */}
+        <div className="hidden md:flex flex-shrink-0 min-w-0">
+          {desktopToolbar}
         </div>
 
-        <div className="hidden md:flex flex-shrink-0" dir="ltr">
-          {desktopActions}
-        </div>
-
-        <div className="flex md:hidden items-center gap-1.5 flex-shrink-0" dir="ltr">
-          <div className="header-toolbar">
-            {cartButton()}
-            <button
-              onClick={() => setIsMenuOpen((prev) => !prev)}
-              className={iconBtn(isMenuOpen ? 'header-control--accent' : '')}
-              aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
-              aria-expanded={isMenuOpen}
-            >
-              {isMenuOpen ? <X /> : <Menu />}
-            </button>
-          </div>
+        {/* Mobile utilities */}
+        <div className="flex md:hidden items-center gap-1.5 flex-shrink-0">
+          {cartButton()}
+          <button
+            type="button"
+            onClick={() => setIsMenuOpen((prev) => !prev)}
+            className={iconBtn(isMenuOpen ? 'header-btn--accent' : '')}
+            aria-label={isMenuOpen ? (lang === 'ar' ? 'إغلاق القائمة' : 'Close menu') : (lang === 'ar' ? 'فتح القائمة' : 'Open menu')}
+            aria-expanded={isMenuOpen}
+            aria-controls="mobile-nav-drawer"
+          >
+            {isMenuOpen ? <X strokeWidth={2} /> : <Menu strokeWidth={2} />}
+          </button>
         </div>
       </div>
 
-      <AnimatePresence>
-        {isMenuOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="fixed inset-0 top-14 bg-black/60 backdrop-blur-sm z-40 md:hidden"
-              onClick={() => setIsMenuOpen(false)}
-              aria-hidden="true"
-            />
-            <motion.nav
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-              className="fixed left-0 right-0 top-14 z-50 md:hidden bg-[var(--bg-header)] border-b border-[var(--border)] max-h-[calc(100dvh-3.5rem)] overflow-y-auto overscroll-contain"
-              dir={lang === 'ar' ? 'rtl' : 'ltr'}
-            >
-              <div className="container mx-auto px-4 py-4 space-y-4">
-                <div className="flex items-center bg-[var(--bg-surface)] border border-[var(--border)] focus-within:border-[var(--accent)]/70 rounded-xl overflow-hidden shadow-sm">
-                  <div className="pl-3 text-[var(--accent)]">
-                    <Search className="w-4 h-4" strokeWidth={2} />
-                  </div>
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => onSearchChange(e.target.value)}
-                    placeholder={lang === 'ar' ? 'ابحث عن لعبة...' : 'Search games...'}
-                    className="flex-1 bg-transparent outline-none text-base px-3 py-3 placeholder:text-[var(--text-muted)] min-w-0"
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={handleClear}
-                      className="px-3 text-[var(--text-muted)] hover:text-white transition-colors"
-                      aria-label="Clear search"
-                    >
-                      <X className="w-4 h-4" strokeWidth={2} />
-                    </button>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  {NAV_ITEMS.map((item) => {
-                    const Icon = item.icon;
-                    const isActive = location.pathname === item.path;
-                    return (
-                      <button
-                        key={item.path}
-                        onClick={() => handleNav(item.path)}
-                        className={`flex items-center gap-2.5 px-3 h-11 min-h-11 rounded-xl border text-sm font-semibold transition-all ${
-                          isActive
-                            ? 'bg-[var(--accent)]/15 border-[var(--accent)]/40 text-[var(--accent)] shadow-[0_0_0_1px_rgba(34,211,238,0.12)]'
-                            : 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-sec)] hover:border-[var(--accent)]/30'
-                        }`}
-                      >
-                        <Icon className="w-4 h-4 flex-shrink-0" strokeWidth={2} />
-                        <span className="truncate">{getNavLabel(item)}</span>
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {isMenuOpen && (
+            <>
+              <motion.button
+                type="button"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="header-mobile-backdrop md:hidden"
+                onClick={() => setIsMenuOpen(false)}
+                aria-label={lang === 'ar' ? 'إغلاق القائمة' : 'Close menu'}
+              />
+              <motion.div
+                ref={menuRef}
+                id="mobile-nav-drawer"
+                role="dialog"
+                aria-modal="true"
+                aria-label={lang === 'ar' ? 'قائمة التنقل' : 'Navigation menu'}
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 34 }}
+                className="header-mobile-drawer md:hidden"
+                dir={lang === 'ar' ? 'rtl' : 'ltr'}
+              >
+                <div className="header-mobile-drawer-inner">
+                  <label className="header-mobile-search">
+                    <Search className="w-4 h-4 text-[var(--accent)] flex-shrink-0" strokeWidth={2} />
+                    <input
+                      type="search"
+                      value={searchQuery}
+                      onChange={(e) => onSearchChange(e.target.value)}
+                      placeholder={lang === 'ar' ? 'ابحث عن لعبة...' : 'Search games...'}
+                      aria-label={lang === 'ar' ? 'بحث عن لعبة' : 'Search games'}
+                    />
+                    {searchQuery && (
+                      <button type="button" onClick={handleClearSearch} className="header-mobile-search-clear" aria-label="Clear">
+                        <X className="w-4 h-4" strokeWidth={2} />
                       </button>
-                    );
-                  })}
-                </div>
+                    )}
+                  </label>
 
-                <div className="space-y-2 pt-1 border-t border-[var(--border)]">
-                  <button
-                    onClick={() => { onLangToggle(); }}
-                    disabled={langSwitching}
-                    className={`w-full flex items-center justify-between px-4 h-11 min-h-11 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-sm font-semibold text-[var(--text-sec)] hover:border-[var(--accent)]/30 transition-all ${langSwitching ? 'opacity-50 cursor-wait' : ''}`}
-                  >
-                    <span className="flex items-center gap-2.5">
+                  <nav aria-label={lang === 'ar' ? 'التنقل الرئيسي' : 'Main navigation'}>
+                    <MobileNavLinks
+                      t={t}
+                      lang={lang}
+                      location={location}
+                      onNavigate={handleNav}
+                    />
+                  </nav>
+
+                  <div className="header-mobile-divider" />
+
+                  <div className="header-mobile-actions">
+                    <button
+                      type="button"
+                      onClick={() => { onLangToggle(); }}
+                      disabled={langSwitching}
+                      className="header-mobile-action"
+                    >
                       <Globe className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
-                      {lang === 'ar' ? 'English' : 'العربية'}
-                    </span>
-                    <span className="text-xs text-[var(--text-muted)]">{lang === 'ar' ? 'AR' : 'EN'}</span>
-                  </button>
-
-                  {user?.role === 'admin' && (
-                    <button
-                      onClick={() => handleNav('/dashboard')}
-                      className="w-full flex items-center gap-2.5 px-4 h-11 min-h-11 rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/30 text-sm font-semibold text-[var(--accent)]"
-                    >
-                      <ShieldCheck className="w-4 h-4" strokeWidth={2} />
-                      {t.adminDash}
+                      <span>{lang === 'ar' ? 'English' : 'العربية'}</span>
+                      <span className="header-mobile-action-meta">{lang === 'ar' ? 'EN' : 'AR'}</span>
                     </button>
-                  )}
 
-                  {user && (
-                    <button
-                      onClick={() => { onRecharge(); setIsMenuOpen(false); }}
-                      className="w-full flex items-center justify-between px-4 h-11 min-h-11 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-sm font-semibold"
-                    >
-                      <span className="flex items-center gap-2 text-[var(--text-sec)]">
-                        <Wallet className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
-                        {t.recharge || 'Recharge'}
-                      </span>
-                      <span className="font-mono text-[var(--accent)]">${(user.balance || 0).toFixed(2)}</span>
-                    </button>
-                  )}
+                    {user?.role === 'admin' && (
+                      <button type="button" onClick={() => handleNav('/dashboard')} className="header-mobile-action header-mobile-action--accent">
+                        <ShieldCheck className="w-4 h-4" strokeWidth={2} />
+                        <span>{t.adminDash}</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="header-mobile-divider" />
 
                   {user ? (
-                    <div className="flex items-center gap-2">
-                      {profileButton(true)}
+                    <div className="header-mobile-account">
                       <button
-                        onClick={handleLogoutClick}
-                        className={iconBtn('header-control--danger !h-12 !min-h-12 !w-12')}
-                        aria-label="Logout"
+                        type="button"
+                        onClick={() => { onRecharge(); setIsMenuOpen(false); }}
+                        className="header-mobile-action"
                       >
-                        <LogOut />
+                        <Wallet className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
+                        <span>{t.recharge || 'Recharge'}</span>
+                        <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
                       </button>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleNav('/profile')}
+                          className="header-mobile-action flex-1 min-w-0"
+                        >
+                          <div className="header-avatar w-7 h-7 text-[10px] flex-shrink-0">
+                            {getInitials(user.name, user.email)}
+                          </div>
+                          <div className="min-w-0 text-left">
+                            <div className="text-[10px] text-[var(--text-muted)] leading-tight">{t.myProfile || 'Profile'}</div>
+                            <div className="text-sm font-bold text-[var(--accent)] truncate">{user.name}</div>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { closeAll(); onLogout(); }}
+                          className="header-btn header-btn--danger header-btn-icon !w-11 h-11 flex-shrink-0"
+                          aria-label={t.logout || 'Sign out'}
+                        >
+                          <LogOut className="w-4 h-4" strokeWidth={2} />
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <button
+                      type="button"
                       onClick={() => handleNav('/login')}
-                      className="w-full btn btn-primary h-11 min-h-11 text-sm flex items-center justify-center gap-2"
+                      className="header-btn header-btn--accent w-full h-11 text-sm font-bold justify-center gap-2"
                     >
-                      <User className="w-4 h-4" strokeWidth={2} /> {t.login}
+                      <User className="w-4 h-4" strokeWidth={2} />
+                      {t.login}
                     </button>
                   )}
                 </div>
-              </div>
-            </motion.nav>
-          </>
-        )}
-      </AnimatePresence>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
     </header>
   );
 }

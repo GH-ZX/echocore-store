@@ -20,7 +20,7 @@ import {
   normalizeHomeLayout,
 } from '../lib/homeLayout';
 
-function SectionEditor({ section, games, offers, isAr, onChange }) {
+function SectionEditor({ section, games, offers, reviews = [], isAr, t = {}, onChange }) {
   const meta = HOME_SECTION_TYPES[section.type];
 
   return (
@@ -51,17 +51,17 @@ function SectionEditor({ section, games, offers, isAr, onChange }) {
         </div>
       </div>
 
-      {section.type === 'sale_offers' && (
+      {(section.type === 'sale_offers' || section.type === 'suggested_offers') && (
         <div>
           <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-            {isAr ? 'عدد البطاقات' : 'Card limit'}
+            {t.homeSectionCardLimit || (isAr ? 'عدد البطاقات' : 'Card limit')}
           </label>
           <input
             type="number"
             min={1}
-            max={12}
-            value={section.limit ?? 4}
-            onChange={(e) => onChange({ ...section, limit: Number(e.target.value) || 4 })}
+            max={10}
+            value={section.limit ?? 8}
+            onChange={(e) => onChange({ ...section, limit: Number(e.target.value) || 8 })}
             className="w-28 bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
           />
         </div>
@@ -133,6 +133,79 @@ function SectionEditor({ section, games, offers, isAr, onChange }) {
         </div>
       )}
 
+      {section.type === 'customer_reviews' && (
+        <>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-[var(--text-muted)] block mb-1.5">
+                {t.reviewsSectionLimit}
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={section.limit ?? 8}
+                onChange={(e) => onChange({ ...section, limit: Number(e.target.value) || 8 })}
+                className="w-28 bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-[var(--text-muted)] block mb-1.5">
+                {t.reviewsIntervalSeconds}
+              </label>
+              <input
+                type="number"
+                min={3}
+                max={30}
+                value={section.interval_seconds ?? 6}
+                onChange={(e) => onChange({ ...section, interval_seconds: Number(e.target.value) || 6 })}
+                className="w-28 bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
+              />
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-sm py-1">
+            <input
+              type="checkbox"
+              checked={section.show_submit_form !== false}
+              onChange={(e) => onChange({ ...section, show_submit_form: e.target.checked })}
+              className="accent-[var(--accent)]"
+            />
+            <span>{t.reviewsShowSubmitForm}</span>
+          </label>
+          <div>
+            <label className="text-xs text-[var(--text-muted)] block mb-1.5">
+              {t.reviewsPickOptional}
+            </label>
+            <div className="max-h-40 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-2 space-y-1">
+              {reviews.filter((r) => r.status === 'approved').length === 0 ? (
+                <p className="text-xs text-[var(--text-muted)] p-2">{t.reviewsEmptyApproved}</p>
+              ) : (
+                reviews.filter((r) => r.status === 'approved').map((review) => {
+                  const checked = (section.review_ids || []).includes(review.id);
+                  return (
+                    <label key={review.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-surface)] cursor-pointer text-sm">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          const ids = new Set(section.review_ids || []);
+                          if (e.target.checked) ids.add(review.id);
+                          else ids.delete(review.id);
+                          onChange({ ...section, review_ids: [...ids] });
+                        }}
+                        className="accent-[var(--accent)]"
+                      />
+                      <span className="truncate">{review.author_name}</span>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+            <p className="text-[10px] text-[var(--text-muted)] mt-1.5">{t.reviewsPickHelp}</p>
+          </div>
+        </>
+      )}
+
       {meta && (
         <p className="text-[11px] text-[var(--text-muted)]">
           {isAr ? meta.descriptionAr : meta.descriptionEn}
@@ -147,6 +220,7 @@ export default function AdminHomeLayoutSettings({
   lang = 'ar',
   games = [],
   offers = [],
+  reviews = [],
   onSaved,
 }) {
   const isAr = lang === 'ar';
@@ -175,12 +249,19 @@ export default function AdminHomeLayoutSettings({
     load();
   }, []);
 
+  const reorderSections = (fromIndex, toIndex) => {
+    if (fromIndex === toIndex) return;
+    if (fromIndex < 0 || toIndex < 0 || fromIndex >= sections.length || toIndex >= sections.length) return;
+    setSections((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  };
+
   const moveSection = (index, direction) => {
-    const next = [...sections];
-    const target = index + direction;
-    if (target < 0 || target >= next.length) return;
-    [next[index], next[target]] = [next[target], next[index]];
-    setSections(next);
+    reorderSections(index, index + direction);
   };
 
   const removeSection = (id) => {
@@ -225,7 +306,7 @@ export default function AdminHomeLayoutSettings({
       const current = await fetchStoreSettings();
       const layout = normalizeHomeLayout(sections);
       await saveStoreSettings({ ...current, home_layout: layout });
-      setSections(layout);
+      setSections([...layout]);
       setSuccess(t.homeLayoutSaved || (isAr ? 'تم حفظ تخطيط الصفحة الرئيسية' : 'Home layout saved for all users'));
       onSaved?.(layout);
       setTimeout(() => setSuccess(''), 3000);
@@ -280,7 +361,12 @@ export default function AdminHomeLayoutSettings({
                   }`}
                 >
                   <div className="flex items-center gap-2 p-3 sm:p-4">
-                    <GripVertical className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0" />
+                    <div className="flex flex-col items-center gap-0.5 flex-shrink-0 w-8">
+                      <GripVertical className="w-4 h-4 text-[var(--text-muted)]" />
+                      <span className="text-[10px] font-bold text-[var(--accent)] tabular-nums">
+                        {index + 1}
+                      </span>
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-sm sm:text-base truncate">
                         {isAr ? (section.title_ar || meta?.labelAr) : (section.title_en || meta?.labelEn)}
@@ -300,7 +386,8 @@ export default function AdminHomeLayoutSettings({
                         onClick={() => moveSection(index, -1)}
                         disabled={index === 0}
                         className="p-2 rounded-lg border border-[var(--border)] hover:border-[var(--accent)]/40 disabled:opacity-40"
-                        aria-label="Move up"
+                        aria-label={t.homeSectionMoveUp || (isAr ? 'تحريك لأعلى' : 'Move up')}
+                        title={t.homeSectionMoveUp || (isAr ? 'تحريك لأعلى' : 'Move up')}
                       >
                         <ChevronUp className="w-4 h-4" />
                       </button>
@@ -309,7 +396,8 @@ export default function AdminHomeLayoutSettings({
                         onClick={() => moveSection(index, 1)}
                         disabled={index === sections.length - 1}
                         className="p-2 rounded-lg border border-[var(--border)] hover:border-[var(--accent)]/40 disabled:opacity-40"
-                        aria-label="Move down"
+                        aria-label={t.homeSectionMoveDown || (isAr ? 'تحريك لأسفل' : 'Move down')}
+                        title={t.homeSectionMoveDown || (isAr ? 'تحريك لأسفل' : 'Move down')}
                       >
                         <ChevronDown className="w-4 h-4" />
                       </button>
@@ -348,7 +436,9 @@ export default function AdminHomeLayoutSettings({
                         section={section}
                         games={games}
                         offers={offers}
+                        reviews={reviews}
                         isAr={isAr}
+                        t={t}
                         onChange={(next) => updateSection(section.id, next)}
                       />
                     </div>

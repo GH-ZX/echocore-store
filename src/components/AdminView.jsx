@@ -1,11 +1,23 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Trash2, Upload, Link as LinkIcon, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
+import { useLocation } from 'react-router-dom';
+import { Trash2, Upload, Link as LinkIcon, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid, MessageSquare } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import ImageFocusPicker from './ImageFocusPicker';
-import GameImageSearch from './GameImageSearch';
-import AdminPaymentsSettings from './AdminPaymentsSettings';
-import AdminThemeSettings from './AdminThemeSettings';
-import AdminHomeLayoutSettings from './AdminHomeLayoutSettings';
+import { uploadImage } from '../lib/uploadImage';
+
+const ImageFocusPicker = lazy(() => import('./ImageFocusPicker'));
+const GameImageSearch = lazy(() => import('./GameImageSearch'));
+const AdminPaymentsSettings = lazy(() => import('./AdminPaymentsSettings'));
+const AdminThemeSettings = lazy(() => import('./AdminThemeSettings'));
+const AdminHomeLayoutSettings = lazy(() => import('./AdminHomeLayoutSettings'));
+const AdminReviewsManager = lazy(() => import('./AdminReviewsManager'));
+
+function AdminTabLoader() {
+  return (
+    <div className="flex items-center justify-center py-16 text-[var(--text-sec)] animate-pulse text-sm">
+      Loading...
+    </div>
+  );
+}
 
 export default function AdminView({ 
   t, 
@@ -24,8 +36,18 @@ export default function AdminView({
   onPaymentSettingsSaved,
   onThemeSaved,
   onHomeLayoutSaved,
+  reviews = [],
+  onReviewsChanged,
 }) {
-  const [activeTab, setActiveTab] = useState('overview');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(() => location.state?.adminTab || 'overview');
+  const tabButtonRefs = useRef({});
+
+  useEffect(() => {
+    if (location.state?.adminTab) {
+      setActiveTab(location.state.adminTab);
+    }
+  }, [location.state?.adminTab]);
   const [newProduct, setNewProduct] = useState({
     game_id: '',
     name_en: '',
@@ -39,7 +61,6 @@ export default function AdminView({
     is_sale: false,
     original_price: ''
   });
-  const [coverFile, setCoverFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [saleCoverFile, setSaleCoverFile] = useState(null);
 
@@ -100,6 +121,14 @@ export default function AdminView({
     : offers;
 
   useEffect(() => {
+    tabButtonRefs.current[activeTab]?.scrollIntoView({
+      inline: 'center',
+      block: 'nearest',
+      behavior: 'smooth',
+    });
+  }, [activeTab]);
+
+  useEffect(() => {
     if (gameCoverFile) {
       const url = URL.createObjectURL(gameCoverFile);
       setGameCoverPreviewUrl(url);
@@ -109,31 +138,6 @@ export default function AdminView({
   }, [gameCoverFile, newGame.image_url]);
 
   const gameCoverForFocus = useMemo(() => gameCoverPreviewUrl, [gameCoverPreviewUrl]);
-
-  // Upload helper
-  const uploadImage = async (file, prefix = 'product') => {
-    if (!file) return null;
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${prefix}-${Date.now()}.${fileExt}`;
-
-    setUploading(true);
-    const { data, error } = await supabase.storage
-      .from('product-images')
-      .upload(fileName, file, { upsert: true });
-
-    setUploading(false);
-
-    if (error) {
-      alert(t.imageUploadFailed || ('Image upload failed: ' + error.message + '\nMake sure storage policies allow authenticated uploads.\n\nRun fix_sale_upload_rls.sql (or full schema_games_offers.sql) in Supabase SQL editor.'));
-      return null;
-    }
-
-    const { data: { publicUrl } } = supabase.storage
-      .from('product-images')
-      .getPublicUrl(fileName);
-
-    return publicUrl;
-  };
 
   const handleAddGame = async (e) => {
     e.preventDefault();
@@ -150,15 +154,25 @@ export default function AdminView({
     try {
       if (gameLogoFile) {
         setGameUploading(true);
-        const uploadedLogo = await uploadImage(gameLogoFile, 'game-logo');
-        setGameUploading(false);
-        if (uploadedLogo) finalLogo = uploadedLogo;
+        try {
+          const uploadedLogo = await uploadImage(gameLogoFile, 'game-logo');
+          if (uploadedLogo) finalLogo = uploadedLogo;
+        } catch (uploadErr) {
+          throw new Error(t.imageUploadFailed || (uploadErr.message + '\nMake sure storage policies allow authenticated uploads.\n\nRun fix_sale_upload_rls.sql in Supabase SQL editor.'));
+        } finally {
+          setGameUploading(false);
+        }
       }
       if (gameCoverFile) {
         setGameUploading(true);
-        const uploaded = await uploadImage(gameCoverFile, 'game-cover');
-        setGameUploading(false);
-        if (uploaded) finalImage = uploaded;
+        try {
+          const uploaded = await uploadImage(gameCoverFile, 'game-cover');
+          if (uploaded) finalImage = uploaded;
+        } catch (uploadErr) {
+          throw new Error(t.imageUploadFailed || (uploadErr.message + '\nMake sure storage policies allow authenticated uploads.\n\nRun fix_sale_upload_rls.sql in Supabase SQL editor.'));
+        } finally {
+          setGameUploading(false);
+        }
       }
 
       const gameData = {
@@ -289,8 +303,15 @@ export default function AdminView({
       // Handle sale photo upload
       let finalSaleImage = newProduct.sale_image_url;
       if (saleCoverFile) {
-        const uploaded = await uploadImage(saleCoverFile, 'sale');
-        if (uploaded) finalSaleImage = uploaded;
+        setUploading(true);
+        try {
+          const uploaded = await uploadImage(saleCoverFile, 'sale');
+          if (uploaded) finalSaleImage = uploaded;
+        } catch (uploadErr) {
+          throw new Error(t.imageUploadFailed || (uploadErr.message + '\nMake sure storage policies allow authenticated uploads.\n\nRun fix_sale_upload_rls.sql in Supabase SQL editor.'));
+        } finally {
+          setUploading(false);
+        }
       }
 
       // Offers do not use main image or amount. One description used for both languages.
@@ -337,7 +358,6 @@ export default function AdminView({
       is_sale: false,
       original_price: ''
     });
-    setCoverFile(null);
     setSaleCoverFile(null);
     setEditingId(null);
     setProductFormError('');
@@ -359,7 +379,6 @@ export default function AdminView({
       is_sale: !!product.is_sale,
       original_price: product.original_price || ''
     });
-    setCoverFile(null);
     setSaleCoverFile(null);
     // Scroll to form or switch tab if needed
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -372,46 +391,52 @@ export default function AdminView({
   const recentOrders = [...orders].slice(0, 5);
 
   return (
-    <div className="max-w-7xl mx-auto mt-6 animate-fade-in">
-      {/* Dashboard Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-black">{t.adminDashboard}</h1>
-          <p className="text-[var(--text-sec)]">{t.manageYourStore}</p>
+    <div className="admin-shell max-w-7xl mx-auto mt-4 sm:mt-6 animate-fade-in">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-5 sm:mb-6">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-black">{t.adminDashboard}</h1>
+          <p className="text-sm sm:text-base text-[var(--text-sec)]">{t.manageYourStore}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 self-start sm:self-auto flex-shrink-0">
           {refreshProducts && (
-            <button onClick={refreshProducts} className="btn btn-secondary flex items-center gap-2 text-sm" title={t.refresh}>
-              <RefreshCw className="w-4 h-4" /> {t.refresh}
+            <button onClick={refreshProducts} className="btn btn-secondary flex items-center gap-2 text-sm px-3 sm:px-4" title={t.refresh}>
+              <RefreshCw className="w-4 h-4" />
+              <span className="hidden sm:inline">{t.refresh}</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-[var(--border)] mb-6">
-        {[
-          { id: 'overview', label: t.overview, icon: BarChart3 },
-          { id: 'products', label: t.gamesAndOffers, icon: Package },
-          { id: 'orders', label: t.ordersTab, icon: ShoppingCart },
-          { id: 'payments', label: t.paymentsTab || (lang === 'ar' ? 'المدفوعات' : 'Payments'), icon: Wallet },
-          { id: 'theme', label: t.themeTab || (lang === 'ar' ? 'الثيم' : 'Theme'), icon: Palette },
-          { id: 'home', label: t.homeLayoutTab || (lang === 'ar' ? 'الرئيسية' : 'Home'), icon: LayoutGrid },
-        ].map(tab => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-6 py-3 font-bold border-b-2 transition-all ${isActive 
-                ? 'border-[var(--accent)] text-[var(--accent)]' 
-                : 'border-transparent text-[var(--text-sec)] hover:text-white'}`}
-            >
-              <Icon className="w-4 h-4" /> {tab.label}
-            </button>
-          );
-        })}
+      {/* Tabs — horizontal scroll on small screens */}
+      <div className="admin-tabs-scroll -mx-1 px-1 mb-5 sm:mb-6">
+        <div className="flex border-b border-[var(--border)] min-w-max sm:min-w-0">
+          {[
+            { id: 'overview', label: t.overview, shortLabel: t.tabOverviewShort, icon: BarChart3 },
+            { id: 'products', label: t.gamesAndOffers, shortLabel: t.tabGamesShort, icon: Package },
+            { id: 'orders', label: t.ordersTab, shortLabel: t.tabOrdersShort, icon: ShoppingCart },
+            { id: 'payments', label: t.paymentsTab, shortLabel: t.tabPaymentsShort, icon: Wallet },
+            { id: 'theme', label: t.themeTab, shortLabel: t.tabThemeShort, icon: Palette },
+            { id: 'home', label: t.homeLayoutTab, shortLabel: t.tabHomeShort, icon: LayoutGrid },
+            { id: 'reviews', label: t.reviewsTab, shortLabel: t.tabReviewsShort, icon: MessageSquare },
+          ].map(tab => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                ref={(el) => { tabButtonRefs.current[tab.id] = el; }}
+                onClick={() => setActiveTab(tab.id)}
+                className={`admin-tab-btn flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2.5 sm:py-3 text-sm sm:text-base font-bold border-b-2 transition-all flex-shrink-0 whitespace-nowrap ${isActive
+                  ? 'border-[var(--dash-tab-active)] text-[var(--dash-tab-active)]'
+                  : 'border-transparent text-[var(--text-sec)] hover:text-[var(--text-primary)]'}`}
+              >
+                <Icon className="w-4 h-4 flex-shrink-0" />
+                <span className="sm:hidden">{tab.shortLabel}</span>
+                <span className="hidden sm:inline">{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* OVERVIEW TAB */}
@@ -419,57 +444,65 @@ export default function AdminView({
         <div className="space-y-8">
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="card p-4 sm:p-6">
+            <div className="dash-stat-card card p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-[var(--text-sec)] text-sm">{t.totalOffers}</div>
-                  <div className="text-4xl font-black mt-1">{totalProducts}</div>
+                  <div className="text-3xl sm:text-4xl font-black mt-1">{totalProducts}</div>
                 </div>
-                <Package className="w-10 h-10 text-[var(--accent)] opacity-70" />
+                <div className="dash-stat-icon">
+                  <Package className="w-8 h-8 sm:w-10 sm:h-10 text-[var(--accent)]" />
+                </div>
               </div>
             </div>
 
-            <div className="card p-4 sm:p-6">
+            <div className="dash-stat-card card p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-[var(--text-sec)] text-sm">{t.totalOrders}</div>
-                  <div className="text-4xl font-black mt-1">{totalOrders}</div>
+                  <div className="text-3xl sm:text-4xl font-black mt-1">{totalOrders}</div>
                 </div>
-                <ShoppingCart className="w-10 h-10 text-[var(--accent)] opacity-70" />
+                <div className="dash-stat-icon">
+                  <ShoppingCart className="w-8 h-8 sm:w-10 sm:h-10 text-[var(--accent)]" />
+                </div>
               </div>
             </div>
 
-            <div className="card p-4 sm:p-6">
+            <div className="dash-stat-card dash-stat-card--success card p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-[var(--text-sec)] text-sm">{t.totalRevenue}</div>
-                  <div className="text-4xl font-black mt-1 text-emerald-400">${totalRevenue}</div>
+                  <div className="text-3xl sm:text-4xl font-black mt-1 text-[var(--success)]">${totalRevenue}</div>
                 </div>
-                <BarChart3 className="w-10 h-10 text-emerald-400 opacity-70" />
+                <div className="dash-stat-icon dash-stat-icon--success">
+                  <BarChart3 className="w-8 h-8 sm:w-10 sm:h-10 text-[var(--success)]" />
+                </div>
               </div>
             </div>
 
-            <div className="card p-4 sm:p-6">
+            <div className="dash-stat-card card p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-[var(--text-sec)] text-sm">{t.avgOrderValue}</div>
-                  <div className="text-4xl font-black mt-1">
+                  <div className="text-3xl sm:text-4xl font-black mt-1">
                     ${totalOrders > 0 ? (totalRevenue / totalOrders).toFixed(2) : '0.00'}
                   </div>
                 </div>
-                <Plus className="w-10 h-10 text-[var(--accent)] opacity-70" />
+                <div className="dash-stat-icon">
+                  <Plus className="w-8 h-8 sm:w-10 sm:h-10 text-[var(--accent)]" />
+                </div>
               </div>
             </div>
           </div>
 
           {/* Recent Orders */}
-          <div className="card p-6">
-            <div className="flex justify-between items-center mb-4">
-              <div>
-                <h3 className="font-bold text-xl">{t.recentOrders}</h3>
+          <div className="card p-4 sm:p-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
+              <div className="min-w-0">
+                <h3 className="font-bold text-lg sm:text-xl">{t.recentOrders}</h3>
                 <p className="text-xs text-[var(--text-muted)]">{t.last5Orders}</p>
               </div>
-              <button onClick={() => setActiveTab('orders')} className="text-sm text-[var(--accent)] hover:underline">View All →</button>
+              <button onClick={() => setActiveTab('orders')} className="text-sm text-[var(--accent)] hover:underline self-start sm:self-auto flex-shrink-0">View All →</button>
             </div>
 
             {loadingOrders ? (
@@ -487,14 +520,14 @@ export default function AdminView({
                         setActiveTab('orders');
                         setExpandedOrderId(order.id);
                       }}
-                      className="flex justify-between items-center p-3 bg-[var(--bg-primary)] rounded-xl border border-[var(--border)] hover:border-[var(--accent)]/30 cursor-pointer"
+                      className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between p-3 sm:p-4 bg-[var(--bg-primary)] rounded-xl border border-[var(--border)] hover:border-[var(--accent)]/30 cursor-pointer"
                     >
-                      <div>
+                      <div className="min-w-0">
                         <div className="font-mono text-xs text-[var(--text-muted)]">#{order.id.slice(0,8)}</div>
-                        <div className="text-sm">{customer}</div>
+                        <div className="text-sm truncate">{customer}</div>
                         <div className="text-xs text-[var(--text-muted)]">{new Date(order.created_at).toLocaleDateString()}</div>
                       </div>
-                      <div className="text-right">
+                      <div className="sm:text-right flex-shrink-0">
                         <div className="font-bold text-lg">${parseFloat(order.total || 0).toFixed(2)}</div>
                         <div className="text-xs text-[var(--text-sec)]">{order.payment_method || 'N/A'} • {(order.order_items?.length || 0)} items</div>
                       </div>
@@ -513,10 +546,10 @@ export default function AdminView({
           {/* GAMES MANAGEMENT (like offers sector) */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Add / Edit Game Form */}
-            <div className="lg:col-span-1 card p-6 h-fit">
+            <div className="lg:col-span-1 card p-4 sm:p-6 h-fit">
               <div className="flex items-center gap-2 mb-4">
                 <Plus className="w-5 h-5 text-[var(--accent)]" />
-                <h3 className="text-xl font-bold">{editingGameId ? t.editGame : t.addNewGame}</h3>
+                <h3 className="text-lg sm:text-xl font-bold">{editingGameId ? t.editGame : t.addNewGame}</h3>
               </div>
               <p className="text-xs text-[var(--text-muted)] -mt-2 mb-3">{t.addOffersBelow}</p>
 
@@ -633,24 +666,26 @@ export default function AdminView({
                   </p>
                 </div>
 
-                <GameImageSearch
-                  gameName={newGame.name_en}
-                  t={t}
-                  lang={lang}
-                  onSelectCover={(url) => {
-                    setGameCoverFile(null);
-                    setNewGame((prev) => ({
-                      ...prev,
-                      image_url: url,
-                      carousel_focus_x: 50,
-                      carousel_focus_y: 50,
-                    }));
-                  }}
-                  onSelectLogo={(url) => {
-                    setGameLogoFile(null);
-                    setNewGame((prev) => ({ ...prev, logo_url: url }));
-                  }}
-                />
+                <Suspense fallback={<AdminTabLoader />}>
+                  <GameImageSearch
+                    gameName={newGame.name_en}
+                    t={t}
+                    lang={lang}
+                    onSelectCover={(url) => {
+                      setGameCoverFile(null);
+                      setNewGame((prev) => ({
+                        ...prev,
+                        image_url: url,
+                        carousel_focus_x: 50,
+                        carousel_focus_y: 50,
+                      }));
+                    }}
+                    onSelectLogo={(url) => {
+                      setGameLogoFile(null);
+                      setNewGame((prev) => ({ ...prev, logo_url: url }));
+                    }}
+                  />
+                </Suspense>
 
                 <div>
                   <label className="text-xs font-semibold text-[var(--text-sec)] mb-1.5 block flex items-center gap-1">
@@ -705,6 +740,7 @@ export default function AdminView({
                 </div>
 
                 {gameCoverForFocus && (
+                  <Suspense fallback={<AdminTabLoader />}>
                   <ImageFocusPicker
                     imageSrc={gameCoverForFocus}
                     focusX={newGame.carousel_focus_x ?? 50}
@@ -713,6 +749,7 @@ export default function AdminView({
                     t={t}
                     lang={lang}
                   />
+                  </Suspense>
                 )}
 
                 {gameFormError && (
@@ -749,22 +786,24 @@ export default function AdminView({
             </div>
 
             {/* GAMES LIST */}
-            <div className="lg:col-span-2 card p-6">
+            <div className="lg:col-span-2 card p-4 sm:p-6">
               <h4 className="font-bold mb-4">{t.existingGames} <span className="text-xs font-normal text-[var(--text-muted)]">({t.clickEditToUpdate})</span></h4>
               {games.length === 0 ? (
                 <div className="text-[var(--text-sec)]">{t.noGamesYet}</div>
               ) : (
                 <div className="space-y-2">
                   {games.map(g => (
-                    <div key={g.id} className="flex justify-between items-center p-2 bg-[var(--bg-primary)] rounded hover:bg-[var(--bg-elevated)]">
-                      <div className="flex items-center gap-2">
-                        {g.logo_url && <img src={g.logo_url} alt="" className="h-6 w-6 object-contain rounded" onError={e=>e.target.style.display='none'} />}
-                        <span>{lang === 'ar' ? g.name_ar : g.name_en} ({g.points_name}) — {g.redemption_method || 'both'}</span>
-                        {Array.isArray(g.servers) && g.servers.length > 0 && (
-                          <span className="text-[10px] ml-2 text-[var(--accent)]/80">{g.servers.join(' • ')}</span>
-                        )}
+                    <div key={g.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between p-3 bg-[var(--bg-primary)] rounded-xl hover:bg-[var(--bg-elevated)]">
+                      <div className="flex items-start gap-2 min-w-0 flex-1">
+                        {g.logo_url && <img src={g.logo_url} alt="" className="h-6 w-6 object-contain rounded flex-shrink-0" onError={e=>e.target.style.display='none'} />}
+                        <div className="min-w-0">
+                          <div className="text-sm break-words">{lang === 'ar' ? g.name_ar : g.name_en} ({g.points_name}) — {g.redemption_method || 'both'}</div>
+                          {Array.isArray(g.servers) && g.servers.length > 0 && (
+                            <div className="text-[10px] mt-1 text-[var(--accent)]/80 break-words">{g.servers.join(' • ')}</div>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 self-end sm:self-auto flex-shrink-0">
                         <button onClick={() => startEditGame(g)} className="p-1 text-[var(--accent)] hover:text-white" title={t.edit}>
                           <Edit className="w-4 h-4" />
                         </button>
@@ -784,15 +823,15 @@ export default function AdminView({
           {/* OFFERS / PRODUCTS SECTION */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Add / Upload Offer Form */}
-            <div className="lg:col-span-1 card p-6 h-fit">
+            <div className="lg:col-span-1 card p-4 sm:p-6 h-fit">
               <div className="flex items-center gap-2 mb-5">
                 <Plus className="w-5 h-5 text-[var(--accent)]" />
-                <h3 className="text-xl font-bold">{editingId ? t.editOffer : t.addNewOffer}</h3>
+                <h3 className="text-lg sm:text-xl font-bold">{editingId ? t.editOffer : t.addNewOffer}</h3>
               </div>
               <p className="text-xs text-[var(--text-muted)] -mt-2 mb-3">{t.addGamesAbove || 'Add new games using the section above.'}</p>
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <input required placeholder={t.nameEnglish} value={newProduct.name_en} onChange={e => setNewProduct({ ...newProduct, name_en: e.target.value })} className="input" />
                 <input placeholder={t.nameArabicOptional} value={newProduct.name_ar} onChange={e => setNewProduct({ ...newProduct, name_ar: e.target.value })} className="input" />
               </div>
@@ -814,7 +853,7 @@ export default function AdminView({
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <input required type="number" step="0.01" placeholder={t.price} value={newProduct.price} onChange={e => setNewProduct({ ...newProduct, price: e.target.value })} className="input" />
                 <input placeholder={t.regionOptional} value={newProduct.region || ''} onChange={e => setNewProduct({ ...newProduct, region: e.target.value })} className="input" />
               </div>
@@ -913,24 +952,24 @@ export default function AdminView({
           </div>
 
           {/* Offers List */}
-          <div className="lg:col-span-2 card p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
+          <div className="lg:col-span-2 card p-4 sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+              <div className="min-w-0">
                 <span className="font-bold">{filteredOffersForList.length} {t.offersCount || 'Offers'}</span>
                 {filterGameId && <span className="text-xs text-[var(--text-sec)] ml-2">{t.filtered}</span>}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                 <select 
                   value={filterGameId} 
                   onChange={e => setFilterGameId(e.target.value)}
-                  className="input text-xs py-1"
+                  className="input text-xs py-2 w-full sm:w-auto min-w-0"
                 >
                   <option value="">{t.allGamesOption || 'All Games'}</option>
                   {games.map(g => (
                     <option key={g.id} value={g.id}>{lang === 'ar' ? g.name_ar : g.name_en}</option>
                   ))}
                 </select>
-                <button onClick={() => setActiveTab('overview')} className="text-xs text-[var(--accent)] hover:underline">{t.backToOverview || 'Back to Overview'}</button>
+                <button onClick={() => setActiveTab('overview')} className="text-xs text-[var(--accent)] hover:underline text-left sm:text-right whitespace-nowrap">{t.backToOverview || 'Back to Overview'}</button>
               </div>
             </div>
 
@@ -940,7 +979,7 @@ export default function AdminView({
                   const game = gamesMap[offer.game_id];
                   const img = offer.sale_image_url || offer.image_url;
                   return (
-                    <div key={offer.id} className="flex items-center gap-4 p-3 bg-[var(--bg-primary)] rounded-2xl border border-[var(--border)] hover:border-[var(--accent)]/40 group">
+                    <div key={offer.id} className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-[var(--bg-primary)] rounded-2xl border border-[var(--border)] hover:border-[var(--accent)]/40 group">
                       {img && (
                         <img 
                           src={img} 
@@ -967,7 +1006,7 @@ export default function AdminView({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-1 self-end sm:self-auto opacity-100 sm:opacity-60 sm:group-hover:opacity-100 transition-opacity">
                         <button 
                           onClick={() => startEdit(offer)} 
                           className="p-2 text-[var(--accent)] hover:bg-[var(--accent)]/10 rounded-xl"
@@ -999,13 +1038,18 @@ export default function AdminView({
 
       {/* ORDERS TAB */}
       {activeTab === 'orders' && (
-        <div className="card p-6">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h3 className="font-bold text-xl">{t.ordersTab || 'Orders'} ({orders.length})</h3>
+        <div className="card p-4 sm:p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-5">
+            <div className="min-w-0">
+              <h3 className="font-bold text-lg sm:text-xl">{t.ordersTab || 'Orders'} ({orders.length})</h3>
               <p className="text-xs text-[var(--text-muted)] mt-0.5">{t.clickAnyRow || 'Click any row to see details and customer info'}</p>
             </div>
-            {refreshOrders && <button onClick={refreshOrders} className="text-sm btn btn-secondary">Refresh</button>}
+            {refreshOrders && (
+              <button onClick={refreshOrders} className="text-sm btn btn-secondary self-start sm:self-auto flex-shrink-0">
+                <RefreshCw className="w-4 h-4 sm:mr-1" />
+                <span className="hidden sm:inline">{t.refresh || 'Refresh'}</span>
+              </button>
+            )}
           </div>
 
           {loadingOrders ? (
@@ -1016,8 +1060,64 @@ export default function AdminView({
               <p className="text-xs text-[var(--text-muted)] mt-2">Make sure you are logged in as admin, your profile has role='admin', and RLS policies for orders are applied.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <>
+            <div className="md:hidden space-y-3">
+              {orders.map(order => {
+                const isExpanded = expandedOrderId === order.id;
+                const items = order.order_items || [];
+                const customer = order.profiles?.name || (order.user_id ? `User ${order.user_id.slice(0, 8)}` : 'Unknown');
+                return (
+                  <div
+                    key={order.id}
+                    className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] overflow-hidden"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
+                      className="w-full text-left p-4 space-y-2"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-mono text-xs text-[var(--text-muted)]">#{order.id.slice(0, 8)}...</div>
+                          <div className="font-medium text-sm mt-0.5 truncate">{customer}</div>
+                          <div className="text-xs text-[var(--text-muted)] mt-1">{new Date(order.created_at).toLocaleString()}</div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="font-bold text-[var(--accent)]">${parseFloat(order.total || 0).toFixed(2)}</div>
+                          <div className="text-[10px] text-[var(--text-sec)] mt-1 capitalize">{order.payment_method || '—'}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-[var(--text-sec)]">
+                        <span>{items.length} {t.items || 'items'}</span>
+                        <span>{isExpanded ? '−' : '+'}</span>
+                      </div>
+                    </button>
+                    {isExpanded && (
+                      <div className="px-4 pb-4 pt-0 border-t border-[var(--border)] text-sm">
+                        <div className="flex flex-col gap-1 mb-3 text-xs">
+                          <div><span className="text-[var(--text-muted)]">{t.customerLabel || 'Customer:'}</span> <span className="font-medium">{customer}</span></div>
+                          <div><span className="text-[var(--text-muted)]">{t.statusLabel || 'Status:'}</span> <span className="capitalize text-emerald-400">{order.status || 'completed'}</span></div>
+                          <div><span className="text-[var(--text-muted)]">{t.payment || 'Payment:'}</span> <span className="capitalize">{order.payment_method || '—'}</span></div>
+                        </div>
+                        <div className="text-[var(--text-sec)] mb-2 text-xs font-semibold uppercase tracking-wider">{t.itemsLabel || 'Items'}</div>
+                        <div className="space-y-1">
+                          {items.length > 0 ? items.map((item, idx) => (
+                            <div key={idx} className="flex justify-between gap-3 text-xs py-0.5">
+                              <span className="min-w-0 break-words">{item.name_snapshot}</span>
+                              <span className="font-mono text-[var(--accent)] flex-shrink-0">${parseFloat(item.price).toFixed(2)} × {item.quantity || 1}</span>
+                            </div>
+                          )) : (
+                            <div className="text-[var(--text-muted)] text-xs">{t.noItemsRecorded || 'No items recorded'}</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm min-w-[720px]">
                 <thead>
                   <tr className="text-left text-[var(--text-sec)] border-b border-[var(--border)]">
                     <th className="py-3 pr-4">{t.orderId || 'Order ID'}</th>
@@ -1090,38 +1190,55 @@ export default function AdminView({
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
       )}
 
       {activeTab === 'payments' && (
-        <AdminPaymentsSettings
-          t={t}
-          lang={lang}
-          onSaved={onPaymentSettingsSaved}
-        />
+        <Suspense fallback={<AdminTabLoader />}>
+          <AdminPaymentsSettings
+            t={t}
+            lang={lang}
+            onSaved={onPaymentSettingsSaved}
+          />
+        </Suspense>
       )}
 
       {activeTab === 'theme' && (
-        <AdminThemeSettings
-          t={t}
-          lang={lang}
-          onSaved={onThemeSaved}
-        />
+        <Suspense fallback={<AdminTabLoader />}>
+          <AdminThemeSettings
+            t={t}
+            lang={lang}
+            onSaved={onThemeSaved}
+          />
+        </Suspense>
       )}
 
       {activeTab === 'home' && (
-        <AdminHomeLayoutSettings
-          t={t}
-          lang={lang}
-          games={games}
-          offers={offers}
-          onSaved={onHomeLayoutSaved}
-        />
+        <Suspense fallback={<AdminTabLoader />}>
+          <AdminHomeLayoutSettings
+            t={t}
+            lang={lang}
+            games={games}
+            offers={offers}
+            reviews={reviews}
+            onSaved={onHomeLayoutSaved}
+          />
+        </Suspense>
+      )}
+
+      {activeTab === 'reviews' && (
+        <Suspense fallback={<AdminTabLoader />}>
+          <AdminReviewsManager
+            t={t}
+            onChanged={onReviewsChanged}
+          />
+        </Suspense>
       )}
 
       <div className="text-xs text-center text-[var(--text-muted)] mt-8">
-        {lang === 'ar' ? (t.allDataLiveAr || 'جميع البيانات مباشرة من Supabase • المسؤولون فقط يمكنهم الوصول إلى هذه اللوحة') : (t.allDataLive || 'All data is live from Supabase • Only admins can access this panel')}
+        {t.allDataLive}
       </div>
     </div>
   );

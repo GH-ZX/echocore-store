@@ -36,7 +36,7 @@ export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComp
         const result = await submitOrder(cart, selectedMethod);
         onComplete(result);
       } catch (e) {
-        alert('Checkout failed. ' + (e.message || ''));
+        alert((t.checkoutFailed || 'Checkout failed') + ': ' + (e.message || ''));
       } finally {
         setIsProcessing(false);
       }
@@ -65,7 +65,7 @@ export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComp
         onComplete(result);
       }, 700);
     } catch (e) {
-      alert('Payment failed. ' + (e.message || ''));
+      alert((t.paymentFailed || 'Payment failed') + ': ' + (e.message || ''));
       setIsProcessing(false);
       setShowSimModal(false);
     }
@@ -76,10 +76,10 @@ export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComp
       <div className="card p-8 md:p-12">
         <h2 className="text-3xl font-black mb-2 text-center">{t.paymentMethod}</h2>
         <div className="text-center text-sm text-[var(--text-sec)] mb-3">
-          Order total: <span className="font-mono font-bold text-[var(--accent)]">${total}</span>
+          {t.orderTotal}: <span className="font-mono font-bold text-[var(--accent)]">${total}</span>
         </div>
         <div className="text-center text-xs mb-6 text-[var(--text-muted)]">
-          {t.currentBalance ? `${t.currentBalance}: ` : 'Your balance: '}<span className="font-mono">${currentBalance.toFixed(2)}</span>
+          <span>{t.currentBalance}:</span> <span className="font-mono">${currentBalance.toFixed(2)}</span>
         </div>
 
         <div className="space-y-3 mb-8">
@@ -113,7 +113,7 @@ export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComp
                     )}
                   </div>
                   {isBalance && (
-                    <div className="text-[10px] text-emerald-400">{t.useBalance || 'Deduct directly from your account balance'}</div>
+                    <div className="text-[10px] text-emerald-400">{t.balanceUsed}</div>
                   )}
                 </div>
                 {isBalance && !hasEnoughBalance && (
@@ -129,11 +129,11 @@ export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComp
           disabled={isProcessing || cart.length === 0 || (selectedMethod === 'balance' && !hasEnoughBalance) || (selectedMethod !== 'balance' && !usableMethods.some((m) => m.id === selectedMethod))}
           className="btn btn-primary w-full py-5 text-xl font-black disabled:opacity-60"
         >
-          {isProcessing ? 'Processing...' : (selectedMethod === 'balance' ? (t.payFromBalance || 'Pay from Balance') : t.payNow)}
+          {isProcessing ? t.processing : (selectedMethod === 'balance' ? (t.payFromBalance) : t.payNow)}
         </button>
 
         <div className="text-center text-xs text-[var(--text-muted)] mt-4">
-          {selectedMethod === 'balance' ? (t.balanceUsed || 'Instant deduction from balance') : 'Instant delivery after payment confirmation'}
+          {selectedMethod === 'balance' ? t.balanceUsed : t.instantDeliveryNote}
         </div>
       </div>
 
@@ -153,7 +153,7 @@ export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComp
 
             {!simRef ? (
               <button onClick={confirmExternalCheckout} disabled={isProcessing} className="btn btn-primary w-full py-4">
-                {isProcessing ? 'Processing...' : (t.payNow || 'Pay Now')}
+                {isProcessing ? t.processing : (t.payNow)}
               </button>
             ) : (
               <div className="text-center text-emerald-400 py-2 font-bold">Payment successful! Redirecting...</div>

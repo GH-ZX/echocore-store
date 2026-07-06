@@ -36,7 +36,23 @@ export const HOME_SECTION_TYPES = {
     descriptionAr: 'عروض تختارها يدوياً',
     singleton: false,
   },
+  suggested_offers: {
+    labelEn: 'Suggested Offers',
+    labelAr: 'عروض مقترحة',
+    descriptionEn: 'Random offer suggestions refreshed on each visit',
+    descriptionAr: 'عروض مقترحة عشوائية تتغير في كل زيارة',
+    singleton: false,
+  },
+  customer_reviews: {
+    labelEn: 'Customer Reviews',
+    labelAr: 'آراء الزبائن',
+    descriptionEn: 'Rotating customer testimonials with optional submit form',
+    descriptionAr: 'آراء العملاء المتحركة مع نموذج إرسال اختياري',
+    singleton: false,
+  },
 };
+
+export const HOME_SECTION_LIMIT_MAX = 10;
 
 export const DEFAULT_HOME_LAYOUT = [
   {
@@ -50,7 +66,15 @@ export const DEFAULT_HOME_LAYOUT = [
     enabled: true,
     title_en: 'Sale Offers',
     title_ar: 'خصومات',
-    limit: 4,
+    limit: 8,
+  },
+  {
+    id: 'suggested_offers',
+    type: 'suggested_offers',
+    enabled: true,
+    title_en: 'Suggested Offers',
+    title_ar: 'عروض مقترحة',
+    limit: 8,
   },
   {
     id: 'games',
@@ -58,6 +82,17 @@ export const DEFAULT_HOME_LAYOUT = [
     enabled: true,
     title_en: 'Choose a Game',
     title_ar: 'اختر لعبتك',
+  },
+  {
+    id: 'customer_reviews',
+    type: 'customer_reviews',
+    enabled: true,
+    title_en: 'Customer Reviews',
+    title_ar: 'آراء الزبائن',
+    limit: 8,
+    interval_seconds: 6,
+    show_submit_form: true,
+    review_ids: [],
   },
 ];
 
@@ -70,7 +105,7 @@ function defaultSectionConfig(type, id) {
   const base = { id, type, enabled: true };
 
   if (type === 'sale_offers') {
-    return { ...base, title_en: 'Sale Offers', title_ar: 'خصومات', limit: 4 };
+    return { ...base, title_en: 'Sale Offers', title_ar: 'خصومات', limit: 8 };
   }
   if (type === 'games') {
     return { ...base, title_en: 'Choose a Game', title_ar: 'اختر لعبتك' };
@@ -82,6 +117,20 @@ function defaultSectionConfig(type, id) {
       title_ar: type === 'game_picks' ? 'ألعاب مميزة' : 'عروض مميزة',
       game_ids: [],
       offer_ids: [],
+    };
+  }
+  if (type === 'suggested_offers') {
+    return { ...base, title_en: 'Suggested Offers', title_ar: 'عروض مقترحة', limit: 8 };
+  }
+  if (type === 'customer_reviews') {
+    return {
+      ...base,
+      title_en: 'Customer Reviews',
+      title_ar: 'آراء الزبائن',
+      limit: 8,
+      interval_seconds: 6,
+      show_submit_form: true,
+      review_ids: [],
     };
   }
 
@@ -108,6 +157,14 @@ export function normalizeHomeLayout(value) {
     const defaults = defaultSectionConfig(type, id);
     if (!defaults) return;
 
+    let limit = Number.isFinite(Number(raw.limit))
+      ? Math.max(1, Math.min(HOME_SECTION_LIMIT_MAX, Number(raw.limit)))
+      : defaults.limit;
+
+    if ((type === 'sale_offers' || type === 'suggested_offers') && limit < 8) {
+      limit = 8;
+    }
+
     normalized.push({
       ...defaults,
       ...raw,
@@ -116,13 +173,23 @@ export function normalizeHomeLayout(value) {
       enabled: raw.enabled !== false,
       title_en: raw.title_en || defaults.title_en || '',
       title_ar: raw.title_ar || defaults.title_ar || '',
-      limit: Number.isFinite(Number(raw.limit)) ? Math.max(1, Math.min(12, Number(raw.limit))) : defaults.limit,
+      limit,
       game_ids: Array.isArray(raw.game_ids) ? raw.game_ids.filter(Boolean) : (defaults.game_ids || []),
       offer_ids: Array.isArray(raw.offer_ids) ? raw.offer_ids.filter(Boolean) : (defaults.offer_ids || []),
+      review_ids: Array.isArray(raw.review_ids) ? raw.review_ids.filter(Boolean) : (defaults.review_ids || []),
+      interval_seconds: Number.isFinite(Number(raw.interval_seconds))
+        ? Math.max(3, Math.min(30, Number(raw.interval_seconds)))
+        : (defaults.interval_seconds ?? 6),
+      show_submit_form: raw.show_submit_form !== false,
     });
   });
 
-  return normalized.length > 0 ? normalized : DEFAULT_HOME_LAYOUT.map((section) => ({ ...section }));
+  if (normalized.length === 0) {
+    return DEFAULT_HOME_LAYOUT.map((section) => ({ ...section }));
+  }
+
+  // Preserve saved array order — admin drag/up-down controls section position.
+  return normalized;
 }
 
 export function createHomeSection(type) {

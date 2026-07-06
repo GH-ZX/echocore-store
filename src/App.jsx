@@ -1,11 +1,14 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import AdminEditButton from './components/AdminEditButton';
+import BorderGlow from './components/BorderGlow';
+import StoreBackground from './components/StoreBackground';
 import { getCarouselGames, sortGamesByCarousel } from './lib/carouselUtils';
 import { CheckCircle, Loader2, Globe } from 'lucide-react';
 import { supabase, getUserProfile } from './lib/supabase';
 import { fetchPaymentMethods } from './lib/storeSettings';
 import { applyTheme, fetchSiteTheme, normalizeThemeOverrides } from './lib/theme';
 import { DEFAULT_HOME_LAYOUT, fetchHomeLayout, normalizeHomeLayout } from './lib/homeLayout';
+import { fetchApprovedReviews } from './lib/customerReviews';
 import { translations } from './data/translations';
 import { Routes, Route, useNavigate, useParams, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -39,47 +42,31 @@ function PageLoader({ lang = 'ar' }) {
   );
 }
 
-const LANG_SWITCH_FADE_OUT_MS = 280;
-const LANG_SWITCH_LOADING_MS = 380;
-const LANG_SWITCH_FADE_IN_MS = 280;
+/** Pre-load lazy routes during idle time — avoids competing with first navigation */
+function PreloadComponents() {
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
 
-function RouteNavigationIndicator({ active, message }) {
-  return (
-    <AnimatePresence>
-      {active && (
-        <>
-          <motion.div
-            key="route-nav-bar"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed top-0 left-0 right-0 z-[240] h-1 bg-[var(--border)] overflow-hidden"
-          >
-            <motion.div
-              className="h-full bg-[var(--accent)] shadow-[0_0_12px_var(--accent)]"
-              initial={{ width: '8%' }}
-              animate={{ width: ['8%', '72%', '92%'] }}
-              transition={{ duration: 1.1, ease: 'easeInOut', times: [0, 0.65, 1] }}
-            />
-          </motion.div>
-          <motion.div
-            key="route-nav-pill"
-            initial={{ opacity: 0, y: -10, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.98 }}
-            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-            className="fixed top-4 left-1/2 -translate-x-1/2 z-[240] flex items-center gap-2.5 px-4 py-2.5 rounded-full border border-[var(--accent)]/35 bg-[var(--bg-surface)]/95 backdrop-blur-md shadow-lg"
-            role="status"
-            aria-live="polite"
-          >
-            <Loader2 className="w-4 h-4 text-[var(--accent)] animate-spin flex-shrink-0" />
-            <span className="text-sm font-semibold text-white whitespace-nowrap">{message}</span>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
-  );
+    const preload = () => {
+      import('./components/AllGamesView');
+      import('./components/SaleOffersView');
+      import('./components/BuyView');
+    };
+
+    if ('requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(preload, { timeout: 4000 });
+      return () => window.cancelIdleCallback(id);
+    }
+
+    const id = window.setTimeout(preload, 2500);
+    return () => window.clearTimeout(id);
+  }, []);
+  return null;
 }
+
+const LANG_SWITCH_FADE_OUT_MS = 120;
+const LANG_SWITCH_LOADING_MS = 180;
+const LANG_SWITCH_FADE_IN_MS = 120;
 
 function LangSwitchOverlay({ lang, active }) {
   const isAr = lang === 'ar';
@@ -139,7 +126,7 @@ function GameDetail({ games, offers, t = {}, lang, navigate, addToCart, user, up
         <div className="flex flex-col items-center justify-center gap-3">
           <Loader2 className="w-9 h-9 text-[var(--accent)] animate-spin" />
           <p className="text-[var(--text-sec)]">
-            {lang === 'ar' ? 'جاري تحميل اللعبة...' : 'Loading game...'}
+            {t.loadingGame}
           </p>
         </div>
       </div>
@@ -161,11 +148,11 @@ function GameDetail({ games, offers, t = {}, lang, navigate, addToCart, user, up
     <div className="max-w-6xl mx-auto">
       <div className="mb-4 sm:mb-6 flex flex-wrap items-center justify-between gap-2">
         <button onClick={() => navigate('/')} className="btn btn-secondary text-sm sm:text-base">
-          ← Back to Home
+          {t.backToHome || (lang === 'ar' ? 'العودة إلى الرئيسية' : '← Back to Home')}
         </button>
         {isAdmin && (
           <AdminEditButton
-            label={t.editGame || 'Edit Game'}
+            label={t.editGame || (lang === 'ar' ? 'تعديل اللعبة' : 'Edit Game')}
             onClick={() => setEditingGame(true)}
           />
         )}
@@ -177,6 +164,8 @@ function GameDetail({ games, offers, t = {}, lang, navigate, addToCart, user, up
             <img
               src={game.image_url}
               alt={lang === 'ar' ? game.name_ar : game.name_en}
+              loading="lazy"
+              decoding="async"
               className="absolute inset-0 w-full h-full object-cover"
             />
           )}
@@ -186,9 +175,9 @@ function GameDetail({ games, offers, t = {}, lang, navigate, addToCart, user, up
               {lang === 'ar' ? game.name_ar : game.name_en}
             </h1>
             <p className="text-white/70 text-lg mt-1">{game.points_name} Top-ups</p>
-            <p className="text-white/50 text-sm mt-1">Redemption: {game.redemption_method === 'uid' ? 'UID' : game.redemption_method === 'redeem_code' ? 'Redeem Code' : 'UID or Redeem Code'}</p>
+            <p className="text-white/50 text-sm mt-1">{t.redemptionMethod || 'Redemption'}: {game.redemption_method === 'uid' ? (t.redemptionUid || 'UID') : game.redemption_method === 'redeem_code' ? (t.redemptionCode || 'Redeem Code') : (t.redemptionBoth || 'UID or Redeem Code')}</p>
             {Array.isArray(game.servers) && game.servers.length > 0 && (
-              <p className="text-white/40 text-xs mt-0.5">Servers: {game.servers.join(' • ')}</p>
+              <p className="text-white/40 text-xs mt-0.5">{t.availableServers}: {game.servers.join(' • ')}</p>
             )}
           </div>
         </div>
@@ -199,10 +188,18 @@ function GameDetail({ games, offers, t = {}, lang, navigate, addToCart, user, up
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {gameOffers.length > 0 ? (
           gameOffers.map((offer) => (
-            <div
+            <BorderGlow
               key={offer.id}
+              edgeSensitivity={25}
+              borderRadius={16}
+              glowRadius={28}
+              glowIntensity={0.8}
+              coneSpread={25}
+              fillOpacity={0.35}
+            >
+            <div
               onClick={() => navigate(`/offer/${offer.id}`)}
-              className="card p-4 sm:p-5 cursor-pointer group hover:border-[var(--accent)]/70 hover:shadow-[0_20px_45px_-10px_rgb(0,0,0)] active:scale-[0.985] transition-all flex flex-col relative"
+              className="p-4 sm:p-5 cursor-pointer group active:scale-[0.985] transition-all flex flex-col relative"
             >
               {isAdmin && (
                 <div className="absolute top-3 right-3 z-10">
@@ -216,10 +213,12 @@ function GameDetail({ games, offers, t = {}, lang, navigate, addToCart, user, up
               {/* Game logo + name header */}
               <div className="flex items-center gap-2.5 mb-2.5">
                 {game.logo_url && (
-                  <img 
-                    src={game.logo_url} 
-                    alt="" 
-                    className="w-7 h-7 object-contain rounded-sm flex-shrink-0 ring-1 ring-white/10 group-hover:ring-[var(--accent)]/30 transition-all" 
+                  <img
+                    src={game.logo_url}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="w-7 h-7 object-contain rounded-sm flex-shrink-0 ring-1 ring-white/10 group-hover:ring-[var(--accent)]/30 transition-all"
                   />
                 )}
                 <div className="text-xs font-medium text-[var(--text-sec)] truncate">
@@ -260,7 +259,7 @@ function GameDetail({ games, offers, t = {}, lang, navigate, addToCart, user, up
                   onClick={(e) => { e.stopPropagation(); navigate(`/buy/${offer.id}`); }}
                   className="flex-1 btn btn-primary text-xs py-2 font-semibold active:scale-[0.985]"
                 >
-                  {lang === 'ar' ? 'اشترِ الآن' : 'Buy Now'}
+                  {t.buyNow}
                 </button>
                 <button 
                   onClick={(e) => { e.stopPropagation(); navigate(`/offer/${offer.id}`); }}
@@ -270,6 +269,7 @@ function GameDetail({ games, offers, t = {}, lang, navigate, addToCart, user, up
                 </button>
               </div>
             </div>
+            </BorderGlow>
           ))
         ) : (
           <div className="text-[var(--text-sec)] col-span-full">{t.noOffers}</div>
@@ -407,7 +407,7 @@ function OfferDetail({ games, offers, t = {}, lang, navigate, addToCart, user, u
               onClick={() => navigate(`/buy/${offer.id}`)}
               className="btn btn-primary w-full py-3.5 sm:py-4 text-base sm:text-lg font-black"
             >
-              {lang === 'ar' ? 'اشترِ الآن' : 'Buy Now'}
+              {t.buyNow}
             </button>
             <button
               onClick={(e) => addToCart(offer, e)}
@@ -548,7 +548,7 @@ function SuccessView({ navigate, games = [], t = {}, lang = 'ar' }) {
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto p-6 text-center">
-        <p className="text-[var(--text-sec)]">{lang === 'ar' ? 'جاري تحميل تفاصيل الطلب...' : 'Loading order details...'}</p>
+        <p className="text-[var(--text-sec)]">{t.loadingOrderDetails}</p>
       </div>
     );
   }
@@ -557,7 +557,7 @@ function SuccessView({ navigate, games = [], t = {}, lang = 'ar' }) {
     return (
       <div className="max-w-4xl mx-auto p-6 text-center">
         <p className="text-xl text-[var(--text-sec)]">{t.orderNotFound || (lang === 'ar' ? 'الطلب غير موجود.' : 'Order not found.')}</p>
-        <button onClick={() => navigate('/')} className="btn btn-secondary mt-4">{t.backToHome || 'Back to Home'}</button>
+        <button onClick={() => navigate('/')} className="btn btn-secondary mt-4">{t.backToHome}</button>
       </div>
     );
   }
@@ -576,26 +576,26 @@ function SuccessView({ navigate, games = [], t = {}, lang = 'ar' }) {
       <div className="text-center mb-8">
         <div className="text-6xl mb-4">✅</div>
         <h1 className="text-3xl font-black mb-2">
-          {isArabic ? 'تمت عملية الشراء بنجاح!' : 'Purchase Successful!'}
+          {t.successMsg}
         </h1>
         <p className="text-[var(--text-sec)]">
-          {isArabic ? 'تم تسجيل طلبك بنجاح في قاعدة البيانات.' : 'Your order has been recorded successfully.'}
+          {t.codeOrUidInGame || (isArabic ? 'تم تسجيل طلبك بنجاح في قاعدة البيانات.' : 'Your order has been recorded successfully.')}
         </p>
       </div>
 
       <div className="card p-6 mb-6">
-        <h2 className="font-bold text-xl mb-4">{isArabic ? 'معلومات الطلب' : 'Order Information'}</h2>
+        <h2 className="font-bold text-xl mb-4">{t.orderInfo}</h2>
         <div className="space-y-2 text-sm">
           <div><span className="text-[var(--text-muted)]">{isArabic ? 'رقم الطلب' : 'Order ID'}:</span> <span className="font-mono">{orderDetails.id}</span></div>
-          <div><span className="text-[var(--text-muted)]">{isArabic ? 'الإجمالي' : 'Total'}:</span> ${parseFloat(orderDetails.total).toFixed(2)}</div>
+          <div><span className="text-[var(--text-muted)]">{t.total}:</span> ${parseFloat(orderDetails.total).toFixed(2)}</div>
           <div><span className="text-[var(--text-muted)]">{isArabic ? 'طريقة الدفع' : 'Payment Method'}:</span> {orderDetails.payment_method === 'balance' ? (t.payFromBalance || 'رصيد الحساب') : orderDetails.payment_method}</div>
-          <div><span className="text-[var(--text-muted)]">{isArabic ? 'التاريخ' : 'Date'}:</span> {new Date(orderDetails.created_at).toLocaleString()}</div>
+          <div><span className="text-[var(--text-muted)]">{t.date}:</span> {new Date(orderDetails.created_at).toLocaleString()}</div>
           <div><span className="text-[var(--text-muted)]">{isArabic ? 'الحالة' : 'Status'}:</span> <span className="capitalize text-emerald-400">{orderDetails.status || 'completed'}</span></div>
         </div>
       </div>
 
       <div className="card p-6 mb-6">
-        <h2 className="font-bold text-xl mb-4">{isArabic ? 'العناصر المشتراة' : 'Items Purchased'}</h2>
+        <h2 className="font-bold text-xl mb-4">{t.itemsPurchased}</h2>
         {orderItems.length > 0 ? (
           <div className="space-y-2">
             {orderItems.map((item, idx) => (
@@ -606,21 +606,21 @@ function SuccessView({ navigate, games = [], t = {}, lang = 'ar' }) {
             ))}
           </div>
         ) : (
-          <p className="text-[var(--text-sec)]">{isArabic ? 'لا توجد عناصر.' : 'No items.'}</p>
+          <p className="text-[var(--text-sec)]">{t.noItems}</p>
         )}
 
         {/* Player UID info - always show if present */}
         {hasUid && (
           <div className="mt-4 pt-4 border-t border-[var(--border)]">
             <div className="text-sm font-semibold mb-2 text-emerald-400">
-              {isArabic ? 'تم الشحن إلى حسابك في اللعبة' : 'Top-up sent to your in-game account'}
+              {t.topUpSent}
             </div>
             <div className="text-sm">
               <span className="text-[var(--text-muted)]">{isArabic ? 'UID:' : 'UID:'}</span>{' '}
               <span className="font-mono text-[var(--accent)] text-lg">{playerUid}</span>
               {playerServer && (
                 <>
-                  {' • '}<span className="text-[var(--text-muted)]">{isArabic ? 'السيرفر' : 'Server'}:</span>{' '}
+                  {' • '}<span className="text-[var(--text-muted)]">{t.serverLabel}:</span>{' '}
                   <span className="font-mono">{playerServer}</span>
                 </>
               )}
@@ -633,18 +633,16 @@ function SuccessView({ navigate, games = [], t = {}, lang = 'ar' }) {
       {!hasUid && demoCode && (
         <div className="card p-6 mb-6">
           <h2 className="font-bold text-xl mb-4">
-            {isArabic ? 'كود الشحن الخاص بك' : 'Your Redeem Code'}
+            {t.yourRedeemCode}
           </h2>
           <div className="bg-[var(--bg-primary)] p-6 rounded-xl text-center mb-4">
             <div className="text-4xl font-mono tracking-widest text-[var(--accent)] mb-2">{demoCode}</div>
             <p className="text-xs text-[var(--text-muted)]">
-              {isArabic ? '(كود تجريبي - في الإصدار الفعلي سيأتي من API الشراء)' : '(Demo code - will come from real purchase API in production)'}
+              {t.demoCodeNote}
             </p>
           </div>
           <p className="text-[var(--text-sec)] text-sm">
-            {isArabic 
-              ? 'استخدم هذا الكود في اللعبة. تعتمد خطوات الاسترداد الدقيقة على طريقة استرداد اللعبة.'
-              : 'Use this code in the game. Exact top-up steps depend on the game.'}
+            {t.useCodeInGame}
           </p>
         </div>
       )}
@@ -653,22 +651,20 @@ function SuccessView({ navigate, games = [], t = {}, lang = 'ar' }) {
       {hasUid && (
         <div className="card p-6 mb-6 text-center">
           <h2 className="font-bold text-xl mb-3 text-emerald-400">
-            {isArabic ? 'تم إرسال الشحن بنجاح!' : 'Top-up Sent Successfully!'}
+            {t.topUpSentSuccess}
           </h2>
           <p className="text-[var(--text-sec)]">
-            {isArabic 
-              ? 'تم إرسال العملات / النقاط إلى UID الخاص بك المذكور أعلاه.'
-              : 'The game coins / points have been (or will be) sent to the UID above.'}
+            {t.topUpSentDesc}
           </p>
           <p className="text-xs text-[var(--text-muted)] mt-2">
-            {isArabic ? 'عادةً يصل الشحن خلال ثوانٍ إلى دقائق.' : 'Usually arrives within seconds to minutes.'}
+            {t.topUpArrivesSoon}
           </p>
         </div>
       )}
 
       <div className="text-center">
         <button onClick={() => navigate('/')} className="btn btn-primary px-8 py-3">
-          {isArabic ? 'العودة إلى الرئيسية' : 'Back to Home'}
+          {t.backToHomeSuccess || t.backToHome}
         </button>
       </div>
     </div>
@@ -702,6 +698,7 @@ export default function App() {
     shamcashConfigured: false,
   });
   const [homeLayout, setHomeLayout] = useState(DEFAULT_HOME_LAYOUT);
+  const [reviews, setReviews] = useState([]);
   const [notification, setNotification] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -714,41 +711,14 @@ export default function App() {
     const saved = localStorage.getItem('echocore-lang');
     return saved === 'en' || saved === 'ar' ? saved : 'ar';
   });
-  const [routeLoading, setRouteLoading] = useState(null);
-  const routeLoadingStartedAt = useRef(0);
   const isAdmin = user?.role === 'admin';
 
   const t = translations[lang];
 
-  const navigateWithFeedback = (path, message) => {
-    routeLoadingStartedAt.current = Date.now();
-    setRouteLoading({
-      path,
-      message: message || (lang === 'ar' ? 'جاري فتح الصفحة...' : 'Opening page...'),
-    });
-    navigate(path);
-  };
-
   const openGame = (game) => {
     if (!game) return;
-    const name = lang === 'ar' ? game.name_ar : game.name_en;
-    navigateWithFeedback(
-      `/game/${game.slug || game.id}`,
-      lang === 'ar' ? `جاري فتح ${name}...` : `Opening ${name}...`,
-    );
+    navigate(`/game/${game.slug || game.id}`);
   };
-
-  useEffect(() => {
-    if (!routeLoading) return undefined;
-
-    const targetPath = routeLoading.path.split('?')[0];
-    if (location.pathname !== targetPath) return undefined;
-
-    const elapsed = Date.now() - routeLoadingStartedAt.current;
-    const remaining = Math.max(280, 520 - elapsed);
-    const timer = window.setTimeout(() => setRouteLoading(null), remaining);
-    return () => window.clearTimeout(timer);
-  }, [location.pathname, routeLoading, loadingGames]);
 
   const toggleLanguage = async () => {
     if (langSwitching) return;
@@ -861,11 +831,10 @@ export default function App() {
     }
   };
 
-  // Helper to refresh data after auth (must be after fetch functions)
-  const refreshDataAfterAuth = () => {
+  const refreshDataAfterAuth = (role) => {
     fetchGames();
     fetchOffers();
-    fetchOrders();
+    if (role === 'admin') fetchOrders();
   };
 
   // ============================================
@@ -947,20 +916,56 @@ export default function App() {
   // ============================================
   // REAL ORDER — saves to Supabase
   // Supports paying with external methods or 'balance'
+  // Uses atomic RPC (create_order_atomic) for server-side
+  // balance deduction and price verification.
   // ============================================
   const submitOrder = async (currentCart, paymentMethod) => {
     if (!user?.id) throw new Error('Not logged in');
 
     const total = currentCart.reduce((sum, item) => sum + parseFloat(item.price), 0);
 
-    // If paying with balance: deduct first (server-side ideally via RPC)
+    const items = currentCart.map((item) => ({
+      offer_id: item.id,
+      name_snapshot: lang === 'ar' ? item.name_ar : item.name_en,
+      price: parseFloat(item.price),
+      quantity: 1
+    }));
+
+    // Try atomic RPC first (S2+S3 fix: server-side balance + price verification)
+    try {
+      const { data, error } = await supabase.rpc('create_order_atomic', {
+        p_user_id: user.id,
+        p_total: total,
+        p_payment_method: paymentMethod,
+        p_items: items,
+      });
+
+      if (error) throw error;
+
+      // Sync local balance from server response
+      if (paymentMethod === 'balance' && data?.newBalance != null) {
+        setUser(prev => prev ? { ...prev, balance: data.newBalance } : prev);
+      }
+
+      return { orderId: data.orderId };
+    } catch (rpcErr) {
+      // If RPC doesn't exist yet, fall back to client-side flow
+      // (User needs to run atomic_order_rpc.sql in Supabase SQL Editor)
+      if (rpcErr?.message?.includes('function') && rpcErr?.message?.includes('does not exist')) {
+        console.warn('create_order_atomic RPC not found — falling back to client-side order. Run atomic_order_rpc.sql.');
+      } else {
+        // RPC exists but failed (e.g. insufficient balance) — propagate the error
+        throw rpcErr;
+      }
+    }
+
+    // Fallback: client-side order creation (legacy path)
     if (paymentMethod === 'balance') {
       const currentBal = user.balance || 0;
       if (currentBal < total) {
         throw new Error(t.insufficientBalance || 'Insufficient balance');
       }
 
-      // Deduct on profiles
       const newBal = (currentBal - total);
       const { error: balErr } = await supabase
         .from('profiles')
@@ -968,7 +973,6 @@ export default function App() {
         .eq('id', user.id);
       if (balErr) throw new Error('Failed to deduct balance');
 
-      // Record transaction (negative amount)
       await supabase.from('transactions').insert({
         user_id: user.id,
         type: 'purchase',
@@ -979,11 +983,9 @@ export default function App() {
         status: 'completed'
       });
 
-      // Update local user
       setUser(prev => prev ? { ...prev, balance: newBal } : prev);
     }
 
-    // Create order
     const { data: order, error: orderErr } = await supabase
       .from('orders')
       .insert({
@@ -1000,8 +1002,7 @@ export default function App() {
       throw new Error('Failed to create order');
     }
 
-    // Insert items
-    const items = currentCart.map((item) => ({
+    const orderItems = currentCart.map((item) => ({
       order_id: order.id,
       offer_id: item.id,
       name_snapshot: lang === 'ar' ? item.name_ar : item.name_en,
@@ -1009,7 +1010,7 @@ export default function App() {
       quantity: 1
     }));
 
-    const { error: itemsErr } = await supabase.from('order_items').insert(items);
+    const { error: itemsErr } = await supabase.from('order_items').insert(orderItems);
     if (itemsErr) console.error('Order items error:', itemsErr);
 
     return { orderId: order.id };
@@ -1060,6 +1061,7 @@ export default function App() {
 
   // ============================================
   // INSTANT PURCHASE (Buy Now) — with player UID info
+  // Uses atomic RPC for server-side balance + price verification.
   // ============================================
   const submitPurchase = async (offer, paymentMethod, playerInfo = {}) => {
     if (!user?.id) throw new Error('Not logged in');
@@ -1068,13 +1070,45 @@ export default function App() {
     const amount = parseFloat(offer.price);
     const { player_uid = null, player_server = null } = playerInfo;
 
-    // Balance path
+    const items = [{
+      offer_id: offer.id,
+      name_snapshot: lang === 'ar' ? offer.name_ar : offer.name_en,
+      price: amount,
+      quantity: 1,
+      player_uid: player_uid || null,
+      player_server: player_server || null
+    }];
+
+    // Try atomic RPC first (S2+S3 fix)
+    try {
+      const { data, error } = await supabase.rpc('create_order_atomic', {
+        p_user_id: user.id,
+        p_total: amount,
+        p_payment_method: paymentMethod,
+        p_items: items,
+      });
+
+      if (error) throw error;
+
+      if (paymentMethod === 'balance' && data?.newBalance != null) {
+        setUser(prev => prev ? { ...prev, balance: data.newBalance } : prev);
+      }
+
+      return { orderId: data.orderId };
+    } catch (rpcErr) {
+      if (rpcErr?.message?.includes('function') && rpcErr?.message?.includes('does not exist')) {
+        console.warn('create_order_atomic RPC not found — falling back to client-side order. Run atomic_order_rpc.sql.');
+      } else {
+        throw rpcErr;
+      }
+    }
+
+    // Fallback: client-side (legacy)
     if (paymentMethod === 'balance') {
       const currentBal = user.balance || 0;
       if (currentBal < amount) throw new Error(t.insufficientBalance || 'Insufficient balance');
 
       const newBal = currentBal - amount;
-
       const { error: balErr } = await supabase
         .from('profiles')
         .update({ balance: newBal })
@@ -1094,7 +1128,6 @@ export default function App() {
       setUser(prev => prev ? { ...prev, balance: newBal } : prev);
     }
 
-    // Create order
     const { data: order, error: orderErr } = await supabase
       .from('orders')
       .insert({
@@ -1111,18 +1144,10 @@ export default function App() {
       throw new Error('Failed to create order');
     }
 
-    // Single order item + player redemption info
-    const itemPayload = {
+    const { error: itemErr } = await supabase.from('order_items').insert(items.map(i => ({
       order_id: order.id,
-      offer_id: offer.id,
-      name_snapshot: lang === 'ar' ? offer.name_ar : offer.name_en,
-      price: amount,
-      quantity: 1,
-      player_uid: player_uid || null,
-      player_server: player_server || null
-    };
-
-    const { error: itemErr } = await supabase.from('order_items').insert(itemPayload);
+      ...i
+    })));
     if (itemErr) console.error('Item insert error:', itemErr);
 
     return { orderId: order.id };
@@ -1158,6 +1183,8 @@ export default function App() {
     }
 
     setOffers(prev => [data, ...prev]);
+    showNotification(t.offerAddedSuccess || 'Offer added successfully');
+    return data;
   };
 
   const deleteProduct = async (productId) => {
@@ -1201,6 +1228,51 @@ export default function App() {
     }
 
     setOffers(prev => prev.map(p => p.id === id ? data : p));
+  };
+
+  const createGame = async (gameData) => {
+    const { id, show_in_carousel, ...payload } = gameData;
+
+    const { data, error } = await supabase
+      .from('games')
+      .insert({
+        name_en: payload.name_en,
+        name_ar: payload.name_ar || payload.name_en,
+        slug: payload.slug,
+        points_name: payload.points_name || 'Points',
+        logo_url: payload.logo_url || null,
+        image_url: payload.image_url || null,
+        redemption_method: payload.redemption_method || 'both',
+        servers: payload.servers || [],
+        description_en: payload.description_en || '',
+        description_ar: payload.description_ar || '',
+        carousel_focus_x: payload.carousel_focus_x ?? 50,
+        carousel_focus_y: payload.carousel_focus_y ?? 50,
+        show_in_carousel: !!show_in_carousel,
+        carousel_order: show_in_carousel ? getCarouselGames(games).length : games.length,
+        active: true,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Create game error:', error);
+      throw new Error(`Failed to add game: ${error.message}`);
+    }
+
+    setGames((prev) => sortGamesByCarousel([...prev, data]));
+    showNotification(t.gameAddedSuccess || 'Game added successfully');
+    return data;
+  };
+
+  const saveGame = async (gameData) => {
+    if (!gameData?.id) return createGame(gameData);
+    return updateGame(gameData);
+  };
+
+  const saveProduct = async (productData) => {
+    if (!productData?.id) return createProduct(productData);
+    return updateProduct(productData);
   };
 
   const updateGame = async (gameData) => {
@@ -1329,8 +1401,7 @@ export default function App() {
             showNotification(t.loginSuccess || 'Welcome back!');
           }
 
-          // Refresh data
-          refreshDataAfterAuth();
+          refreshDataAfterAuth(userData.role);
         }
       }
     };
@@ -1350,8 +1421,7 @@ export default function App() {
           balance: profile?.balance || 0
         };
         setUser(userData);
-        // Fetch orders now that we have a proper authenticated session (RLS protected)
-        fetchOrders();
+        if (userData.role === 'admin') fetchOrders();
       }
       setLoadingAuth(false);
     });
@@ -1371,9 +1441,7 @@ export default function App() {
           balance: profile?.balance || 0
         };
         setUser(userData);
-
-        // Fetch protected data like orders (in case this is a session restore on tab focus etc.)
-        fetchOrders();
+        if (userData.role === 'admin') fetchOrders();
 
         // IMPORTANT: removed navigate + showNotification from here
         // to prevent resetting to homepage + toast on tab focus/return.
@@ -1393,12 +1461,12 @@ export default function App() {
 
   const refreshSiteTheme = async (overrides) => {
     if (overrides) {
-      applyTheme(normalizeThemeOverrides(overrides));
+      applyTheme(normalizeThemeOverrides(overrides), { replace: true });
       return;
     }
     const theme = await fetchSiteTheme();
     if (theme) {
-      applyTheme(normalizeThemeOverrides(theme));
+      applyTheme(normalizeThemeOverrides(theme), { replace: true });
     }
   };
 
@@ -1413,21 +1481,32 @@ export default function App() {
     }
   };
 
-  // Load games, offers and orders
+  const refreshReviews = async () => {
+    const nextReviews = await fetchApprovedReviews();
+    setReviews(nextReviews);
+  };
+
+  // Load storefront data in parallel — orders only for admins (dashboard)
   useEffect(() => {
-    fetchGames();
-    fetchOffers();
-    fetchOrders();
-    refreshPaymentConfig();
-    refreshSiteTheme();
-    refreshHomeLayout();
+    Promise.allSettled([
+      fetchGames(),
+      fetchOffers(),
+      refreshPaymentConfig(),
+      refreshSiteTheme(),
+      refreshHomeLayout(),
+      refreshReviews(),
+    ]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist cart (simple universal localStorage)
   useEffect(() => {
-    const saved = localStorage.getItem('echocore-cart');
-    if (saved) setCart(JSON.parse(saved));
+    try {
+      const saved = localStorage.getItem('echocore-cart');
+      if (saved) setCart(JSON.parse(saved));
+    } catch {
+      // corrupted localStorage — start with empty cart
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1502,8 +1581,7 @@ export default function App() {
       hasShownLoginToast.current = true;
       showNotification(t.loginSuccess);
     }
-    // Refresh data now that we're authenticated
-    refreshDataAfterAuth();
+    refreshDataAfterAuth(userData.role);
   };
 
   const handleLogout = async () => {
@@ -1541,21 +1619,12 @@ export default function App() {
       style={{ backgroundColor: 'var(--bg-primary)' }}
       dir={lang === 'ar' ? 'rtl' : 'ltr'}
     >
+      <StoreBackground />
+      <div className="relative z-[1]">
+      <a href="#main-content" className="skip-to-content">
+        {lang === 'ar' ? 'تخطي إلى المحتوى' : 'Skip to content'}
+      </a>
       <LangSwitchOverlay lang={overlayLang} active={langSwitching} />
-      <RouteNavigationIndicator
-        active={!!routeLoading && !langSwitching}
-        message={routeLoading?.message}
-      />
-
-      <motion.div
-        animate={{
-          opacity: langSwitching ? 0 : 1,
-          filter: langSwitching ? 'blur(6px)' : 'blur(0px)',
-          scale: langSwitching ? 0.985 : 1,
-        }}
-        transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
-        className={langSwitching ? 'pointer-events-none select-none' : ''}
-      >
       <Header
         t={t}
         lang={lang}
@@ -1571,16 +1640,25 @@ export default function App() {
         cartRef={cartIconRef}
       />
 
-      <main className="container mx-auto px-3 sm:px-4 pb-20 sm:pb-24 max-w-full">
-        <AnimatePresence mode="wait">
+      <motion.div
+        animate={{
+          opacity: langSwitching ? 0 : 1,
+          filter: langSwitching ? 'blur(6px)' : 'blur(0px)',
+          scale: langSwitching ? 0.985 : 1,
+        }}
+        transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+        className={langSwitching ? 'pointer-events-none select-none' : ''}
+      >
+      <main id="main-content" className="container mx-auto px-3 sm:px-4 pb-20 sm:pb-24 max-w-7xl">
+        <AnimatePresence mode="sync" initial={false}>
           <motion.div
             key={`${location.pathname}-${lang}`}
-            initial={{ opacity: 0, y: 28, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -18, scale: 0.98 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             transition={{
-              duration: langSwitching ? 0.34 : 0.38,
-              ease: [0.22, 1, 0.36, 1],
+              duration: langSwitching ? 0.14 : 0.1,
+              ease: 'easeOut',
             }}
           >
             <Suspense fallback={<PageLoader lang={lang} />}>
@@ -1600,12 +1678,17 @@ export default function App() {
                     onBuyNow={(offer) => navigate(`/buy/${offer.id}`)}
                     onEditOffer={isAdmin ? setAdminEditOffer : undefined}
                     onEditGame={isAdmin ? setAdminEditGame : undefined}
+                    onAddGame={isAdmin ? (options = {}) => setAdminEditGame({ id: null, show_in_carousel: !!options.showInCarousel }) : undefined}
+                    onAddOffer={isAdmin ? (options = {}) => setAdminEditOffer({ id: null, is_sale: !!options.isSale }) : undefined}
                     onManageCarousel={isAdmin ? () => setAdminCarouselOpen(true) : undefined}
                     onMoveCarouselGame={isAdmin ? moveCarouselGame : undefined}
                     isAdmin={isAdmin}
                     searchQuery={searchQuery}
                     onSearchChange={setSearchQuery}
                     homeLayout={homeLayout}
+                    reviews={reviews}
+                    user={user}
+                    onReviewSubmitted={refreshReviews}
                   />
                 }
               />
@@ -1712,6 +1795,7 @@ export default function App() {
             element={
               <LoginView
                 t={t}
+                lang={lang}
                 handleAuthLogin={handleAuthLogin}
                 handleAuthSignup={handleAuthSignup}
                 onLoginSuccess={handleLoginSuccess}
@@ -1842,6 +1926,8 @@ export default function App() {
                   onPaymentSettingsSaved={refreshPaymentConfig}
                   onThemeSaved={refreshSiteTheme}
                   onHomeLayoutSaved={refreshHomeLayout}
+                  reviews={reviews}
+                  onReviewsChanged={refreshReviews}
                 />
               ) : (
                 <Navigate to="/" replace />
@@ -1863,7 +1949,8 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      {/* Flying to cart animations */}
+      {/* Pre-load common lazy components after first paint */}
+      <PreloadComponents />
       {flyingItems.map((fly) => {
         const start = fly.startRect;
         const end = fly.endRect;
@@ -1914,7 +2001,7 @@ export default function App() {
             lang={lang}
             t={t}
             onClose={() => setAdminEditOffer(null)}
-            onSave={updateProduct}
+            onSave={saveProduct}
           />
         </Suspense>
       )}
@@ -1926,7 +2013,7 @@ export default function App() {
             lang={lang}
             t={t}
             onClose={() => setAdminEditGame(null)}
-            onSave={updateGame}
+            onSave={saveGame}
           />
         </Suspense>
       )}
@@ -1948,50 +2035,16 @@ export default function App() {
       )}
 
       {notification && (
-        <div className="fixed bottom-8 right-8 left-8 sm:left-auto sm:w-80 toast text-white px-6 py-4 rounded-2xl flex items-center gap-3 z-50 animate-bounce">
-          <CheckCircle className="text-[var(--accent)] w-6 h-6" /> <span className="font-bold">{notification}</span>
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-6 right-4 left-4 sm:left-auto sm:right-6 sm:w-80 toast toast-enter text-[var(--text-primary)] px-5 py-3.5 rounded-xl flex items-center gap-3 z-50"
+        >
+          <CheckCircle className="text-[var(--accent)] w-5 h-5 flex-shrink-0" strokeWidth={2.5} />
+          <span className="font-semibold text-sm leading-snug">{notification}</span>
         </div>
       )}
-
-      <style dangerouslySetInnerHTML={{ __html: `
-        .cart-bump {
-          animation: cartPop 0.45s ease;
-        }
-        @keyframes cartPop {
-          0% { transform: scale(1); }
-          30% { transform: scale(1.35); }
-          60% { transform: scale(0.9); }
-          100% { transform: scale(1); }
-        }
-
-        .flying-item {
-          position: fixed;
-          z-index: 99999;
-          pointer-events: none;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: var(--bg-surface);
-          border: 1px solid var(--border);
-          border-radius: 12px;
-          box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-          font-size: 11px;
-          padding: 4px 8px;
-          white-space: nowrap;
-          overflow: hidden;
-        }
-
-        .lang-switch-progress-bar {
-          width: 35%;
-          animation: langSwitchProgress 0.9s ease-in-out infinite;
-        }
-
-        @keyframes langSwitchProgress {
-          0% { transform: translateX(-120%); }
-          50% { transform: translateX(180%); }
-          100% { transform: translateX(320%); }
-        }
-      ` }} />
     </div>
+      </div>
   );
 }

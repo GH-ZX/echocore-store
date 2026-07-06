@@ -133,7 +133,7 @@ export default function RechargeView({ t, lang, navigate, user, currentBalance, 
               type="text"
               value={customAmount}
               onChange={handleCustomChange}
-              placeholder={lang === 'ar' ? 'أدخل مبلغاً' : 'Enter amount'}
+              placeholder={t.enterAmount}
               className="w-full bg-[var(--bg-surface)] border border-[var(--border)] focus:border-[var(--accent)] rounded-2xl px-4 py-3 text-xl font-mono outline-none"
             />
           </div>

@@ -18,22 +18,40 @@ export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const isNew = !offer?.id;
+
   useEffect(() => {
     if (!offer) return;
-    setForm({
-      game_id: offer.game_id || '',
-      name_en: offer.name_en || '',
-      name_ar: offer.name_ar || '',
-      price: offer.price ?? '',
-      region: offer.region || '',
-      description_en: offer.description_en || offer.description_ar || '',
-      sale_image_url: offer.sale_image_url || '',
-      is_sale: !!offer.is_sale,
-      original_price: offer.original_price || '',
-    });
+
+    if (isNew) {
+      setForm({
+        game_id: offer.game_id || '',
+        name_en: '',
+        name_ar: '',
+        price: '',
+        region: '',
+        description_en: '',
+        sale_image_url: '',
+        is_sale: !!offer.is_sale,
+        original_price: '',
+      });
+    } else {
+      setForm({
+        game_id: offer.game_id || '',
+        name_en: offer.name_en || '',
+        name_ar: offer.name_ar || '',
+        price: offer.price ?? '',
+        region: offer.region || '',
+        description_en: offer.description_en || offer.description_ar || '',
+        sale_image_url: offer.sale_image_url || '',
+        is_sale: !!offer.is_sale,
+        original_price: offer.original_price || '',
+      });
+    }
+
     setSaleCoverFile(null);
     setError('');
-  }, [offer]);
+  }, [offer, isNew]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -57,7 +75,7 @@ export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t 
 
       const desc = (form.description_en || '').trim();
       await onSave({
-        id: offer.id,
+        id: offer?.id || null,
         game_id: form.game_id,
         name_en: form.name_en.trim(),
         name_ar: (form.name_ar || form.name_en).trim(),
@@ -84,7 +102,11 @@ export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t 
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
       <div className="relative w-full sm:max-w-lg max-h-[92dvh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-2xl">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3">
-          <h2 className="text-lg font-bold">{t.editOffer || 'Edit Offer'}</h2>
+          <h2 className="text-lg font-bold">
+            {isNew
+              ? (form.is_sale ? (t.addSaleOffer || 'Add Sale Offer') : (t.addOffer || 'Add Offer'))
+              : (t.editOffer || 'Edit Offer')}
+          </h2>
           <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-white/5" aria-label="Close">
             <X className="w-5 h-5" />
           </button>
@@ -200,7 +222,9 @@ export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t 
 
           <div className="flex gap-2 pt-1">
             <button type="submit" disabled={saving} className="btn btn-primary flex-1 py-3 disabled:opacity-60">
-              {saving ? (t.uploading || 'Saving...') : (t.updateOffer || 'Update Offer')}
+              {saving
+                ? (t.uploading || 'Saving...')
+                : (isNew ? (t.addOffer || 'Add Offer') : (t.updateOffer || 'Update Offer'))}
             </button>
             <button type="button" onClick={onClose} className="btn btn-secondary px-5">
               {t.cancel || 'Cancel'}

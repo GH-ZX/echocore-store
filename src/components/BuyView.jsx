@@ -148,7 +148,7 @@ export default function BuyView({
       <div className="card p-8">
         <div className="mb-8 text-center">
           <div className="text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">INSTANT PURCHASE</div>
-          <h1 className="text-3xl font-black">{lang === 'ar' ? 'شراء فوري' : 'Buy Instantly'}</h1>
+          <h1 className="text-3xl font-black">{t.buyInstantly}</h1>
           <p className="mt-1 text-[var(--text-sec)]">{gameName} • {name}</p>
         </div>
 
@@ -162,7 +162,7 @@ export default function BuyView({
         <div className="mb-8">
           <div className="font-semibold mb-3 flex items-center gap-2">
             <User className="w-4 h-4" />
-            {lang === 'ar' ? 'معلومات الحساب في اللعبة' : 'In-Game Account Details'}
+            {t.inGameDetails}
           </div>
 
           {/* Choice for 'both' redemption_method */}
@@ -201,7 +201,7 @@ export default function BuyView({
                   type="text"
                   value={playerUid}
                   onChange={e => setPlayerUid(e.target.value)}
-                  placeholder={lang === 'ar' ? 'أدخل UID الخاص بك في اللعبة' : 'Enter your in-game UID'}
+                  placeholder={t.enterUid}
                   className="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 text-lg font-mono focus:border-[var(--accent)] outline-none"
                 />
               </div>
@@ -307,15 +307,15 @@ export default function BuyView({
         >
           {isProcessing ? (
             <span className="flex items-center justify-center gap-2">
-              <Loader2 className="animate-spin w-5 h-5" /> {lang === 'ar' ? 'جاري المعالجة...' : 'Processing...'}
+              <Loader2 className="animate-spin w-5 h-5" /> {t.processing}
             </span>
           ) : (
-            `${lang === 'ar' ? 'اشترِ الآن' : 'Buy Now'} • $${total}`
+            `${t.buyNow} • $${total}`
           )}
         </button>
 
         <div className="text-center text-[10px] mt-4 text-[var(--text-muted)]">
-          {t.instantDeliveryNote || 'Instant delivery after payment. Code / top-up sent to your account.'}
+          {t.instantDeliveryNote}
         </div>
       </div>
 

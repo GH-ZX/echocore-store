@@ -43,8 +43,9 @@
 - إضافة منتجات جديدة: استخدم `src/data/mockProducts.js` وأضف الحقول `logoFile` و/أو `image` و/أو `coverFile` حسب الحاجة.
 
 نصائح النشر
-- يمكن نشر المشروع على Netlify/Vercel أو GitHub Pages. لإنشاء نسخة إنتاجية:
-  1. شغّل `npm run build` ثم ارفع مجلد `dist/` لمنصة الاستضافة.
+- النشر على **GitHub Pages** عبر `.github/workflows/deploy.yml` (يدفع تلقائياً عند push إلى `main`).
+- للبناء المحلي: `npm run build` — الناتج في مجلد `dist/`.
+- الرابط المباشر: https://gh-zx.github.io/echocore-store/
 
 أوامر مفيدة
 - `npm run dev` — تشغيل بيئة التطوير
@@ -52,4 +53,4 @@
 - `npm run preview` — معاينة نتيجة البناء محلياً
 - `npm run lint` — تشغيل ESLint
 
-إذا أردت، أضيف ملف `DEPLOY.md` يشرح خطوة بخطوة نشر المشروع على GitHub Pages أو Vercel.
+لتفاصيل النشر، راجع `.github/workflows/deploy.yml` و`vite.config.js` (base: `/echocore-store/`).

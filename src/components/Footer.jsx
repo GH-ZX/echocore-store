@@ -76,7 +76,7 @@ export default function Footer({ lang = 'en' }) {
   ];
 
   return (
-    <footer className="border-t border-[var(--border)] bg-[var(--bg-elevated)] pt-10 pb-8 text-sm">
+    <footer className="border-t border-[var(--border)]/30 bg-transparent pt-10 pb-8 text-sm backdrop-blur-[2px]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         {/* Main footer grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-10">
@@ -94,7 +94,7 @@ export default function Footer({ lang = 'en' }) {
             <p className="text-[var(--text-secondary)] leading-relaxed pr-2 text-[13px]">
               {content.desc}
             </p>
-            <p className="mt-3 text-[10px] uppercase tracking-widest text-[var(--text-muted)]">
+            <p className="mt-3 text-xs text-[var(--text-muted)] leading-relaxed">
               {content.tagline}
             </p>
           </div>
@@ -141,7 +141,7 @@ export default function Footer({ lang = 'en' }) {
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label={label}
-                    className="group flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] transition-all hover:border-[var(--accent)]/60 hover:text-[var(--accent)] hover:bg-white/5 active:scale-95"
+                    className="group flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border)]/40 bg-[var(--bg-surface)]/40 text-[var(--text-secondary)] backdrop-blur-sm transition-all hover:border-[var(--accent)]/60 hover:text-[var(--accent)] hover:bg-[var(--bg-surface)]/60 active:scale-95"
                   >
                     <Icon className="h-4.5 w-4.5" />
                   </a>
@@ -156,8 +156,8 @@ export default function Footer({ lang = 'en' }) {
         <div className="mt-10 pt-6 border-t border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-y-3 text-xs text-[var(--text-muted)]">
           <p>{content.copyright}</p>
           <div className="flex items-center gap-x-5">
-            <Link to="/" className="hover:text-[var(--text-secondary)] transition-colors">Privacy</Link>
-            <Link to="/" className="hover:text-[var(--text-secondary)] transition-colors">Terms</Link>
+            <Link to="/contact" className="hover:text-[var(--text-secondary)] transition-colors">{content.links.privacy}</Link>
+            <Link to="/contact" className="hover:text-[var(--text-secondary)] transition-colors">{content.links.terms}</Link>
             <span className="hidden sm:inline">•</span>
             <span>Secure • Instant • Trusted</span>
           </div>

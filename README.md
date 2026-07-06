@@ -29,9 +29,6 @@ Run `add_balance_transactions.sql` in Supabase SQL Editor (adds balance column +
 Recharge page at /recharge supports simulated Binance Pay / ShamCash / Cards (see SQL file + RechargeView.jsx for real API implementation notes).
 
 
-لتصفح الموقع: https://echo-core-store.netlify.app/
-
-
 ## ✨ الميزات
 
 - 🎮 **كاروسيل ألعاب متقدم** — عرض ديناميكي للألعاب الشهيرة (Valorant, League of Legends, إلخ)
@@ -71,6 +68,10 @@ npm run dev
 افتح المتصفح على: **http://localhost:5173**
 
 ## 📦 البناء والنشر
+
+الموقع منشور على **GitHub Pages**: https://gh-zx.github.io/echocore-store/
+
+عند الدفع إلى فرع `main`، يعمل workflow في `.github/workflows/deploy.yml` تلقائياً (`npm run build` ثم نشر مجلد `dist/`).
 
 ### بناء للإنتاج
 

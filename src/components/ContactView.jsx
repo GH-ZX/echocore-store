@@ -46,9 +46,7 @@ export default function ContactView({ t = {}, lang = 'en' }) {
           {t.contactUs || (isAr ? 'تواصل معنا' : 'Contact Us')}
         </h1>
         <p className="text-[var(--text-secondary)]">
-          {t.contactSubtitle || (isAr 
-            ? 'لديك سؤال أو مشكلة؟ أرسل لنا رسالة وسنرد عليك في أقرب وقت' 
-            : 'Have a question or issue? Send us a message and we’ll get back to you as soon as possible')}
+          {t.contactSubtitle}
         </p>
       </div>
 
@@ -57,7 +55,7 @@ export default function ContactView({ t = {}, lang = 'en' }) {
           <div className="text-center py-8">
             <div className="text-5xl mb-4">✅</div>
             <h3 className="text-xl font-bold mb-2 text-[var(--accent)]">
-              {isAr ? 'تم إرسال الرسالة بنجاح!' : 'Message sent successfully!'}
+              {t.messageSent}
             </h3>
             <p className="text-[var(--text-secondary)]">
               {isAr 
@@ -69,7 +67,7 @@ export default function ContactView({ t = {}, lang = 'en' }) {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-[var(--text-sec)] mb-1.5">
-                {isAr ? 'الاسم (اختياري)' : 'Name (optional)'}
+                {t.nameOptional}
               </label>
               <input
                 type="text"
@@ -77,13 +75,13 @@ export default function ContactView({ t = {}, lang = 'en' }) {
                 value={formData.name}
                 onChange={handleChange}
                 className="input w-full"
-                placeholder={isAr ? 'اسمك' : 'Your name'}
+                placeholder={t.yourName}
               />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-[var(--text-sec)] mb-1.5">
-                {isAr ? 'البريد الإلكتروني' : 'Email Address'} <span className="text-red-400">*</span>
+                {t.email} <span className="text-red-400">*</span>
               </label>
               <input
                 type="email"
@@ -98,7 +96,7 @@ export default function ContactView({ t = {}, lang = 'en' }) {
 
             <div>
               <label className="block text-sm font-medium text-[var(--text-sec)] mb-1.5">
-                {isAr ? 'الرسالة' : 'Message'} <span className="text-red-400">*</span>
+                {t.messageLabel} <span className="text-red-400">*</span>
               </label>
               <textarea
                 name="message"
@@ -107,9 +105,7 @@ export default function ContactView({ t = {}, lang = 'en' }) {
                 required
                 rows={6}
                 className="input w-full resize-y min-h-[120px]"
-                placeholder={isAr 
-                  ? 'اكتب رسالتك هنا... (مثال: لدي مشكلة في استلام الكود)' 
-                  : 'Write your message here... (e.g. I have an issue with code delivery)'}
+                placeholder={t.messagePlaceholder}
               />
             </div>
 
@@ -118,22 +114,18 @@ export default function ContactView({ t = {}, lang = 'en' }) {
               disabled={isSubmitting}
               className="btn btn-primary w-full py-3.5 text-base font-bold disabled:opacity-70"
             >
-              {isSubmitting 
-                ? (isAr ? 'جاري الإرسال...' : 'Sending...') 
-                : (isAr ? 'إرسال الرسالة' : 'Send Message')}
+              {isSubmitting ? t.sending : t.sendMessage}
             </button>
 
             <p className="text-center text-xs text-[var(--text-muted)]">
-              {isAr 
-                ? 'نحن نرد عادة خلال ساعات قليلة' 
-                : 'We usually reply within a few hours'}
+              {t.replyWithin}
             </p>
           </form>
         )}
       </div>
 
       <div className="mt-6 text-center text-sm text-[var(--text-secondary)]">
-        {t.reachDirectly || (isAr ? 'أو تواصل معنا مباشرة عبر:' : 'Or reach us directly via:')}{' '}
+        {t.reachDirectly}{' '}
         <a href="mailto:support@echocore.store" className="text-[var(--accent)] hover:underline">
           support@echocore.store
         </a>

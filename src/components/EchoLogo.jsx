@@ -1,12 +1,37 @@
-import echoCoreLogo from '../assets/echo-core-logo.png';
+import { useState, useEffect } from 'react';
+import echoCoreLogo from '../assets/echo-core-logo-sm.png';
+import { getActiveLogoUrl } from '../lib/theme';
 
-export default function EchoLogo({ className = 'w-10 h-10', alt = 'ECHOCORE' }) {
+export default function EchoLogo({ className = 'w-10 h-10', alt = 'ECHOCORE', src }) {
+  const [themeLogoUrl, setThemeLogoUrl] = useState(() => getActiveLogoUrl());
+
+  useEffect(() => {
+    const sync = () => setThemeLogoUrl(getActiveLogoUrl());
+    sync();
+    window.addEventListener('themechange', sync);
+    return () => window.removeEventListener('themechange', sync);
+  }, []);
+
+  const resolvedSrc = src || themeLogoUrl || echoCoreLogo;
+
   return (
-    <img
-      src={echoCoreLogo}
-      alt={alt}
-      className={`echo-logo object-contain flex-shrink-0 ${className}`}
-      draggable={false}
-    />
+    <span className={`echo-logo-frame inline-flex items-center justify-center overflow-hidden flex-shrink-0 ${className}`}>
+      <img
+        src={resolvedSrc}
+        alt={alt}
+        width={128}
+        height={128}
+        loading="eager"
+        decoding="async"
+        fetchPriority="high"
+        className="echo-logo h-full w-full max-w-none object-contain"
+        draggable={false}
+        onError={(e) => {
+          if (e.currentTarget.src !== echoCoreLogo) {
+            e.currentTarget.src = echoCoreLogo;
+          }
+        }}
+      />
+    </span>
   );
 }

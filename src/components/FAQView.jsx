@@ -56,39 +56,49 @@ export default function FAQView({ t = {}, lang = 'en' }) {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <div className="text-center mb-10">
-        <h1 className="text-3xl md:text-4xl font-black mb-3">
-          {t.faq || (isAr ? 'الأسئلة الشائعة' : 'Frequently Asked Questions')}
+      <div className="text-center mb-10 md:mb-12">
+        <h1 className="section-heading text-3xl md:text-4xl font-black mb-3">
+          {t.faq || (isAr ? 'الأسئلة الشائعة' : 'Frequently asked questions')}
         </h1>
-        <p className="text-[var(--text-secondary)]">
+        <p className="section-subheading text-sm md:text-base">
           {t.faqSubtitle || (isAr 
-            ? 'إجابات على أكثر الأسئلة شيوعاً حول متجر ECHOCORE' 
-            : 'Answers to the most common questions about ECHOCORE Store')}
+            ? 'إجابات سريعة حول الشراء والتسليم والدفع في ECHOCORE' 
+            : 'Quick answers about buying, delivery, and payments at ECHOCORE')}
         </p>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         {faqs.map((faq, index) => {
           const isOpen = openIndex === index;
           return (
             <div 
               key={index}
-              className="card overflow-hidden border border-[var(--border)]"
+              className={`card overflow-hidden transition-colors duration-200 ${isOpen ? 'border-[color-mix(in_srgb,var(--accent)_35%,var(--border))]' : ''}`}
             >
               <button
+                type="button"
                 onClick={() => toggle(index)}
-                className="w-full flex items-center justify-between p-5 text-left hover:bg-white/5 transition-colors"
+                aria-expanded={isOpen}
+                className="w-full flex items-center justify-between gap-4 p-4 sm:p-5 text-left hover:bg-[color-mix(in_srgb,var(--accent)_4%,transparent)] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[color-mix(in_srgb,var(--accent)_50%,transparent)]"
               >
-                <span className="font-semibold text-base pr-4">{faq.q}</span>
-                <span className={`text-xl transition-transform flex-shrink-0 ${isOpen ? 'rotate-45' : ''}`}>
+                <span className="font-semibold text-sm sm:text-base leading-snug">{faq.q}</span>
+                <span
+                  aria-hidden="true"
+                  className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] text-lg leading-none transition-all duration-200 ${isOpen ? 'rotate-45 border-[color-mix(in_srgb,var(--accent)_40%,var(--border))] text-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_8%,transparent)]' : ''}`}
+                >
                   +
                 </span>
               </button>
-              {isOpen && (
-                <div className="px-5 pb-5 text-[var(--text-secondary)] border-t border-[var(--border)] pt-4 text-sm leading-relaxed">
-                  {faq.a}
+              <div
+                className="grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+                style={{ gridTemplateRows: isOpen ? '1fr' : '0fr' }}
+              >
+                <div className="overflow-hidden">
+                  <div className="px-4 sm:px-5 pb-4 sm:pb-5 text-[var(--text-secondary)] border-t border-[var(--border)] pt-3 sm:pt-4 text-sm leading-relaxed max-w-[65ch]">
+                    {faq.a}
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
           );
         })}

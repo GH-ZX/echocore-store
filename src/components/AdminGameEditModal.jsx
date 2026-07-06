@@ -31,25 +31,45 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
 
   const serverList = (t.serverOptions && t.serverOptions.length > 0) ? t.serverOptions : DEFAULT_SERVERS;
 
+  const isNew = !game?.id;
+
   useEffect(() => {
     if (!game) return;
-    setForm({
-      name_en: game.name_en || '',
-      slug: game.slug || '',
-      points_name: game.points_name || '',
-      logo_url: game.logo_url || '',
-      image_url: game.image_url || '',
-      redemption_method: game.redemption_method || 'both',
-      servers: Array.isArray(game.servers) ? game.servers : [],
-      description_en: game.description_en || '',
-      description_ar: game.description_ar || '',
-      carousel_focus_x: game.carousel_focus_x ?? 50,
-      carousel_focus_y: game.carousel_focus_y ?? 50,
-    });
+
+    if (isNew) {
+      setForm({
+        name_en: '',
+        slug: '',
+        points_name: '',
+        logo_url: '',
+        image_url: '',
+        redemption_method: 'both',
+        servers: [],
+        description_en: '',
+        description_ar: '',
+        carousel_focus_x: 50,
+        carousel_focus_y: 50,
+      });
+    } else {
+      setForm({
+        name_en: game.name_en || '',
+        slug: game.slug || '',
+        points_name: game.points_name || '',
+        logo_url: game.logo_url || '',
+        image_url: game.image_url || '',
+        redemption_method: game.redemption_method || 'both',
+        servers: Array.isArray(game.servers) ? game.servers : [],
+        description_en: game.description_en || '',
+        description_ar: game.description_ar || '',
+        carousel_focus_x: game.carousel_focus_x ?? 50,
+        carousel_focus_y: game.carousel_focus_y ?? 50,
+      });
+    }
+
     setLogoFile(null);
     setCoverFile(null);
     setError('');
-  }, [game]);
+  }, [game, isNew]);
 
   useEffect(() => {
     if (coverFile) {
@@ -91,7 +111,8 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
       if (coverFile) finalImage = await uploadImage(coverFile, 'game-cover');
 
       await onSave({
-        id: game.id,
+        id: game?.id || null,
+        show_in_carousel: game?.show_in_carousel ?? false,
         name_en: form.name_en.trim(),
         name_ar: form.name_en.trim(),
         slug: form.slug,
@@ -120,7 +141,9 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
       <div className="relative w-full sm:max-w-xl max-h-[92dvh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-2xl">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3">
-          <h2 className="text-lg font-bold">{t.editGame || 'Edit Game'}</h2>
+          <h2 className="text-lg font-bold">
+            {isNew ? (t.addGame || 'Add Game') : (t.editGame || 'Edit Game')}
+          </h2>
           <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-white/5" aria-label="Close">
             <X className="w-5 h-5" />
           </button>
@@ -276,7 +299,7 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
 
           <div className="flex gap-2 pt-1">
             <button type="submit" disabled={saving} className="btn btn-primary flex-1 py-3 disabled:opacity-60">
-              {saving ? (t.uploading || 'Saving...') : (t.updateGameBtn || 'Update Game')}
+              {saving ? (t.uploading || 'Saving...') : (isNew ? (t.addGame || 'Add Game') : (t.updateGameBtn || 'Update Game'))}
             </button>
             <button type="button" onClick={onClose} className="btn btn-secondary px-5">
               {t.cancel || 'Cancel'}

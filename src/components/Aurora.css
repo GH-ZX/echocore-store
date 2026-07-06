@@ -1,0 +1,17 @@
+.aurora-container {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  opacity: calc(var(--bg-effect-opacity, 0.4) * var(--aurora-intensity, 1));
+}
+
+.aurora-container canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+}

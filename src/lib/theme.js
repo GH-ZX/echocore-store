@@ -7,9 +7,9 @@ export const DEFAULT_THEME = {
   'bg-surface': '#0a1329',
   'bg-elevated': '#111c36',
   'bg-header': 'rgba(6, 11, 25, 0.92)',
-  'text-primary': '#f1f5f9',
-  'text-secondary': '#94a3b8',
-  'text-muted': '#64748b',
+  'text-primary': '#f0f4f8',
+  'text-secondary': '#a8b4c4',
+  'text-muted': '#6e7d92',
   accent: '#22d3ee',
   'accent-hover': '#67e8f9',
   'accent-dark': '#164e63',
@@ -34,11 +34,75 @@ export const DEFAULT_THEME = {
   'games-divider': 'rgba(34, 211, 238, 0.5)',
   'games-subtitle': '#94a3b8',
   'games-card-hover': '#22d3ee',
+  'logo-url': '',
+  'logo-filter-auto': 'true',
   'logo-hue-rotate': '0deg',
-  'logo-glow': 'rgba(34, 211, 238, 0.5)',
-  'logo-saturate': '1.12',
-  'logo-brightness': '1.03',
+  'logo-glow': 'rgba(34, 211, 238, 0.3)',
+  'logo-saturate': '1.04',
+  'logo-brightness': '1.02',
+  'logo-zoom': '1.7',
+
+  /* Appearance */
+  'background-type': 'aurora',
+
+  /* Aurora / Background effects */
+  'aurora-enabled': 'true',
+  'aurora-responsive': 'true',
+  'aurora-amplitude': '0.52',
+  'aurora-speed': '0.32',
+  'aurora-blend': '0.36',
+  'aurora-intensity': '1',
+  'aurora-height': '0.22',
+  'bg-effect-opacity': '0.4',
+
+  /* Dashboard accents */
+  'dash-card-bg': 'color-mix(in srgb, var(--bg-surface) 92%, transparent)',
+  'dash-stat-glow': 'color-mix(in srgb, var(--accent) 18%, transparent)',
+  'dash-tab-active': 'var(--accent)',
 };
+
+export const BACKGROUND_TYPES = {
+  aurora: { id: 'aurora', labelEn: 'Aurora Waves', labelAr: 'أمواج أورورا' },
+  hexgrid: { id: 'hexgrid', labelEn: 'Cyber Hex Grid', labelAr: 'شبكة سداسية' },
+  particles: { id: 'particles', labelEn: 'Particle Field', labelAr: 'حقل جزيئات' },
+  nebula: { id: 'nebula', labelEn: 'Nebula Glow', labelAr: 'سديم متوهج' },
+  scanlines: { id: 'scanlines', labelEn: 'Retro Scanlines', labelAr: 'خطوط رجعية' },
+  starfield: { id: 'starfield', labelEn: 'Star Field', labelAr: 'حقل نجوم' },
+  circuit: { id: 'circuit', labelEn: 'Circuit Pulse', labelAr: 'نبض الدوائر' },
+  none: { id: 'none', labelEn: 'Solid Only', labelAr: 'لون صلب فقط' },
+};
+
+/** Background / motion settings — kept when switching color presets */
+export const APPEARANCE_THEME_KEYS = [
+  'background-type',
+  'aurora-enabled',
+  'aurora-responsive',
+  'aurora-amplitude',
+  'aurora-speed',
+  'aurora-blend',
+  'aurora-intensity',
+  'aurora-height',
+  'bg-effect-opacity',
+  'logo-url',
+  'logo-filter-auto',
+  'logo-hue-rotate',
+  'logo-glow',
+  'logo-saturate',
+  'logo-brightness',
+  'logo-zoom',
+];
+
+export function pickAppearanceOverrides(overrides = {}) {
+  return Object.fromEntries(
+    APPEARANCE_THEME_KEYS
+      .filter((key) => overrides[key] != null && String(overrides[key]).trim() !== '')
+      .map((key) => [key, overrides[key]]),
+  );
+}
+
+export function mergeThemeOverrides(base = {}, patch = {}) {
+  return sanitizeThemeOverrides({ ...base, ...patch });
+}
 
 const LOGO_REFERENCE_HUE = 186;
 
@@ -54,14 +118,17 @@ export const THEME_PRESETS = {
     labelEn: 'Purple Neon',
     labelAr: 'بنفسجي نيون',
     overrides: {
-      'bg-primary': '#080612',
-      'bg-surface': '#120a24',
-      'bg-elevated': '#1a1038',
+      'bg-primary': '#07050f',
+      'bg-surface': '#100a1c',
+      'bg-elevated': '#18102a',
+      'text-primary': '#ede9fe',
+      'text-secondary': '#a8a3c4',
+      'text-muted': '#6b6588',
       accent: '#a855f7',
       'accent-hover': '#c084fc',
       'accent-dark': '#581c87',
-      border: '#2e1065',
-      'border-strong': '#4c1d95',
+      border: '#2a1f42',
+      'border-strong': '#4c3570',
     },
   },
   emerald: {
@@ -72,6 +139,9 @@ export const THEME_PRESETS = {
       'bg-primary': '#031208',
       'bg-surface': '#071f14',
       'bg-elevated': '#0f2e1f',
+      'text-primary': '#e8f8f0',
+      'text-secondary': '#8fb8a8',
+      'text-muted': '#5a8a78',
       accent: '#34d399',
       'accent-hover': '#6ee7b7',
       'accent-dark': '#065f46',
@@ -84,14 +154,17 @@ export const THEME_PRESETS = {
     labelEn: 'Rose Arcade',
     labelAr: 'وردي أركيد',
     overrides: {
-      'bg-primary': '#12060c',
-      'bg-surface': '#1f0a14',
-      'bg-elevated': '#2d1220',
+      'bg-primary': '#10050a',
+      'bg-surface': '#1a0a12',
+      'bg-elevated': '#261018',
+      'text-primary': '#fce7f3',
+      'text-secondary': '#c4a0b0',
+      'text-muted': '#8a6a78',
       accent: '#fb7185',
       'accent-hover': '#fda4af',
       'accent-dark': '#9f1239',
-      border: '#4c0519',
-      'border-strong': '#881337',
+      border: '#4a2030',
+      'border-strong': '#6b3048',
     },
   },
   amber: {
@@ -99,21 +172,133 @@ export const THEME_PRESETS = {
     labelEn: 'Amber Warm',
     labelAr: 'كهرماني دافئ',
     overrides: {
-      'bg-primary': '#100a04',
-      'bg-surface': '#1c1208',
-      'bg-elevated': '#2a1a0c',
+      'bg-primary': '#0e0904',
+      'bg-surface': '#181008',
+      'bg-elevated': '#24180c',
+      'text-primary': '#fff7ed',
+      'text-secondary': '#c4a882',
+      'text-muted': '#8a7558',
       accent: '#fbbf24',
       'accent-hover': '#fcd34d',
       'accent-dark': '#92400e',
-      border: '#451a03',
-      'border-strong': '#78350f',
-      'text-primary': '#fff7ed',
+      border: '#3d2a10',
+      'border-strong': '#5c4018',
+    },
+  },
+  ocean: {
+    id: 'ocean',
+    labelEn: 'Ocean Deep',
+    labelAr: 'أزرق محيطي',
+    overrides: {
+      'bg-primary': '#020b19',
+      'bg-surface': '#041530',
+      'bg-elevated': '#0a1f42',
+      'text-primary': '#e8f0fc',
+      'text-secondary': '#8aa8d4',
+      'text-muted': '#5a78a8',
+      accent: '#3b82f6',
+      'accent-hover': '#60a5fa',
+      'accent-dark': '#1e3a8a',
+      border: '#172554',
+      'border-strong': '#1d4ed8',
+    },
+  },
+  cherry: {
+    id: 'cherry',
+    labelEn: 'Cherry Blossom',
+    labelAr: 'ساكورا وردي',
+    overrides: {
+      'bg-primary': '#12050a',
+      'bg-surface': '#1c0a12',
+      'bg-elevated': '#281018',
+      'text-primary': '#fce8f0',
+      'text-secondary': '#c4a0b4',
+      'text-muted': '#8a6a7a',
+      accent: '#f472b6',
+      'accent-hover': '#f9a8d4',
+      'accent-dark': '#831843',
+      border: '#4a2038',
+      'border-strong': '#6b3050',
+    },
+  },
+  gold: {
+    id: 'gold',
+    labelEn: 'Midnight Gold',
+    labelAr: 'ذهبي ليلي',
+    overrides: {
+      'bg-primary': '#0a0906',
+      'bg-surface': '#14120c',
+      'bg-elevated': '#1e1a12',
+      'text-primary': '#fffbeb',
+      'text-secondary': '#c4b896',
+      'text-muted': '#8a8068',
+      accent: '#f59e0b',
+      'accent-hover': '#fbbf24',
+      'accent-dark': '#78350f',
+      border: '#3d3210',
+      'border-strong': '#5c4818',
+    },
+  },
+  frost: {
+    id: 'frost',
+    labelEn: 'Frost White',
+    labelAr: 'أبيض ثلجي',
+    overrides: {
+      'bg-primary': '#0c1220',
+      'bg-surface': '#151e2e',
+      'bg-elevated': '#1e2a3e',
+      'text-primary': '#f8fafc',
+      'text-secondary': '#b8c4d4',
+      'text-muted': '#7a8a9e',
+      accent: '#94a3b8',
+      'accent-hover': '#cbd5e1',
+      'accent-dark': '#64748b',
+      border: '#334155',
+      'border-strong': '#475569',
+    },
+  },
+  lava: {
+    id: 'lava',
+    labelEn: 'Lava Red',
+    labelAr: 'حمم بركانية',
+    overrides: {
+      'bg-primary': '#100404',
+      'bg-surface': '#1a0808',
+      'bg-elevated': '#260e0e',
+      'text-primary': '#fce8e8',
+      'text-secondary': '#c49090',
+      'text-muted': '#8a6060',
+      accent: '#ef4444',
+      'accent-hover': '#f87171',
+      'accent-dark': '#7f1d1d',
+      border: '#4a1818',
+      'border-strong': '#6b2424',
+    },
+  },
+  mint: {
+    id: 'mint',
+    labelEn: 'Neo Mint',
+    labelAr: 'نعناعي حديث',
+    overrides: {
+      'bg-primary': '#030f0e',
+      'bg-surface': '#071f1c',
+      'bg-elevated': '#0d2f2a',
+      'text-primary': '#e8faf8',
+      'text-secondary': '#88c4bc',
+      'text-muted': '#5a9088',
+      accent: '#2dd4bf',
+      'accent-hover': '#5eead4',
+      'accent-dark': '#115e59',
+      border: '#134e4a',
+      'border-strong': '#0f766e',
     },
   },
 };
 
 export const THEME_FIELD_GROUPS = [
   { id: 'core', labelEn: 'Core colors', labelAr: 'الألوان الأساسية' },
+  { id: 'header', labelEn: 'Header & Shell', labelAr: 'الهيدر والإطار' },
+  { id: 'dashboard', labelEn: 'Admin Dashboard', labelAr: 'لوحة التحكم' },
   { id: 'sale', labelEn: 'Home Sale Offers', labelAr: 'عروض الخصم في الرئيسية' },
   { id: 'games', labelEn: 'Home Games', labelAr: 'الألعاب في الرئيسية' },
 ];
@@ -131,6 +316,10 @@ export const EDITABLE_THEME_FIELDS = [
   { key: 'success', group: 'core', labelEn: 'Success', labelAr: 'نجاح', type: 'color' },
   { key: 'error', group: 'core', labelEn: 'Error', labelAr: 'خطأ', type: 'color' },
   { key: 'warning', group: 'core', labelEn: 'Warning', labelAr: 'تحذير', type: 'color' },
+  { key: 'bg-header', group: 'header', labelEn: 'Header background', labelAr: 'خلفية الهيدر', type: 'color' },
+  { key: 'dash-card-bg', group: 'dashboard', labelEn: 'Dashboard card fill', labelAr: 'خلفية بطاقات اللوحة', type: 'text' },
+  { key: 'dash-stat-glow', group: 'dashboard', labelEn: 'Dashboard stat glow', labelAr: 'توهج إحصائيات اللوحة', type: 'text' },
+  { key: 'dash-tab-active', group: 'dashboard', labelEn: 'Dashboard active tab', labelAr: 'تبويب اللوحة النشط', type: 'color' },
   { key: 'sale-title', group: 'sale', labelEn: 'Sale Offers title', labelAr: 'عنوان عروض الخصم', type: 'color' },
   { key: 'sale-divider', group: 'sale', labelEn: 'Sale Offers divider', labelAr: 'خط عروض الخصم', type: 'color' },
   { key: 'sale-badge', group: 'sale', labelEn: 'Sale badge', labelAr: 'شارة الخصم', type: 'color' },
@@ -192,16 +381,67 @@ function hexToHue(hex) {
   return hue * 360;
 }
 
-function deriveLogoFilter(accent) {
+function normalizeHueDelta(degrees) {
+  let delta = degrees;
+  while (delta > 180) delta -= 360;
+  while (delta < -180) delta += 360;
+  return delta;
+}
+
+export function deriveLogoFilter(accent) {
   const accentHue = hexToHue(accent);
-  const rotate = Math.round(accentHue - LOGO_REFERENCE_HUE);
+  const rawDelta = normalizeHueDelta(accentHue - LOGO_REFERENCE_HUE);
+  // Partial shift keeps the mark recognizable; cap avoids muddy warm hues.
+  const rotate = Math.round(Math.max(-90, Math.min(90, rawDelta * 0.5)));
 
   return {
     'logo-hue-rotate': `${rotate}deg`,
-    'logo-glow': hexToRgba(accent, 0.5),
-    'logo-saturate': '1.12',
-    'logo-brightness': '1.03',
+    'logo-glow': hexToRgba(accent, 0.3),
+    'logo-saturate': '1.04',
+    'logo-brightness': '1.02',
   };
+}
+
+export function parseLogoGlow(value) {
+  const match = String(value || '').match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)/);
+  if (!match) return { r: 34, g: 211, b: 238, a: 0.3 };
+  return {
+    r: Number(match[1]),
+    g: Number(match[2]),
+    b: Number(match[3]),
+    a: match[4] != null ? Number(match[4]) : 1,
+  };
+}
+
+export function formatLogoGlow(r, g, b, a) {
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+export function glowToHex(value) {
+  const { r, g, b } = parseLogoGlow(value);
+  const toHex = (n) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+export function parseHueDegrees(value) {
+  const match = String(value || '').match(/(-?\d+(?:\.\d+)?)/);
+  return match ? Number(match[1]) : 0;
+}
+
+export function getStoredThemeOverrides() {
+  try {
+    const raw = localStorage.getItem(THEME_STORAGE_KEY);
+    if (!raw) return {};
+    return sanitizeThemeOverrides(JSON.parse(raw));
+  } catch {
+    return {};
+  }
+}
+
+export function getActiveLogoUrl(overrides = null) {
+  const source = overrides ?? getStoredThemeOverrides();
+  const custom = source['logo-url']?.trim();
+  return custom || null;
 }
 
 function deriveGamesColors(base, overrides, accent) {
@@ -221,6 +461,28 @@ function deriveGamesColors(base, overrides, accent) {
 
   if (!overrides['games-card-hover']) {
     base['games-card-hover'] = accent;
+  }
+}
+
+function blendHex(hexA, hexB, weightA = 0.5) {
+  const a = parseHex(hexA);
+  const b = parseHex(hexB);
+  if (!a || !b) return hexA;
+  const w = Math.min(1, Math.max(0, weightA));
+  const mix = (x, y) => Math.round(x * w + y * (1 - w));
+  const toHex = (n) => n.toString(16).padStart(2, '0');
+  return `#${toHex(mix(a.r, b.r))}${toHex(mix(a.g, b.g))}${toHex(mix(a.b, b.b))}`;
+}
+
+function deriveTextColors(base, overrides) {
+  const primary = base['text-primary'];
+  if (!primary?.startsWith('#')) return;
+
+  if (!overrides['text-secondary']) {
+    base['text-secondary'] = blendHex(primary, '#8b9cb0', 0.62);
+  }
+  if (!overrides['text-muted']) {
+    base['text-muted'] = blendHex(primary, '#5c6d82', 0.38);
   }
 }
 
@@ -266,15 +528,45 @@ export function buildFullTheme(overrides = {}) {
     base['shadow-glow'] = accentGlow(accent);
   }
 
+  deriveTextColors(base, overrides);
   deriveSaleColors(base, overrides, accent);
   deriveGamesColors(base, overrides, accent);
-  Object.assign(base, deriveLogoFilter(accent));
+
+  const logoAuto = (overrides['logo-filter-auto'] ?? base['logo-filter-auto'] ?? 'true') !== 'false';
+  if (logoAuto) {
+    Object.assign(base, deriveLogoFilter(accent));
+  }
+
+  for (const key of ['logo-hue-rotate', 'logo-glow', 'logo-saturate', 'logo-brightness', 'logo-zoom']) {
+    if (!base[key]) base[key] = DEFAULT_THEME[key];
+  }
 
   return base;
 }
 
-export function applyTheme(overrides = {}) {
-  const theme = buildFullTheme(overrides);
+const STRIP_THEME_KEYS = new Set(['color-mode']);
+
+export function sanitizeThemeOverrides(overrides = {}) {
+  return Object.fromEntries(
+    Object.entries(overrides).filter(([key]) => !STRIP_THEME_KEYS.has(key)),
+  );
+}
+
+export function applyTheme(overrides = {}, { persist = true, replace = false } = {}) {
+  let clean = sanitizeThemeOverrides(overrides);
+
+  if (!replace) {
+    try {
+      const stored = localStorage.getItem(THEME_STORAGE_KEY);
+      if (stored) {
+        clean = mergeThemeOverrides(JSON.parse(stored), clean);
+      }
+    } catch {
+      // ignore corrupt cache
+    }
+  }
+
+  const theme = buildFullTheme(clean);
   const root = document.documentElement;
 
   Object.entries(theme).forEach(([key, value]) => {
@@ -283,11 +575,23 @@ export function applyTheme(overrides = {}) {
     }
   });
 
-  try {
-    localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(overrides));
-  } catch {
-    // ignore quota / private mode
+  if (!clean['logo-url']?.trim()) {
+    root.style.removeProperty('--logo-url');
   }
+
+  root.style.setProperty('--text-sec', theme['text-secondary'] || DEFAULT_THEME['text-secondary']);
+  root.removeAttribute('data-color-mode');
+  root.setAttribute('data-background-type', theme['background-type'] || 'aurora');
+
+  if (persist) {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(clean));
+    } catch {
+      // ignore quota / private mode
+    }
+  }
+
+  window.dispatchEvent(new CustomEvent('themechange'));
 
   return theme;
 }
@@ -296,7 +600,7 @@ export function applyCachedTheme() {
   try {
     const raw = localStorage.getItem(THEME_STORAGE_KEY);
     if (!raw) return false;
-    applyTheme(JSON.parse(raw));
+    applyTheme(JSON.parse(raw), { replace: true });
     return true;
   } catch {
     return false;
@@ -313,6 +617,7 @@ export function resetTheme() {
   } catch {
     // ignore
   }
+  window.dispatchEvent(new CustomEvent('themechange'));
 }
 
 export async function fetchSiteTheme() {
@@ -337,8 +642,10 @@ export function normalizeThemeOverrides(value) {
     return {};
   }
 
-  return Object.fromEntries(
-    Object.entries(value).filter(([key, val]) => key in DEFAULT_THEME && typeof val === 'string' && val.trim())
+  return sanitizeThemeOverrides(
+    Object.fromEntries(
+      Object.entries(value).filter(([key, val]) => key in DEFAULT_THEME && typeof val === 'string' && val.trim()),
+    ),
   );
 }
 
