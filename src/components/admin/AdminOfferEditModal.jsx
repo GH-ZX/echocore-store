@@ -8,7 +8,6 @@ export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t 
     name_en: '',
     name_ar: '',
     price: '',
-    region: '',
     description_en: '',
     sale_image_url: '',
     is_sale: false,
@@ -33,7 +32,6 @@ export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t 
         name_en: '',
         name_ar: '',
         price: '',
-        region: '',
         description_en: '',
         sale_image_url: '',
         is_sale: !!offer.is_sale,
@@ -49,7 +47,6 @@ export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t 
         name_en: offer.name_en || '',
         name_ar: offer.name_ar || '',
         price: offer.price ?? '',
-        region: offer.region || '',
         description_en: offer.description_en || offer.description_ar || '',
         sale_image_url: offer.sale_image_url || '',
         is_sale: !!offer.is_sale,
@@ -92,7 +89,6 @@ export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t 
         name_en: form.name_en.trim(),
         name_ar: (form.name_ar || form.name_en).trim(),
         price: form.price,
-        region: form.region || null,
         description_en: desc,
         description_ar: desc,
         sale_image_url: finalSaleImage,
@@ -162,23 +158,15 @@ export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t 
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              required
-              type="number"
-              step="0.01"
-              placeholder={t.price || 'Price'}
-              value={form.price}
-              onChange={(e) => setForm({ ...form, price: e.target.value })}
-              className="input"
-            />
-            <input
-              placeholder={t.regionOptional || 'Region (optional)'}
-              value={form.region}
-              onChange={(e) => setForm({ ...form, region: e.target.value })}
-              className="input"
-            />
-          </div>
+          <input
+            required
+            type="number"
+            step="0.01"
+            placeholder={t.price || 'Price'}
+            value={form.price}
+            onChange={(e) => setForm({ ...form, price: e.target.value })}
+            className="input"
+          />
 
           <label className="flex items-center gap-2 text-sm text-[var(--text-sec)]">
             <input
@@ -233,7 +221,7 @@ export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t 
             <input
               type="number"
               step="0.0001"
-              placeholder={t.g2bulkCostUsd || 'Your G2Bulk cost (USD)'}
+              placeholder={t.g2bulkCostUsd || 'Your supplier cost (USD)'}
               value={form.g2bulk_cost_usd}
               onChange={(e) => setForm({ ...form, g2bulk_cost_usd: e.target.value })}
               className="input w-full text-sm"

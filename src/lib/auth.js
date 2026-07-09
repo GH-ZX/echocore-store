@@ -2,9 +2,34 @@ import { supabase } from './supabase';
 
 export const PASSWORD_RECOVERY_FLAG = 'echocore-password-recovery';
 
+function joinUrlPath(basePath = '/', subPath = '/') {
+  const base = String(basePath || '/').replace(/\/+$/, '') || '';
+  const sub = String(subPath || '/').startsWith('/') ? subPath : `/${subPath}`;
+  return `${base}${sub}` || '/';
+}
+
+/** Origin used after OAuth / email links (production domain when configured). */
+export function getAuthRedirectOrigin() {
+  const explicit = import.meta.env.VITE_AUTH_SITE_URL?.trim();
+  if (explicit) return explicit.replace(/\/+$/, '');
+
+  const domain = import.meta.env.VITE_SITE_DOMAIN?.trim();
+  if (domain) return `https://${domain}`.replace(/\/+$/, '');
+
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  return '';
+}
+
+/**
+ * Full redirect URL for Supabase auth (must match Dashboard → Redirect URLs).
+ * Includes Vite BASE_URL so GitHub Pages (/echocore-store/) works.
+ */
 export function getAuthRedirectUrl(path = '/login') {
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  return `${origin}${path}`;
+  const origin = getAuthRedirectOrigin();
+  const fullPath = joinUrlPath(import.meta.env.BASE_URL, path);
+  return `${origin}${fullPath}`;
 }
 
 export function isPasswordRecoveryUrl() {

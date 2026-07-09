@@ -1,4 +1,9 @@
-import { getStorefrontGames, getStorefrontVoucherGames, isStorefrontGame } from './gameRegions';
+import {
+  getStorefrontGames,
+  getStorefrontVoucherGames,
+  isStorefrontGame,
+  storefrontGameHasOffers,
+} from './gameRegions';
 import {
   CATALOG_SEGMENTS,
   getGameCatalogSegment,
@@ -35,9 +40,48 @@ export function getTopupGames(games = []) {
   return getStorefrontGames(games).filter((game) => isTopupGame(game) && game.active !== false);
 }
 
+/** Top-up games visible on the storefront — excludes titles with zero active offers. */
+export function getVisibleTopupGames(games = [], offers = [], { isAdmin = false } = {}) {
+  const topups = getTopupGames(games);
+  if (isAdmin) return topups;
+  return topups.filter((game) => storefrontGameHasOffers(game, games, offers));
+}
+
 export function countActiveOffers(gameId, offers = []) {
   if (!gameId) return 0;
   return offers.filter((offer) => offer.game_id === gameId && offer.active !== false).length;
+}
+
+export function resolveOfferCatalogType(offer, games = []) {
+  if (!offer) return 'topup';
+  if (offer.g2bulk_type === 'voucher') return 'gift_code';
+  if (offer.g2bulk_type === 'topup') return 'topup';
+
+  const game = games.find((row) => row.id === offer.game_id);
+  if (game?.redemption_method === 'redeem_code') return 'gift_code';
+  return 'topup';
+}
+
+/** Admin + overview stats — separates UID top-up packs from instant gift codes. */
+export function getCatalogOfferStats(offers = [], games = []) {
+  let topupPacks = 0;
+  let giftCodes = 0;
+
+  offers.forEach((offer) => {
+    if (offer.active === false) return;
+    if (resolveOfferCatalogType(offer, games) === 'gift_code') {
+      giftCodes += 1;
+    } else {
+      topupPacks += 1;
+    }
+  });
+
+  return {
+    games: getVisibleTopupGames(games, offers).length,
+    topupPacks,
+    giftCodes,
+    totalPacks: topupPacks + giftCodes,
+  };
 }
 
 export function offerBelongsToCatalog(offer, games = [], {

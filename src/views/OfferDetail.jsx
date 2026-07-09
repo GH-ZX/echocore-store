@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import AdminEditButton from '../components/admin/AdminEditButton';
+import { brandUserText } from '../lib/branding';
 import AdminGameEditModal from '../components/admin/AdminGameEditModal';
 import AdminOfferEditModal from '../components/admin/AdminOfferEditModal';
 import { resolveOfferRoute } from '../lib/offerRoutes';
@@ -54,7 +55,7 @@ export default function OfferDetail({
           onClick={() => (displayGame ? navigate(`/game/${displayGame.slug || displayGame.id}`) : navigate('/'))}
           className="btn btn-secondary text-sm sm:text-base"
         >
-          ← Back to {displayGame ? (lang === 'ar' ? displayGame.name_ar : displayGame.name_en) : 'Game'}
+          ← Back to {displayGame ? brandUserText(lang === 'ar' ? displayGame.name_ar : displayGame.name_en) : 'Game'}
         </button>
         {isAdmin && (
           <div className="flex flex-wrap items-center gap-2">
@@ -84,10 +85,10 @@ export default function OfferDetail({
           <div className="absolute inset-0 bg-gradient-to-t from-black/85 to-transparent" />
           <div className="absolute bottom-0 p-8 w-full">
             <div className="text-sm opacity-75 mb-1">
-              {game ? (lang === 'ar' ? game.name_ar : game.name_en) : ''}
+              {game ? brandUserText(lang === 'ar' ? game.name_ar : game.name_en) : ''}
             </div>
             <h1 className="text-4xl font-black">
-              {lang === 'ar' ? offer.name_ar : offer.name_en}
+              {brandUserText(lang === 'ar' ? offer.name_ar : offer.name_en)}
             </h1>
           </div>
         </div>
@@ -159,7 +160,7 @@ export default function OfferDetail({
               )}
             </div>
             <p className="text-[var(--text-sec)] leading-relaxed">
-              {lang === 'ar' ? offer.description_ar : offer.description_en || t.instantDeliveryNote}
+              {brandUserText(lang === 'ar' ? offer.description_ar : offer.description_en || t.instantDeliveryNote)}
             </p>
           </div>
 

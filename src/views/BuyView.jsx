@@ -5,6 +5,7 @@ import { isVoucherGame } from '../lib/catalogUtils';
 import { buildPaymentMethods, getDefaultPaymentMethod } from '../lib/paymentMethods';
 import { markOrderPaymentSent } from '../lib/orders';
 import { resolveOfferRoute } from '../lib/offerRoutes';
+import { brandUserText } from '../lib/branding';
 
 export default function BuyView({
   t = {},
@@ -116,7 +117,7 @@ export default function BuyView({
           navigate(`/success?orderId=${result.orderId}`);
         }
       } catch (e) {
-        notifyError(`${t.error || 'Error'}: ${e.message || ''}`);
+        notifyError(brandUserText(`${t.error || 'Error'}: ${e.message || ''}`));
       } finally {
         setIsProcessing(false);
       }
@@ -146,7 +147,7 @@ export default function BuyView({
         setStep(result.status === 'payment_sent' ? 'pending' : 'payment');
       }
     } catch (e) {
-      notifyError(`${t.paymentFailed || 'Payment failed'}: ${e.message || ''}`);
+      notifyError(brandUserText(`${t.paymentFailed || 'Payment failed'}: ${e.message || ''}`));
     } finally {
       setIsProcessing(false);
     }
@@ -165,15 +166,15 @@ export default function BuyView({
           || (isAr ? 'تم استلام طلبك. سيُكتمل الشراء بعد تأكيد الإدارة.' : 'Request received. Your order will complete after admin approval.'),
       );
     } catch (e) {
-      notifyError(e.message || t.paymentFailed);
+      notifyError(brandUserText(e.message || t.paymentFailed));
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const name = lang === 'ar' ? offer.name_ar : offer.name_en;
+  const name = brandUserText(lang === 'ar' ? offer.name_ar : offer.name_en);
   const regionLabel = game?.region_label || offer?.region || null;
-  const gameName = lang === 'ar' ? game.name_ar : game.name_en;
+  const gameName = brandUserText(lang === 'ar' ? game.name_ar : game.name_en);
   const purchaseSubtitle = regionLabel ? `${gameName} (${regionLabel}) • ${name}` : `${gameName} • ${name}`;
 
   if (step === 'payment' || step === 'pending') {
@@ -316,7 +317,7 @@ export default function BuyView({
                 </p>
                 <p className="text-xs text-[var(--text-muted)] mt-2 inline-flex items-center gap-1">
                   <Zap className="w-3.5 h-3.5 text-violet-300" />
-                  {t.voucherFulfillmentNote || (isAr ? 'يُوفَّر تلقائياً عبر G2Bulk عند تفعيل التوريد' : 'Auto-fulfilled via G2Bulk when fulfillment is enabled')}
+                  {t.voucherFulfillmentNote || (isAr ? 'يُسلَّم الكود تلقائياً بعد إتمام الدفع' : 'Your code is delivered automatically after payment')}
                 </p>
               </div>
             </div>

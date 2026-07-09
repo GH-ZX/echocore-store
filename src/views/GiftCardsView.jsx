@@ -48,8 +48,8 @@ export default function GiftCardsView({
           <Ticket className="w-10 h-10 mx-auto text-[var(--text-muted)] mb-3" />
           <p className="text-[var(--text-sec)]">
             {isAr
-              ? t.noGiftCards || 'لا توجد بطاقات هدايا متاحة حالياً. جرّب مزامنة G2Bulk من لوحة الإدارة.'
-              : t.noGiftCards || 'No gift cards available yet. Try syncing G2Bulk from the admin panel.'}
+              ? t.noGiftCards || 'لا توجد بطاقات هدايا متاحة حالياً.'
+              : t.noGiftCards || 'No gift cards available yet.'}
           </p>
         </div>
       ) : (

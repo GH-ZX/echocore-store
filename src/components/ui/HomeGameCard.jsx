@@ -3,6 +3,7 @@ import AdminEditButton from '../admin/AdminEditButton';
 import BorderGlow from './BorderGlow';
 import { presetImageUrl } from '../../lib/imageUtils';
 import { isGamingAccountGame, isGiftCardGame, isVoucherGame } from '../../lib/catalogUtils';
+import { brandUserText } from '../../lib/branding';
 
 export default function HomeGameCard({
   game,
@@ -10,15 +11,45 @@ export default function HomeGameCard({
   t = {},
   variant,
   offerCount,
+  packCount,
+  teaser = false,
   onSelectGame,
   onEditGame,
   isAdmin = false,
+  className = '',
 }) {
+  const isAr = lang === 'ar';
   const isAccount = variant === 'account' || isGamingAccountGame(game);
   const isVoucher = !isAccount && (variant === 'voucher' || isGiftCardGame(game) || isVoucherGame(game));
   const regionCount = Number(game.variant_count || game.region_count || 0);
   const hasRegions = !isVoucher && !isAccount && regionCount > 1;
+  const packs = packCount ?? offerCount;
   if (!game) return null;
+
+  const gameName = brandUserText(isAr ? game.name_ar : game.name_en);
+  const categoryLabel = isAccount
+    ? (isAr ? t.gamingAccount || 'حساب ألعاب' : t.gamingAccount || 'Gaming account')
+    : isVoucher
+      ? (isAr ? t.giftCards || 'بطاقة هدايا' : t.giftCards || 'Gift card')
+      : (isAr ? t.game || 'لعبة' : t.game || 'Game');
+
+  const metaLabel = isAccount
+    ? (packs != null
+      ? `${packs} ${isAr ? (t.accountPacks || 'خطة') : (t.accountPacks || 'plans')}`
+      : (isAr ? 'اشتراك / حساب' : 'Subscription / account'))
+    : isVoucher
+      ? (packs != null
+        ? `${packs} ${isAr ? (t.voucherPacks || 'باقة') : (t.voucherPacks || 'packs')}`
+        : (isAr ? t.voucherBadge || 'كود فوري' : t.voucherBadge || 'Instant code'))
+      : hasRegions
+        ? (isAr
+          ? `${regionCount} ${t.regionsBadge || 'مناطق'}`
+          : `${regionCount} ${t.regionsBadge || 'regions'}`)
+        : `${game.points_name || 'Top-up'} ${isAr ? 'شحن' : 'top-ups'}`;
+
+  const handleOpen = () => {
+    if (!teaser) onSelectGame?.(game);
+  };
 
   return (
     <BorderGlow
@@ -28,96 +59,75 @@ export default function HomeGameCard({
       glowIntensity={0.8}
       coneSpread={25}
       fillOpacity={0.35}
+      className={className}
     >
-    <div
-      onClick={() => onSelectGame?.(game)}
-      className="games-card group cursor-pointer transition-all duration-300 active:scale-[0.985]"
-    >
-      {isAdmin && onEditGame && (
-        <div className="absolute top-3 right-3 z-10">
-          <AdminEditButton
-            iconOnly
-            label={t.edit || 'Edit'}
-            onClick={() => onEditGame(game)}
-            className="bg-black/50 backdrop-blur-sm"
-          />
-        </div>
-      )}
-      <div className="relative h-48 sm:h-52">
-        {game.image_url ? (
-          <img
-            src={presetImageUrl(game.image_url, 'cardCover')}
-            alt={lang === 'ar' ? game.name_ar : game.name_en}
-            loading="lazy"
-            decoding="async"
-            className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          />
-        ) : (
-          <div className="absolute inset-0 bg-[var(--bg-elevated)]" />
-        )}
-        <div className={`absolute inset-0 bg-gradient-to-t ${
-          isAccount
-            ? 'from-sky-950/90 via-sky-900/20'
-            : isVoucher
-              ? 'from-violet-950/90 via-violet-900/20'
-              : 'from-black/70 via-black/30'
-        } to-transparent`} />
-        {(isVoucher || isAccount || hasRegions) && (
-          <div className={`absolute top-3 left-3 z-10 inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold ${
-            isAccount
-              ? 'bg-sky-500/20 border border-sky-400/30 text-sky-100'
-              : isVoucher
-                ? 'bg-violet-500/20 border border-violet-400/30 text-violet-100'
-                : 'bg-[var(--accent)]/20 border border-[var(--accent)]/30 text-white'
-          }`}>
-            {isAccount ? <UserCircle className="w-3 h-3" /> : isVoucher ? <Ticket className="w-3 h-3" /> : <Globe className="w-3 h-3" />}
-            {lang === 'ar'
-              ? (isAccount
-                ? (t.accountBadge || 'حساب')
-                : isVoucher
-                  ? (t.voucherBadge || 'كود')
-                  : `${regionCount} ${t.regionsBadge || 'مناطق'}`)
-              : (isAccount
-                ? (t.accountBadge || 'Account')
-                : isVoucher
-                  ? (t.voucherBadge || 'Code')
-                  : `${regionCount} ${t.regionsBadge || 'regions'}`)}
-          </div>
-        )}
-        <div className="absolute bottom-0 left-0 right-0 p-4">
-          <div className="font-bold text-lg sm:text-xl text-white text-wrap-balance">
-            {lang === 'ar' ? game.name_ar : game.name_en}
-          </div>
-          <div className="flex items-center justify-between gap-2 mt-1">
-            <span className="text-xs sm:text-sm text-white/70 inline-flex items-center gap-1">
-              {isAccount ? (
-                <>
-                  <UserCircle className="w-3 h-3" />
-                  {offerCount != null
-                    ? `${offerCount} ${lang === 'ar' ? (t.accountPacks || 'خطة') : (t.accountPacks || 'plans')}`
-                    : (lang === 'ar' ? t.gamingAccount || 'حساب ألعاب' : t.gamingAccount || 'Gaming account')}
-                </>
-              ) : isVoucher ? (
-                <>
-                  <Ticket className="w-3 h-3" />
-                  {offerCount != null
-                    ? `${offerCount} ${lang === 'ar' ? (t.voucherPacks || 'باقة') : (t.voucherPacks || 'packs')}`
-                    : (lang === 'ar' ? t.giftCard || 'بطاقة هدايا' : t.giftCard || 'Gift card')}
-                </>
-              ) : (
-                <>
-                  <Gamepad2 className="w-3 h-3" />
-                  {game.points_name} {lang === 'ar' ? 'شحن' : 'top-ups'}
-                </>
+      <div
+        onClick={handleOpen}
+        className={`home-game-card group flex flex-col transition-all duration-300 ${
+          teaser
+            ? 'home-game-card--teaser pointer-events-none select-none'
+            : 'cursor-pointer active:scale-[0.99]'
+        }`}
+        aria-hidden={teaser || undefined}
+        tabIndex={teaser ? -1 : undefined}
+      >
+        <div className="relative aspect-[16/10] sm:aspect-[4/3] overflow-hidden bg-[var(--bg-elevated)] flex-shrink-0">
+          {game.image_url ? (
+            <img
+              src={presetImageUrl(game.image_url, 'cardCover')}
+              alt={gameName}
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-[var(--bg-elevated)] to-[var(--bg-primary)]" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+
+          <div className="absolute top-2 left-2 right-2 flex items-start justify-between gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {(isVoucher || isAccount || hasRegions) && (
+                <span className={`home-game-card-badge ${
+                  isAccount
+                    ? 'home-game-card-badge--account'
+                    : isVoucher
+                      ? 'home-game-card-badge--voucher'
+                      : 'home-game-card-badge--regions'
+                }`}>
+                  {isAccount ? <UserCircle className="w-3 h-3" /> : isVoucher ? <Ticket className="w-3 h-3" /> : <Globe className="w-3 h-3" />}
+                  {isAccount
+                    ? (t.accountBadge || (isAr ? 'حساب' : 'Account'))
+                    : isVoucher
+                      ? (t.voucherBadge || (isAr ? 'كود' : 'Code'))
+                      : `${regionCount} ${t.regionsBadge || (isAr ? 'مناطق' : 'regions')}`}
+                </span>
               )}
-            </span>
-            <span className="text-[11px] font-semibold text-[var(--accent)] opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
-              {lang === 'ar' ? 'عرض' : 'View'}
-            </span>
+            </div>
+            {isAdmin && onEditGame && !teaser && (
+              <AdminEditButton
+                iconOnly
+                label={t.edit || 'Edit'}
+                onClick={() => onEditGame(game)}
+                className="bg-black/50 backdrop-blur-sm"
+              />
+            )}
           </div>
+        </div>
+
+        <div className="flex flex-col flex-1 p-3 sm:p-3.5 gap-1.5 min-w-0">
+          <p className="text-[11px] sm:text-xs text-[var(--text-muted)] truncate font-medium inline-flex items-center gap-1">
+            {isAccount ? <UserCircle className="w-3 h-3 flex-shrink-0" /> : isVoucher ? <Ticket className="w-3 h-3 flex-shrink-0" /> : <Gamepad2 className="w-3 h-3 flex-shrink-0" />}
+            {categoryLabel}
+          </p>
+          <h3 className="font-semibold text-sm sm:text-base leading-snug text-[var(--text-primary)] line-clamp-2 min-h-[2.5rem]">
+            {gameName}
+          </h3>
+          <p className="text-[11px] sm:text-xs text-[var(--text-muted)] truncate mt-auto">
+            {metaLabel}
+          </p>
         </div>
       </div>
-    </div>
     </BorderGlow>
   );
 }

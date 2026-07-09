@@ -8,12 +8,42 @@ import HomeGameCard from '../../components/ui/HomeGameCard';
 import CustomerReviewsSection from './CustomerReviewsSection';
 import AdminAddCard from '../../components/admin/AdminAddCard';
 import { getCarouselGames } from '../../lib/carouselUtils';
-import { getDisplayGameForOffer, offerBelongsToStorefront } from '../../lib/gameRegions';
-import { countActiveOffers, getGiftCardGames, getGamingAccountGames, getTopupGames } from '../../lib/catalogUtils';
+import {
+  getChildGameIds,
+  getDisplayGameForOffer,
+  getRegionVariantsWithOffers,
+  offerBelongsToStorefront,
+} from '../../lib/gameRegions';
+import {
+  countActiveOffers,
+  getGiftCardGames,
+  getGamingAccountGames,
+  getVisibleTopupGames,
+} from '../../lib/catalogUtils';
 import { pickStableOffers } from '../../lib/customerReviews';
+import { brandUserText } from '../../lib/branding';
 import { DEFAULT_HOME_LAYOUT, getSectionLabel, normalizeHomeLayout } from '../../lib/homeLayout';
 
-const HOME_GAMES_PREVIEW = 8;
+const HOME_GAMES_PREVIEW = 9;
+const HOME_GAMES_CLICKABLE = 6;
+
+function stripPlainText(value = '') {
+  return String(value)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function resolveCarouselDescription(game, games = [], offers = []) {
+  const children = getRegionVariantsWithOffers(games, game.id, offers);
+  const childWithCopy = children.find((row) => row.description_en || row.description_ar);
+  const en = stripPlainText(game.description_en || childWithCopy?.description_en || '');
+  const ar = stripPlainText(game.description_ar || childWithCopy?.description_ar || '');
+  return {
+    description_en: brandUserText(en),
+    description_ar: brandUserText(ar || en),
+  };
+}
 
 function buildOfferPoolKey(offers = []) {
   return offers.map((offer) => offer.id).sort().join('|');
@@ -41,6 +71,7 @@ export default function HomeView({
   onAddGame,
   onAddOffer,
   onManageCarousel,
+  onPickCarouselGame,
   onMoveCarouselGame,
   onBuyNow,
   isAdmin = false,
@@ -69,7 +100,24 @@ export default function HomeView({
 
   const layout = useMemo(() => normalizeHomeLayout(homeLayout), [homeLayout]);
 
-  const topupGames = useMemo(() => getTopupGames(games), [games]);
+  const topupGames = useMemo(
+    () => getVisibleTopupGames(games, offers, { isAdmin }),
+    [games, offers, isAdmin],
+  );
+
+  const topupGamesWithStats = useMemo(() => topupGames.map((game) => {
+    const childIds = getChildGameIds(games, game);
+    const activeOffers = offers.filter(
+      (offer) => childIds.includes(offer.game_id) && offer.active !== false,
+    );
+    const regions = getRegionVariantsWithOffers(games, game.id, offers);
+
+    return {
+      ...game,
+      region_count: regions.length > 1 ? regions.length : game.region_count,
+      packCount: activeOffers.length,
+    };
+  }), [topupGames, games, offers]);
   const giftCardGames = useMemo(
     () => getGiftCardGames(games)
       .map((game) => ({ ...game, offerCount: countActiveOffers(game.id, offers) }))
@@ -120,19 +168,22 @@ export default function HomeView({
 
   const carouselGames = getCarouselGames(topupGames);
 
-  const carouselItems = carouselGames.map((g) => ({
-    id: g.id,
-    name_en: g.name_en,
-    name_ar: g.name_ar,
-    image_url: g.image_url,
-    logo_url: g.logo_url || getLocalLogo(g.slug),
-    description_en: g.description_en || '',
-    description_ar: g.description_ar || '',
-    carousel_focus_x: g.carousel_focus_x ?? 50,
-    carousel_focus_y: g.carousel_focus_y ?? 50,
-    category: 'games',
-    price: 0,
-  }));
+  const carouselItems = carouselGames.map((g) => {
+    const descriptions = resolveCarouselDescription(g, games, offers);
+    return {
+      id: g.id,
+      name_en: g.name_en,
+      name_ar: g.name_ar,
+      image_url: g.image_url,
+      logo_url: g.logo_url || getLocalLogo(g.slug),
+      description_en: descriptions.description_en,
+      description_ar: descriptions.description_ar,
+      carousel_focus_x: g.carousel_focus_x ?? 50,
+      carousel_focus_y: g.carousel_focus_y ?? 50,
+      category: 'games',
+      price: 0,
+    };
+  });
 
   const renderSectionHeading = (section, style = 'sale') => {
     const title = getSectionLabel(section, lang);
@@ -155,51 +206,78 @@ export default function HomeView({
     const hasItems = items.length > 0;
     const previewLimit = addOptions.previewLimit;
     const totalCount = addOptions.totalCount ?? items.length;
+    const teaserFromIndex = addOptions.teaserFromIndex ?? null;
+    const useTeaserPreview = teaserFromIndex != null && !!addOptions.showMoreLink;
+    const showMoreLink = useTeaserPreview
+      ? totalCount > teaserFromIndex
+      : !!addOptions.showMoreLink && totalCount > (previewLimit || items.length);
     const displayItems = previewLimit ? items.slice(0, previewLimit) : items;
-    const showMoreLink = !!addOptions.showMoreLink && totalCount > (previewLimit || items.length);
+    const isAr = lang === 'ar';
 
     if (!hasItems && !showAddCard && !loading) {
       return null;
     }
 
     return (
-      <div className="games-section">
-        {section && renderSectionHeading(section, 'games')}
+      <div className="sale-offers-section home-games-section">
+        {section && renderSectionHeading(section, 'sale')}
         {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="card h-48 sm:h-52 animate-pulse bg-[var(--bg-surface)]" />
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 items-stretch animate-pulse">
+            {Array.from({ length: HOME_GAMES_PREVIEW }).map((_, i) => (
+              <div key={i} className="card h-[380px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl" />
             ))}
           </div>
         ) : (
           <>
-            <div className={`relative ${showMoreLink ? 'home-games-preview' : ''}`}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {displayItems.map((game) => (
-                  <HomeGameCard
-                    key={game.id}
-                    game={game}
-                    lang={lang}
-                    t={t}
-                    onSelectGame={onSelectGame}
-                    onEditGame={onEditGame}
-                    isAdmin={isAdmin}
-                  />
-                ))}
+            <div className={`relative ${showMoreLink && useTeaserPreview ? 'home-games-preview-stage' : ''}`}>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 items-stretch">
+                {displayItems.map((game, index) => {
+                  const isTeaser = showMoreLink && useTeaserPreview && index >= teaserFromIndex;
+                  return (
+                    <div
+                      key={game.id}
+                      className={isTeaser ? 'home-games-card-slot home-games-card-slot--teaser' : 'home-games-card-slot'}
+                      aria-hidden={isTeaser ? true : undefined}
+                    >
+                      <HomeGameCard
+                        game={game}
+                        lang={lang}
+                        t={t}
+                        packCount={game.packCount}
+                        teaser={isTeaser}
+                        onSelectGame={isTeaser ? undefined : onSelectGame}
+                        onEditGame={isTeaser ? undefined : onEditGame}
+                        isAdmin={isAdmin && !isTeaser}
+                        className="w-full min-w-0 h-full"
+                      />
+                    </div>
+                  );
+                })}
                 {showAddCard && !showMoreLink && (
                   <AdminAddCard
                     variant="game"
-                    ariaLabel={t.addGame || (lang === 'ar' ? 'إضافة لعبة' : 'Add game')}
+                    ariaLabel={t.addGame || (isAr ? 'إضافة لعبة' : 'Add game')}
                     onClick={() => onAddGame(addOptions)}
                   />
                 )}
               </div>
-              {showMoreLink && <div className="home-games-preview-fade" aria-hidden />}
+              {showMoreLink && useTeaserPreview && (
+                <div className="home-games-preview-overlay" aria-hidden={false}>
+                  <div className="home-games-preview-overlay-fade" aria-hidden="true" />
+                  <Link
+                    to="/games"
+                    className="home-games-preview-overlay-btn btn btn-secondary inline-flex items-center gap-2"
+                  >
+                    {t.showMoreGames || (isAr ? `عرض كل الألعاب (${totalCount})` : `Show more games (${totalCount})`)}
+                    <ChevronDown className="w-4 h-4" />
+                  </Link>
+                </div>
+              )}
             </div>
-            {showMoreLink && (
+            {showMoreLink && !useTeaserPreview && (
               <div className="flex justify-center mt-6">
                 <Link to="/games" className="btn btn-secondary inline-flex items-center gap-2">
-                  {t.showMoreGames || (lang === 'ar' ? `عرض كل الألعاب (${totalCount})` : `Show more games (${totalCount})`)}
+                  {t.showMoreGames || (isAr ? `عرض كل الألعاب (${totalCount})` : `Show more games (${totalCount})`)}
                   <ChevronDown className="w-4 h-4" />
                 </Link>
               </div>
@@ -276,7 +354,7 @@ export default function HomeView({
             <div className="carousel-skeleton animate-pulse w-full rounded-2xl bg-[var(--bg-surface)]" />
           );
         }
-        if (carouselGames.length === 0 && !(isAdmin && onAddGame)) return null;
+        if (carouselGames.length === 0 && !(isAdmin && onPickCarouselGame)) return null;
         return (
           <ProductCarousel
             key={section.id}
@@ -285,7 +363,7 @@ export default function HomeView({
             lang={lang}
             isAdmin={isAdmin}
             onManageCarousel={onManageCarousel}
-            onAddGame={onAddGame}
+            onPickCarouselGame={onPickCarouselGame}
             onEditGame={(item) => {
               const game = games.find((g) => g.id === item.id);
               if (game) onEditGame?.(game);
@@ -334,9 +412,10 @@ export default function HomeView({
           title_en: section.title_en || t.chooseGame || 'Choose a Game',
           title_ar: section.title_ar || t.chooseGame || 'اختر لعبتك',
         };
-        return renderGamesGrid(topupGames, gamesSection, {
+        return renderGamesGrid(topupGamesWithStats, gamesSection, {
           previewLimit: HOME_GAMES_PREVIEW,
-          totalCount: topupGames.length,
+          teaserFromIndex: HOME_GAMES_CLICKABLE,
+          totalCount: topupGamesWithStats.length,
           showMoreLink: true,
         });
       }

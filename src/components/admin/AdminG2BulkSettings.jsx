@@ -1,17 +1,19 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   Zap, Loader2, CheckCircle, AlertCircle, Save, RefreshCw, Download, X,
-  Clock, Key, Store, Truck, CalendarClock, ShieldCheck, ArrowRight,
-  Package, TrendingUp, MinusCircle, PlusCircle, Info,
+  Clock, Key, Store, Truck, CalendarClock, ShieldCheck,
+  Package, Info, CloudDownload, Trash2,
 } from 'lucide-react';
 import G2bulkWalletCard from '../ui/G2bulkWalletCard';
+import G2bulkPullPanel from './G2bulkPullPanel';
 import {
   fetchG2bulkSettings,
   saveG2bulkSettings,
   g2bulkGetMe,
   syncG2bulkCatalog,
-  checkG2bulkCatalog,
+  clearG2bulkSyncedCatalog,
 } from '../../lib/g2bulk';
+import { countPullSelection, normalizePullSelection } from '../../lib/pullCatalogUtils';
 
 const TIMEZONE_OPTIONS = [
   { value: 'Asia/Damascus', label: 'Syria (Asia/Damascus)' },
@@ -40,21 +42,6 @@ function StatusPill({ ok, label }) {
       <span className={`w-1.5 h-1.5 rounded-full ${ok ? 'bg-green-400' : 'bg-[var(--text-muted)]'}`} />
       {label}
     </span>
-  );
-}
-
-function StatChip({ label, value, tone = 'default' }) {
-  const tones = {
-    default: 'border-[var(--border)] bg-[var(--bg-primary)]/50 text-[var(--text-sec)]',
-    good: 'border-green-500/25 bg-green-500/10 text-green-300',
-    warn: 'border-amber-500/25 bg-amber-500/10 text-amber-200',
-    muted: 'border-[var(--border)] bg-transparent text-[var(--text-muted)]',
-  };
-  return (
-    <div className={`rounded-xl border px-3 py-2.5 min-w-[7rem] ${tones[tone] || tones.default}`}>
-      <div className="text-[10px] uppercase tracking-wider opacity-80">{label}</div>
-      <div className="text-lg font-black mt-0.5 tabular-nums">{value}</div>
-    </div>
   );
 }
 
@@ -87,17 +74,16 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [checking, setChecking] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [pullPanelOpen, setPullPanelOpen] = useState(false);
   const [syncProgress, setSyncProgress] = useState(null);
-  const [checkProgress, setCheckProgress] = useState(null);
   const [includeVouchers, setIncludeVouchers] = useState(true);
   const syncAbortRef = useRef(null);
-  const checkAbortRef = useRef(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [testResult, setTestResult] = useState(null);
   const [syncResult, setSyncResult] = useState(null);
-  const [checkResult, setCheckResult] = useState(null);
+  const [pullSelection, setPullSelection] = useState(normalizePullSelection());
 
   const [form, setForm] = useState({
     g2bulk_enabled: false,
@@ -132,11 +118,13 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         g2bulk_last_sync_at: data.g2bulk_last_sync_at || null,
         g2bulk_last_check_at: data.g2bulk_last_check_at || null,
         g2bulk_check_summary: data.g2bulk_check_summary || null,
+        g2bulk_pull_selection: data.g2bulk_pull_selection || null,
         g2bulk_api_key_set: !!data.g2bulk_api_key_set,
         g2bulk_api_key_masked: data.g2bulk_api_key_masked || '',
         g2bulk_api_key_source: data.g2bulk_api_key_source || (data.g2bulk_api_key_set ? 'db' : 'none'),
       });
       setApiKeyInput('');
+      setPullSelection(normalizePullSelection(data.g2bulk_pull_selection || {}));
     } catch (err) {
       setError(err.message || (isAr ? 'تعذر تحميل إعدادات G2Bulk' : 'Failed to load G2Bulk settings'));
     } finally {
@@ -214,53 +202,23 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     syncAbortRef.current?.abort();
   };
 
-  const handleCancelCheck = () => {
-    checkAbortRef.current?.abort();
-  };
+  const pullCounts = useMemo(
+    () => countPullSelection(pullSelection, { includeGiftCards: includeVouchers }),
+    [pullSelection, includeVouchers],
+  );
 
-  const catalogSummary = checkResult?.summary || form.g2bulk_check_summary;
-  const catalogUpToDate = !!catalogSummary?.upToDate;
   const catalogNeverSynced = !form.g2bulk_last_sync_at;
-  const catalogChanges = Number(catalogSummary?.totalChanges ?? 0);
+  const hasAnyPullSelection = pullCounts.total > 0;
+  const hasSyncableSelection = (
+    pullCounts.syncGames + pullCounts.accounts + pullCounts.giftCards
+  ) > 0;
 
   const catalogStatus = useMemo(() => {
-    if (checking) return 'checking';
-    if (catalogNeverSynced) return 'never';
-    if (catalogSummary?.upToDate) return 'current';
-    if (catalogChanges > 0) return 'updates';
-    if (form.g2bulk_last_check_at) return 'stale';
-    return 'unknown';
-  }, [checking, catalogNeverSynced, catalogSummary, catalogChanges, form.g2bulk_last_check_at]);
-
-  const progressPhaseLabel = (progress, mode = 'sync') => {
-    if (!progress) return mode === 'check'
-      ? (isAr ? 'جاري الفحص…' : 'Checking…')
-      : (isAr ? 'جاري الاستيراد…' : 'Importing…');
-    if (progress.phase === 'init') return isAr ? 'جاري التحضير…' : 'Preparing…';
-    if (progress.phase === 'games' && progress.total > 0) {
-      return isAr
-        ? `${mode === 'check' ? 'فحص' : 'مزامنة'} الألعاب ${progress.current}/${progress.total}`
-        : `${mode === 'check' ? 'Scanning' : 'Syncing'} games ${progress.current}/${progress.total}`;
-    }
-    if (progress.phase === 'vouchers') {
-      return isAr ? 'بطاقات الهدايا…' : 'Gift cards…';
-    }
-    if (progress.phase === 'finalize') return isAr ? 'إنهاء…' : 'Finishing…';
-    return mode === 'check'
-      ? (isAr ? 'جاري الفحص…' : 'Checking…')
-      : (isAr ? 'جاري الاستيراد…' : 'Importing…');
-  };
-
-  const progressPercent = (progress) => {
-    if (!progress) return 0;
-    if (progress.phase === 'init') return 6;
-    if (progress.phase === 'games' && progress.total > 0) {
-      return 6 + Math.round((progress.current / progress.total) * 84);
-    }
-    if (progress.phase === 'vouchers') return 94;
-    if (progress.phase === 'finalize') return 99;
-    return 0;
-  };
+    if (syncing) return 'syncing';
+    if (!hasAnyPullSelection) return 'no-selection';
+    if (catalogNeverSynced) return 'ready';
+    return 'synced';
+  }, [syncing, hasAnyPullSelection, catalogNeverSynced]);
 
   const syncPhaseLabel = (progress) => {
     if (!progress) return isAr ? 'جاري الاستيراد…' : 'Importing…';
@@ -286,61 +244,41 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     return 0;
   };
 
-  const handleCheckCatalog = async () => {
-    setChecking(true);
+  const handleClearSyncedCatalog = async () => {
+    const ok = window.confirm(isAr
+      ? 'سيتم حذف كل الألعاب والعروض المستوردة من G2Bulk من قاعدة البيانات. الطلبات السابقة تبقى. هل تريد المتابعة؟'
+      : 'This removes all G2Bulk-imported games and offers from the database. Past orders stay. Continue?');
+    if (!ok) return;
+
+    setClearing(true);
     setError('');
     setSuccess('');
-    setCheckResult(null);
-    setCheckProgress({ phase: 'init', current: 0, total: 0 });
-
-    const controller = new AbortController();
-    checkAbortRef.current = controller;
-
     try {
-      const result = await checkG2bulkCatalog({
-        includeVouchers,
-        signal: controller.signal,
-        onProgress: (progress) => setCheckProgress(progress),
-      });
-
-      setCheckResult(result);
-      setCheckProgress(null);
-      setForm((prev) => ({
-        ...prev,
-        g2bulk_last_check_at: result.checkedAt || prev.g2bulk_last_check_at,
-        g2bulk_check_summary: result.summary || prev.g2bulk_check_summary,
-      }));
-
-      if (result.summary?.upToDate) {
-        setSuccess(isAr
-          ? 'الكتالوج محدّث — لا توجد تغييرات من G2Bulk'
-          : 'Catalog is up to date — no changes from G2Bulk');
-      } else {
-        setSuccess(isAr
-          ? `تم العثور على ${result.summary?.totalChanges ?? 0} تغيير(ات) — يمكنك المزامنة الآن`
-          : `Found ${result.summary?.totalChanges ?? 0} change(s) — you can sync now`);
-      }
-      setTimeout(() => setSuccess(''), 6000);
+      const result = await clearG2bulkSyncedCatalog();
+      setSuccess(isAr
+        ? `تم الحذف — ${result.gamesRemoved ?? 0} لعبة · ${result.offersRemoved ?? 0} عرض`
+        : `Cleared — ${result.gamesRemoved ?? 0} games · ${result.offersRemoved ?? 0} offers`);
+      await load();
+      await onCatalogSynced?.(form.g2bulk_catalog_only);
+      setTimeout(() => setSuccess(''), 5000);
     } catch (err) {
-      setCheckProgress(null);
-      const cancelled = controller.signal.aborted || /cancel/i.test(err.message || '');
-      setError(
-        cancelled
-          ? (isAr ? 'تم إلغاء الفحص' : 'Check cancelled')
-          : (err.message || (isAr ? 'فشل فحص الكتالوج' : 'Catalog check failed')),
-      );
+      setError(err.message || (isAr ? 'فشل حذف الكتالوج' : 'Failed to clear catalog'));
     } finally {
-      checkAbortRef.current = null;
-      setChecking(false);
+      setClearing(false);
     }
   };
 
-  const handleSyncCatalog = async (force = false) => {
-    if (!force && catalogUpToDate && !catalogNeverSynced) {
-      const ok = window.confirm(isAr
-        ? 'الكتالوج محدّث حسب آخر فحص. هل تريد مزامنة كاملة على أي حال؟'
-        : 'Catalog looks up to date from the last check. Run a full sync anyway?');
-      if (!ok) return;
+  const handleSyncCatalog = async () => {
+    if (!hasSyncableSelection) {
+      setError(isAr
+        ? hasAnyPullSelection
+          ? 'الألعاب المباشرة لا تحتاج مزامنة — أضف ألعاباً «مزامَنة» أو حسابات'
+          : 'افتح «سحب من API» واختر الألعاب أو الحسابات أولاً'
+        : hasAnyPullSelection
+          ? 'Live games do not need sync — add Synced games or accounts'
+          : 'Open Pull from API and choose games or accounts first');
+      setPullPanelOpen(true);
+      return;
     }
     setSyncing(true);
     setError('');
@@ -365,7 +303,6 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
 
       setSyncResult(result);
       setSyncProgress(null);
-      setCheckResult(null);
       setSuccess(
         isAr
           ? `تمت المزامنة — ${result.gamesSynced} لعبة · ${result.offersSynced} عرض`
@@ -545,9 +482,16 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
               <option value="live">
                 {isAr ? 'مباشر — من API مباشرة، بدون انتظار المزامنة' : 'Live — read G2Bulk API directly, no sync wait'}
               </option>
+              <option value="hybrid">
+                {isAr ? 'مختلط — بعض الألعاب مباشرة وبعضها مزامَن' : 'Hybrid — some games live, some synced'}
+              </option>
             </select>
             <p className="text-xs text-[var(--text-muted)] mt-1.5 max-w-xl">
-              {form.g2bulk_catalog_mode === 'live'
+              {form.g2bulk_catalog_mode === 'hybrid'
+                ? (isAr
+                  ? 'يُحدَّد تلقائياً من اختيار السحب (مزامَن + مباشر).'
+                  : 'Set automatically from Pull from API (synced + live picks).')
+                : form.g2bulk_catalog_mode === 'live'
                 ? (isAr
                   ? 'الأسعار والمخزون يُقرأان من G2Bulk عند التصفح. الطلبات تُسجَّل في قاعدة البيانات عند الدفع.'
                   : 'Prices and stock are read from G2Bulk while browsing. Orders are saved to the database at checkout.')
@@ -587,49 +531,73 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         accent
         title={isAr ? 'صحة الكتالوج' : 'Catalog health'}
         description={isAr
-          ? 'افحص التحديثات أولاً — المزامنة الكاملة تستغرق وقتاً لكنها لا تحذف الطلبات'
-          : 'Check for updates first — full sync takes time but does not delete orders'}
+          ? 'اسحب من API واختر ما تريد، ثم زامِن — لا يحذف الطلبات السابقة'
+          : 'Pull from API, choose items, then sync — past orders are kept'}
       >
         <div className={`rounded-2xl border px-4 py-4 ${
-          catalogStatus === 'current'
+          catalogStatus === 'synced'
             ? 'border-green-500/30 bg-green-500/5'
-            : catalogStatus === 'updates'
+            : catalogStatus === 'no-selection'
               ? 'border-amber-500/30 bg-amber-500/5'
-              : catalogStatus === 'checking'
+              : catalogStatus === 'syncing'
                 ? 'border-[var(--accent)]/30 bg-[var(--accent)]/5'
                 : 'border-[var(--border)] bg-[var(--bg-primary)]/35'
         }`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex items-start gap-3 min-w-0">
-              {catalogStatus === 'current' && <ShieldCheck className="w-6 h-6 text-green-400 shrink-0" />}
-              {catalogStatus === 'updates' && <TrendingUp className="w-6 h-6 text-amber-300 shrink-0" />}
-              {catalogStatus === 'checking' && <Loader2 className="w-6 h-6 text-[var(--accent)] animate-spin shrink-0" />}
-              {catalogStatus === 'never' && <Info className="w-6 h-6 text-[var(--text-muted)] shrink-0" />}
-              {(catalogStatus === 'stale' || catalogStatus === 'unknown') && (
-                <RefreshCw className="w-6 h-6 text-[var(--text-sec)] shrink-0" />
+              {catalogStatus === 'synced' && <ShieldCheck className="w-6 h-6 text-green-400 shrink-0" />}
+              {catalogStatus === 'no-selection' && <Info className="w-6 h-6 text-amber-300 shrink-0" />}
+              {catalogStatus === 'syncing' && <Loader2 className="w-6 h-6 text-[var(--accent)] animate-spin shrink-0" />}
+              {(catalogStatus === 'ready' || catalogStatus === 'never') && (
+                <CloudDownload className="w-6 h-6 text-[var(--text-sec)] shrink-0" />
               )}
               <div>
                 <div className="font-bold text-base">
-                  {catalogStatus === 'current' && (isAr ? 'محدّث — لا تغييرات' : 'Up to date — no changes')}
-                  {catalogStatus === 'updates' && (isAr
-                    ? `${catalogChanges} تغيير(ات) من G2Bulk`
-                    : `${catalogChanges} change(s) from G2Bulk`)}
-                  {catalogStatus === 'checking' && (isAr ? 'جاري مقارنة الكتالوج…' : 'Comparing catalog…')}
-                  {catalogStatus === 'never' && (isAr ? 'لم تُزامَن بعد' : 'Never synced yet')}
-                  {catalogStatus === 'stale' && (isAr ? 'لم يُفحَص مؤخراً' : 'Not checked recently')}
-                  {catalogStatus === 'unknown' && (isAr ? 'حالة الكتالوج غير معروفة' : 'Catalog status unknown')}
+                  {catalogStatus === 'no-selection' && (isAr ? 'لم يُحدَّد شيء للمزامنة' : 'Nothing selected to sync')}
+                  {catalogStatus === 'ready' && (isAr ? 'جاهز للمزامنة' : 'Ready to sync')}
+                  {catalogStatus === 'synced' && (isAr ? 'تمت مزامنة الاختيار' : 'Selection synced')}
+                  {catalogStatus === 'syncing' && (isAr ? 'جاري المزامنة…' : 'Syncing…')}
                 </div>
                 <div className="text-xs text-[var(--text-muted)] mt-1 space-y-0.5">
+                  {hasAnyPullSelection && (
+                    <div>
+                      {isAr ? 'المحدد:' : 'Selected:'}{' '}
+                      {pullCounts.games} {isAr ? 'لعبة' : 'games'}
+                      {' ('}
+                      {pullCounts.syncGames} {isAr ? 'مزامَن' : 'synced'}
+                      {' · '}
+                      {pullCounts.liveGames} {isAr ? 'مباشر' : 'live'}
+                      {')'}
+                      {' · '}
+                      {pullCounts.accounts} {isAr ? 'حساب' : 'accounts'}
+                      {includeVouchers && (
+                        <>
+                          {' · '}
+                          {pullCounts.giftCards} {isAr ? 'بطاقة' : 'gift cards'}
+                        </>
+                      )}
+                      {pullCounts.carousel > 0 && (
+                        <>
+                          {' · '}
+                          {pullCounts.carousel} {isAr ? 'كاروسيل' : 'carousel'}
+                        </>
+                      )}
+                      {form.g2bulk_catalog_mode && (
+                        <>
+                          {' · '}
+                          {form.g2bulk_catalog_mode === 'hybrid'
+                            ? (isAr ? 'وضع مختلط' : 'hybrid mode')
+                            : form.g2bulk_catalog_mode === 'live'
+                              ? (isAr ? 'وضع مباشر' : 'live mode')
+                              : (isAr ? 'وضع مزامَن' : 'sync mode')}
+                        </>
+                      )}
+                    </div>
+                  )}
                   {form.g2bulk_last_sync_at && (
                     <div>
                       {isAr ? 'آخر مزامنة:' : 'Last sync:'}{' '}
                       {new Date(form.g2bulk_last_sync_at).toLocaleString()}
-                    </div>
-                  )}
-                  {form.g2bulk_last_check_at && (
-                    <div>
-                      {isAr ? 'آخر فحص:' : 'Last check:'}{' '}
-                      {new Date(form.g2bulk_last_check_at).toLocaleString()}
                     </div>
                   )}
                 </div>
@@ -657,7 +625,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
             checked={includeVouchers}
             onChange={(e) => setIncludeVouchers(e.target.checked)}
             className="rounded border-[var(--border)]"
-            disabled={syncing || checking}
+            disabled={syncing || clearing}
           />
           <span className="text-sm">
             {isAr ? 'تضمين بطاقات الهدايا (vouchers)' : 'Include gift card vouchers'}
@@ -667,36 +635,40 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         <div className="flex flex-wrap gap-3">
           <button
             type="button"
-            onClick={handleCheckCatalog}
-            disabled={syncing || checking}
-            className="btn btn-secondary inline-flex items-center gap-2"
+            onClick={() => setPullPanelOpen(true)}
+            disabled={syncing || clearing}
+            className="btn btn-primary inline-flex items-center gap-2"
           >
-            {checking ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            {checking
-              ? progressPhaseLabel(checkProgress, 'check')
-              : (isAr ? 'فحص التحديثات' : 'Check for updates')}
+            <CloudDownload className="w-4 h-4" />
+            {isAr ? 'سحب من API' : 'Pull from API'}
           </button>
 
           <button
             type="button"
-            onClick={() => handleSyncCatalog(false)}
-            disabled={syncing || checking}
-            className={`btn inline-flex items-center gap-2 ${
-              catalogUpToDate && !catalogNeverSynced ? 'btn-secondary' : 'btn-primary'
-            }`}
+            onClick={handleSyncCatalog}
+            disabled={syncing || clearing || !hasSyncableSelection}
+            className="btn btn-secondary inline-flex items-center gap-2"
           >
             {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             {syncing
               ? syncPhaseLabel(syncProgress)
-              : catalogUpToDate && !catalogNeverSynced
-                ? (isAr ? 'مزامنة كاملة (اختياري)' : 'Force full sync')
-                : (t.g2bulkSyncNow || (isAr ? 'مزامنة الكتالوج' : 'Sync catalog'))}
+              : (t.g2bulkSyncNow || (isAr ? 'مزامنة الاختيار' : 'Sync selection'))}
           </button>
 
-          {(syncing || checking) && (
+          <button
+            type="button"
+            onClick={handleClearSyncedCatalog}
+            disabled={syncing || clearing}
+            className="btn btn-secondary inline-flex items-center gap-2 text-red-300 border-red-500/30 hover:border-red-500/50"
+          >
+            {clearing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            {isAr ? 'حذف المزامَن' : 'Remove synced'}
+          </button>
+
+          {syncing && (
             <button
               type="button"
-              onClick={syncing ? handleCancelSync : handleCancelCheck}
+              onClick={handleCancelSync}
               className="btn btn-secondary inline-flex items-center gap-2"
             >
               <X className="w-4 h-4" />
@@ -704,21 +676,6 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
             </button>
           )}
         </div>
-
-        {(checking && checkProgress) && (
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs text-[var(--text-muted)]">
-              <span>{progressPhaseLabel(checkProgress, 'check')}</span>
-              <span>{progressPercent(checkProgress)}%</span>
-            </div>
-            <div className="h-2.5 rounded-full bg-[var(--border)] overflow-hidden">
-              <div
-                className="h-full rounded-full bg-cyan-400/80 transition-all duration-300 ease-out"
-                style={{ width: `${progressPercent(checkProgress)}%` }}
-              />
-            </div>
-          </div>
-        )}
 
         {syncing && syncProgress && (
           <div className="space-y-2">
@@ -739,95 +696,6 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
                   : `${syncProgress.gamesSynced} games · ${syncProgress.offersSynced} offers`}
               </p>
             )}
-          </div>
-        )}
-
-        {catalogSummary && !checking && (
-          <div className="space-y-3">
-            <div className="flex flex-wrap gap-2">
-              <StatChip
-                label={isAr ? 'بدون تغيير' : 'Unchanged'}
-                value={catalogSummary.unchangedOffers ?? 0}
-                tone="good"
-              />
-              <StatChip
-                label={isAr ? 'أسعار' : 'Prices'}
-                value={catalogSummary.priceChanges ?? 0}
-                tone={(catalogSummary.priceChanges ?? 0) > 0 ? 'warn' : 'muted'}
-              />
-              <StatChip
-                label={isAr ? 'عروض جديدة' : 'New offers'}
-                value={catalogSummary.newOffers ?? 0}
-                tone={(catalogSummary.newOffers ?? 0) > 0 ? 'warn' : 'muted'}
-              />
-              <StatChip
-                label={isAr ? 'ألعاب جديدة' : 'New games'}
-                value={catalogSummary.newGames ?? 0}
-                tone={(catalogSummary.newGames ?? 0) > 0 ? 'warn' : 'muted'}
-              />
-              <StatChip
-                label={isAr ? 'محذوفة' : 'Removed'}
-                value={(catalogSummary.removedOffers ?? 0) + (catalogSummary.removedGames ?? 0)}
-                tone={((catalogSummary.removedOffers ?? 0) + (catalogSummary.removedGames ?? 0)) > 0 ? 'warn' : 'muted'}
-              />
-            </div>
-
-            {catalogSummary.samples && (
-              <div className="text-xs text-[var(--text-sec)] space-y-2 max-h-40 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]/25 px-3 py-2">
-                {(catalogSummary.samples.priceChanges || []).map((row) => (
-                  <div key={`${row.game}-${row.offer}`} className="flex items-center gap-2 font-mono">
-                    <TrendingUp className="w-3 h-3 text-amber-300 shrink-0" />
-                    <span className="truncate">{row.game} · {row.offer}</span>
-                    <span className="text-[var(--text-muted)] shrink-0">${row.was?.toFixed?.(2) ?? row.was} → ${row.now?.toFixed?.(2) ?? row.now}</span>
-                  </div>
-                ))}
-                {(catalogSummary.samples.newOffers || []).map((row) => (
-                  <div key={`new-${row.game}-${row.offer}`} className="flex items-center gap-2">
-                    <PlusCircle className="w-3 h-3 text-green-400 shrink-0" />
-                    <span className="truncate">{row.game} · {row.offer}</span>
-                  </div>
-                ))}
-                {(catalogSummary.samples.removedOffers || []).map((row) => (
-                  <div key={`rm-${row.game}-${row.offer}`} className="flex items-center gap-2">
-                    <MinusCircle className="w-3 h-3 text-red-400 shrink-0" />
-                    <span className="truncate">{row.game} · {row.offer}</span>
-                  </div>
-                ))}
-                {(catalogSummary.samples.newGames || []).map((code) => (
-                  <div key={`game-${code}`} className="flex items-center gap-2">
-                    <PlusCircle className="w-3 h-3 text-green-400 shrink-0" />
-                    <span>{isAr ? 'لعبة جديدة:' : 'New game:'} {code}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {catalogUpToDate && !catalogNeverSynced && (
-              <p className="text-xs text-green-300/90 flex items-center gap-1.5">
-                <CheckCircle className="w-3.5 h-3.5" />
-                {isAr
-                  ? 'لا حاجة للمزامنة الآن — شغّل فحصاً دورياً أو انتظر المزامنة التلقائية'
-                  : 'No sync needed right now — run checks periodically or wait for auto-sync'}
-              </p>
-            )}
-
-            {!catalogUpToDate && catalogChanges > 0 && !syncing && (
-              <p className="text-xs text-amber-200/90 flex items-center gap-1.5">
-                <ArrowRight className="w-3.5 h-3.5" />
-                {isAr
-                  ? 'يوجد تغييرات — اضغط «مزامنة الكتالوج» لتطبيقها على المتجر'
-                  : 'Changes detected — press Sync catalog to apply them to the store'}
-              </p>
-            )}
-          </div>
-        )}
-
-        {checkResult?.errors?.length > 0 && (
-          <div className="text-xs text-amber-300/90 space-y-1 max-h-28 overflow-y-auto">
-            <p className="font-medium">{isAr ? 'تحذيرات الفحص:' : 'Check warnings:'}</p>
-            {checkResult.errors.map((msg) => (
-              <p key={msg} className="font-mono opacity-90">{msg}</p>
-            ))}
           </div>
         )}
 
@@ -919,6 +787,29 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
           {isAr ? 'احفظ بعد تغيير الجدولة أو هامش الربح' : 'Save after changing schedule or markup'}
         </p>
       </div>
+
+      <G2bulkPullPanel
+        open={pullPanelOpen}
+        onClose={() => setPullPanelOpen(false)}
+        lang={lang}
+        includeGiftCards={includeVouchers}
+        initialSelection={pullSelection}
+        onLoaded={(selection, catalogMode) => {
+          setPullSelection(normalizePullSelection(selection || {}));
+          if (catalogMode) {
+            setForm((prev) => ({ ...prev, g2bulk_catalog_mode: catalogMode }));
+          }
+        }}
+        onSaved={(selection, catalogMode) => {
+          setPullSelection(normalizePullSelection(selection || {}));
+          if (catalogMode) {
+            setForm((prev) => ({ ...prev, g2bulk_catalog_mode: catalogMode }));
+          }
+          setSuccess(isAr ? 'تم حفظ اختيار السحب' : 'Pull selection saved');
+          onCatalogSynced?.(form.g2bulk_catalog_only);
+          setTimeout(() => setSuccess(''), 3000);
+        }}
+      />
     </div>
   );
 }

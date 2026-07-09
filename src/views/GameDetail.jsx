@@ -10,13 +10,16 @@ import { Ticket, Zap } from 'lucide-react';
 import { isVoucherGame } from '../lib/catalogUtils';
 import {
   findVariantByRegionParam,
+  getChildGameIds,
   getGameBaseMeta,
-  getRegionVariants,
+  getRegionVariantsWithOffers,
   pickDefaultVariant,
   regionParamSlug,
   resolveStorefrontGame,
+  storefrontGameHasOffers,
 } from '../lib/gameRegions';
-import { fetchLiveGameGroup } from '../lib/liveCatalog';
+import { fetchLiveGameGroup, isLiveCatalogId } from '../lib/liveCatalog';
+import { brandUserText } from '../lib/branding';
 
 export default function GameDetail({
   games,
@@ -39,21 +42,29 @@ export default function GameDetail({
   const [searchParams, setSearchParams] = useSearchParams();
   const matchedGame = games.find((g) => (g.slug || g.id) === slug) || games.find((g) => g.id === slug);
   const storefrontGame = resolveStorefrontGame(games, matchedGame);
+  const isAdmin = user?.role === 'admin';
   const regionVariants = useMemo(
-    () => (storefrontGame ? getRegionVariants(games, storefrontGame.id) : []),
-    [games, storefrontGame],
+    () => (storefrontGame ? getRegionVariantsWithOffers(games, storefrontGame.id, offers) : []),
+    [games, storefrontGame, offers],
   );
   const isVoucher = isVoucherGame(storefrontGame);
-  const hasRegions = !isVoucher && (
-    regionVariants.length > 1
-    || Number(storefrontGame?.variant_count || 0) > 1
-  );
+  const hasOffers = isVoucher
+    ? offers.some((offer) => offer.game_id === storefrontGame?.id && offer.active !== false)
+    : storefrontGameHasOffers(storefrontGame, games, offers);
+  const hasRegions = !isVoucher && regionVariants.length > 1;
   const regionParam = searchParams.get('region') || '';
 
   const [selectedVariantId, setSelectedVariantId] = useState(null);
+  const [editingOffer, setEditingOffer] = useState(null);
+  const [editingGame, setEditingGame] = useState(false);
 
   useEffect(() => {
-    if (catalogMode !== 'live' || !storefrontGame || isVoucherGame(storefrontGame)) return undefined;
+    const usesLiveCatalog = catalogMode === 'live'
+      || (catalogMode === 'hybrid' && (
+        storefrontGame?.catalog_source === 'live'
+        || isLiveCatalogId(storefrontGame?.id)
+      ));
+    if (!usesLiveCatalog || !storefrontGame || isVoucherGame(storefrontGame)) return undefined;
 
     const baseKey = storefrontGame.group_base_key || getGameBaseMeta(storefrontGame).baseKey;
     if (!baseKey) return undefined;
@@ -79,23 +90,31 @@ export default function GameDetail({
     if (!storefrontGame) return;
 
     if (regionVariants.length === 0) {
-      setSelectedVariantId(storefrontGame.id);
+      const childIds = getChildGameIds(games, storefrontGame);
+      const fallbackId = childIds.find((id) => offers.some((offer) => offer.game_id === id && offer.active !== false))
+        || childIds[0]
+        || storefrontGame.id;
+      setSelectedVariantId(fallbackId);
       return;
     }
 
     const fromParam = findVariantByRegionParam(regionVariants, regionParam);
-    const fromDirectChild = matchedGame?.parent_game_id === storefrontGame.id ? matchedGame : null;
-    const nextVariant = fromParam || fromDirectChild || pickDefaultVariant(regionVariants);
+    const fromDirectChild = matchedGame?.parent_game_id
+      ? regionVariants.find((variant) => variant.id === matchedGame.id)
+      : (matchedGame?.g2bulk_game_code
+        ? regionVariants.find((variant) => variant.id === matchedGame.id)
+        : null);
+    const nextVariant = fromParam || fromDirectChild || pickDefaultVariant(regionVariants, offers);
     setSelectedVariantId(nextVariant?.id || storefrontGame.id);
-  }, [storefrontGame, regionVariants, regionParam, matchedGame]);
+  }, [storefrontGame, regionVariants, regionParam, matchedGame, offers, games]);
 
   const activeVariant = regionVariants.find((variant) => variant.id === selectedVariantId)
-    || (regionVariants.length === 0 ? storefrontGame : pickDefaultVariant(regionVariants));
+    || (regionVariants.length === 0 ? storefrontGame : pickDefaultVariant(regionVariants, offers));
   const activeGameId = activeVariant?.id || storefrontGame?.id;
 
-  const isAdmin = user?.role === 'admin';
-  const [editingOffer, setEditingOffer] = useState(null);
-  const [editingGame, setEditingGame] = useState(false);
+  const gameOffers = useMemo(() => (
+    offers.filter((offer) => offer.game_id === activeGameId && offer.active !== false)
+  ), [offers, activeGameId]);
 
   const handleRegionSelect = (variant) => {
     if (!variant) return;
@@ -118,7 +137,7 @@ export default function GameDetail({
     );
   }
 
-  if (!storefrontGame) {
+  if (!storefrontGame || (!isAdmin && !hasOffers)) {
     return (
       <div className="max-w-4xl mx-auto text-center py-20">
         <p className="text-xl text-[var(--text-sec)]">{t.gameNotFound}</p>
@@ -128,7 +147,6 @@ export default function GameDetail({
   }
 
   const game = storefrontGame;
-  const gameOffers = offers.filter((o) => o.game_id === activeGameId && o.active !== false);
   const displayServers = isVoucher ? [] : (Array.isArray(activeVariant?.servers) ? activeVariant.servers : []);
 
   return (
@@ -159,7 +177,7 @@ export default function GameDetail({
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
           <div className="absolute bottom-0 p-6 md:p-8">
             <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-white">
-              {lang === 'ar' ? game.name_ar : game.name_en}
+              {brandUserText(lang === 'ar' ? game.name_ar : game.name_en)}
             </h1>
             <p className="text-white/70 text-lg mt-1">
               {isVoucher
@@ -271,12 +289,12 @@ export default function GameDetail({
                   />
                 )}
                 <div className="text-xs font-medium text-[var(--text-sec)] truncate">
-                  {lang === 'ar' ? game.name_ar : game.name_en}
+                  {brandUserText(lang === 'ar' ? game.name_ar : game.name_en)}
                 </div>
               </div>
 
               <div className="font-bold text-base sm:text-lg leading-tight mb-1 line-clamp-2 flex-1">
-                {lang === 'ar' ? offer.name_ar : offer.name_en}
+                {brandUserText(lang === 'ar' ? offer.name_ar : offer.name_en)}
               </div>
 
               {(offer.region || activeVariant?.region_label) && (

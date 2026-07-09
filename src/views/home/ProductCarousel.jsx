@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
-import { ChevronLeft, ChevronRight, Gamepad2, Gift, Settings2, ChevronUp, ChevronDown, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Settings2, ChevronUp, ChevronDown, Plus } from 'lucide-react';
 import AdminEditButton from '../../components/admin/AdminEditButton';
-import AdminAddCard from '../../components/admin/AdminAddCard';
+
+import { brandUserText } from '../../lib/branding';
 import { presetImageUrl } from '../../lib/imageUtils';
 
 const AUTOPLAY_MS = 6000;
@@ -27,7 +28,7 @@ export default function ProductCarousel({
   onManageCarousel,
   onEditGame,
   onMoveCarouselGame,
-  onAddGame,
+  onPickCarouselGame,
 }) {
   const gameSlides = products.filter((p) => p.category === 'games');
   const slides = gameSlides.length ? gameSlides : products;
@@ -172,16 +173,21 @@ export default function ProductCarousel({
         </div>
       )}
 
-      {slides.length === 0 && isAdmin && onAddGame ? (
-        <div className="p-4 sm:p-6 md:p-8">
-          <div className="max-w-sm mx-auto">
-            <AdminAddCard
-              variant="game"
-              className="w-full"
-              ariaLabel={t.addGame || (lang === 'ar' ? 'إضافة لعبة' : 'Add game')}
-              onClick={() => onAddGame({ showInCarousel: true })}
-            />
-          </div>
+      {slides.length === 0 && isAdmin && onPickCarouselGame ? (
+        <div className="p-6 sm:p-8 text-center space-y-4">
+          <p className="text-sm text-[var(--text-muted)] max-w-md mx-auto">
+            {lang === 'ar'
+              ? 'لا توجد شرائح في الكاروسيل. اختر من الألعاب الموجودة في المتجر.'
+              : 'No carousel slides yet. Pick from games already in your store.'}
+          </p>
+          <button
+            type="button"
+            onClick={onPickCarouselGame}
+            className="btn btn-primary inline-flex items-center gap-2 min-h-[44px]"
+          >
+            <Plus className="w-4 h-4" />
+            {t.addToCarousel || (lang === 'ar' ? 'إضافة إلى الكاروسيل' : 'Add to carousel')}
+          </button>
         </div>
       ) : slides.length > 0 && (
       <div className="relative">
@@ -263,31 +269,8 @@ export default function ProductCarousel({
                       lang === 'ar' ? 'items-end text-right' : 'items-start text-left'
                     }`}
                   >
-                    <div className={`flex items-center gap-2.5 mb-4 ${lang === 'ar' ? 'flex-row-reverse' : ''}`}>
-                      <span
-                        className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-full px-3 py-1.5"
-                        style={{
-                          background: ac(0.18),
-                          border: `1px solid ${ac(0.5)}`,
-                          color: acSolid,
-                          transition: 'background 0.6s ease, border-color 0.6s ease, color 0.6s ease',
-                        }}
-                      >
-                        {item.category === 'games'
-                          ? <Gamepad2 className="w-3.5 h-3.5" strokeWidth={2} />
-                          : <Gift className="w-3.5 h-3.5" strokeWidth={2} />}
-                        {item.category === 'games'
-                          ? (t.game || (lang === 'ar' ? 'ألعاب' : 'Games'))
-                          : (t.digitalCard || (lang === 'ar' ? 'بطاقات رقمية' : 'Digital cards'))}
-                      </span>
-                      {item.price > 0 && (
-                        <span className="text-[11px] font-bold rounded-full px-3 py-1.5 bg-white/[0.12] border border-white/20 text-white">
-                          ${parseFloat(item.price).toFixed(2)}
-                        </span>
-                      )}
-                    </div>
                     <h2
-                      className="section-heading font-black leading-[1.05] tracking-tight text-white mb-3 max-w-[min(640px,90vw)]"
+                      className="section-heading font-black leading-[1.05] tracking-tight text-white mb-2 max-w-[min(640px,90vw)]"
                       style={{
                         fontSize: 'clamp(1.75rem, 6.5vw, 3.75rem)',
                         textShadow: '0 2px 24px rgba(0,0,0,0.6)',
@@ -295,9 +278,17 @@ export default function ProductCarousel({
                     >
                       {lang === 'ar' ? item.name_ar : item.name_en}
                     </h2>
-                    <p className="text-white/75 text-sm sm:text-base max-w-[min(420px,85vw)] leading-relaxed line-clamp-2 sm:line-clamp-3">
-                      {(lang === 'ar' ? item.description_ar : item.description_en) || (lang === 'ar' ? 'عروض شحن فورية وآمنة لهذه اللعبة.' : 'Instant, secure top-up offers for this game.')}
-                    </p>
+                    {(() => {
+                      const description = brandUserText(
+                        (lang === 'ar' ? item.description_ar : item.description_en)?.trim(),
+                      );
+                      if (!description) return null;
+                      return (
+                        <p className="text-white/80 text-sm sm:text-base max-w-[min(520px,88vw)] leading-relaxed line-clamp-3 sm:line-clamp-4">
+                          {description}
+                        </p>
+                      );
+                    })()}
                   </div>
                 </div>
               );
@@ -451,13 +442,13 @@ export default function ProductCarousel({
             );
           })}
 
-          {isAdmin && onAddGame && (
+          {isAdmin && onPickCarouselGame && (
             <div className="relative flex-shrink-0 flex flex-col items-center snap-start">
               <button
                 type="button"
-                onClick={() => onAddGame({ showInCarousel: true })}
+                onClick={onPickCarouselGame}
                 className="group relative flex flex-col items-center justify-center gap-1 px-4 py-3 sm:px-5 sm:py-4 min-w-[80px] sm:min-w-[96px] transition-all duration-300 snap-start hover:bg-white/[0.03]"
-                aria-label={t.addGame || (lang === 'ar' ? 'إضافة لعبة' : 'Add game')}
+                aria-label={t.addToCarousel || (lang === 'ar' ? 'إضافة إلى الكاروسيل' : 'Add to carousel')}
               >
                 <div className="h-8 sm:h-10 flex items-center justify-center px-1.5 transition-all duration-300 opacity-50 group-hover:opacity-100 group-hover:scale-[1.02]">
                   <Plus

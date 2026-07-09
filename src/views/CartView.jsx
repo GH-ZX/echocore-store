@@ -1,5 +1,6 @@
 import { Trash2 } from 'lucide-react';
 import { getCartLineKey } from '../lib/cartUtils';
+import { brandUserText } from '../lib/branding';
 
 export default function CartView({
   t,
@@ -33,7 +34,7 @@ export default function CartView({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-3">
             {cart.map((item) => {
-              const name = lang === 'ar' ? item.name_ar : item.name_en;
+              const name = brandUserText(lang === 'ar' ? item.name_ar : item.name_en);
               return (
                 <div key={getCartLineKey(item)} className="card flex items-center gap-5 p-4">
                   <div className={`w-16 h-16 flex-none rounded-xl bg-gradient-to-br ${item.color || 'from-slate-600 to-slate-800'} flex items-center justify-center text-white font-bold text-xl`}>

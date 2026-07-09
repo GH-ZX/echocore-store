@@ -1,7 +1,8 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
+import { brandUserText } from './branding';
 import { supabase } from './supabase';
 
-async function parseInvokeError(error) {
+async function parseInvokeError(error, { sanitizeForUser = false } = {}) {
   let message = error.message || 'G2Bulk request failed';
   if (error instanceof FunctionsHttpError && error.context) {
     try {
@@ -23,16 +24,17 @@ async function parseInvokeError(error) {
   if (/unauthorized|admin only|jwt/i.test(message)) {
     message = 'Admin session expired or access denied. Log out, log back in as admin, then retry.';
   }
-  return message;
+  return sanitizeForUser ? brandUserText(message) : message;
 }
 
-async function invokeG2bulk(body) {
+async function invokeG2bulk(body, { sanitizeForUser = false } = {}) {
   const { data, error } = await supabase.functions.invoke('g2bulk', { body });
   if (error) {
-    throw new Error(await parseInvokeError(error));
+    throw new Error(await parseInvokeError(error, { sanitizeForUser }));
   }
   if (data?.success === false) {
-    throw new Error(data.message || 'G2Bulk request failed');
+    const message = data.message || (sanitizeForUser ? 'Fulfillment request failed' : 'G2Bulk request failed');
+    throw new Error(sanitizeForUser ? brandUserText(message) : message);
   }
   return data;
 }
@@ -143,6 +145,7 @@ export async function syncG2bulkCatalog({
     action: 'syncCatalog',
     phase: 'init',
     hideManual,
+    includeGiftCards: includeVouchers,
   });
 
   const totalGames = init.totalGames ?? 0;
@@ -175,7 +178,11 @@ export async function syncG2bulkCatalog({
   if (includeVouchers) {
     checkAbort();
     report('vouchers', { current: totalGames, total: totalGames });
-    const vouchers = await invokeG2bulk({ action: 'syncCatalog', phase: 'vouchers' });
+    const vouchers = await invokeG2bulk({
+      action: 'syncCatalog',
+      phase: 'vouchers',
+      includeGiftCards: includeVouchers,
+    });
     totals.gamesSynced += vouchers.gamesSynced ?? 0;
     totals.offersSynced += vouchers.offersSynced ?? 0;
     totals.offersSkipped += vouchers.offersSkipped ?? 0;
@@ -300,7 +307,50 @@ export async function g2bulkCheckPlayer({ game, userId, serverId, charname }) {
   });
 }
 
+const PULL_CATALOG_CACHE_TTL_MS = 5 * 60 * 1000;
+let pullCatalogCache = null;
+let pullCatalogCacheAt = 0;
+
+export function invalidateG2bulkPullCatalogCache() {
+  pullCatalogCache = null;
+  pullCatalogCacheAt = 0;
+}
+
+/** Admin: list live G2Bulk catalog grouped for selective pull */
+export async function listG2bulkPullCatalog({ refresh = false } = {}) {
+  const now = Date.now();
+  if (!refresh && pullCatalogCache && now - pullCatalogCacheAt < PULL_CATALOG_CACHE_TTL_MS) {
+    return pullCatalogCache;
+  }
+  const data = await invokeG2bulk({ action: 'listPullCatalog' });
+  pullCatalogCache = data;
+  pullCatalogCacheAt = now;
+  return data;
+}
+
+/** Admin: persist which games/accounts to sync + carousel picks */
+export async function saveG2bulkPullSelection(selection) {
+  const result = await invokeG2bulk({
+    action: 'savePullSelection',
+    topupSyncBaseKeys: selection.topupSyncBaseKeys || [],
+    topupLiveBaseKeys: selection.topupLiveBaseKeys || [],
+    topupBaseKeys: selection.topupBaseKeys || [],
+    accountCategoryIds: selection.accountCategoryIds || [],
+    giftCategoryIds: selection.giftCategoryIds || [],
+    carouselBaseKeys: selection.carouselBaseKeys || [],
+  });
+  invalidateG2bulkPullCatalogCache();
+  return result;
+}
+
+/** Admin: remove all synced G2Bulk games and offers from the database */
+export async function clearG2bulkSyncedCatalog() {
+  const result = await invokeG2bulk({ action: 'clearSyncedCatalog' });
+  invalidateG2bulkPullCatalogCache();
+  return result;
+}
+
 /** Fulfill a completed order via G2Bulk (balance or after admin approval) */
 export async function fulfillOrderG2bulk(orderId) {
-  return invokeG2bulk({ action: 'fulfillOrder', orderId });
+  return invokeG2bulk({ action: 'fulfillOrder', orderId }, { sanitizeForUser: true });
 }

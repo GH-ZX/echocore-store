@@ -16,8 +16,8 @@ export const HOME_SECTION_TYPES = {
     singleton: false,
   },
   games: {
-    labelEn: 'All Games Grid',
-    labelAr: 'شبكة جميع الألعاب',
+    labelEn: 'Games',
+    labelAr: 'الألعاب',
     descriptionEn: 'Grid of every game in the store',
     descriptionAr: 'شبكة بكل الألعاب في المتجر',
     singleton: true,
@@ -25,15 +25,15 @@ export const HOME_SECTION_TYPES = {
   gift_cards: {
     labelEn: 'Gift Cards & Vouchers',
     labelAr: 'بطاقات الهدايا',
-    descriptionEn: 'Instant redeem-code products from G2Bulk',
-    descriptionAr: 'أكواد شحن فورية من G2Bulk',
+    descriptionEn: 'Instant redeem-code gift cards and vouchers',
+    descriptionAr: 'بطاقات هدايا وأكواد شحن فورية',
     singleton: true,
   },
   gaming_accounts: {
     labelEn: 'Gaming Accounts & Subscriptions',
     labelAr: 'حسابات واشتراكات الألعاب',
-    descriptionEn: 'Xbox, PlayStation, and platform codes from G2Bulk',
-    descriptionAr: 'Xbox و PlayStation وأكواد المنصات من G2Bulk',
+    descriptionEn: 'Xbox, PlayStation, and platform subscription codes',
+    descriptionAr: 'Xbox و PlayStation واشتراكات المنصات',
     singleton: true,
   },
   game_picks: {
@@ -75,6 +75,13 @@ export const DEFAULT_HOME_LAYOUT = [
     enabled: true,
   },
   {
+    id: 'games',
+    type: 'games',
+    enabled: true,
+    title_en: 'Choose a Game',
+    title_ar: 'اختر لعبتك',
+  },
+  {
     id: 'sale_offers',
     type: 'sale_offers',
     enabled: true,
@@ -89,13 +96,6 @@ export const DEFAULT_HOME_LAYOUT = [
     title_en: 'Suggested Offers',
     title_ar: 'عروض مقترحة',
     limit: 8,
-  },
-  {
-    id: 'games',
-    type: 'games',
-    enabled: true,
-    title_en: 'Choose a Game',
-    title_ar: 'اختر لعبتك',
   },
   {
     id: 'gift_cards',
@@ -127,6 +127,21 @@ export const DEFAULT_HOME_LAYOUT = [
 ];
 
 const VALID_TYPES = new Set(Object.keys(HOME_SECTION_TYPES));
+
+/** Keep the games grid directly under the hero carousel. */
+function ensureGamesAfterCarousel(sections = []) {
+  const gamesIdx = sections.findIndex((section) => section.type === 'games');
+  if (gamesIdx < 0) return sections;
+
+  const carouselIdx = sections.findIndex((section) => section.type === 'carousel');
+  const targetIdx = carouselIdx >= 0 ? carouselIdx + 1 : 0;
+  if (gamesIdx === targetIdx) return sections;
+
+  const next = [...sections];
+  const [gamesSection] = next.splice(gamesIdx, 1);
+  next.splice(targetIdx, 0, gamesSection);
+  return next;
+}
 
 function defaultSectionConfig(type, id) {
   const meta = HOME_SECTION_TYPES[type];
@@ -224,8 +239,7 @@ export function normalizeHomeLayout(value) {
     return DEFAULT_HOME_LAYOUT.map((section) => ({ ...section }));
   }
 
-  // Preserve saved array order — admin drag/up-down controls section position.
-  return normalized;
+  return ensureGamesAfterCarousel(normalized);
 }
 
 export function createHomeSection(type) {

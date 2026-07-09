@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const GAMES_BATCH_SIZE = 24;
+const GAMES_BATCH_SIZE = 32;
 const STALE_SYNC_MS = 2 * 60 * 60 * 1000;
 
 const corsHeaders = {
@@ -122,7 +122,8 @@ Deno.serve(async (req) => {
       g2bulk_auto_sync_hour,
       g2bulk_auto_sync_timezone,
       g2bulk_last_sync_at,
-      g2bulk_sync_state
+      g2bulk_sync_state,
+      g2bulk_pull_selection
     `)
     .eq('id', 1)
     .maybeSingle();
@@ -166,10 +167,26 @@ Deno.serve(async (req) => {
     });
   }
 
+  const pullSelection = (settings?.g2bulk_pull_selection || {}) as Json;
+  const topupSyncBaseKeys = Array.isArray(pullSelection.topupSyncBaseKeys) ? pullSelection.topupSyncBaseKeys : (
+    Array.isArray(pullSelection.topupBaseKeys) ? pullSelection.topupBaseKeys : []
+  );
+  const accountCategoryIds = Array.isArray(pullSelection.accountCategoryIds) ? pullSelection.accountCategoryIds : [];
+  const giftCategoryIds = Array.isArray(pullSelection.giftCategoryIds) ? pullSelection.giftCategoryIds : [];
+  const includeGiftCards = giftCategoryIds.length > 0;
+  const hasPullSelection = topupSyncBaseKeys.length > 0
+    || accountCategoryIds.length > 0
+    || giftCategoryIds.length > 0;
+
+  if (!state?.in_progress && !hasPullSelection) {
+    return jsonResponse({ success: true, skipped: true, reason: 'no_pull_selection' });
+  }
+
   try {
     if (!state?.in_progress) {
       const init = await invokeSyncPhase(supabaseUrl, serviceRoleKey, cronSecret, 'init', {
         hideManual: true,
+        includeGiftCards,
       });
 
       state = {
@@ -177,7 +194,7 @@ Deno.serve(async (req) => {
         phase: 'games',
         offset: 0,
         totalGames: Number(init.totalGames) || 0,
-        includeVouchers: true,
+        includeVouchers: includeGiftCards,
         hideManual: true,
         startedAt: now.toISOString(),
         gamesSynced: 0,
@@ -234,7 +251,9 @@ Deno.serve(async (req) => {
     }
 
     if (state.phase === 'vouchers') {
-      const vouchers = await invokeSyncPhase(supabaseUrl, serviceRoleKey, cronSecret, 'vouchers');
+      const vouchers = await invokeSyncPhase(supabaseUrl, serviceRoleKey, cronSecret, 'vouchers', {
+        includeGiftCards,
+      });
 
       state.gamesSynced += Number(vouchers.gamesSynced) || 0;
       state.offersSynced += Number(vouchers.offersSynced) || 0;

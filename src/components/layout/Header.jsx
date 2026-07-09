@@ -1,6 +1,6 @@
 import {
   ShoppingCart, User, LogOut, Globe, ShieldCheck, Search, X, Menu,
-  Loader2, Wallet, ChevronDown, Zap, ArrowRight,
+  Loader2, Wallet, ChevronDown, ChevronRight, Zap, ArrowRight,
 } from 'lucide-react';
 import G2bulkWalletCard from '../ui/G2bulkWalletCard';
 import { useAdminG2bulkWallet } from '../../hooks/useAdminG2bulkWallet';
@@ -59,9 +59,10 @@ export default function Header({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [searchDraft, setSearchDraft] = useState('');
-  const searchRef = useRef(null);
-  const inputRef = useRef(null);
+  const desktopSearchRef = useRef(null);
   const mobileSearchRef = useRef(null);
+  const inputRef = useRef(null);
+  const mobileSearchInputRef = useRef(null);
   const profileRef = useRef(null);
   const menuRef = useRef(null);
   const isAdmin = user?.role === 'admin';
@@ -97,7 +98,9 @@ export default function Header({
 
   useEffect(() => {
     const handlePointerDown = (event) => {
-      if (searchRef.current && !searchRef.current.contains(event.target)) {
+      const inSearch = desktopSearchRef.current?.contains(event.target)
+        || mobileSearchRef.current?.contains(event.target);
+      if (!inSearch) {
         setIsSearchOpen(false);
       }
       if (profileRef.current && !profileRef.current.contains(event.target)) {
@@ -117,10 +120,10 @@ export default function Header({
   }, [closeAll]);
 
   useEffect(() => {
-    if (isSearchOpen && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [isSearchOpen]);
+    if (!isSearchOpen) return;
+    const target = isMobile ? mobileSearchInputRef.current : inputRef.current;
+    target?.focus();
+  }, [isSearchOpen, isMobile]);
 
   const submitSearch = useCallback((rawValue = searchDraft) => {
     const trimmed = String(rawValue || '').trim();
@@ -135,7 +138,92 @@ export default function Header({
   const handleClearSearch = () => {
     setSearchDraft('');
     inputRef.current?.focus();
-    mobileSearchRef.current?.focus();
+    mobileSearchInputRef.current?.focus();
+  };
+
+  const openSearch = useCallback(() => {
+    setIsSearchOpen(true);
+    setIsMenuOpen(false);
+    setProfileOpen(false);
+    onNotificationsClose();
+  }, [onNotificationsClose]);
+
+  const renderSearchControl = (variant = 'desktop') => {
+    const isMobileVariant = variant === 'mobile';
+    const activeInputRef = isMobileVariant ? mobileSearchInputRef : inputRef;
+
+    return (
+      <AnimatePresence mode="wait">
+        {!isSearchOpen ? (
+          <motion.button
+            key={`search-button-${variant}`}
+            type="button"
+            onClick={openSearch}
+            className={iconBtn()}
+            aria-label={lang === 'ar' ? 'بحث عن لعبة' : 'Search games'}
+          >
+            <Search strokeWidth={2} />
+          </motion.button>
+        ) : (
+          <motion.form
+            key={`search-field-${variant}`}
+            initial={{ width: 0, opacity: 0, scale: 0.96 }}
+            animate={{ width: 'auto', opacity: 1, scale: 1 }}
+            exit={{ width: 0, opacity: 0, scale: 0.96 }}
+            transition={{ type: 'spring', stiffness: 340, damping: 22, mass: 0.85 }}
+            className={`header-search-field ${isMobileVariant ? 'header-search-field--mobile' : ''}`}
+            onSubmit={(event) => {
+              event.preventDefault();
+              submitSearch();
+            }}
+          >
+            <div className="pl-2.5 text-[var(--accent)]" aria-hidden="true">
+              <Search className="w-4 h-4" strokeWidth={2} />
+            </div>
+            <input
+              ref={activeInputRef}
+              type="text"
+              inputMode="search"
+              enterKeyHint="search"
+              autoComplete="off"
+              value={searchDraft}
+              onChange={(e) => setSearchDraft(e.target.value)}
+              placeholder={lang === 'ar' ? 'ابحث...' : 'Search...'}
+              className="header-search-input"
+              onKeyDown={(e) => { if (e.key === 'Escape') setIsSearchOpen(false); }}
+              aria-label={lang === 'ar' ? 'بحث عن لعبة' : 'Search games'}
+            />
+            <AnimatePresence>
+              {searchDraft && (
+                <motion.button
+                  key="search-clear"
+                  type="button"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ duration: 0.15 }}
+                  onClick={handleClearSearch}
+                  className="header-search-btn"
+                  aria-label={lang === 'ar' ? 'مسح البحث' : 'Clear search'}
+                >
+                  <X className="w-3.5 h-3.5" strokeWidth={2} />
+                </motion.button>
+              )}
+            </AnimatePresence>
+            <motion.button
+              type="submit"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="header-search-submit"
+              aria-label={lang === 'ar' ? 'بحث' : 'Search'}
+              disabled={!searchDraft.trim()}
+            >
+              <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
+            </motion.button>
+          </motion.form>
+        )}
+      </AnimatePresence>
+    );
   };
 
   const handleNav = (path) => {
@@ -200,18 +288,18 @@ export default function Header({
         type="button"
         onClick={() => setProfileOpen((prev) => !prev)}
         className={`header-btn header-profile-trigger ${profileOpen ? 'header-btn--accent' : ''}`}
-        aria-label={t.myProfile || 'Profile'}
+        aria-label={lang === 'ar' ? 'قائمة الحساب' : 'Account menu'}
         aria-expanded={profileOpen}
         aria-haspopup="menu"
       >
         <div className="header-avatar" aria-hidden="true">
           {getInitials(user.name, user.email)}
         </div>
-        <span className="hidden lg:inline text-sm font-bold text-[var(--text-primary)] max-w-[88px] truncate">
+        <span className="header-profile-name hidden lg:inline">
           {user.name}
         </span>
         <ChevronDown
-          className={`w-3.5 h-3.5 transition-transform duration-200 ${profileOpen ? 'rotate-180' : ''}`}
+          className={`header-profile-chevron ${profileOpen ? 'header-profile-chevron--open' : ''}`}
           strokeWidth={2.5}
           aria-hidden="true"
         />
@@ -222,92 +310,100 @@ export default function Header({
           <motion.div
             key="profile-dropdown"
             role="menu"
-            initial={{ opacity: 0, y: 6, scale: 0.97 }}
+            initial={{ opacity: 0, y: 8, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 4, scale: 0.96 }}
-            transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
+            exit={{ opacity: 0, y: 6, scale: 0.97 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
             className="header-profile-dropdown"
           >
-            <div className="px-3.5 pt-3 pb-2">
-              <div className="flex items-center gap-2.5">
-                <div className="header-avatar w-9 h-9 text-sm" aria-hidden="true">
-                  {getInitials(user.name, user.email)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-bold text-[var(--text-primary)] truncate">{user.name}</div>
-                  <div className="text-[11px] text-[var(--text-muted)] truncate">{user.email}</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="header-profile-dd-divider" />
-
-            {isAdmin ? (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => handleNav('/dashboard')}
-                className="header-profile-dd-item justify-between"
-              >
-                <span className="flex items-center gap-2.5">
-                  <Zap className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
-                  {lang === 'ar' ? 'رصيد G2Bulk' : 'G2Bulk wallet'}
-                </span>
-                <G2bulkWalletCard
-                  compact
-                  lang={lang}
-                  balance={g2bulkWallet?.balance ?? 0}
-                  loading={g2bulkLoading}
-                />
-              </button>
-            ) : (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => { onRecharge(); setProfileOpen(false); }}
-                className="header-profile-dd-item justify-between"
-              >
-                <span className="flex items-center gap-2.5">
-                  <Wallet className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
-                  {t.recharge || 'Balance'}
-                </span>
-                <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
-              </button>
-            )}
-
-            {user?.role === 'admin' && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => handleNav('/dashboard')}
-                className="header-profile-dd-item header-profile-dd-item--accent"
-              >
-                <ShieldCheck className="w-4 h-4" strokeWidth={2} />
-                {t.adminDash}
-              </button>
-            )}
-
-            <div className="header-profile-dd-divider" />
-
             <button
               type="button"
               role="menuitem"
               onClick={() => handleNav('/profile')}
-              className="header-profile-dd-item"
+              className="header-profile-dd-head"
             >
-              <User className="w-4 h-4" strokeWidth={2} />
-              {t.myProfile || 'My Profile'}
+              <div className="header-avatar header-avatar--lg" aria-hidden="true">
+                {getInitials(user.name, user.email)}
+              </div>
+              <div className="header-profile-dd-head-text">
+                <span className="header-profile-dd-head-name">{user.name}</span>
+                <span className="header-profile-dd-head-email">{user.email}</span>
+              </div>
+              <ChevronRight className="header-profile-dd-head-arrow" strokeWidth={2} aria-hidden="true" />
             </button>
 
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => { closeAll(); onLogout(); }}
-              className="header-profile-dd-item header-profile-dd-item--danger"
-            >
-              <LogOut className="w-4 h-4" strokeWidth={2} />
-              {t.logout || 'Sign Out'}
-            </button>
+            <div className="header-profile-dd-body">
+              {isAdmin ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => handleNav('/dashboard')}
+                  className="header-profile-dd-balance"
+                >
+                  <span className="header-profile-dd-balance-icon" aria-hidden="true">
+                    <Zap strokeWidth={2} />
+                  </span>
+                  <span className="header-profile-dd-balance-copy">
+                    <span className="header-profile-dd-balance-label">
+                      {lang === 'ar' ? 'رصيد G2Bulk' : 'G2Bulk wallet'}
+                    </span>
+                    <span className="header-profile-dd-balance-hint">
+                      {lang === 'ar' ? 'عرض في لوحة التحكم' : 'View in dashboard'}
+                    </span>
+                  </span>
+                  <G2bulkWalletCard
+                    compact
+                    lang={lang}
+                    balance={g2bulkWallet?.balance ?? 0}
+                    loading={g2bulkLoading}
+                  />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => { onRecharge(); setProfileOpen(false); }}
+                  className="header-profile-dd-balance"
+                >
+                  <span className="header-profile-dd-balance-icon" aria-hidden="true">
+                    <Wallet strokeWidth={2} />
+                  </span>
+                  <span className="header-profile-dd-balance-copy">
+                    <span className="header-profile-dd-balance-label">
+                      {t.recharge || 'Balance'}
+                    </span>
+                    <span className="header-profile-dd-balance-hint">
+                      {lang === 'ar' ? 'شحن الرصيد' : 'Top up wallet'}
+                    </span>
+                  </span>
+                  <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
+                </button>
+              )}
+
+              {user?.role === 'admin' && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => handleNav('/dashboard')}
+                  className="header-profile-dd-item header-profile-dd-item--accent"
+                >
+                  <ShieldCheck className="w-4 h-4" strokeWidth={2} />
+                  {t.adminDash}
+                </button>
+              )}
+            </div>
+
+            <div className="header-profile-dd-footer">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { closeAll(); onLogout(); }}
+                className="header-profile-dd-item header-profile-dd-item--danger"
+              >
+                <LogOut className="w-4 h-4" strokeWidth={2} />
+                {t.logout || 'Sign Out'}
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -316,77 +412,8 @@ export default function Header({
 
   const desktopToolbar = (
     <div className="header-actions">
-      <div ref={searchRef} className="header-toolbar">
-        <AnimatePresence mode="wait">
-          {!isSearchOpen ? (
-            <motion.button
-              key="search-button"
-              type="button"
-              onClick={() => setIsSearchOpen(true)}
-              className={iconBtn()}
-              aria-label={lang === 'ar' ? 'بحث عن لعبة' : 'Search games'}
-            >
-              <Search strokeWidth={2} />
-            </motion.button>
-          ) : (
-            <motion.form
-              key="search-field"
-              initial={{ width: 0, opacity: 0, scale: 0.96 }}
-              animate={{ width: 'auto', opacity: 1, scale: 1 }}
-              exit={{ width: 0, opacity: 0, scale: 0.96 }}
-              transition={{ type: 'spring', stiffness: 340, damping: 22, mass: 0.85 }}
-              className="header-search-field"
-              onSubmit={(event) => {
-                event.preventDefault();
-                submitSearch();
-              }}
-            >
-              <div className="pl-2.5 text-[var(--accent)]" aria-hidden="true">
-                <Search className="w-4 h-4" strokeWidth={2} />
-              </div>
-              <input
-                ref={inputRef}
-                type="text"
-                inputMode="search"
-                enterKeyHint="search"
-                autoComplete="off"
-                value={searchDraft}
-                onChange={(e) => setSearchDraft(e.target.value)}
-                placeholder={lang === 'ar' ? 'ابحث عن لعبة...' : 'Search games...'}
-                className="header-search-input"
-                onKeyDown={(e) => { if (e.key === 'Escape') setIsSearchOpen(false); }}
-                aria-label={lang === 'ar' ? 'بحث عن لعبة' : 'Search games'}
-              />
-              <AnimatePresence>
-                {searchDraft && (
-                  <motion.button
-                    key="search-clear"
-                    type="button"
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    transition={{ duration: 0.15 }}
-                    onClick={handleClearSearch}
-                    className="header-search-btn"
-                    aria-label={lang === 'ar' ? 'مسح البحث' : 'Clear search'}
-                  >
-                    <X className="w-3.5 h-3.5" strokeWidth={2} />
-                  </motion.button>
-                )}
-              </AnimatePresence>
-              <motion.button
-                type="submit"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="header-search-submit"
-                aria-label={lang === 'ar' ? 'بحث' : 'Search'}
-                disabled={!searchDraft.trim()}
-              >
-                <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
-              </motion.button>
-            </motion.form>
-          )}
-        </AnimatePresence>
+      <div ref={desktopSearchRef} className="header-toolbar">
+        {renderSearchControl('desktop')}
 
         {!isSearchOpen && <span className="header-toolbar-divider" aria-hidden="true" />}
 
@@ -459,12 +486,20 @@ export default function Header({
         </div>
 
         {/* Mobile utilities */}
-        <div className="flex md:hidden items-center gap-1.5 flex-shrink-0">
+        <div className="flex md:hidden items-center gap-1.5 flex-shrink-0 min-w-0">
           {isMobile && notificationBell}
+          <div ref={mobileSearchRef} className="header-mobile-search-slot">
+            {renderSearchControl('mobile')}
+          </div>
           {cartButton()}
           <button
             type="button"
-            onClick={() => setIsMenuOpen((prev) => !prev)}
+            onClick={() => {
+              setIsMenuOpen((prev) => {
+                if (!prev) setIsSearchOpen(false);
+                return !prev;
+              });
+            }}
             className={iconBtn(isMenuOpen ? 'header-btn--accent' : '')}
             aria-label={isMenuOpen ? (lang === 'ar' ? 'إغلاق القائمة' : 'Close menu') : (lang === 'ar' ? 'فتح القائمة' : 'Open menu')}
             aria-expanded={isMenuOpen}
@@ -503,40 +538,6 @@ export default function Header({
                 dir={lang === 'ar' ? 'rtl' : 'ltr'}
               >
                 <div className="header-mobile-drawer-inner">
-                  <form
-                    className="header-mobile-search"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      submitSearch();
-                    }}
-                  >
-                    <Search className="w-4 h-4 text-[var(--accent)] flex-shrink-0" strokeWidth={2} />
-                    <input
-                      ref={mobileSearchRef}
-                      type="text"
-                      inputMode="search"
-                      enterKeyHint="search"
-                      autoComplete="off"
-                      value={searchDraft}
-                      onChange={(e) => setSearchDraft(e.target.value)}
-                      placeholder={lang === 'ar' ? 'ابحث عن لعبة...' : 'Search games...'}
-                      aria-label={lang === 'ar' ? 'بحث عن لعبة' : 'Search games'}
-                    />
-                    {searchDraft && (
-                      <button type="button" onClick={handleClearSearch} className="header-mobile-search-clear" aria-label={lang === 'ar' ? 'مسح' : 'Clear'}>
-                        <X className="w-4 h-4" strokeWidth={2} />
-                      </button>
-                    )}
-                    <button
-                      type="submit"
-                      className="header-mobile-search-submit"
-                      aria-label={lang === 'ar' ? 'بحث' : 'Search'}
-                      disabled={!searchDraft.trim()}
-                    >
-                      <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
-                    </button>
-                  </form>
-
                   <nav aria-label={lang === 'ar' ? 'التنقل الرئيسي' : 'Main navigation'}>
                     <MobileNavLinks
                       t={t}
@@ -599,24 +600,25 @@ export default function Header({
                         </button>
                       )}
 
-                      <div className="flex items-center gap-2">
+                      <div className="header-mobile-profile-row">
                         <button
                           type="button"
                           onClick={() => handleNav('/profile')}
-                          className="header-mobile-action flex-1 min-w-0"
+                          className="header-mobile-profile-card"
                         >
-                          <div className="header-avatar w-7 h-7 text-[10px] flex-shrink-0">
+                          <div className="header-avatar header-avatar--md flex-shrink-0">
                             {getInitials(user.name, user.email)}
                           </div>
-                          <div className="min-w-0 text-left">
-                            <div className="text-[10px] text-[var(--text-muted)] leading-tight">{t.myProfile || 'Profile'}</div>
-                            <div className="text-sm font-bold text-[var(--accent)] truncate">{user.name}</div>
+                          <div className="min-w-0 flex-1 text-left">
+                            <div className="text-sm font-bold text-[var(--text-primary)] truncate">{user.name}</div>
+                            <div className="text-[11px] text-[var(--text-muted)] truncate">{user.email}</div>
                           </div>
+                          <ChevronRight className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0" strokeWidth={2} />
                         </button>
                         <button
                           type="button"
                           onClick={() => { closeAll(); onLogout(); }}
-                          className="header-btn header-btn--danger header-btn-icon !w-11 h-11 flex-shrink-0"
+                          className="header-btn header-btn--danger header-btn-icon header-mobile-logout-btn"
                           aria-label={t.logout || 'Sign out'}
                         >
                           <LogOut className="w-4 h-4" strokeWidth={2} />

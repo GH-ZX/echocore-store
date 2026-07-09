@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, ChevronUp, ChevronDown, Eye, EyeOff, Plus, GripVertical } from 'lucide-react';
+import { X, ChevronUp, ChevronDown, Eye, EyeOff, Plus, GripVertical, ExternalLink } from 'lucide-react';
 import AdminEditButton from './AdminEditButton';
 
 export default function AdminCarouselManager({
@@ -9,6 +9,7 @@ export default function AdminCarouselManager({
   onClose,
   onSave,
   onEditGame,
+  onGoToAddGames,
 }) {
   const [carouselList, setCarouselList] = useState([]);
   const [hiddenList, setHiddenList] = useState([]);
@@ -149,7 +150,9 @@ export default function AdminCarouselManager({
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3">
           <div>
             <h2 className="text-lg font-bold">{t.manageCarousel || 'Manage Carousel'}</h2>
-            <p className="text-xs text-[var(--text-muted)]">{t.carouselOrderHelp || 'Reorder slides, edit content, show or hide games'}</p>
+            <p className="text-xs text-[var(--text-muted)]">
+              {t.carouselOrderHelp || 'Reorder slides from games already in your store'}
+            </p>
           </div>
           <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-white/5" aria-label="Close">
             <X className="w-5 h-5" />
@@ -165,7 +168,7 @@ export default function AdminCarouselManager({
             <div className="space-y-2">
               {carouselList.length === 0 ? (
                 <p className="text-sm text-[var(--text-muted)] py-4 text-center">
-                  {t.noCarouselSlides || 'No games in carousel. Add some below.'}
+                  {t.noCarouselSlides || 'No games in carousel. Add from your store games below.'}
                 </p>
               ) : (
                 carouselList.map((game, index) => renderRow(game, index, { inCarousel: true }))
@@ -189,13 +192,25 @@ export default function AdminCarouselManager({
             <div className="rounded border border-red-500/60 bg-red-500/10 p-2 text-xs text-red-400">{error}</div>
           )}
 
-          <div className="flex gap-2 pt-1">
-            <button type="button" onClick={handleSave} disabled={saving} className="btn btn-primary flex-1 py-3 disabled:opacity-60">
-              {saving ? (t.saving || 'Saving...') : (t.saveCarouselOrder || 'Save Carousel')}
-            </button>
-            <button type="button" onClick={onClose} className="btn btn-secondary px-5">
-              {t.cancel || 'Cancel'}
-            </button>
+          <div className="space-y-2 pt-1">
+            {onGoToAddGames && (
+              <button
+                type="button"
+                onClick={onGoToAddGames}
+                className="btn btn-secondary w-full inline-flex items-center justify-center gap-2 min-h-[44px]"
+              >
+                <ExternalLink className="w-4 h-4" />
+                {t.goToAddGames || (lang === 'ar' ? 'إضافة ألعاب جديدة من G2Bulk' : 'Add new games from G2Bulk')}
+              </button>
+            )}
+            <div className="flex gap-2">
+              <button type="button" onClick={handleSave} disabled={saving} className="btn btn-primary flex-1 py-3 disabled:opacity-60">
+                {saving ? (t.saving || 'Saving...') : (t.saveCarouselOrder || 'Save Carousel')}
+              </button>
+              <button type="button" onClick={onClose} className="btn btn-secondary px-5">
+                {t.cancel || 'Cancel'}
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Trash2, Upload, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Zap, FlaskConical } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uploadImage } from '../../lib/uploadImage';
+import { getCatalogOfferStats } from '../../lib/catalogUtils';
 
 const ImageFocusPicker = lazy(() => import('../../components/admin/ImageFocusPicker'));
 const GameImageSearch = lazy(() => import('../../components/admin/GameImageSearch'));
@@ -67,7 +68,6 @@ export default function AdminView({
     name_en: '',
     name_ar: '',
     price: '',
-    region: '',
     image_url: '',
     description_en: '',
     description_ar: '',
@@ -95,7 +95,6 @@ export default function AdminView({
     logo_url: '',
     image_url: '',
     redemption_method: 'both',
-    servers: [],   // admin-defined list of servers/regions (e.g. Europe, Turkey, Global)
     description_en: '',
     description_ar: '',
     carousel_focus_x: 50,
@@ -200,19 +199,7 @@ export default function AdminView({
   // Quick lookup for game names in offers list
   const gamesMap = Object.fromEntries(games.map(g => [g.id, g]));
 
-  // Server selection for games (predefined choices - no free typing)
-  const toggleGameServer = (srv) => {
-    setNewGame(prev => {
-      const current = Array.isArray(prev.servers) ? prev.servers : [];
-      const isSelected = current.includes(srv);
-      const newServers = isSelected
-        ? current.filter(s => s !== srv)
-        : [...current, srv];
-      return { ...prev, servers: newServers };
-    });
-  };
-
-  const filteredOffersForList = filterGameId 
+  const filteredOffersForList = filterGameId
     ? offers.filter(o => o.game_id === filterGameId) 
     : offers;
 
@@ -279,7 +266,6 @@ export default function AdminView({
         logo_url: finalLogo || null,
         image_url: finalImage || null,
         redemption_method: newGame.redemption_method || 'both',
-        servers: Array.isArray(newGame.servers) ? newGame.servers : [],
         description_en: newGame.description_en || '',
         description_ar: newGame.description_ar || newGame.description_en || '',
         carousel_focus_x: newGame.carousel_focus_x ?? 50,
@@ -326,7 +312,7 @@ export default function AdminView({
       }
 
       // Reset form
-      setNewGame({ name_en: '', slug: '', points_name: '', logo_url: '', image_url: '', redemption_method: 'both', servers: [], description_en: '', description_ar: '' });
+      setNewGame({ name_en: '', slug: '', points_name: '', logo_url: '', image_url: '', redemption_method: 'both', description_en: '', description_ar: '' });
       setGameLogoFile(null);
       setGameCoverFile(null);
       setEditingGameId(null);
@@ -360,7 +346,6 @@ export default function AdminView({
       logo_url: game.logo_url || '',
       image_url: game.image_url || '',
       redemption_method: game.redemption_method || 'both',
-      servers: Array.isArray(game.servers) ? game.servers : [],
       description_en: game.description_en || '',
       description_ar: game.description_ar || '',
       carousel_focus_x: game.carousel_focus_x ?? 50,
@@ -374,7 +359,7 @@ export default function AdminView({
 
   const cancelEditGame = () => {
     setEditingGameId(null);
-    setNewGame({ name_en: '', slug: '', points_name: '', logo_url: '', image_url: '', redemption_method: 'both', servers: [], description_en: '', description_ar: '', carousel_focus_x: 50, carousel_focus_y: 50 });
+    setNewGame({ name_en: '', slug: '', points_name: '', logo_url: '', image_url: '', redemption_method: 'both', description_en: '', description_ar: '', carousel_focus_x: 50, carousel_focus_y: 50 });
     setGameLogoFile(null);
     setGameCoverFile(null);
     setGameFormError('');
@@ -417,7 +402,6 @@ export default function AdminView({
         name_en: newProduct.name_en.trim(),
         name_ar: (newProduct.name_ar || newProduct.name_en).trim(),
         price: newProduct.price,
-        region: newProduct.region || null,
         amount: null,
         image_url: null,
         description_en: desc,
@@ -448,7 +432,7 @@ export default function AdminView({
   const resetForm = () => {
     setNewProduct({
       game_id: '',
-      name_en: '', name_ar: '', price: '', region: '',
+      name_en: '', name_ar: '', price: '',
       image_url: '', description_en: '', description_ar: '',
       sale_image_url: '',
       is_sale: false,
@@ -467,7 +451,6 @@ export default function AdminView({
       name_en: product.name_en || '',
       name_ar: product.name_ar || '',
       price: product.price || '',
-      region: product.region || '',
       image_url: product.image_url || '',
       description_en: product.description_en || product.description_ar || '',
       description_ar: product.description_ar || product.description_en || '',
@@ -480,8 +463,10 @@ export default function AdminView({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Calculate stats
-  const totalProducts = offers.length;
+  const catalogStats = useMemo(
+    () => getCatalogOfferStats(offers, games),
+    [offers, games],
+  );
   const totalOrders = orders.length;
   const totalRevenue = orders.reduce((sum, o) => sum + parseFloat(o.total || 0), 0).toFixed(2);
   const recentOrders = [...orders].slice(0, 5);
@@ -546,11 +531,44 @@ export default function AdminView({
             <div className="dash-stat-card card p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-[var(--text-sec)] text-sm">{t.totalOffers}</div>
-                  <div className="text-3xl sm:text-4xl font-black mt-1">{totalProducts}</div>
+                  <div className="text-[var(--text-sec)] text-sm">{t.catalogGames || 'Games'}</div>
+                  <div className="text-3xl sm:text-4xl font-black mt-1">{catalogStats.games}</div>
+                  <p className="text-[10px] text-[var(--text-muted)] mt-1 leading-snug">
+                    {t.catalogGamesHelp || 'Unified game titles with at least one live pack'}
+                  </p>
                 </div>
                 <div className="dash-stat-icon">
                   <Package className="w-8 h-8 sm:w-10 sm:h-10 text-[var(--accent)]" />
+                </div>
+              </div>
+            </div>
+
+            <div className="dash-stat-card card p-4 sm:p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[var(--text-sec)] text-sm">{t.topupPacks || 'Top-up packs'}</div>
+                  <div className="text-3xl sm:text-4xl font-black mt-1">{catalogStats.topupPacks}</div>
+                  <p className="text-[10px] text-[var(--text-muted)] mt-1 leading-snug">
+                    {t.topupPacksHelp || 'UID / direct top-up bundles (VP, UC, diamonds)'}
+                  </p>
+                </div>
+                <div className="dash-stat-icon">
+                  <Zap className="w-8 h-8 sm:w-10 sm:h-10 text-[var(--accent)]" />
+                </div>
+              </div>
+            </div>
+
+            <div className="dash-stat-card card p-4 sm:p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[var(--text-sec)] text-sm">{t.giftCodes || 'Gift codes'}</div>
+                  <div className="text-3xl sm:text-4xl font-black mt-1">{catalogStats.giftCodes}</div>
+                  <p className="text-[10px] text-[var(--text-muted)] mt-1 leading-snug">
+                    {t.giftCodesHelp || 'Instant redeem codes & platform vouchers'}
+                  </p>
+                </div>
+                <div className="dash-stat-icon">
+                  <Plus className="w-8 h-8 sm:w-10 sm:h-10 text-violet-300" />
                 </div>
               </div>
             </div>
@@ -566,7 +584,9 @@ export default function AdminView({
                 </div>
               </div>
             </div>
+          </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="dash-stat-card dash-stat-card--success card p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -579,18 +599,14 @@ export default function AdminView({
               </div>
             </div>
 
-            <div className="dash-stat-card card p-4 sm:p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-[var(--text-sec)] text-sm">{t.avgOrderValue}</div>
-                  <div className="text-3xl sm:text-4xl font-black mt-1">
-                    ${totalOrders > 0 ? (totalRevenue / totalOrders).toFixed(2) : '0.00'}
-                  </div>
-                </div>
-                <div className="dash-stat-icon">
-                  <Plus className="w-8 h-8 sm:w-10 sm:h-10 text-[var(--accent)]" />
-                </div>
-              </div>
+            <div className="card p-4 sm:p-6 text-sm text-[var(--text-sec)] leading-relaxed">
+              <p className="font-semibold text-[var(--text-primary)] mb-2">
+                {t.catalogStatsLegend || 'What is the difference?'}
+              </p>
+              <p>{t.catalogStatsLegendBody || 'Games are storefront titles (one Valorant card). Top-up packs are in-game currency bundles delivered via UID. Gift codes are redeemable voucher codes (gift cards, Xbox, Steam, etc.).'}</p>
+              <p className="text-xs text-[var(--text-muted)] mt-2">
+                {t.catalogTotalPacks || 'Total live packs'}: {catalogStats.totalPacks}
+              </p>
             </div>
           </div>
 
@@ -705,64 +721,6 @@ export default function AdminView({
                     <option value="redeem_code">{t.redemptionCode || 'Redeem Code only'}</option>
                     <option value="both">{t.redemptionBoth || 'Both'}</option>
                   </select>
-                </div>
-
-                {/* Servers / Regions - Select from predefined options (no free typing) */}
-                <div>
-                  <label className="text-xs font-semibold text-[var(--text-sec)] mb-1.5 block">
-                    {t.availableServers || 'Available Servers / Regions'}
-                  </label>
-
-                  {(() => {
-                    const serverList = (t.serverOptions && t.serverOptions.length > 0)
-                      ? t.serverOptions
-                      : ["Global", "Europe", "Turkey", "Korea", "North America", "Southeast Asia", "Latin America", "Middle East", "Japan", "India", "Russia", "China", "Oceania", "Brazil"];
-                    const currentServers = Array.isArray(newGame.servers) ? newGame.servers : [];
-
-                    return (
-                      <>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                          {serverList.map((srv) => {
-                            const isSelected = currentServers.includes(srv);
-                            return (
-                              <button
-                                key={srv}
-                                type="button"
-                                onClick={() => toggleGameServer(srv)}
-                                className={`px-3 py-2 text-xs rounded-xl border transition-all text-left flex items-center gap-2
-                                  ${isSelected 
-                                    ? 'bg-[var(--accent)] text-[#040812] border-[var(--accent)] font-semibold' 
-                                    : 'bg-[var(--bg-surface)] border-[var(--border)] hover:border-[var(--accent)] hover:bg-[var(--accent)]/10'
-                                  }`}
-                              >
-                                <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-[#040812]' : 'bg-[var(--text-muted)]'}`}></span>
-                                {srv}
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        {currentServers.length > 0 && (
-                          <div className="mt-3 text-xs">
-                            <span className="text-[var(--text-muted)] mr-2">Selected:</span>
-                            <span className="font-medium text-[var(--accent)]">{currentServers.join(' • ')}</span>
-                          </div>
-                        )}
-
-                        {currentServers.length === 0 && (
-                          <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                            No servers selected. Users will see a free text field for server when buying.
-                          </p>
-                        )}
-                      </>
-                    );
-                  })()}
-
-                  <p className="text-[10px] text-[var(--text-muted)] mt-2">
-                    {lang === 'ar' 
-                      ? 'اختر السيرفرات المتاحة لهذه اللعبة. المستخدم سيختار من هذه القائمة عند الشراء (للألعاب التي تحتاج UID).' 
-                      : 'Select the available servers for this game. Users will pick from this list on the purchase page (for games that need UID).'}
-                  </p>
                 </div>
 
                 <Suspense fallback={<AdminTabLoader />}>
@@ -956,10 +914,7 @@ export default function AdminView({
                 </select>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input required type="number" step="0.01" placeholder={t.price} value={newProduct.price} onChange={e => setNewProduct({ ...newProduct, price: e.target.value })} className="input" />
-                <input placeholder={t.regionOptional} value={newProduct.region || ''} onChange={e => setNewProduct({ ...newProduct, region: e.target.value })} className="input" />
-              </div>
+              <input required type="number" step="0.01" placeholder={t.price} value={newProduct.price} onChange={e => setNewProduct({ ...newProduct, price: e.target.value })} className="input" />
 
               <div className="flex items-center gap-2">
                 <input 

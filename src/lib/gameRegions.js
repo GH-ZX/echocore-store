@@ -1,116 +1,9 @@
-const REGION_TOKENS = {
-  sea: 'SEA',
-  southeast_asia: 'SEA',
-  southeastasia: 'SEA',
-  global: 'Global',
-  gl: 'Global',
-  europe: 'Europe',
-  eu: 'Europe',
-  turkey: 'Turkey',
-  tr: 'Turkey',
-  korea: 'Korea',
-  kr: 'Korea',
-  na: 'North America',
-  north_america: 'North America',
-  america: 'North America',
-  latam: 'Latin America',
-  latin_america: 'Latin America',
-  mena: 'MENA',
-  middle_east: 'Middle East',
-  japan: 'Japan',
-  jp: 'Japan',
-  india: 'India',
-  indonesia: 'Indonesia',
-  id: 'Indonesia',
-  russia: 'Russia',
-  ru: 'Russia',
-  china: 'China',
-  cn: 'China',
-  brazil: 'Brazil',
-  br: 'Brazil',
-  oceania: 'Oceania',
-  oce: 'Oceania',
-  taiwan: 'Taiwan',
-  tw: 'Taiwan',
-  hk: 'Hong Kong',
-  hong_kong: 'Hong Kong',
-  sg: 'Singapore',
-  singapore: 'Singapore',
-  ph: 'Philippines',
-  philippines: 'Philippines',
-  my: 'Malaysia',
-  malaysia: 'Malaysia',
-  th: 'Thailand',
-  thailand: 'Thailand',
-  vn: 'Vietnam',
-  vietnam: 'Vietnam',
-  kh: 'Cambodia',
-  cambodia: 'Cambodia',
-};
+import {
+  normalizeRegionLabel,
+  parseG2BulkGameMeta,
+} from './regionMeta';
 
-function normalizeRegionToken(value = '') {
-  return String(value)
-    .trim()
-    .toLowerCase()
-    .replace(/[\s/]+/g, '_')
-    .replace(/[^a-z0-9_]/g, '');
-}
-
-export function normalizeRegionLabel(value = '') {
-  const token = normalizeRegionToken(value);
-  if (REGION_TOKENS[token]) return REGION_TOKENS[token];
-
-  const cleaned = String(value).trim();
-  if (!cleaned) return 'Global';
-  return cleaned
-    .split(/[\s/_-]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(' ');
-}
-
-export function parseG2BulkGameMeta(code = '', name = '') {
-  const normalizedCode = String(code || '').trim().toLowerCase();
-  const displayName = String(name || code || '').trim();
-  const parts = normalizedCode.split(/[_-]+/).filter(Boolean);
-
-  let regionLabel = null;
-  let baseKey = normalizedCode;
-
-  if (parts.length > 1) {
-    const suffix = parts[parts.length - 1];
-    if (REGION_TOKENS[suffix]) {
-      regionLabel = REGION_TOKENS[suffix];
-      baseKey = parts.slice(0, -1).join('_');
-    }
-  }
-
-  if (!regionLabel) {
-    const paren = displayName.match(/\(([^)]+)\)\s*$/);
-    if (paren) regionLabel = normalizeRegionLabel(paren[1]);
-  }
-
-  if (!regionLabel) {
-    const dash = displayName.match(/[-–—]\s*([^(-]+)\s*$/);
-    if (dash) regionLabel = normalizeRegionLabel(dash[1]);
-  }
-
-  let baseName = displayName;
-  if (regionLabel) {
-    baseName = displayName
-      .replace(/\s*\([^)]+\)\s*$/, '')
-      .replace(/\s*[-–—]\s*[^-–—]+$/, '')
-      .trim() || displayName;
-  }
-
-  if (!regionLabel) regionLabel = 'Global';
-
-  return {
-    baseKey: baseKey || normalizedCode,
-    baseName: baseName || displayName || normalizedCode,
-    regionLabel,
-  };
-}
+export { normalizeRegionLabel, parseG2BulkGameMeta } from './regionMeta';
 
 function slugifyBaseKey(value = '') {
   return String(value)
@@ -134,6 +27,52 @@ export function isStorefrontGame(game) {
   return !!game && !game.parent_game_id;
 }
 
+function isCanonicalParent(game) {
+  return !!game && isStorefrontGame(game) && !game.g2bulk_game_code;
+}
+
+function normalizeBaseKey(value = '') {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function resolveBaseKey(game) {
+  if (!game) return '';
+  const raw = game.group_base_key
+    || getGameBaseMeta(game).baseKey
+    || game.slug
+    || '';
+  return normalizeBaseKey(raw);
+}
+
+function enrichVariant(game) {
+  return {
+    ...game,
+    region_label: game.region_label || getGameBaseMeta(game).regionLabel,
+  };
+}
+
+function sortVariants(variants = []) {
+  return [...variants].sort((a, b) => String(a.region_label || '').localeCompare(String(b.region_label || '')));
+}
+
+function findCanonicalParent(games = [], gameOrBaseKey) {
+  const baseKey = normalizeBaseKey(
+    typeof gameOrBaseKey === 'string'
+      ? gameOrBaseKey
+      : resolveBaseKey(gameOrBaseKey),
+  );
+  if (!baseKey) return null;
+
+  const parentSlug = slugifyBaseKey(baseKey);
+  return games.find((row) => isCanonicalParent(row) && row.slug === parentSlug)
+    || games.find((row) => isCanonicalParent(row) && resolveBaseKey(row) === baseKey)
+    || null;
+}
+
 function dedupeRegionalTopupGames(games = []) {
   const active = games.filter((game) => game && game.active !== false);
   const childCodes = new Set(
@@ -149,16 +88,22 @@ function dedupeRegionalTopupGames(games = []) {
 
     const meta = getGameBaseMeta(game);
     const key = meta.baseKey || `solo:${game.id}`;
+    const storefrontRow = {
+      ...game,
+      slug: meta.baseKey ? slugifyBaseKey(meta.baseKey) : game.slug,
+      name_en: meta.baseName || game.name_en,
+      name_ar: meta.baseName || game.name_ar,
+      group_base_key: meta.baseKey || game.group_base_key,
+    };
 
     if (!byBase.has(key)) {
-      byBase.set(key, {
-        ...game,
-        slug: meta.baseKey ? slugifyBaseKey(meta.baseKey) : game.slug,
-        name_en: meta.baseName || game.name_en,
-        name_ar: meta.baseName || game.name_ar,
-        group_base_key: meta.baseKey || game.group_base_key,
-      });
+      byBase.set(key, storefrontRow);
+      return;
     }
+
+    const existing = byBase.get(key);
+    const preferred = isCanonicalParent(game) && !isCanonicalParent(existing) ? storefrontRow : existing;
+    byBase.set(key, preferred);
   });
 
   return [...byBase.values()];
@@ -182,35 +127,54 @@ export function getAllStorefrontProducts(games = []) {
   return [...getStorefrontGames(games), ...getStorefrontVoucherGames(games)];
 }
 
+export function variantHasActiveOffers(variant, offers = []) {
+  if (!variant?.id) return false;
+  return offers.some((offer) => offer.game_id === variant.id && offer.active !== false);
+}
+
+export function getRegionVariantsWithOffers(games = [], parentOrId, offers = []) {
+  return getRegionVariants(games, parentOrId)
+    .filter((variant) => variantHasActiveOffers(variant, offers));
+}
+
+export function storefrontGameHasOffers(game, games = [], offers = []) {
+  if (!game) return false;
+  const childIds = getChildGameIds(games, game);
+  return childIds.some((id) => offers.some((offer) => offer.game_id === id && offer.active !== false));
+}
+
 export function getRegionVariants(games = [], parentOrId) {
-  const parentId = typeof parentOrId === 'object' ? parentOrId?.id : parentOrId;
+  const parent = typeof parentOrId === 'object' ? parentOrId : games.find((game) => game.id === parentOrId);
+  const parentId = parent?.id;
   if (!parentId) return [];
 
-  const parent = games.find((game) => game.id === parentId);
-  const children = games
+  const directChildren = games
     .filter((game) => game.parent_game_id === parentId && game.active !== false)
-    .map((game) => ({
-      ...game,
-      region_label: game.region_label || getGameBaseMeta(game).regionLabel,
-    }));
+    .map(enrichVariant);
+  if (directChildren.length > 0) return sortVariants(directChildren);
 
-  if (children.length > 0) {
-    return children.sort((a, b) => String(a.region_label || '').localeCompare(String(b.region_label || '')));
-  }
-
-  if (!parent) return [];
-
-  const baseKey = parent.group_base_key || getGameBaseMeta(parent).baseKey;
+  const baseKey = resolveBaseKey(parent);
   if (!baseKey) return [];
 
-  return games
-    .filter((game) => game.active !== false && !game.parent_game_id && game.g2bulk_game_code)
-    .filter((game) => getGameBaseMeta(game).baseKey === baseKey)
-    .map((game) => ({
-      ...game,
-      region_label: game.region_label || getGameBaseMeta(game).regionLabel,
-    }))
-    .sort((a, b) => String(a.region_label || '').localeCompare(String(b.region_label || '')));
+  const canonicalParent = findCanonicalParent(games, baseKey);
+  if (canonicalParent && canonicalParent.id !== parentId) {
+    const canonicalChildren = games
+      .filter((game) => game.parent_game_id === canonicalParent.id && game.active !== false)
+      .map(enrichVariant);
+    if (canonicalChildren.length > 0) return sortVariants(canonicalChildren);
+  }
+
+  const keyedChildren = games
+    .filter((game) => game.active !== false && game.g2bulk_game_code)
+    .filter((game) => resolveBaseKey(game) === baseKey)
+    .map(enrichVariant);
+  if (keyedChildren.length > 0) return sortVariants(keyedChildren);
+
+  const legacyRegionalParents = games
+    .filter((game) => game.active !== false && isStorefrontGame(game) && game.g2bulk_game_code)
+    .filter((game) => resolveBaseKey(game) === baseKey)
+    .map(enrichVariant);
+  return sortVariants(legacyRegionalParents);
 }
 
 export function buildChildToParentMap(games = []) {
@@ -240,17 +204,28 @@ export function resolveStorefrontGame(games = [], gameOrSlug) {
   if (!game) return null;
 
   if (game.parent_game_id) {
-    return games.find((row) => row.id === game.parent_game_id) || game;
+    const linkedParent = games.find((row) => row.id === game.parent_game_id);
+    if (linkedParent) {
+      return getStorefrontGames(games).find((row) => row.id === linkedParent.id)
+        || linkedParent;
+    }
   }
 
   if (isVoucherLike(game) && isStorefrontGame(game)) {
     return game;
   }
 
-  const storefront = getStorefrontGames(games);
   const meta = getGameBaseMeta(game);
+  const canonicalParent = findCanonicalParent(games, meta.baseKey);
+  if (canonicalParent) {
+    return getStorefrontGames(games).find((row) => row.id === canonicalParent.id)
+      || canonicalParent;
+  }
+
+  const storefront = getStorefrontGames(games);
   const grouped = storefront.find((row) => row.group_base_key === meta.baseKey
-    || row.slug === slugifyBaseKey(meta.baseKey));
+    || row.slug === slugifyBaseKey(meta.baseKey)
+    || row.id === game.id);
   return grouped || game;
 }
 
@@ -295,8 +270,12 @@ export function findVariantByRegionParam(variants = [], regionParam = '') {
     || null;
 }
 
-export function pickDefaultVariant(variants = []) {
+export function pickDefaultVariant(variants = [], offers = []) {
   if (!variants.length) return null;
-  return variants.find((variant) => variant.region_label === 'Global')
-    || variants[0];
+
+  const withOffers = variants.filter((variant) => variantHasActiveOffers(variant, offers));
+  if (!withOffers.length) return null;
+
+  return withOffers.find((variant) => variant.region_label === 'Global')
+    || withOffers[0];
 }

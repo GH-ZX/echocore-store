@@ -4,11 +4,6 @@ import { uploadImage } from '../../lib/uploadImage';
 import ImageFocusPicker from './ImageFocusPicker';
 import GameImageSearch from './GameImageSearch';
 
-const DEFAULT_SERVERS = [
-  'Global', 'Europe', 'Turkey', 'Korea', 'North America', 'Southeast Asia',
-  'Latin America', 'Middle East', 'Japan', 'India', 'Russia', 'China', 'Oceania', 'Brazil',
-];
-
 export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose, onSave }) {
   const [form, setForm] = useState({
     name_en: '',
@@ -17,7 +12,6 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
     logo_url: '',
     image_url: '',
     redemption_method: 'both',
-    servers: [],
     description_en: '',
     description_ar: '',
     carousel_focus_x: 50,
@@ -29,8 +23,6 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
   const [coverPreviewUrl, setCoverPreviewUrl] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-
-  const serverList = (t.serverOptions && t.serverOptions.length > 0) ? t.serverOptions : DEFAULT_SERVERS;
 
   const isNew = !game?.id;
 
@@ -45,7 +37,6 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
         logo_url: '',
         image_url: '',
         redemption_method: 'both',
-        servers: [],
         description_en: '',
         description_ar: '',
         carousel_focus_x: 50,
@@ -60,7 +51,6 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
         logo_url: game.logo_url || '',
         image_url: game.image_url || '',
         redemption_method: game.redemption_method || 'both',
-        servers: Array.isArray(game.servers) ? game.servers : [],
         description_en: game.description_en || '',
         description_ar: game.description_ar || '',
         carousel_focus_x: game.carousel_focus_x ?? 50,
@@ -84,17 +74,6 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
   }, [coverFile, form.image_url]);
 
   const coverImageForFocus = useMemo(() => coverPreviewUrl, [coverPreviewUrl]);
-
-  const toggleServer = (srv) => {
-    setForm((prev) => {
-      const current = Array.isArray(prev.servers) ? prev.servers : [];
-      const isSelected = current.includes(srv);
-      return {
-        ...prev,
-        servers: isSelected ? current.filter((s) => s !== srv) : [...current, srv],
-      };
-    });
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -123,7 +102,6 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
         logo_url: finalLogo,
         image_url: finalImage,
         redemption_method: form.redemption_method || 'both',
-        servers: Array.isArray(form.servers) ? form.servers : [],
         description_en: form.description_en || '',
         description_ar: form.description_ar || form.description_en || '',
         carousel_focus_x: form.carousel_focus_x ?? 50,
@@ -213,7 +191,7 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
 
           <div>
             <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 block">
-              {t.g2bulkGameCode || 'G2Bulk game code'}
+              {t.g2bulkGameCode || 'Catalog game code'}
             </label>
             <input
               placeholder="pubgm, mlbb, free_fire…"
@@ -221,29 +199,6 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
               onChange={(e) => setForm({ ...form, g2bulk_game_code: e.target.value })}
               className="input w-full font-mono text-sm"
             />
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-[var(--text-sec)] mb-1.5 block">{t.availableServers || 'Servers'}</label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {serverList.map((srv) => {
-                const isSelected = form.servers.includes(srv);
-                return (
-                  <button
-                    key={srv}
-                    type="button"
-                    onClick={() => toggleServer(srv)}
-                    className={`rounded-xl border px-2 py-2 text-xs text-left transition-all ${
-                      isSelected
-                        ? 'border-[var(--accent)] bg-[var(--accent)] font-semibold text-[#040812]'
-                        : 'border-[var(--border)] bg-[var(--bg-primary)] hover:border-[var(--accent)]/50'
-                    }`}
-                  >
-                    {srv}
-                  </button>
-                );
-              })}
-            </div>
           </div>
 
           <GameImageSearch

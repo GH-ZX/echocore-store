@@ -1,4 +1,5 @@
 import { Loader2, RefreshCw, Wallet, AlertCircle, Zap } from 'lucide-react';
+import { SUPPLIER_BRAND } from '../../lib/branding';
 
 function formatUsd(amount) {
   const n = Number(amount);
@@ -30,19 +31,19 @@ export default function G2bulkWalletCard({
       return (
         <span className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
           <Loader2 className="w-3 h-3 animate-spin" />
-          G2Bulk…
+          {SUPPLIER_BRAND}…
         </span>
       );
     }
     if (error) {
       return (
         <span className="text-xs text-amber-400" title={error}>
-          G2Bulk —
+          {SUPPLIER_BRAND} —
         </span>
       );
     }
     return (
-      <span className="header-balance font-mono" title={isAr ? 'رصيد G2Bulk' : 'G2Bulk wallet'}>
+      <span className="header-balance font-mono" title={isAr ? `رصيد ${SUPPLIER_BRAND}` : `${SUPPLIER_BRAND} wallet`}>
         {formatUsd(balance)}
       </span>
     );
@@ -57,7 +58,7 @@ export default function G2bulkWalletCard({
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent)]">
-              G2Bulk
+              {SUPPLIER_BRAND}
             </p>
             <p className="text-[11px] text-[var(--text-muted)]">
               {isAr ? 'رصيد المورد للتوريد' : 'Supplier wallet for fulfillment'}
@@ -104,7 +105,7 @@ export default function G2bulkWalletCard({
           {lowBalance && (
             <p className="text-xs text-amber-400 mt-3 flex items-center gap-1.5">
               <AlertCircle className="w-3.5 h-3.5" />
-              {isAr ? 'الرصيد منخفض — عبّئ محفظة G2Bulk' : 'Low balance — top up your G2Bulk wallet'}
+              {isAr ? `الرصيد منخفض — عبّئ محفظة ${SUPPLIER_BRAND}` : `Low balance — top up your ${SUPPLIER_BRAND} wallet`}
             </p>
           )}
         </>
@@ -117,7 +118,7 @@ export default function G2bulkWalletCard({
           className="action-chip btn btn-primary !h-11 !min-h-11 !border-0 gap-2 px-5 w-full sm:w-auto mt-4"
         >
           <Wallet className="w-4 h-4" />
-          {manageLabel || (isAr ? 'إعدادات G2Bulk' : 'G2Bulk settings')}
+          {manageLabel || (isAr ? `إعدادات ${SUPPLIER_BRAND}` : `${SUPPLIER_BRAND} settings`)}
         </button>
       )}
     </div>

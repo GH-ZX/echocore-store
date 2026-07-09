@@ -15,7 +15,7 @@ export default function Footer({ lang = 'en' }) {
     company: isAr ? 'الشركة' : 'Company',
     follow: isAr ? 'تابعنا' : 'Follow Us',
     links: {
-      games: isAr ? 'جميع الألعاب' : 'All Games',
+      games: isAr ? 'الألعاب' : 'Games',
       sales: isAr ? 'عروض الخصم' : 'Sale Offers',
       how: isAr ? 'كيف يعمل' : 'How it Works',
       contact: isAr ? 'اتصل بنا' : 'Contact Us',

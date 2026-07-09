@@ -2,10 +2,11 @@ import React from 'react';
 import AdminEditButton from '../components/admin/AdminEditButton';
 import BorderGlow from '../components/ui/BorderGlow';
 import { presetImageUrl } from '../lib/imageUtils';
-import { getTopupGames } from '../lib/catalogUtils';
+import { getVisibleTopupGames } from '../lib/catalogUtils';
 
 export default function AllGamesView({ 
-  games = [], 
+  games = [],
+  offers = [],
   t = {}, 
   lang = 'en', 
   onSelectGame,
@@ -15,13 +16,13 @@ export default function AllGamesView({
 }) {
   const isAr = lang === 'ar';
 
-  const storefrontGames = getTopupGames(games);
+  const storefrontGames = getVisibleTopupGames(games, offers, { isAdmin });
 
   return (
     <div className="max-w-7xl mx-auto">
       <div className="mb-8 md:mb-10">
         <h1 className="games-page-title section-heading text-3xl md:text-4xl font-black mb-2">
-          {isAr ? t.allGames || 'جميع الألعاب' : t.allGames || 'All Games'}
+          {isAr ? t.allGames || 'الألعاب' : t.allGames || 'Games'}
         </h1>
         <p className="games-page-subtitle section-subheading text-left mx-0 max-w-[50ch]">
           {isAr

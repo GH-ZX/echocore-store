@@ -5,8 +5,13 @@ import { Search, Gamepad2, Tag, Ticket, UserCircle } from 'lucide-react';
 import HomeGameCard from '../components/ui/HomeGameCard';
 import SaleOfferCard from '../components/ui/SaleOfferCard';
 import { getDisplayGameForOffer } from '../lib/gameRegions';
-import { countActiveOffers, getGiftCardGames, getGamingAccountGames, getTopupGames } from '../lib/catalogUtils';
-import { filterGamesByQuery, filterOffersByQuery } from '../lib/searchUtils';
+import {
+  countActiveOffers,
+  getGiftCardGames,
+  getGamingAccountGames,
+  getVisibleTopupGames,
+} from '../lib/catalogUtils';
+import { filterGamesByQuery, filterOffersByQuery, filterTopupGamesByQuery } from '../lib/searchUtils';
 
 const pageMotion = {
   initial: { opacity: 0, y: 14 },
@@ -39,30 +44,30 @@ export default function SearchView({
   const query = (searchParams.get('q') || '').trim();
   const isAr = lang === 'ar';
 
-  const matchedGames = useMemo(
+  const matchedTopupGames = useMemo(() => {
+    const matchedIds = new Set(
+      filterTopupGamesByQuery(games, query).map((game) => game.id),
+    );
+    return getVisibleTopupGames(games, offers).filter((game) => matchedIds.has(game.id));
+  }, [games, offers, query]);
+
+  const matchedVoucherGames = useMemo(
     () => filterGamesByQuery(games, query),
     [games, query],
   );
 
-  const matchedTopupGames = useMemo(
-    () => getTopupGames(matchedGames),
-    [matchedGames],
-  );
-
   const matchedGiftCardGames = useMemo(
-    () => getGiftCardGames(matchedGames).map((game) => ({
-      ...game,
-      offerCount: countActiveOffers(game.id, offers),
-    })),
-    [matchedGames, offers],
+    () => getGiftCardGames(matchedVoucherGames)
+      .map((game) => ({ ...game, offerCount: countActiveOffers(game.id, offers) }))
+      .filter((game) => game.offerCount > 0),
+    [matchedVoucherGames, offers],
   );
 
   const matchedAccountGames = useMemo(
-    () => getGamingAccountGames(matchedGames).map((game) => ({
-      ...game,
-      offerCount: countActiveOffers(game.id, offers),
-    })),
-    [matchedGames, offers],
+    () => getGamingAccountGames(matchedVoucherGames)
+      .map((game) => ({ ...game, offerCount: countActiveOffers(game.id, offers) }))
+      .filter((game) => game.offerCount > 0),
+    [matchedVoucherGames, offers],
   );
 
   const matchedOffers = useMemo(

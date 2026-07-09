@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { parseG2BulkGameMeta, parseRegionFromText } from './regionMeta.ts';
 
 const G2BULK_BASE = 'https://api.g2bulk.com/v1';
 const SKIP_GAME_CODES = new Set(['test', 'demo', 'sandbox']);
@@ -11,6 +12,21 @@ function isCronAuthorized(req: Request): boolean {
   const secret = Deno.env.get('G2BULK_CRON_SECRET')?.trim();
   const header = req.headers.get('x-g2bulk-cron-secret')?.trim();
   return !!(secret && header && secret === header);
+}
+
+function isServiceRoleAuthorized(req: Request, supabaseUrl: string) {
+  const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+  if (!token) return false;
+
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    const projectRef = String(supabaseUrl).replace(/^https?:\/\//, '').split('.')[0];
+    return payload.role === 'service_role' && payload.ref === projectRef;
+  } catch {
+    return false;
+  }
 }
 
 type Json = Record<string, unknown>;
@@ -81,6 +97,23 @@ function slugify(value: string) {
     .slice(0, 80) || 'game';
 }
 
+function childGameSlug(baseKey: string, code: string) {
+  const parentSlug = slugify(baseKey);
+  const codeSlug = slugify(code);
+  if (codeSlug === parentSlug) {
+    return `${parentSlug}--${codeSlug}`.slice(0, 80);
+  }
+  return codeSlug;
+}
+
+function formatSyncError(err: unknown) {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === 'object' && 'message' in err) {
+    return String((err as { message: unknown }).message || 'sync failed');
+  }
+  return 'sync failed';
+}
+
 function absImageUrl(url: string | null | undefined) {
   if (!url) return null;
   if (url.startsWith('http')) return url;
@@ -92,71 +125,6 @@ function applyMarkup(cost: number, markupPercent: number) {
   if (!Number.isFinite(base) || base <= 0) return 0.01;
   const marked = base * (1 + markupPercent / 100);
   return Math.ceil(marked * 100) / 100;
-}
-
-const REGION_TOKENS: Record<string, string> = {
-  sea: 'SEA', southeast_asia: 'SEA', southeastasia: 'SEA', global: 'Global', gl: 'Global',
-  europe: 'Europe', eu: 'Europe', turkey: 'Turkey', tr: 'Turkey', korea: 'Korea', kr: 'Korea',
-  na: 'North America', north_america: 'North America', america: 'North America',
-  latam: 'Latin America', latin_america: 'Latin America', mena: 'MENA', middle_east: 'Middle East',
-  japan: 'Japan', jp: 'Japan', india: 'India', indonesia: 'Indonesia', id: 'Indonesia',
-  russia: 'Russia', ru: 'Russia', china: 'China', cn: 'China', brazil: 'Brazil', br: 'Brazil',
-  oceania: 'Oceania', oce: 'Oceania', taiwan: 'Taiwan', tw: 'Taiwan', hk: 'Hong Kong',
-  hong_kong: 'Hong Kong', sg: 'Singapore', singapore: 'Singapore', ph: 'Philippines',
-  philippines: 'Philippines', my: 'Malaysia', malaysia: 'Malaysia', th: 'Thailand',
-  thailand: 'Thailand', vn: 'Vietnam', vietnam: 'Vietnam', kh: 'Cambodia', cambodia: 'Cambodia',
-};
-
-function normalizeRegionToken(value = '') {
-  return String(value).trim().toLowerCase().replace(/[\s/]+/g, '_').replace(/[^a-z0-9_]/g, '');
-}
-
-function normalizeRegionLabel(value = '') {
-  const token = normalizeRegionToken(value);
-  if (REGION_TOKENS[token]) return REGION_TOKENS[token];
-  const cleaned = String(value).trim();
-  if (!cleaned) return 'Global';
-  return cleaned.split(/[\s/_-]+/).filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()).join(' ');
-}
-
-function parseG2BulkGameMeta(code = '', name = '') {
-  const normalizedCode = String(code || '').trim().toLowerCase();
-  const displayName = String(name || code || '').trim();
-  const parts = normalizedCode.split(/[_-]+/).filter(Boolean);
-
-  let regionLabel: string | null = null;
-  let baseKey = normalizedCode;
-
-  if (parts.length > 1) {
-    const suffix = parts[parts.length - 1];
-    if (REGION_TOKENS[suffix]) {
-      regionLabel = REGION_TOKENS[suffix];
-      baseKey = parts.slice(0, -1).join('_');
-    }
-  }
-
-  if (!regionLabel) {
-    const paren = displayName.match(/\(([^)]+)\)\s*$/);
-    if (paren) regionLabel = normalizeRegionLabel(paren[1]);
-  }
-
-  if (!regionLabel) {
-    const dash = displayName.match(/[-–—]\s*([^(-]+)\s*$/);
-    if (dash) regionLabel = normalizeRegionLabel(dash[1]);
-  }
-
-  let baseName = displayName;
-  if (regionLabel) {
-    baseName = displayName
-      .replace(/\s*\([^)]+\)\s*$/, '')
-      .replace(/\s*[-–—]\s*[^-–—]+$/, '')
-      .trim() || displayName;
-  }
-
-  if (!regionLabel) regionLabel = 'Global';
-
-  return { baseKey: baseKey || normalizedCode, baseName: baseName || displayName || normalizedCode, regionLabel };
 }
 
 const GAMING_ACCOUNT_KEYWORDS = [
@@ -197,6 +165,292 @@ function pushCheckSample(list: Json[], item: Json, max = 8) {
 }
 
 const CATALOG_BATCH_MAX = 32;
+
+async function fetchGameFieldNotes(code: string) {
+  try {
+    const res = await fetch(`${G2BULK_BASE}/games/fields`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ game: code }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    return String(payload?.info?.notes || payload?.notes || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+async function fetchGameServersList(code: string): Promise<string[]> {
+  try {
+    const res = await fetch(`${G2BULK_BASE}/games/servers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ game: code }),
+    });
+    if (res.status === 403) return [];
+    const payload = await res.json().catch(() => ({}));
+    const servers = payload?.servers;
+    if (!servers || typeof servers !== 'object') return [];
+    return [...new Set(Object.values(servers).map((value) => String(value).trim()).filter(Boolean))];
+  } catch {
+    return [];
+  }
+}
+
+function buildTopupDescription(meta: { baseName: string; regionLabel: string }, notes = '') {
+  if (notes) return notes;
+  if (meta.regionLabel && meta.regionLabel !== 'Global') {
+    return `Instant ${meta.baseName} top-up for ${meta.regionLabel} accounts.`;
+  }
+  return `Instant ${meta.baseName} top-up via EchoCore.`;
+}
+
+type PullSelection = {
+  topupSyncBaseKeys: string[];
+  topupLiveBaseKeys: string[];
+  topupBaseKeys: string[];
+  accountCategoryIds: number[];
+  giftCategoryIds: number[];
+  carouselBaseKeys: string[];
+};
+
+function normalizePullSelection(raw: unknown): PullSelection {
+  const sel = (raw && typeof raw === 'object' ? raw : {}) as Json;
+  const syncKeys = Array.isArray(sel.topupSyncBaseKeys)
+    ? sel.topupSyncBaseKeys.map((value) => String(value).trim()).filter(Boolean)
+    : [];
+  const liveKeys = Array.isArray(sel.topupLiveBaseKeys)
+    ? sel.topupLiveBaseKeys.map((value) => String(value).trim()).filter(Boolean)
+    : [];
+  const legacyKeys = Array.isArray(sel.topupBaseKeys)
+    ? sel.topupBaseKeys.map((value) => String(value).trim()).filter(Boolean)
+    : [];
+  const topupSyncBaseKeys = syncKeys.length > 0 || liveKeys.length > 0 ? syncKeys : legacyKeys;
+  const topupLiveBaseKeys = liveKeys;
+  const topupBaseKeys = [...new Set([...topupSyncBaseKeys, ...topupLiveBaseKeys])];
+
+  return {
+    topupSyncBaseKeys,
+    topupLiveBaseKeys,
+    topupBaseKeys,
+    accountCategoryIds: Array.isArray(sel.accountCategoryIds)
+      ? sel.accountCategoryIds.map((value) => Number(value)).filter((value) => Number.isFinite(value))
+      : [],
+    giftCategoryIds: Array.isArray(sel.giftCategoryIds)
+      ? sel.giftCategoryIds.map((value) => Number(value)).filter((value) => Number.isFinite(value))
+      : [],
+    carouselBaseKeys: Array.isArray(sel.carouselBaseKeys)
+      ? sel.carouselBaseKeys.map((value) => String(value).trim()).filter(Boolean)
+      : [],
+  };
+}
+
+function deriveCatalogMode(selection: PullSelection) {
+  const hasSync = selection.topupSyncBaseKeys.length > 0
+    || selection.accountCategoryIds.length > 0
+    || selection.giftCategoryIds.length > 0;
+  const hasLive = selection.topupLiveBaseKeys.length > 0;
+  if (hasLive && hasSync) return 'hybrid';
+  if (hasLive) return 'live';
+  return 'sync';
+}
+
+function isEmptyPullSelection(sel: PullSelection) {
+  return sel.topupSyncBaseKeys.length === 0
+    && sel.topupLiveBaseKeys.length === 0
+    && sel.accountCategoryIds.length === 0
+    && sel.giftCategoryIds.length === 0;
+}
+
+function mergePullSelections(saved: PullSelection, db: PullSelection): PullSelection {
+  if (isEmptyPullSelection(saved)) {
+    return normalizePullSelection(db);
+  }
+
+  const topupSyncBaseKeys = [...new Set([...saved.topupSyncBaseKeys, ...db.topupSyncBaseKeys])];
+  const topupLiveBaseKeys = [...new Set([...saved.topupLiveBaseKeys, ...db.topupLiveBaseKeys])];
+  const accountCategoryIds = [...new Set([...saved.accountCategoryIds, ...db.accountCategoryIds])];
+  const giftCategoryIds = [...new Set([...saved.giftCategoryIds, ...db.giftCategoryIds])];
+  const carouselBaseKeys = saved.carouselBaseKeys.length > 0
+    ? saved.carouselBaseKeys
+    : db.carouselBaseKeys;
+
+  return normalizePullSelection({
+    topupSyncBaseKeys,
+    topupLiveBaseKeys,
+    accountCategoryIds,
+    giftCategoryIds,
+    carouselBaseKeys,
+  });
+}
+
+async function buildDatabasePullSelectionFromDb(
+  serviceClient: ReturnType<typeof createClient>,
+): Promise<PullSelection> {
+  const [{ data: parents }, { data: voucherGames }, { data: children }] = await Promise.all([
+    serviceClient
+      .from('games')
+      .select('id, slug, show_in_carousel, carousel_order')
+      .eq('catalog_source', 'g2bulk')
+      .is('parent_game_id', null)
+      .eq('redemption_method', 'uid'),
+    serviceClient
+      .from('games')
+      .select('g2bulk_source_id, catalog_segment')
+      .eq('catalog_source', 'g2bulk')
+      .eq('redemption_method', 'redeem_code'),
+    serviceClient
+      .from('games')
+      .select('parent_game_id, g2bulk_game_code, name_en')
+      .eq('catalog_source', 'g2bulk')
+      .not('parent_game_id', 'is', null)
+      .not('g2bulk_game_code', 'is', null),
+  ]);
+
+  const parentIdToChild = new Map<string, Json>();
+  for (const child of children || []) {
+    const parentId = String(child.parent_game_id || '').trim();
+    if (!parentId || parentIdToChild.has(parentId)) continue;
+    parentIdToChild.set(parentId, child);
+  }
+
+  const topupSyncBaseKeys: string[] = [];
+  const carouselRows: { baseKey: string; order: number }[] = [];
+
+  for (const parent of parents || []) {
+    const slug = String(parent.slug || '').trim();
+    if (!slug) continue;
+    const child = parentIdToChild.get(String(parent.id || '').trim());
+    const baseKey = child?.g2bulk_game_code
+      ? parseG2BulkGameMeta(String(child.g2bulk_game_code), String(child.name_en || '')).baseKey
+      : slug;
+    topupSyncBaseKeys.push(baseKey);
+    if (parent.show_in_carousel) {
+      carouselRows.push({
+        baseKey,
+        order: Number(parent.carousel_order ?? 999),
+      });
+    }
+  }
+
+  carouselRows.sort((a, b) => a.order - b.order);
+
+  const accountCategoryIds: number[] = [];
+  const giftCategoryIds: number[] = [];
+  for (const row of voucherGames || []) {
+    const categoryId = Number(row.g2bulk_source_id);
+    if (!Number.isFinite(categoryId)) continue;
+    const segment = String(row.catalog_segment || '');
+    if (segment === 'gaming_account') accountCategoryIds.push(categoryId);
+    else giftCategoryIds.push(categoryId);
+  }
+
+  return normalizePullSelection({
+    topupSyncBaseKeys,
+    topupLiveBaseKeys: [],
+    accountCategoryIds,
+    giftCategoryIds,
+    carouselBaseKeys: carouselRows.map((row) => row.baseKey),
+  });
+}
+
+async function loadPullSelection(serviceClient: ReturnType<typeof createClient>): Promise<PullSelection> {
+  const { data } = await serviceClient
+    .from('store_settings')
+    .select('g2bulk_pull_selection')
+    .eq('id', 1)
+    .maybeSingle();
+  return normalizePullSelection(data?.g2bulk_pull_selection);
+}
+
+async function buildPullCatalogLists(serviceClient: ReturnType<typeof createClient>) {
+  const [validGames, categoriesPayload, syncedParents, syncedVoucherGames] = await Promise.all([
+    fetchG2GamesPublic().then((rows) => filterValidG2Games(rows)),
+    fetch(`${G2BULK_BASE}/category`).then((res) => res.json().catch(() => ({}))),
+    serviceClient
+      .from('games')
+      .select('slug')
+      .eq('catalog_source', 'g2bulk')
+      .is('parent_game_id', null)
+      .eq('redemption_method', 'uid'),
+    serviceClient
+      .from('games')
+      .select('g2bulk_source_id')
+      .eq('catalog_source', 'g2bulk')
+      .eq('redemption_method', 'redeem_code'),
+  ]);
+
+  const topupGroups = new Map<string, {
+    baseKey: string;
+    baseName: string;
+    image_url: string | null;
+    variantCount: number;
+  }>();
+
+  for (const game of validGames) {
+    const code = String(game.code || '').trim();
+    if (!code) continue;
+    const meta = parseG2BulkGameMeta(code, String(game.name || code));
+    const imageUrl = absImageUrl(game.image_url as string | undefined);
+    if (!topupGroups.has(meta.baseKey)) {
+      topupGroups.set(meta.baseKey, {
+        baseKey: meta.baseKey,
+        baseName: meta.baseName,
+        image_url: imageUrl,
+        variantCount: 0,
+      });
+    }
+    const group = topupGroups.get(meta.baseKey)!;
+    group.variantCount += 1;
+    if (!group.image_url && imageUrl) group.image_url = imageUrl;
+  }
+
+  const syncedTopupSlugs = new Set(
+    (syncedParents || []).map((row) => String(row.slug || '').trim()).filter(Boolean),
+  );
+
+  const games = [...topupGroups.values()]
+    .map((group) => ({
+      baseKey: group.baseKey,
+      baseName: group.baseName,
+      image_url: group.image_url,
+      variantCount: group.variantCount,
+      synced: syncedTopupSlugs.has(slugify(group.baseKey)),
+    }))
+    .sort((a, b) => a.baseName.localeCompare(b.baseName));
+
+  const categories = Array.isArray(categoriesPayload.categories) ? categoriesPayload.categories : [];
+
+  const syncedCategoryIds = new Set(
+    (syncedVoucherGames || [])
+      .map((row) => Number(row.g2bulk_source_id))
+      .filter((value) => Number.isFinite(value)),
+  );
+
+  const accounts: Json[] = [];
+  const giftCards: Json[] = [];
+
+  for (const category of categories) {
+    const categoryId = Number(category.id);
+    if (!Number.isFinite(categoryId)) continue;
+    const title = String(category.title || `Category ${categoryId}`);
+    const segment = classifyVoucherSegment(title);
+    const row = {
+      categoryId,
+      title,
+      image_url: absImageUrl(category.image_url as string | undefined),
+      productCount: Number(category.product_count ?? 0),
+      synced: syncedCategoryIds.has(categoryId),
+    };
+    if (segment === 'gaming_account') accounts.push(row);
+    else giftCards.push(row);
+  }
+
+  accounts.sort((a, b) => String(a.title).localeCompare(String(b.title)));
+  giftCards.sort((a, b) => String(a.title).localeCompare(String(b.title)));
+
+  return { games, accounts, giftCards };
+}
 
 
 
@@ -255,6 +509,7 @@ Deno.serve(async (req) => {
   }
 
   const cronAuth = isCronAuthorized(req);
+  const serviceAuth = isServiceRoleAuthorized(req, supabaseUrl);
   const authHeader = req.headers.get('Authorization') ?? '';
   const userClient = createClient(supabaseUrl, anonKey, {
     global: { headers: { Authorization: authHeader } },
@@ -265,14 +520,16 @@ Deno.serve(async (req) => {
   const action = String(body.action || '');
 
   let userId: string | null = null;
-  if (!cronAuth) {
+  if (!cronAuth && !serviceAuth) {
     const { data: authData, error: authError } = await userClient.auth.getUser();
     if (authError || !authData.user) {
       return jsonResponse({ success: false, message: 'Unauthorized' }, 401);
     }
     userId = authData.user.id;
-  } else if (action !== 'syncCatalog') {
-    return jsonResponse({ success: false, message: 'Cron auth only allowed for syncCatalog' }, 403);
+  } else if (cronAuth && action !== 'syncCatalog' && action !== 'checkCatalog') {
+    return jsonResponse({ success: false, message: 'Cron auth only allowed for syncCatalog/checkCatalog' }, 403);
+  } else if (serviceAuth && !['syncCatalog', 'checkCatalog'].includes(action)) {
+    return jsonResponse({ success: false, message: 'Service auth only allowed for syncCatalog/checkCatalog' }, 403);
   }
 
   const apiKey = await resolveApiKeyRaw(serviceClient);
@@ -326,6 +583,34 @@ Deno.serve(async (req) => {
     } else {
       settings.g2bulk_api_key_source = 'none';
     }
+
+    const savedSelection = normalizePullSelection(settings.g2bulk_pull_selection);
+    if (isEmptyPullSelection(savedSelection)) {
+      const databaseSelection = await buildDatabasePullSelectionFromDb(serviceClient);
+      const selection = mergePullSelections(savedSelection, databaseSelection);
+      const catalogMode = deriveCatalogMode(selection);
+
+      if (!isEmptyPullSelection(databaseSelection)) {
+        const selectionPayload = {
+          ...selection,
+          updatedAt: new Date().toISOString(),
+        };
+        const { error: persistError } = await serviceClient
+          .from('store_settings')
+          .update({
+            g2bulk_pull_selection: selectionPayload,
+            g2bulk_catalog_mode: catalogMode,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', 1);
+
+        if (!persistError) {
+          settings.g2bulk_pull_selection = selectionPayload;
+          settings.g2bulk_catalog_mode = catalogMode;
+        }
+      }
+    }
+
     return jsonResponse({ success: true, settings });
   }
 
@@ -486,7 +771,7 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'syncCatalog') {
-    if (!cronAuth && !(await isAdmin(userClient, userId!))) {
+    if (!cronAuth && !serviceAuth && !(await isAdmin(userClient, userId!))) {
       return jsonResponse({ success: false, message: 'Admin only' }, 403);
     }
 
@@ -516,6 +801,7 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       const imageUrl = absImageUrl(variant.image_url as string | undefined);
+      const parentDescription = buildTopupDescription(meta);
       const parentRow = {
         name_en: meta.baseName,
         name_ar: meta.baseName,
@@ -523,10 +809,11 @@ Deno.serve(async (req) => {
         points_name: 'Top-up',
         image_url: imageUrl,
         logo_url: imageUrl,
-        description_en: `Instant ${meta.baseName} top-up via G2Bulk`,
-        description_ar: `Instant ${meta.baseName} top-up via G2Bulk`,
+        description_en: parentDescription,
+        description_ar: parentDescription,
         redemption_method: 'uid',
         catalog_source: 'g2bulk',
+        catalog_segment: 'topup',
         active: true,
         show_in_carousel: false,
         g2bulk_synced_at: syncNow,
@@ -566,8 +853,21 @@ Deno.serve(async (req) => {
 
       const meta = parseG2BulkGameMeta(code, String(g.name || code));
       const parentId = await ensureParentGame(meta, g, syncNow);
-      const childSlug = slugify(code);
+      const childSlug = childGameSlug(meta.baseKey, code);
       const imageUrl = absImageUrl(g.image_url as string | undefined);
+
+      const [catRes, fieldNotes, servers] = await Promise.all([
+        fetch(`${G2BULK_BASE}/games/${encodeURIComponent(code)}/catalogue`),
+        fetchGameFieldNotes(code),
+        fetchGameServersList(code),
+      ]);
+      const catPayload = await catRes.json().catch(() => ({}));
+      const catalogues = Array.isArray(catPayload.catalogues) ? catPayload.catalogues : [];
+
+      const childDescription = buildTopupDescription(meta, fieldNotes);
+      const childDisplayName = meta.regionLabel !== 'Global'
+        ? `${meta.baseName} (${meta.regionLabel})`
+        : meta.baseName;
 
       const { data: existingChild } = await serviceClient
         .from('games')
@@ -576,23 +876,25 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       const childRow = {
-        name_en: String(g.name || `${meta.baseName} (${meta.regionLabel})`),
-        name_ar: String(g.name || `${meta.baseName} (${meta.regionLabel})`),
+        name_en: childDisplayName,
+        name_ar: childDisplayName,
         slug: childSlug,
         points_name: 'Top-up',
         image_url: imageUrl,
         logo_url: imageUrl,
-        description_en: `Instant ${meta.baseName} top-up — ${meta.regionLabel}`,
-        description_ar: `Instant ${meta.baseName} top-up — ${meta.regionLabel}`,
+        description_en: childDescription,
+        description_ar: childDescription,
         g2bulk_game_code: code,
         g2bulk_source_id: g.id ?? null,
         redemption_method: 'uid',
         catalog_source: 'g2bulk',
-        active: true,
+        catalog_segment: 'topup',
+        active: catalogues.length > 0,
         show_in_carousel: false,
         g2bulk_synced_at: syncNow,
         parent_game_id: parentId,
         region_label: meta.regionLabel,
+        servers: servers.length > 0 ? servers : [],
       };
 
       let gameId = existingChild?.id as string | undefined;
@@ -617,9 +919,6 @@ Deno.serve(async (req) => {
         .is('parent_game_id', null)
         .neq('id', parentId);
 
-      const catRes = await fetch(`${G2BULK_BASE}/games/${encodeURIComponent(code)}/catalogue`);
-      const catPayload = await catRes.json().catch(() => ({}));
-      const catalogues = Array.isArray(catPayload.catalogues) ? catPayload.catalogues : [];
       const liveNames: string[] = [];
 
       if (catalogues.length === 0) {
@@ -638,11 +937,17 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        const catalogueRegion = parseRegionFromText(catalogueName);
+        const offerRegion = catalogueRegion.regionLabel !== 'Global'
+          ? catalogueRegion.regionLabel
+          : meta.regionLabel;
+
         const offerRow = {
           game_id: gameId,
           name_en: catalogueName,
           name_ar: catalogueName,
           price: applyMarkup(cost, markup),
+          region: offerRegion,
           g2bulk_type: 'topup',
           g2bulk_catalogue_name: catalogueName,
           g2bulk_catalogue_id: item.id ?? null,
@@ -687,7 +992,10 @@ Deno.serve(async (req) => {
       return { gamesSynced, offersSynced, offersSkipped };
     }
 
-    async function syncVoucherCatalog(syncNow: string) {
+    async function syncVoucherCatalog(
+      syncNow: string,
+      voucherFilter: { accountCategoryIds: Set<number>; giftCategoryIds: Set<number>; includeGiftCards: boolean },
+    ) {
       let gamesSynced = 0;
       let offersSynced = 0;
       let offersSkipped = 0;
@@ -727,9 +1035,15 @@ Deno.serve(async (req) => {
 
       for (const [categoryId, group] of byCategory.entries()) {
         try {
-          liveCategoryIds.add(categoryId);
           const meta = categoryMeta.get(categoryId);
           const title = meta?.title || group.title;
+          const segment = classifyVoucherSegment(title);
+          const allowed = segment === 'gaming_account'
+            ? voucherFilter.accountCategoryIds.has(categoryId)
+            : (voucherFilter.includeGiftCards && voucherFilter.giftCategoryIds.has(categoryId));
+          if (!allowed) continue;
+
+          liveCategoryIds.add(categoryId);
           const slug = slugify(`cards-${categoryId}-${title}`);
           const categoryImage = meta?.image_url
             || absImageUrl(group.items.find((item) => item.image_url)?.image_url as string | undefined);
@@ -741,7 +1055,6 @@ Deno.serve(async (req) => {
             .eq('redemption_method', 'redeem_code')
             .maybeSingle();
 
-          const segment = classifyVoucherSegment(title);
           const gameRow = {
             name_en: title,
             name_ar: title,
@@ -803,11 +1116,13 @@ Deno.serve(async (req) => {
             if (stock > 0) hasInStockOffer = true;
 
             const offerTitle = String(product.title || `Product ${productId}`);
+            const offerRegionMeta = parseRegionFromText(offerTitle);
             const offerRow = {
               game_id: gameId,
               name_en: offerTitle,
               name_ar: offerTitle,
               price: applyMarkup(cost, markup),
+              region: offerRegionMeta.regionLabel !== 'Global' ? offerRegionMeta.regionLabel : null,
               g2bulk_type: 'voucher',
               g2bulk_product_id: productId,
               g2bulk_cost_usd: cost,
@@ -880,7 +1195,17 @@ Deno.serve(async (req) => {
         await serviceClient.from('offers').update({ active: false }).eq('catalog_source', 'manual');
       }
 
-      const validGames = filterValidG2Games(await fetchG2GamesPublic());
+      const pullSelection = await loadPullSelection(serviceClient);
+      const selectedBaseKeys = new Set(pullSelection.topupSyncBaseKeys);
+      const allValidGames = filterValidG2Games(await fetchG2GamesPublic());
+      const validGames = selectedBaseKeys.size > 0
+        ? allValidGames.filter((game) => {
+          const code = String(game.code || '').trim();
+          if (!code) return false;
+          const meta = parseG2BulkGameMeta(code, String(game.name || code));
+          return selectedBaseKeys.has(meta.baseKey);
+        })
+        : [];
 
       await serviceClient.from('store_settings').update({
         g2bulk_sync_state: {
@@ -891,6 +1216,8 @@ Deno.serve(async (req) => {
             image_url: g.image_url,
             id: g.id,
           })),
+          pullSelection,
+          includeGiftCards: body.includeGiftCards !== false,
           startedAt: now,
         },
       }).eq('id', 1);
@@ -899,6 +1226,7 @@ Deno.serve(async (req) => {
         success: true,
         phase: 'init',
         totalGames: validGames.length,
+        selectedGames: selectedBaseKeys.size,
         syncedAt: now,
       });
     }
@@ -937,7 +1265,7 @@ Deno.serve(async (req) => {
         } catch (err) {
           return {
             code,
-            error: `${code}: ${err instanceof Error ? err.message : 'sync failed'}`,
+            error: `${code}: ${formatSyncError(err)}`,
             gamesSynced: 0,
             offersSynced: 0,
             offersSkipped: 0,
@@ -971,7 +1299,19 @@ Deno.serve(async (req) => {
     }
 
     if (phase === 'vouchers') {
-      const result = await syncVoucherCatalog(now);
+      const { data: settingsRow } = await serviceClient
+        .from('store_settings')
+        .select('g2bulk_sync_state')
+        .eq('id', 1)
+        .maybeSingle();
+      const state = settingsRow?.g2bulk_sync_state as Json | null;
+      const pullSelection = normalizePullSelection(state?.pullSelection || await loadPullSelection(serviceClient));
+      const includeGiftCards = state?.includeGiftCards !== false && body.includeGiftCards !== false;
+      const result = await syncVoucherCatalog(now, {
+        accountCategoryIds: new Set(pullSelection.accountCategoryIds),
+        giftCategoryIds: new Set(pullSelection.giftCategoryIds),
+        includeGiftCards,
+      });
       return jsonResponse({
         success: true,
         phase: 'vouchers',
@@ -983,27 +1323,38 @@ Deno.serve(async (req) => {
     }
 
     if (phase === 'finalize') {
-      const { data: carouselCandidates } = await serviceClient
+      const { data: settingsRow } = await serviceClient
+        .from('store_settings')
+        .select('g2bulk_sync_state')
+        .eq('id', 1)
+        .maybeSingle();
+      const state = settingsRow?.g2bulk_sync_state as Json | null;
+      const pullSelection = normalizePullSelection(state?.pullSelection || await loadPullSelection(serviceClient));
+      const carouselBaseKeys = pullSelection.carouselBaseKeys;
+
+      const { data: parentGames } = await serviceClient
         .from('games')
-        .select('id')
+        .select('id, slug')
         .eq('catalog_source', 'g2bulk')
         .eq('redemption_method', 'uid')
-        .eq('active', true)
-        .not('image_url', 'is', null)
-        .order('name_en', { ascending: true })
-        .limit(12);
+        .is('parent_game_id', null);
 
       await serviceClient
         .from('games')
         .update({ show_in_carousel: false })
         .eq('catalog_source', 'g2bulk');
 
-      const carouselIds = (carouselCandidates || []).map((row) => row.id as string);
-      for (let i = 0; i < carouselIds.length; i++) {
-        await serviceClient
-          .from('games')
-          .update({ show_in_carousel: true, carousel_order: i })
-          .eq('id', carouselIds[i]);
+      const carouselIds: string[] = [];
+      for (let i = 0; i < carouselBaseKeys.length; i++) {
+        const slug = slugify(carouselBaseKeys[i]);
+        const parent = (parentGames || []).find((row) => String(row.slug) === slug);
+        if (parent?.id) {
+          carouselIds.push(parent.id as string);
+          await serviceClient
+            .from('games')
+            .update({ show_in_carousel: true, carousel_order: i })
+            .eq('id', parent.id);
+        }
       }
 
       await serviceClient
@@ -1023,7 +1374,7 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'checkCatalog') {
-    if (!(await isAdmin(userClient, userId!))) {
+    if (!cronAuth && !serviceAuth && !(await isAdmin(userClient, userId!))) {
       return jsonResponse({ success: false, message: 'Admin only' }, 403);
     }
 
@@ -1677,7 +2028,7 @@ Deno.serve(async (req) => {
         const childRow = {
           name_en: String(raw.game_name || `${meta.baseName} (${meta.regionLabel})`),
           name_ar: String(raw.game_name || `${meta.baseName} (${meta.regionLabel})`),
-          slug: slugify(code),
+          slug: childGameSlug(meta.baseKey, code),
           parent_game_id: parentId,
           region_label: meta.regionLabel,
           g2bulk_game_code: code,
@@ -1813,6 +2164,115 @@ Deno.serve(async (req) => {
     }
 
     return jsonResponse({ success: true, resolved });
+  }
+
+  if (action === 'listPullCatalog') {
+    if (!(await isAdmin(userClient, userId!))) {
+      return jsonResponse({ success: false, message: 'Admin only' }, 403);
+    }
+
+    const [savedSelection, catalog, databaseSelection] = await Promise.all([
+      loadPullSelection(serviceClient),
+      buildPullCatalogLists(serviceClient),
+      buildDatabasePullSelectionFromDb(serviceClient),
+    ]);
+    const selection = mergePullSelections(savedSelection, databaseSelection);
+    const catalogMode = deriveCatalogMode(selection);
+    let persisted = false;
+
+    if (isEmptyPullSelection(savedSelection) && !isEmptyPullSelection(databaseSelection)) {
+      const { error: persistError } = await serviceClient
+        .from('store_settings')
+        .update({
+          g2bulk_pull_selection: { ...selection, updatedAt: new Date().toISOString() },
+          g2bulk_catalog_mode: catalogMode,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', 1);
+      persisted = !persistError;
+    }
+
+    return jsonResponse({
+      success: true,
+      ...catalog,
+      selection,
+      databaseSelection,
+      savedSelection,
+      catalogMode,
+      persisted,
+    });
+  }
+
+  if (action === 'savePullSelection') {
+    if (!(await isAdmin(userClient, userId!))) {
+      return jsonResponse({ success: false, message: 'Admin only' }, 403);
+    }
+
+    const selection = normalizePullSelection({
+      topupSyncBaseKeys: body.topupSyncBaseKeys,
+      topupLiveBaseKeys: body.topupLiveBaseKeys,
+      topupBaseKeys: body.topupBaseKeys,
+      accountCategoryIds: body.accountCategoryIds,
+      giftCategoryIds: body.giftCategoryIds,
+      carouselBaseKeys: body.carouselBaseKeys,
+    });
+    const catalogMode = deriveCatalogMode(selection);
+    const selectionPayload = {
+      ...selection,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const { error } = await serviceClient
+      .from('store_settings')
+      .update({
+        g2bulk_pull_selection: selectionPayload,
+        g2bulk_catalog_mode: catalogMode,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', 1);
+
+    if (error) {
+      return jsonResponse({ success: false, message: error.message }, 500);
+    }
+
+    return jsonResponse({ success: true, selection: selectionPayload, catalogMode });
+  }
+
+  if (action === 'clearSyncedCatalog') {
+    if (!(await isAdmin(userClient, userId!))) {
+      return jsonResponse({ success: false, message: 'Admin only' }, 403);
+    }
+
+    const { count: offerCount } = await serviceClient
+      .from('offers')
+      .delete({ count: 'exact' })
+      .eq('catalog_source', 'g2bulk');
+
+    const { count: childCount } = await serviceClient
+      .from('games')
+      .delete({ count: 'exact' })
+      .eq('catalog_source', 'g2bulk')
+      .not('parent_game_id', 'is', null);
+
+    const { count: parentCount } = await serviceClient
+      .from('games')
+      .delete({ count: 'exact' })
+      .eq('catalog_source', 'g2bulk');
+
+    await serviceClient.from('store_settings').update({
+      g2bulk_last_sync_at: null,
+      g2bulk_last_check_at: null,
+      g2bulk_check_summary: null,
+      g2bulk_sync_state: null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', 1);
+
+    return jsonResponse({
+      success: true,
+      cleared: true,
+      offersRemoved: offerCount ?? 0,
+      gamesRemoved: (childCount ?? 0) + (parentCount ?? 0),
+    });
   }
 
   return jsonResponse({ success: false, message: 'Unknown action' }, 400);

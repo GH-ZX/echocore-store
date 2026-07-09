@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Star, Quote, Send, Loader2, CheckCircle } from 'lucide-react';
+import useEmblaCarousel from 'embla-carousel-react';
+import { Star, Quote, Send, Loader2, CheckCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getReviewText, pickReviewsForSection, submitCustomerReview } from '../../lib/customerReviews';
 import { getSectionLabel } from '../../lib/homeLayout';
 
@@ -54,6 +54,13 @@ export default function CustomerReviewsSection({
   const items = useMemo(() => pickReviewsForSection(reviews, section), [reviews, section]);
   const intervalMs = (Number(section.interval_seconds) || 6) * 1000;
 
+  const [emblaRef, emblaApi] = useEmblaCarousel({
+    loop: items.length > 1,
+    align: 'center',
+    containScroll: 'trimSnaps',
+    dragFree: false,
+  });
+
   const [activeIndex, setActiveIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -63,16 +70,33 @@ export default function CustomerReviewsSection({
   const [form, setForm] = useState({ authorName: '', content: '', rating: 5 });
 
   useEffect(() => {
-    setActiveIndex(0);
-  }, [items.length, section.id]);
+    if (!emblaApi) return undefined;
+    const onSelect = () => setActiveIndex(emblaApi.selectedScrollSnap());
+    const onPointerDown = () => setPaused(true);
+    const onPointerUp = () => setPaused(false);
+    onSelect();
+    emblaApi.on('select', onSelect);
+    emblaApi.on('pointerDown', onPointerDown);
+    emblaApi.on('pointerUp', onPointerUp);
+    return () => {
+      emblaApi.off('select', onSelect);
+      emblaApi.off('pointerDown', onPointerDown);
+      emblaApi.off('pointerUp', onPointerUp);
+    };
+  }, [emblaApi]);
 
   useEffect(() => {
-    if (items.length <= 1 || paused) return undefined;
-    const timer = setInterval(() => {
-      setActiveIndex((prev) => (prev + 1) % items.length);
-    }, intervalMs);
+    if (!emblaApi) return;
+    emblaApi.reInit({ loop: items.length > 1 });
+    setActiveIndex(0);
+    emblaApi.scrollTo(0);
+  }, [emblaApi, items.length]);
+
+  useEffect(() => {
+    if (!emblaApi || items.length <= 1 || paused) return undefined;
+    const timer = setInterval(() => emblaApi.scrollNext(), intervalMs);
     return () => clearInterval(timer);
-  }, [items.length, intervalMs, paused]);
+  }, [emblaApi, items.length, intervalMs, paused]);
 
   useEffect(() => {
     if (user?.name && !form.authorName) {
@@ -81,20 +105,12 @@ export default function CustomerReviewsSection({
   }, [user?.name, form.authorName]);
 
   const goNext = useCallback(() => {
-    if (items.length === 0) return;
-    setActiveIndex((prev) => (prev + 1) % items.length);
-  }, [items.length]);
+    emblaApi?.scrollNext();
+  }, [emblaApi]);
 
   const goPrev = useCallback(() => {
-    if (items.length === 0) return;
-    setActiveIndex((prev) => (prev - 1 + items.length) % items.length);
-  }, [items.length]);
-
-  const active = items[activeIndex];
-  const prev = items.length > 1 ? items[(activeIndex - 1 + items.length) % items.length] : null;
-  const next = items.length > 1 ? items[(activeIndex + 1) % items.length] : null;
-  const enterX = isAr ? -48 : 48;
-  const exitX = isAr ? 48 : -48;
+    emblaApi?.scrollPrev();
+  }, [emblaApi]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -126,7 +142,7 @@ export default function CustomerReviewsSection({
 
   return (
     <section
-      className="customer-reviews-section"
+      className="customer-reviews-section touch-manipulation"
       dir={isAr ? 'rtl' : 'ltr'}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
@@ -144,44 +160,50 @@ export default function CustomerReviewsSection({
       </div>
 
       {items.length > 0 && (
-        <div className={`reviews-carousel ${items.length === 1 ? 'reviews-carousel--single' : ''}`}>
-          {items.length > 1 && prev && (
-            <button
-              type="button"
-              className="reviews-carousel-side reviews-carousel-side--prev"
-              onClick={goPrev}
-              aria-label={t.reviewsPrevious}
-            >
-              <ReviewCard review={prev} variant="side" />
-            </button>
+        <div className="reviews-embla relative max-w-5xl mx-auto px-1 sm:px-2">
+          {items.length > 1 && (
+            <>
+              <button
+                type="button"
+                className="reviews-embla-nav reviews-embla-nav--prev"
+                onClick={goPrev}
+                aria-label={t.reviewsPrevious}
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                className="reviews-embla-nav reviews-embla-nav--next"
+                onClick={goNext}
+                aria-label={t.reviewsNext}
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </>
           )}
 
-          <div className="reviews-carousel-main">
-            <AnimatePresence mode="wait" initial={false}>
-              {active && (
-                <motion.div
-                  key={active.id}
-                  className="reviews-carousel-slide"
-                  initial={{ x: enterX, opacity: 0, scale: 0.94 }}
-                  animate={{ x: 0, opacity: 1, scale: 1 }}
-                  exit={{ x: exitX, opacity: 0, scale: 0.96 }}
-                  transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+          <div
+            ref={emblaRef}
+            className="reviews-embla__viewport overflow-hidden overscroll-x-contain [-webkit-overflow-scrolling:touch]"
+          >
+            <div className="reviews-embla__container flex">
+              {items.map((review, index) => (
+                <div
+                  key={review.id}
+                  className={`reviews-embla__slide min-w-0 shrink-0 ${
+                    index === activeIndex ? 'reviews-embla__slide--active' : ''
+                  }`}
                 >
-                  <ReviewCard review={active} variant="active" />
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  <ReviewCard review={review} variant="active" />
+                </div>
+              ))}
+            </div>
           </div>
 
-          {items.length > 1 && next && (
-            <button
-              type="button"
-              className="reviews-carousel-side reviews-carousel-side--next"
-              onClick={goNext}
-              aria-label={t.reviewsNext}
-            >
-              <ReviewCard review={next} variant="side" />
-            </button>
+          {items.length > 1 && (
+            <p className="reviews-swipe-hint text-center text-[11px] text-[var(--text-muted)] mt-3 sm:hidden">
+              {t.reviewsSwipeHint}
+            </p>
           )}
         </div>
       )}
@@ -195,7 +217,7 @@ export default function CustomerReviewsSection({
               role="tab"
               aria-selected={index === activeIndex}
               className={`reviews-dot ${index === activeIndex ? 'reviews-dot--active' : ''}`}
-              onClick={() => setActiveIndex(index)}
+              onClick={() => emblaApi?.scrollTo(index)}
             />
           ))}
         </div>

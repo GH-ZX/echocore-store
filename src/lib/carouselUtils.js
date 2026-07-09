@@ -1,3 +1,5 @@
+import { isStorefrontGame } from './gameRegions';
+
 export function sortGamesByCarousel(games = []) {
   return [...games].sort((a, b) => {
     const ao = a.carousel_order ?? 999999;
@@ -8,8 +10,6 @@ export function sortGamesByCarousel(games = []) {
 }
 
 const CAROUSEL_FALLBACK_LIMIT = 12;
-
-import { isStorefrontGame } from './gameRegions';
 
 export function getCarouselGames(games = []) {
   const sorted = sortGamesByCarousel(games.filter(isStorefrontGame));
@@ -22,4 +22,33 @@ export function getCarouselGames(games = []) {
       && g.redemption_method !== 'redeem_code'
       && (g.image_url || g.logo_url))
     .slice(0, CAROUSEL_FALLBACK_LIMIT);
+}
+
+/** Top-up storefront games in the store that are not already in the carousel */
+export function getCarouselPickableGames(games = []) {
+  const topupParents = games.filter((game) =>
+    isStorefrontGame(game)
+    && game.active !== false
+    && game.redemption_method !== 'redeem_code',
+  );
+  const inCarouselIds = new Set(getCarouselGames(topupParents).map((game) => game.id));
+
+  return sortGamesByCarousel(
+    topupParents.filter((game) =>
+      !inCarouselIds.has(game.id)
+      && (game.image_url || game.logo_url),
+    ),
+  );
+}
+
+/** Games eligible for carousel management (store top-ups only) */
+export function getCarouselManageableGames(games = []) {
+  return sortGamesByCarousel(
+    games.filter((game) =>
+      isStorefrontGame(game)
+      && game.active !== false
+      && game.redemption_method !== 'redeem_code'
+      && (game.image_url || game.logo_url),
+    ),
+  );
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import StoreBackground from './components/backgrounds/StoreBackground';
-import { getCarouselGames, sortGamesByCarousel } from './lib/carouselUtils';
+import { getCarouselGames, getCarouselManageableGames, sortGamesByCarousel } from './lib/carouselUtils';
 import { Loader2, Globe } from 'lucide-react';
 import AppToast from './components/ui/AppToast';
 import {
@@ -24,6 +24,7 @@ import ScrollToTop from './components/routing/ScrollToTop';
 import LegacyOfferRedirect from './components/routing/LegacyOfferRedirect';
 import { getGameOfferBuyPath, getGameOfferPath } from './lib/offerRoutes';
 import { resolveStorefrontGame } from './lib/gameRegions';
+import { fetchAllSupabaseRows } from './lib/supabaseQuery';
 import AllGamesView from './views/AllGamesView';
 import SearchView from './views/SearchView';
 import GiftCardsView from './views/GiftCardsView';
@@ -32,6 +33,12 @@ import GameDetail from './views/GameDetail';
 import OfferDetail from './views/OfferDetail';
 import BuyView from './views/BuyView';
 import { fetchPaymentMethods } from './lib/storeSettings';
+import {
+  filterGamesByPullSelection,
+  filterOffersByPullSelection,
+  filterLiveCatalog,
+  normalizePullSelection,
+} from './lib/pullCatalogUtils';
 import { applyTheme, fetchSiteTheme, normalizeThemeOverrides } from './lib/theme';
 import { DEFAULT_HOME_LAYOUT, fetchHomeLayout, normalizeHomeLayout } from './lib/homeLayout';
 import { fetchApprovedReviews } from './lib/customerReviews';
@@ -69,6 +76,7 @@ import AdminOfferEditModal from './components/admin/AdminOfferEditModal';
 import AdminGameEditModal from './components/admin/AdminGameEditModal';
 const AdminView = lazy(() => import('./views/admin/AdminView'));
 const AdminCarouselManager = lazy(() => import('./components/admin/AdminCarouselManager'));
+const CarouselAddPicker = lazy(() => import('./components/admin/CarouselAddPicker'));
 
 const SuccessView = lazy(() => import('./views/SuccessView'));
 const NotFoundView = lazy(() => import('./views/NotFoundView'));
@@ -186,6 +194,7 @@ export default function App() {
   const [adminEditOffer, setAdminEditOffer] = useState(null);
   const [adminEditGame, setAdminEditGame] = useState(null);
   const [adminCarouselOpen, setAdminCarouselOpen] = useState(false);
+  const [adminCarouselPickerOpen, setAdminCarouselPickerOpen] = useState(false);
   const [langSwitching, setLangSwitching] = useState(false);
   const [overlayLang, setOverlayLang] = useState(() => {
     const saved = localStorage.getItem('echocore-lang');
@@ -369,23 +378,22 @@ export default function App() {
   const fetchGames = async ({ background = false, catalogOnly = paymentConfig.g2bulkCatalogOnly } = {}) => {
     if (!background) setLoadingGames(true);
     try {
-      let query = supabase
-        .from('games')
-        .select('*')
-        .eq('active', true);
-      if (catalogOnly) {
-        query = query.eq('catalog_source', 'g2bulk');
-      }
-      const { data, error } = await query.order('created_at', { ascending: true });
+      const data = await fetchAllSupabaseRows(
+        () => {
+          let pageQuery = supabase
+            .from('games')
+            .select('*')
+            .eq('active', true);
+          if (catalogOnly) {
+            pageQuery = pageQuery.eq('catalog_source', 'g2bulk');
+          }
+          return pageQuery.order('created_at', { ascending: true });
+        },
+      );
 
-      if (error) {
-        console.error('Failed to load games:', error);
-        setGames([]);
-      } else {
-        setGames(sortGamesByCarousel(data || []));
-      }
+      setGames(sortGamesByCarousel(data || []));
     } catch (err) {
-      console.error('Error fetching games:', err);
+      console.error('Failed to load games:', err);
       setGames([]);
     } finally {
       setLoadingGames(false);
@@ -394,21 +402,20 @@ export default function App() {
 
   const fetchOffers = async ({ catalogOnly = paymentConfig.g2bulkCatalogOnly } = {}) => {
     try {
-      let query = supabase
-        .from('offers')
-        .select('*')
-        .eq('active', true);
-      if (catalogOnly) {
-        query = query.eq('catalog_source', 'g2bulk');
-      }
-      const { data, error } = await query.order('created_at', { ascending: true });
+      const data = await fetchAllSupabaseRows(
+        () => {
+          let pageQuery = supabase
+            .from('offers')
+            .select('*')
+            .eq('active', true);
+          if (catalogOnly) {
+            pageQuery = pageQuery.eq('catalog_source', 'g2bulk');
+          }
+          return pageQuery.order('created_at', { ascending: true });
+        },
+      );
 
-      if (error) {
-        console.error('Failed to load offers:', error);
-        setOffers([]);
-      } else {
-        setOffers(data || []);
-      }
+      setOffers(data || []);
     } catch (err) {
       console.error('Error fetching offers:', err);
       setOffers([]);
@@ -861,6 +868,40 @@ export default function App() {
     });
   };
 
+  const addGameToCarousel = async (game) => {
+    if (!game?.id) return;
+    const topupParents = games.filter((g) => !g.parent_game_id && g.redemption_method !== 'redeem_code');
+    const carouselGames = getCarouselGames(topupParents);
+    if (carouselGames.some((g) => g.id === game.id)) return;
+
+    const updates = [
+      ...carouselGames.map((g, index) => ({
+        id: g.id,
+        carousel_order: index,
+        show_in_carousel: true,
+      })),
+      {
+        id: game.id,
+        carousel_order: carouselGames.length,
+        show_in_carousel: true,
+      },
+    ];
+
+    try {
+      await reorderCarouselGames(updates);
+      setAdminCarouselPickerOpen(false);
+      showNotification(t.carouselUpdated || 'Carousel updated');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const goToAddStoreGames = () => {
+    setAdminCarouselPickerOpen(false);
+    setAdminCarouselOpen(false);
+    navigate('/admin', { state: { adminTab: 'g2bulk' } });
+  };
+
   const moveCarouselGame = async (gameId, direction) => {
     const carouselGames = getCarouselGames(games);
     const index = carouselGames.findIndex((g) => g.id === gameId);
@@ -1035,14 +1076,99 @@ export default function App() {
     setReviews(nextReviews);
   };
 
-  const loadLiveCatalog = async () => {
+  const loadLiveCatalog = async (pullSelection = null) => {
     setLoadingGames(true);
     try {
       const catalog = await fetchLiveFullCatalog();
-      setGames(catalog.games || []);
-      setOffers(catalog.offers || []);
+      const pull = normalizePullSelection(pullSelection || {});
+      const filtered = filterLiveCatalog(catalog, pull);
+      setGames(filtered.games || []);
+      setOffers(filtered.offers || []);
     } catch (err) {
       console.error('Live catalog load failed:', err);
+      setGames([]);
+      setOffers([]);
+    } finally {
+      setLoadingGames(false);
+    }
+  };
+
+  const loadSyncedCatalog = async (catalogOnly, pullSelection = null) => {
+    const pull = normalizePullSelection(pullSelection || {});
+    const [gamesData, offersData] = await Promise.all([
+      fetchAllSupabaseRows(() => {
+        let pageQuery = supabase
+          .from('games')
+          .select('*')
+          .eq('active', true);
+        if (catalogOnly) {
+          pageQuery = pageQuery.eq('catalog_source', 'g2bulk');
+        }
+        return pageQuery.order('created_at', { ascending: true });
+      }),
+      fetchAllSupabaseRows(() => {
+        let pageQuery = supabase
+          .from('offers')
+          .select('*')
+          .eq('active', true);
+        if (catalogOnly) {
+          pageQuery = pageQuery.eq('catalog_source', 'g2bulk');
+        }
+        return pageQuery.order('created_at', { ascending: true });
+      }),
+    ]);
+
+    const filteredGames = filterGamesByPullSelection(gamesData || [], pull);
+    const filteredOffers = filterOffersByPullSelection(offersData || [], filteredGames, pull);
+    setGames(sortGamesByCarousel(filteredGames));
+    setOffers(filteredOffers);
+  };
+
+  const loadHybridCatalog = async (config) => {
+    setLoadingGames(true);
+    try {
+      const pull = normalizePullSelection(config.g2bulkPullSelection || {});
+      const catalogOnly = config.g2bulkCatalogOnly;
+      const [gamesData, offersData, liveCatalog] = await Promise.all([
+        fetchAllSupabaseRows(() => {
+          let pageQuery = supabase
+            .from('games')
+            .select('*')
+            .eq('active', true);
+          if (catalogOnly) {
+            pageQuery = pageQuery.eq('catalog_source', 'g2bulk');
+          }
+          return pageQuery.order('created_at', { ascending: true });
+        }),
+        fetchAllSupabaseRows(() => {
+          let pageQuery = supabase
+            .from('offers')
+            .select('*')
+            .eq('active', true);
+          if (catalogOnly) {
+            pageQuery = pageQuery.eq('catalog_source', 'g2bulk');
+          }
+          return pageQuery.order('created_at', { ascending: true });
+        }),
+        fetchLiveFullCatalog(),
+      ]);
+
+      const syncedGames = filterGamesByPullSelection(gamesData || [], {
+        ...pull,
+        topupLiveBaseKeys: [],
+        topupBaseKeys: pull.topupSyncBaseKeys,
+      });
+      const syncedOffers = filterOffersByPullSelection(offersData || [], syncedGames, {
+        ...pull,
+        topupLiveBaseKeys: [],
+        topupBaseKeys: pull.topupSyncBaseKeys,
+      });
+      const liveFiltered = filterLiveCatalog(liveCatalog, pull);
+
+      setGames(sortGamesByCarousel(mergeCatalogRows(syncedGames, liveFiltered.games)));
+      setOffers(mergeCatalogRows(syncedOffers, liveFiltered.offers));
+    } catch (err) {
+      console.error('Hybrid catalog load failed:', err);
       setGames([]);
       setOffers([]);
     } finally {
@@ -1075,15 +1201,22 @@ export default function App() {
   const refreshCatalog = async (catalogOnly) => {
     const config = await fetchPaymentMethods();
     setPaymentConfig(config);
+    const pull = config.g2bulkPullSelection || null;
     if (config.g2bulkCatalogMode === 'live') {
-      await loadLiveCatalog();
+      await loadLiveCatalog(pull);
+      return;
+    }
+    if (config.g2bulkCatalogMode === 'hybrid') {
+      await loadHybridCatalog(config);
       return;
     }
     const onlyG2bulk = catalogOnly ?? config.g2bulkCatalogOnly;
-    await Promise.all([
-      fetchGames({ catalogOnly: onlyG2bulk }),
-      fetchOffers({ catalogOnly: onlyG2bulk }),
-    ]);
+    setLoadingGames(true);
+    try {
+      await loadSyncedCatalog(onlyG2bulk, pull);
+    } finally {
+      setLoadingGames(false);
+    }
   };
 
   // Load storefront data — payment config first so G2Bulk catalog filter applies
@@ -1093,11 +1226,17 @@ export default function App() {
       setPaymentConfig(config);
       await Promise.allSettled([
         config.g2bulkCatalogMode === 'live'
-          ? loadLiveCatalog()
-          : Promise.all([
-            fetchGames({ catalogOnly: config.g2bulkCatalogOnly }),
-            fetchOffers({ catalogOnly: config.g2bulkCatalogOnly }),
-          ]),
+          ? loadLiveCatalog(config.g2bulkPullSelection)
+          : config.g2bulkCatalogMode === 'hybrid'
+            ? loadHybridCatalog(config)
+            : (async () => {
+              setLoadingGames(true);
+              try {
+                await loadSyncedCatalog(config.g2bulkCatalogOnly, config.g2bulkPullSelection);
+              } finally {
+                setLoadingGames(false);
+              }
+            })(),
         refreshSiteTheme(),
         refreshHomeLayout(),
         refreshReviews(),
@@ -1334,6 +1473,7 @@ export default function App() {
                     onAddGame={homeShowsAdminChrome ? (options = {}) => setAdminEditGame({ id: null, show_in_carousel: !!options.showInCarousel }) : undefined}
                     onAddOffer={homeShowsAdminChrome ? (options = {}) => setAdminEditOffer({ id: null, is_sale: !!options.isSale }) : undefined}
                     onManageCarousel={homeShowsAdminChrome ? () => setAdminCarouselOpen(true) : undefined}
+                    onPickCarouselGame={homeShowsAdminChrome ? () => setAdminCarouselPickerOpen(true) : undefined}
                     onMoveCarouselGame={homeShowsAdminChrome ? moveCarouselGame : undefined}
                     isAdmin={homeShowsAdminChrome}
                     isAdminUser={isAdmin}
@@ -1353,6 +1493,7 @@ export default function App() {
             element={
               <AllGamesView
                 games={games}
+                offers={offers}
                 t={t}
                 lang={lang}
                 loading={loadingGames}
@@ -1789,14 +1930,28 @@ export default function App() {
         />
       )}
 
+      {isAdmin && adminCarouselPickerOpen && (
+        <Suspense fallback={null}>
+          <CarouselAddPicker
+            games={games}
+            lang={lang}
+            t={t}
+            onClose={() => setAdminCarouselPickerOpen(false)}
+            onPick={addGameToCarousel}
+            onGoToAddGames={goToAddStoreGames}
+          />
+        </Suspense>
+      )}
+
       {isAdmin && adminCarouselOpen && (
         <Suspense fallback={null}>
           <AdminCarouselManager
-            games={games}
+            games={getCarouselManageableGames(games)}
             lang={lang}
             t={t}
             onClose={() => setAdminCarouselOpen(false)}
             onSave={reorderCarouselGames}
+            onGoToAddGames={goToAddStoreGames}
             onEditGame={(game) => {
               setAdminCarouselOpen(false);
               setAdminEditGame(game);

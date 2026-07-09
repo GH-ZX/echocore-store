@@ -301,11 +301,11 @@ export default function ProfileView({
         {(isAdmin ? [
           { icon: ShieldCheck, label: t.adminDash, path: '/dashboard' },
           { icon: Inbox, label: t.siteInboxTitle || (isAr ? 'بريد الموقع' : 'Site inbox'), path: '/notifications' },
-          { icon: Gamepad2, label: t.allGames || (isAr ? 'تصفح الألعاب' : 'Browse Games'), path: '/games' },
+          { icon: Gamepad2, label: t.browseGames || (isAr ? 'تصفح الألعاب' : 'Browse Games'), path: '/games' },
           { icon: ShoppingCart, label: t.cart || (isAr ? 'السلة' : 'Cart'), path: '/cart' },
         ] : [
           { icon: Inbox, label: t.siteInboxTitle || (isAr ? 'بريد الموقع' : 'Site inbox'), path: '/notifications' },
-          { icon: Gamepad2, label: t.allGames || (isAr ? 'تصفح الألعاب' : 'Browse Games'), path: '/games' },
+          { icon: Gamepad2, label: t.browseGames || (isAr ? 'تصفح الألعاب' : 'Browse Games'), path: '/games' },
           { icon: ShoppingCart, label: t.cart || (isAr ? 'السلة' : 'Cart'), path: '/cart' },
           { icon: Wallet, label: t.recharge || (isAr ? 'شحن الرصيد' : 'Recharge'), action: onRecharge },
         ]).map((action) => (
