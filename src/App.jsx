@@ -3,6 +3,11 @@ import StoreBackground from './components/backgrounds/StoreBackground';
 import { getCarouselGames, sortGamesByCarousel } from './lib/carouselUtils';
 import { Loader2, Globe } from 'lucide-react';
 import AppToast from './components/ui/AppToast';
+import {
+  isPasswordRecoveryPending,
+  isPasswordRecoveryUrl,
+  markPasswordRecoveryPending,
+} from './lib/auth';
 import { supabase, resolveUserData } from './lib/supabase';
 import { createOrderAtomic, confirmOrderPayment, rejectOrderPayment } from './lib/orders';
 import { fulfillOrderG2bulk } from './lib/g2bulk';
@@ -832,6 +837,12 @@ export default function App() {
     // IMPORTANT: Handle Supabase email confirmation / signup redirect tokens
     // They come as #access_token=...&type=signup in the URL hash
     const handleAuthHash = async () => {
+      if (isPasswordRecoveryUrl() || isPasswordRecoveryPending()) {
+        markPasswordRecoveryPending();
+        navigateRef.current('/login?recovery=1', { replace: true });
+        return;
+      }
+
       const hash = window.location.hash;
       if (!hash.includes('access_token')) return;
 
@@ -839,12 +850,18 @@ export default function App() {
       const authType = hashParams.get('type');
 
       if (authType === 'recovery') {
-        window.history.replaceState({}, '', '/login?recovery=1');
+        markPasswordRecoveryPending();
+        navigateRef.current('/login?recovery=1', { replace: true });
         return;
       }
 
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return;
+
+      if (isPasswordRecoveryPending()) {
+        navigateRef.current('/login?recovery=1', { replace: true });
+        return;
+      }
 
       const userData = await resolveUserData(session.user, { createIfMissing: true });
       if (!userData) return;
@@ -888,6 +905,10 @@ export default function App() {
         setNotificationsOpen(false);
         hasShownLoginToast.current = false;
         return;
+      }
+      if (event === 'PASSWORD_RECOVERY') {
+        markPasswordRecoveryPending();
+        navigateRef.current('/login?recovery=1', { replace: true });
       }
       if (!session?.user) return;
       scheduleUserSync(session, { force: event === 'USER_UPDATED' });

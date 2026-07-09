@@ -9,6 +9,10 @@ import {
   verifyEmailOtp,
   requestPasswordReset,
   updatePassword,
+  clearPasswordRecoveryPending,
+  isPasswordRecoveryPending,
+  isPasswordRecoveryUrl,
+  markPasswordRecoveryPending,
 } from '../../lib/auth';
 
 function GoogleIcon() {
@@ -35,7 +39,9 @@ export default function LoginView({
   const redirectTo = typeof location.state?.from === 'string' ? location.state.from : '/';
   const isAr = lang === 'ar';
 
-  const [mode, setMode] = useState('login');
+  const [mode, setMode] = useState(() => (
+    isPasswordRecoveryUrl() || isPasswordRecoveryPending() ? 'recovery' : 'login'
+  ));
   const [loginMethod, setLoginMethod] = useState('password');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -49,7 +55,12 @@ export default function LoginView({
   const otpInputRef = useRef(null);
 
   useEffect(() => {
-    if (searchParams.get('recovery') === '1') {
+    if (
+      searchParams.get('recovery') === '1'
+      || isPasswordRecoveryUrl()
+      || isPasswordRecoveryPending()
+    ) {
+      markPasswordRecoveryPending();
       setMode('recovery');
     }
   }, [searchParams]);
@@ -57,6 +68,7 @@ export default function LoginView({
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
+        markPasswordRecoveryPending();
         setMode('recovery');
       }
     });
@@ -126,6 +138,7 @@ export default function LoginView({
           throw new Error(isAr ? 'كلمتا المرور غير متطابقتين' : 'Passwords do not match');
         }
         await updatePassword(password);
+        clearPasswordRecoveryPending();
         const { data: { user } } = await supabase.auth.getUser();
         if (user) await finishAuth(user);
         setSuccessMsg(isAr ? 'تم تحديث كلمة المرور بنجاح' : 'Password updated successfully');
