@@ -822,6 +822,112 @@ html, body {
   font-weight: 500;
 }
 
+/* Categories hover menu */
+.site-nav-dropdown-portal--categories {
+  min-width: 17.5rem;
+  padding: 0.5rem;
+}
+
+.site-nav-category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.site-nav-category-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.7rem 0.75rem;
+  border-radius: 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.site-nav-category-item:hover {
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-surface));
+  border-color: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--text-primary);
+}
+
+.site-nav-category-item--active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-surface));
+  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.site-nav-category-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  flex-shrink: 0;
+}
+
+.site-nav-category-icon-svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.site-nav-category-icon--games {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+.site-nav-category-icon--gift {
+  background: color-mix(in srgb, #a78bfa 16%, transparent);
+  color: #c4b5fd;
+}
+
+.site-nav-category-icon--account {
+  background: color-mix(in srgb, #38bdf8 16%, transparent);
+  color: #7dd3fc;
+}
+
+.site-nav-category-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.site-nav-category-label {
+  font-weight: 700;
+  line-height: 1.2;
+  color: inherit;
+}
+
+.site-nav-category-desc {
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.site-nav-category-item:hover .site-nav-category-desc,
+.site-nav-category-item--active .site-nav-category-desc {
+  color: var(--text-sec);
+}
+
+.site-nav-item-wrap--categories .site-nav-trigger--open .site-nav-chevron,
+.site-nav-item-wrap--categories:hover .site-nav-chevron {
+  transform: rotate(180deg);
+  opacity: 0.8;
+}
+
 /* Indicator arrow (radix default) */
 .site-nav-indicator-arrow {
   display: flex;

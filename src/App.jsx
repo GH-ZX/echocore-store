@@ -11,14 +11,23 @@ import {
 import { supabase, resolveUserData } from './lib/supabase';
 import { createOrderAtomic, confirmOrderPayment, rejectOrderPayment } from './lib/orders';
 import { fulfillOrderG2bulk } from './lib/g2bulk';
+import {
+  ensureCatalogItems,
+  fetchLiveGameGroup,
+  fetchLiveFullCatalog,
+  isLiveCatalogId,
+  mergeCatalogRows,
+} from './lib/liveCatalog';
 import { syncCartWithOffers, pickCartSnapshot, cartsAreEquivalent, getCartLineKey } from './lib/cartUtils';
 import ProtectedRoute from './components/routing/ProtectedRoute';
 import ScrollToTop from './components/routing/ScrollToTop';
 import LegacyOfferRedirect from './components/routing/LegacyOfferRedirect';
 import { getGameOfferBuyPath, getGameOfferPath } from './lib/offerRoutes';
+import { resolveStorefrontGame } from './lib/gameRegions';
 import AllGamesView from './views/AllGamesView';
 import SearchView from './views/SearchView';
 import GiftCardsView from './views/GiftCardsView';
+import GamingAccountsView from './views/GamingAccountsView';
 import GameDetail from './views/GameDetail';
 import OfferDetail from './views/OfferDetail';
 import BuyView from './views/BuyView';
@@ -162,6 +171,7 @@ export default function App() {
     shamcashMerchantName: 'ECHOCORE Store',
     shamcashConfigured: false,
     g2bulkCatalogOnly: true,
+    g2bulkCatalogMode: 'sync',
   });
   const [homeLayout, setHomeLayout] = useState(DEFAULT_HOME_LAYOUT);
   const [reviews, setReviews] = useState([]);
@@ -318,7 +328,8 @@ export default function App() {
 
   const openGame = (game) => {
     if (!game) return;
-    navigate(`/game/${game.slug || game.id}`);
+    const storefront = resolveStorefrontGame(games, game) || game;
+    navigate(`/game/${storefront.slug || storefront.id}`);
   };
 
   const openOffer = useCallback((offer) => {
@@ -519,7 +530,8 @@ export default function App() {
   const submitOrder = async (currentCart, paymentMethod) => {
     if (!user?.id) throw new Error('Not logged in');
 
-    const { items: syncedCart, removedCount } = syncCartWithOffers(currentCart, offers);
+    const preparedCart = await resolveOffersForCheckout(currentCart);
+    const { items: syncedCart, removedCount } = syncCartWithOffers(preparedCart, offers.length ? offers : preparedCart);
     if (syncedCart.length === 0) {
       throw new Error(lang === 'ar' ? 'السلة فارغة أو العروض لم تعد متاحة' : 'Cart is empty or offers are no longer available');
     }
@@ -583,6 +595,9 @@ export default function App() {
   const submitPurchase = async (offer, paymentMethod, playerInfo = {}) => {
     if (!user?.id) throw new Error('Not logged in');
     if (!offer) throw new Error('No offer');
+
+    const [resolvedOffer] = await resolveOffersForCheckout([offer]);
+    offer = resolvedOffer || offer;
 
     const amount = parseFloat(offer.price);
     const { player_uid = null, player_server = null } = playerInfo;
@@ -1020,9 +1035,50 @@ export default function App() {
     setReviews(nextReviews);
   };
 
+  const loadLiveCatalog = async () => {
+    setLoadingGames(true);
+    try {
+      const catalog = await fetchLiveFullCatalog();
+      setGames(catalog.games || []);
+      setOffers(catalog.offers || []);
+    } catch (err) {
+      console.error('Live catalog load failed:', err);
+      setGames([]);
+      setOffers([]);
+    } finally {
+      setLoadingGames(false);
+    }
+  };
+
+  const handleLiveCatalogUpdate = useCallback(({ parent, games: variantGames = [], offers: groupOffers = [] }) => {
+    setGames((prev) => mergeCatalogRows(prev, [parent, ...variantGames].filter(Boolean)));
+    setOffers((prev) => mergeCatalogRows(prev, groupOffers));
+  }, []);
+
+  const resolveOffersForCheckout = async (items = []) => {
+    const list = Array.isArray(items) ? items : [items];
+    const liveItems = list.filter((item) => isLiveCatalogId(item?.id));
+    if (liveItems.length === 0) return list;
+
+    const idMap = await ensureCatalogItems(liveItems);
+    const resolved = await Promise.all(list.map(async (item) => {
+      const dbId = idMap.get(item.id);
+      if (!dbId) return item;
+      const { data } = await supabase.from('offers').select('*').eq('id', dbId).maybeSingle();
+      return data || { ...item, id: dbId };
+    }));
+
+    setOffers((prev) => mergeCatalogRows(prev, resolved));
+    return resolved;
+  };
+
   const refreshCatalog = async (catalogOnly) => {
     const config = await fetchPaymentMethods();
     setPaymentConfig(config);
+    if (config.g2bulkCatalogMode === 'live') {
+      await loadLiveCatalog();
+      return;
+    }
     const onlyG2bulk = catalogOnly ?? config.g2bulkCatalogOnly;
     await Promise.all([
       fetchGames({ catalogOnly: onlyG2bulk }),
@@ -1036,8 +1092,12 @@ export default function App() {
       const config = await fetchPaymentMethods();
       setPaymentConfig(config);
       await Promise.allSettled([
-        fetchGames({ catalogOnly: config.g2bulkCatalogOnly }),
-        fetchOffers({ catalogOnly: config.g2bulkCatalogOnly }),
+        config.g2bulkCatalogMode === 'live'
+          ? loadLiveCatalog()
+          : Promise.all([
+            fetchGames({ catalogOnly: config.g2bulkCatalogOnly }),
+            fetchOffers({ catalogOnly: config.g2bulkCatalogOnly }),
+          ]),
         refreshSiteTheme(),
         refreshHomeLayout(),
         refreshReviews(),
@@ -1320,6 +1380,22 @@ export default function App() {
           />
 
           <Route
+            path="/accounts"
+            element={(
+              <GamingAccountsView
+                games={games}
+                offers={offers}
+                t={t}
+                lang={lang}
+                loading={loadingGames}
+                onSelectGame={openGame}
+                onEditGame={isAdmin ? setAdminEditGame : undefined}
+                isAdmin={isAdmin}
+              />
+            )}
+          />
+
+          <Route
             path="/search"
             element={(
               <SearchView
@@ -1434,6 +1510,8 @@ export default function App() {
                 updateProduct={updateProduct}
                 updateGame={updateGame}
                 loadingGames={loadingGames}
+                catalogMode={paymentConfig.g2bulkCatalogMode || 'sync'}
+                onLiveCatalogUpdate={handleLiveCatalogUpdate}
                 onSelectOffer={openOffer}
                 onBuyNow={openBuyOffer}
               />

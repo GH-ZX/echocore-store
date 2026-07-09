@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const G2BULK_BASE = 'https://api.g2bulk.com/v1';
+const SKIP_GAME_CODES = new Set(['test', 'demo', 'sandbox']);
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-g2bulk-cron-secret',
@@ -92,6 +93,112 @@ function applyMarkup(cost: number, markupPercent: number) {
   const marked = base * (1 + markupPercent / 100);
   return Math.ceil(marked * 100) / 100;
 }
+
+const REGION_TOKENS: Record<string, string> = {
+  sea: 'SEA', southeast_asia: 'SEA', southeastasia: 'SEA', global: 'Global', gl: 'Global',
+  europe: 'Europe', eu: 'Europe', turkey: 'Turkey', tr: 'Turkey', korea: 'Korea', kr: 'Korea',
+  na: 'North America', north_america: 'North America', america: 'North America',
+  latam: 'Latin America', latin_america: 'Latin America', mena: 'MENA', middle_east: 'Middle East',
+  japan: 'Japan', jp: 'Japan', india: 'India', indonesia: 'Indonesia', id: 'Indonesia',
+  russia: 'Russia', ru: 'Russia', china: 'China', cn: 'China', brazil: 'Brazil', br: 'Brazil',
+  oceania: 'Oceania', oce: 'Oceania', taiwan: 'Taiwan', tw: 'Taiwan', hk: 'Hong Kong',
+  hong_kong: 'Hong Kong', sg: 'Singapore', singapore: 'Singapore', ph: 'Philippines',
+  philippines: 'Philippines', my: 'Malaysia', malaysia: 'Malaysia', th: 'Thailand',
+  thailand: 'Thailand', vn: 'Vietnam', vietnam: 'Vietnam', kh: 'Cambodia', cambodia: 'Cambodia',
+};
+
+function normalizeRegionToken(value = '') {
+  return String(value).trim().toLowerCase().replace(/[\s/]+/g, '_').replace(/[^a-z0-9_]/g, '');
+}
+
+function normalizeRegionLabel(value = '') {
+  const token = normalizeRegionToken(value);
+  if (REGION_TOKENS[token]) return REGION_TOKENS[token];
+  const cleaned = String(value).trim();
+  if (!cleaned) return 'Global';
+  return cleaned.split(/[\s/_-]+/).filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()).join(' ');
+}
+
+function parseG2BulkGameMeta(code = '', name = '') {
+  const normalizedCode = String(code || '').trim().toLowerCase();
+  const displayName = String(name || code || '').trim();
+  const parts = normalizedCode.split(/[_-]+/).filter(Boolean);
+
+  let regionLabel: string | null = null;
+  let baseKey = normalizedCode;
+
+  if (parts.length > 1) {
+    const suffix = parts[parts.length - 1];
+    if (REGION_TOKENS[suffix]) {
+      regionLabel = REGION_TOKENS[suffix];
+      baseKey = parts.slice(0, -1).join('_');
+    }
+  }
+
+  if (!regionLabel) {
+    const paren = displayName.match(/\(([^)]+)\)\s*$/);
+    if (paren) regionLabel = normalizeRegionLabel(paren[1]);
+  }
+
+  if (!regionLabel) {
+    const dash = displayName.match(/[-–—]\s*([^(-]+)\s*$/);
+    if (dash) regionLabel = normalizeRegionLabel(dash[1]);
+  }
+
+  let baseName = displayName;
+  if (regionLabel) {
+    baseName = displayName
+      .replace(/\s*\([^)]+\)\s*$/, '')
+      .replace(/\s*[-–—]\s*[^-–—]+$/, '')
+      .trim() || displayName;
+  }
+
+  if (!regionLabel) regionLabel = 'Global';
+
+  return { baseKey: baseKey || normalizedCode, baseName: baseName || displayName || normalizedCode, regionLabel };
+}
+
+const GAMING_ACCOUNT_KEYWORDS = [
+  'xbox', 'playstation', 'psn', 'ps4', 'ps5', 'ps plus', 'nintendo', 'game pass', 'gamepass',
+  'live gold', 'steam wallet', 'steam card', 'steam gift', 'netflix', 'spotify', 'disney',
+  'prime video', 'amazon gift', 'apple', 'itunes', 'app store', 'apple gift', 'google play',
+  'razer', 'razer gold', 'zgold', 'z gold', 'gold pin', 'paysafe', 'paysafecard',
+  'blizzard', 'battle.net', 'battlenet', 'epic games', 'origin', 'ea play',
+  'office', 'windows', 'chatgpt', 'discord nitro', 'vpn', 'subscription', 'membership',
+  'account', 'wallet code', 'store credit',
+];
+
+function classifyVoucherSegment(title = '') {
+  const normalized = String(title).trim().toLowerCase();
+  if (!normalized) return 'gift_card';
+  if (GAMING_ACCOUNT_KEYWORDS.some((keyword) => normalized.includes(keyword))) return 'gaming_account';
+  if (/xbox|playstation|psn|nintendo|steam|netflix|spotify|itunes|apple|google play|razer|zgold|paysafe|blizzard|battle\.?net|epic games|origin|ea play|amazon/i.test(normalized)) {
+    return 'gaming_account';
+  }
+  return 'gift_card';
+}
+
+async function fetchG2GamesPublic() {
+  const gamesRes = await fetch(`${G2BULK_BASE}/games`);
+  const gamesPayload = await gamesRes.json().catch(() => ({}));
+  return Array.isArray(gamesPayload.games) ? gamesPayload.games as Json[] : [];
+}
+
+function filterValidG2Games(g2Games: Json[]) {
+  return g2Games.filter((g) => {
+    const code = String(g.code || '').trim().toLowerCase();
+    return code && !SKIP_GAME_CODES.has(code);
+  });
+}
+
+function pushCheckSample(list: Json[], item: Json, max = 8) {
+  if (list.length < max) list.push(item);
+}
+
+const CATALOG_BATCH_MAX = 32;
+
+
 
 async function isAdmin(userClient: ReturnType<typeof createClient>, userId: string) {
   const { data } = await userClient
@@ -395,10 +502,53 @@ Deno.serve(async (req) => {
 
     const markup = Number(settings?.g2bulk_markup_percent ?? 15);
 
-    async function fetchG2Games() {
-      const gamesRes = await fetch(`${G2BULK_BASE}/games`);
-      const gamesPayload = await gamesRes.json().catch(() => ({}));
-      return Array.isArray(gamesPayload.games) ? gamesPayload.games : [];
+    async function ensureParentGame(
+      meta: { baseKey: string; baseName: string },
+      variant: Json,
+      syncNow: string,
+    ): Promise<string> {
+      const parentSlug = slugify(meta.baseKey);
+      const { data: existingParent } = await serviceClient
+        .from('games')
+        .select('id')
+        .eq('slug', parentSlug)
+        .is('parent_game_id', null)
+        .maybeSingle();
+
+      const imageUrl = absImageUrl(variant.image_url as string | undefined);
+      const parentRow = {
+        name_en: meta.baseName,
+        name_ar: meta.baseName,
+        slug: parentSlug,
+        points_name: 'Top-up',
+        image_url: imageUrl,
+        logo_url: imageUrl,
+        description_en: `Instant ${meta.baseName} top-up via G2Bulk`,
+        description_ar: `Instant ${meta.baseName} top-up via G2Bulk`,
+        redemption_method: 'uid',
+        catalog_source: 'g2bulk',
+        active: true,
+        show_in_carousel: false,
+        g2bulk_synced_at: syncNow,
+        parent_game_id: null,
+        region_label: null,
+        g2bulk_game_code: null,
+        g2bulk_source_id: null,
+      };
+
+      if (existingParent?.id) {
+        const { error } = await serviceClient.from('games').update(parentRow).eq('id', existingParent.id);
+        if (error) throw error;
+        return existingParent.id as string;
+      }
+
+      const { data: inserted, error } = await serviceClient
+        .from('games')
+        .insert(parentRow)
+        .select('id')
+        .single();
+      if (error) throw error;
+      return inserted.id as string;
     }
 
     async function syncTopupGame(
@@ -414,22 +564,26 @@ Deno.serve(async (req) => {
       let offersSynced = 0;
       let offersSkipped = 0;
 
-      const slug = slugify(code);
-      const { data: existingGame } = await serviceClient
+      const meta = parseG2BulkGameMeta(code, String(g.name || code));
+      const parentId = await ensureParentGame(meta, g, syncNow);
+      const childSlug = slugify(code);
+      const imageUrl = absImageUrl(g.image_url as string | undefined);
+
+      const { data: existingChild } = await serviceClient
         .from('games')
         .select('id')
         .eq('g2bulk_game_code', code)
         .maybeSingle();
 
-      const gameRow = {
-        name_en: String(g.name || code),
-        name_ar: String(g.name || code),
-        slug,
+      const childRow = {
+        name_en: String(g.name || `${meta.baseName} (${meta.regionLabel})`),
+        name_ar: String(g.name || `${meta.baseName} (${meta.regionLabel})`),
+        slug: childSlug,
         points_name: 'Top-up',
-        image_url: absImageUrl(g.image_url as string | undefined),
-        logo_url: absImageUrl(g.image_url as string | undefined),
-        description_en: `Instant ${g.name || code} top-up via G2Bulk`,
-        description_ar: `Instant ${g.name || code} top-up via G2Bulk`,
+        image_url: imageUrl,
+        logo_url: imageUrl,
+        description_en: `Instant ${meta.baseName} top-up — ${meta.regionLabel}`,
+        description_ar: `Instant ${meta.baseName} top-up — ${meta.regionLabel}`,
         g2bulk_game_code: code,
         g2bulk_source_id: g.id ?? null,
         redemption_method: 'uid',
@@ -437,28 +591,41 @@ Deno.serve(async (req) => {
         active: true,
         show_in_carousel: false,
         g2bulk_synced_at: syncNow,
+        parent_game_id: parentId,
+        region_label: meta.regionLabel,
       };
 
-      let gameId = existingGame?.id as string | undefined;
+      let gameId = existingChild?.id as string | undefined;
       if (gameId) {
-        const { error } = await serviceClient.from('games').update(gameRow).eq('id', gameId);
+        const { error } = await serviceClient.from('games').update(childRow).eq('id', gameId);
         if (error) throw error;
       } else {
         const { data: inserted, error } = await serviceClient
           .from('games')
-          .insert(gameRow)
+          .insert(childRow)
           .select('id')
           .single();
         if (error) throw error;
         gameId = inserted.id;
+        gamesSynced += 1;
       }
-      gamesSynced += 1;
 
-      await sleep(80);
+      await serviceClient
+        .from('games')
+        .update({ active: false })
+        .eq('g2bulk_game_code', code)
+        .is('parent_game_id', null)
+        .neq('id', parentId);
+
       const catRes = await fetch(`${G2BULK_BASE}/games/${encodeURIComponent(code)}/catalogue`);
       const catPayload = await catRes.json().catch(() => ({}));
       const catalogues = Array.isArray(catPayload.catalogues) ? catPayload.catalogues : [];
       const liveNames: string[] = [];
+
+      if (catalogues.length === 0) {
+        await serviceClient.from('games').update({ active: false }).eq('id', gameId);
+        return { gamesSynced, offersSynced, offersSkipped };
+      }
 
       for (const item of catalogues) {
         const catalogueName = String(item.name || '').trim();
@@ -526,6 +693,20 @@ Deno.serve(async (req) => {
       let offersSkipped = 0;
       const errors: string[] = [];
 
+      const categoriesRes = await fetch(`${G2BULK_BASE}/category`);
+      const categoriesPayload = await categoriesRes.json().catch(() => ({}));
+      const categories = Array.isArray(categoriesPayload.categories) ? categoriesPayload.categories : [];
+      const categoryMeta = new Map<number, { title: string; image_url: string | null; description: string }>();
+      for (const cat of categories) {
+        const id = Number(cat.id);
+        if (!Number.isFinite(id)) continue;
+        categoryMeta.set(id, {
+          title: String(cat.title || `Category ${id}`),
+          image_url: absImageUrl(cat.image_url as string | undefined),
+          description: String(cat.description || '').trim(),
+        });
+      }
+
       const productsRes = await fetch(`${G2BULK_BASE}/products`);
       const productsPayload = await productsRes.json().catch(() => ({}));
       const products = Array.isArray(productsPayload.products) ? productsPayload.products : [];
@@ -534,49 +715,80 @@ Deno.serve(async (req) => {
       for (const product of products) {
         const categoryId = Number(product.category_id);
         if (!Number.isFinite(categoryId)) continue;
-        const title = String(product.category_title || `Category ${categoryId}`);
+        const meta = categoryMeta.get(categoryId);
+        const title = meta?.title || String(product.category_title || `Category ${categoryId}`);
         if (!byCategory.has(categoryId)) {
           byCategory.set(categoryId, { title, items: [] });
         }
         byCategory.get(categoryId)!.items.push(product);
       }
 
+      const liveCategoryIds = new Set<number>();
+
       for (const [categoryId, group] of byCategory.entries()) {
         try {
-          const slug = slugify(`cards-${categoryId}-${group.title}`);
+          liveCategoryIds.add(categoryId);
+          const meta = categoryMeta.get(categoryId);
+          const title = meta?.title || group.title;
+          const slug = slugify(`cards-${categoryId}-${title}`);
+          const categoryImage = meta?.image_url
+            || absImageUrl(group.items.find((item) => item.image_url)?.image_url as string | undefined);
+
           const { data: existingGame } = await serviceClient
             .from('games')
             .select('id')
-            .eq('slug', slug)
+            .eq('g2bulk_source_id', categoryId)
+            .eq('redemption_method', 'redeem_code')
             .maybeSingle();
 
+          const segment = classifyVoucherSegment(title);
           const gameRow = {
-            name_en: group.title,
-            name_ar: group.title,
+            name_en: title,
+            name_ar: title,
             slug,
-            points_name: 'Gift card',
+            points_name: segment === 'gaming_account' ? 'Account' : 'Gift card',
+            image_url: categoryImage,
+            logo_url: categoryImage,
             redemption_method: 'redeem_code',
             catalog_source: 'g2bulk',
+            catalog_segment: segment,
+            g2bulk_source_id: categoryId,
             active: true,
             show_in_carousel: false,
             g2bulk_synced_at: syncNow,
-            description_en: group.title,
-            description_ar: group.title,
+            description_en: meta?.description || title,
+            description_ar: meta?.description || title,
           };
 
           let gameId = existingGame?.id as string | undefined;
           if (gameId) {
-            await serviceClient.from('games').update(gameRow).eq('id', gameId);
-          } else {
-            const { data: inserted, error } = await serviceClient
-              .from('games')
-              .insert(gameRow)
-              .select('id')
-              .single();
+            const { error } = await serviceClient.from('games').update(gameRow).eq('id', gameId);
             if (error) throw error;
-            gameId = inserted.id;
-            gamesSynced += 1;
+          } else {
+            const { data: bySlug } = await serviceClient
+              .from('games')
+              .select('id')
+              .eq('slug', slug)
+              .maybeSingle();
+            gameId = bySlug?.id as string | undefined;
+
+            if (gameId) {
+              const { error } = await serviceClient.from('games').update(gameRow).eq('id', gameId);
+              if (error) throw error;
+            } else {
+              const { data: inserted, error } = await serviceClient
+                .from('games')
+                .insert(gameRow)
+                .select('id')
+                .single();
+              if (error) throw error;
+              gameId = inserted.id;
+              gamesSynced += 1;
+            }
           }
+
+          const liveProductIds: number[] = [];
+          let hasInStockOffer = false;
 
           for (const product of group.items) {
             const productId = Number(product.id);
@@ -587,19 +799,22 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            const title = String(product.title || `Product ${productId}`);
+            liveProductIds.push(productId);
+            if (stock > 0) hasInStockOffer = true;
+
+            const offerTitle = String(product.title || `Product ${productId}`);
             const offerRow = {
               game_id: gameId,
-              name_en: title,
-              name_ar: title,
+              name_en: offerTitle,
+              name_ar: offerTitle,
               price: applyMarkup(cost, markup),
               g2bulk_type: 'voucher',
               g2bulk_product_id: productId,
               g2bulk_cost_usd: cost,
               catalog_source: 'g2bulk',
               active: stock > 0,
-              description_en: title,
-              description_ar: title,
+              description_en: offerTitle,
+              description_ar: offerTitle,
               g2bulk_synced_at: syncNow,
             };
 
@@ -610,14 +825,49 @@ Deno.serve(async (req) => {
               .maybeSingle();
 
             if (existingOffer?.id) {
-              await serviceClient.from('offers').update(offerRow).eq('id', existingOffer.id);
+              const { error } = await serviceClient.from('offers').update(offerRow).eq('id', existingOffer.id);
+              if (error) throw error;
             } else {
-              await serviceClient.from('offers').insert(offerRow);
+              const { error } = await serviceClient.from('offers').insert(offerRow);
+              if (error) throw error;
             }
             offersSynced += 1;
           }
+
+          const { data: staleOffers } = await serviceClient
+            .from('offers')
+            .select('id, g2bulk_product_id')
+            .eq('game_id', gameId)
+            .eq('catalog_source', 'g2bulk')
+            .eq('g2bulk_type', 'voucher');
+
+          for (const stale of staleOffers || []) {
+            const productId = Number(stale.g2bulk_product_id);
+            if (!liveProductIds.includes(productId)) {
+              await serviceClient.from('offers').update({ active: false }).eq('id', stale.id);
+            }
+          }
+
+          await serviceClient
+            .from('games')
+            .update({ active: hasInStockOffer })
+            .eq('id', gameId);
         } catch (err) {
           errors.push(`voucher-${categoryId}: ${err instanceof Error ? err.message : 'sync failed'}`);
+        }
+      }
+
+      const { data: staleVoucherGames } = await serviceClient
+        .from('games')
+        .select('id, g2bulk_source_id')
+        .eq('catalog_source', 'g2bulk')
+        .eq('redemption_method', 'redeem_code');
+
+      for (const game of staleVoucherGames || []) {
+        const sourceId = Number(game.g2bulk_source_id);
+        if (!Number.isFinite(sourceId) || !liveCategoryIds.has(sourceId)) {
+          await serviceClient.from('games').update({ active: false }).eq('id', game.id);
+          await serviceClient.from('offers').update({ active: false }).eq('game_id', game.id);
         }
       }
 
@@ -630,22 +880,47 @@ Deno.serve(async (req) => {
         await serviceClient.from('offers').update({ active: false }).eq('catalog_source', 'manual');
       }
 
-      const g2Games = await fetchG2Games();
-      const totalGames = g2Games.filter((g) => String(g.code || '').trim()).length;
+      const validGames = filterValidG2Games(await fetchG2GamesPublic());
+
+      await serviceClient.from('store_settings').update({
+        g2bulk_sync_state: {
+          type: 'sync',
+          gameEntries: validGames.map((g) => ({
+            code: String(g.code || '').trim(),
+            name: g.name,
+            image_url: g.image_url,
+            id: g.id,
+          })),
+          startedAt: now,
+        },
+      }).eq('id', 1);
 
       return jsonResponse({
         success: true,
         phase: 'init',
-        totalGames,
+        totalGames: validGames.length,
         syncedAt: now,
       });
     }
 
     if (phase === 'games') {
       const offset = Math.max(0, Number(body.offset) || 0);
-      const limit = Math.min(20, Math.max(1, Number(body.limit) || 12));
-      const g2Games = await fetchG2Games();
-      const validGames = g2Games.filter((g) => String(g.code || '').trim());
+      const limit = Math.min(CATALOG_BATCH_MAX, Math.max(1, Number(body.limit) || CATALOG_BATCH_MAX));
+
+      const { data: settingsRow } = await serviceClient
+        .from('store_settings')
+        .select('g2bulk_sync_state')
+        .eq('id', 1)
+        .maybeSingle();
+      const state = settingsRow?.g2bulk_sync_state as Json | null;
+
+      let validGames: Json[] = [];
+      if (state?.type === 'sync' && Array.isArray(state.gameEntries)) {
+        validGames = state.gameEntries as Json[];
+      } else {
+        validGames = filterValidG2Games(await fetchG2GamesPublic());
+      }
+
       const totalGames = validGames.length;
       const batch = validGames.slice(offset, offset + limit);
 
@@ -654,16 +929,27 @@ Deno.serve(async (req) => {
       let offersSkipped = 0;
       const errors: string[] = [];
 
-      for (const g of batch) {
+      const batchResults = await Promise.all(batch.map(async (g) => {
         const code = String(g.code || '').trim();
         try {
           const result = await syncTopupGame(g, now);
-          gamesSynced += result.gamesSynced;
-          offersSynced += result.offersSynced;
-          offersSkipped += result.offersSkipped;
+          return { code, error: null as string | null, ...result };
         } catch (err) {
-          errors.push(`${code}: ${err instanceof Error ? err.message : 'sync failed'}`);
+          return {
+            code,
+            error: `${code}: ${err instanceof Error ? err.message : 'sync failed'}`,
+            gamesSynced: 0,
+            offersSynced: 0,
+            offersSkipped: 0,
+          };
         }
+      }));
+
+      for (const result of batchResults) {
+        if (result.error) errors.push(result.error);
+        gamesSynced += result.gamesSynced;
+        offersSynced += result.offersSynced;
+        offersSkipped += result.offersSkipped;
       }
 
       const nextOffset = offset + batch.length;
@@ -734,6 +1020,799 @@ Deno.serve(async (req) => {
     }
 
     return jsonResponse({ success: false, message: `Unknown sync phase: ${phase}` }, 400);
+  }
+
+  if (action === 'checkCatalog') {
+    if (!(await isAdmin(userClient, userId!))) {
+      return jsonResponse({ success: false, message: 'Admin only' }, 403);
+    }
+
+    const phase = String(body.phase || 'init');
+    const now = new Date().toISOString();
+
+    async function checkTopupGame(code: string) {
+      const result = {
+        newOffers: 0,
+        priceChanges: 0,
+        removedOffers: 0,
+        unchangedOffers: 0,
+        errors: [] as string[],
+        samples: {
+          priceChanges: [] as Json[],
+          newOffers: [] as Json[],
+          removedOffers: [] as Json[],
+        },
+      };
+
+      try {
+        const { data: dbGame } = await serviceClient
+          .from('games')
+          .select('id, name_en')
+          .eq('g2bulk_game_code', code)
+          .eq('catalog_source', 'g2bulk')
+          .maybeSingle();
+
+        const catRes = await fetch(`${G2BULK_BASE}/games/${encodeURIComponent(code)}/catalogue`);
+        const catPayload = await catRes.json().catch(() => ({}));
+        const catalogues = Array.isArray(catPayload.catalogues) ? catPayload.catalogues : [];
+        const liveByName = new Map<string, number>();
+
+        for (const item of catalogues) {
+          const name = String(item.name || '').trim();
+          const cost = Number(item.amount);
+          if (!name || !Number.isFinite(cost) || cost <= 0) continue;
+          liveByName.set(name, cost);
+        }
+
+        const gameLabel = String(dbGame?.name_en || code);
+
+        if (!dbGame?.id) {
+          result.newOffers = liveByName.size;
+          for (const [name] of liveByName) {
+            pushCheckSample(result.samples.newOffers, { game: gameLabel, offer: name });
+          }
+          return result;
+        }
+
+        const { data: dbOffers } = await serviceClient
+          .from('offers')
+          .select('id, name_en, g2bulk_catalogue_name, g2bulk_cost_usd, active')
+          .eq('game_id', dbGame.id)
+          .eq('catalog_source', 'g2bulk')
+          .eq('g2bulk_type', 'topup');
+
+        const dbByName = new Map<string, { cost: number; active: boolean }>();
+        for (const offer of dbOffers || []) {
+          const name = String(offer.g2bulk_catalogue_name || offer.name_en || '').trim();
+          if (!name) continue;
+          dbByName.set(name, {
+            cost: Number(offer.g2bulk_cost_usd ?? 0),
+            active: offer.active !== false,
+          });
+        }
+
+        for (const [name, liveCost] of liveByName) {
+          const dbEntry = dbByName.get(name);
+          if (!dbEntry) {
+            result.newOffers += 1;
+            pushCheckSample(result.samples.newOffers, { game: gameLabel, offer: name });
+          } else if (Math.abs(dbEntry.cost - liveCost) > 0.001) {
+            result.priceChanges += 1;
+            pushCheckSample(result.samples.priceChanges, {
+              game: gameLabel,
+              offer: name,
+              was: dbEntry.cost,
+              now: liveCost,
+            });
+          } else {
+            result.unchangedOffers += 1;
+          }
+        }
+
+        for (const [name, dbEntry] of dbByName) {
+          if (!liveByName.has(name) && dbEntry.active) {
+            result.removedOffers += 1;
+            pushCheckSample(result.samples.removedOffers, { game: gameLabel, offer: name });
+          }
+        }
+      } catch (err) {
+        result.errors.push(`${code}: ${err instanceof Error ? err.message : 'check failed'}`);
+      }
+
+      return result;
+    }
+
+    if (phase === 'init') {
+      const validGames = filterValidG2Games(await fetchG2GamesPublic());
+      const liveCodes = new Set(validGames.map((g) => String(g.code || '').trim()));
+
+      const { data: dbGames } = await serviceClient
+        .from('games')
+        .select('id, g2bulk_game_code, name_en')
+        .eq('catalog_source', 'g2bulk')
+        .eq('redemption_method', 'uid')
+        .not('g2bulk_game_code', 'is', null);
+
+      const dbCodes = new Set(
+        (dbGames || []).map((g) => String(g.g2bulk_game_code || '').trim()).filter(Boolean),
+      );
+      const newGameCodes = [...liveCodes].filter((code) => !dbCodes.has(code));
+      const removedGames = (dbGames || []).filter((g) => {
+        const code = String(g.g2bulk_game_code || '').trim();
+        return code && !liveCodes.has(code);
+      });
+
+      await serviceClient.from('store_settings').update({
+        g2bulk_sync_state: {
+          type: 'check',
+          gameEntries: validGames.map((g) => ({ code: String(g.code || '').trim() })),
+          startedAt: now,
+        },
+      }).eq('id', 1);
+
+      return jsonResponse({
+        success: true,
+        phase: 'init',
+        totalGames: validGames.length,
+        newGames: newGameCodes.length,
+        removedGames: removedGames.length,
+        samples: {
+          newGames: newGameCodes.slice(0, 8),
+          removedGames: removedGames.slice(0, 8).map((g) => String(g.name_en || g.g2bulk_game_code)),
+        },
+        errors: [],
+      });
+    }
+
+    if (phase === 'games') {
+      const offset = Math.max(0, Number(body.offset) || 0);
+      const limit = Math.min(CATALOG_BATCH_MAX, Math.max(1, Number(body.limit) || CATALOG_BATCH_MAX));
+
+      const { data: settingsRow } = await serviceClient
+        .from('store_settings')
+        .select('g2bulk_sync_state')
+        .eq('id', 1)
+        .maybeSingle();
+      const state = settingsRow?.g2bulk_sync_state as Json | null;
+
+      let codes: string[] = [];
+      if (state?.type === 'check' && Array.isArray(state.gameEntries)) {
+        codes = (state.gameEntries as Json[])
+          .map((g) => String(g.code || '').trim())
+          .filter(Boolean);
+      } else {
+        codes = filterValidG2Games(await fetchG2GamesPublic())
+          .map((g) => String(g.code || '').trim());
+      }
+
+      const totalGames = codes.length;
+      const batch = codes.slice(offset, offset + limit);
+      const batchResults = await Promise.all(batch.map((code) => checkTopupGame(code)));
+
+      const totals = {
+        newOffers: 0,
+        priceChanges: 0,
+        removedOffers: 0,
+        unchangedOffers: 0,
+        errors: [] as string[],
+        samples: {
+          priceChanges: [] as Json[],
+          newOffers: [] as Json[],
+          removedOffers: [] as Json[],
+        },
+      };
+
+      for (const row of batchResults) {
+        totals.newOffers += row.newOffers;
+        totals.priceChanges += row.priceChanges;
+        totals.removedOffers += row.removedOffers;
+        totals.unchangedOffers += row.unchangedOffers;
+        totals.errors.push(...row.errors);
+        for (const key of ['priceChanges', 'newOffers', 'removedOffers'] as const) {
+          for (const item of row.samples[key]) {
+            pushCheckSample(totals.samples[key], item);
+          }
+        }
+      }
+
+      const nextOffset = offset + batch.length;
+      return jsonResponse({
+        success: true,
+        phase: 'games',
+        totalGames,
+        offset,
+        limit,
+        nextOffset,
+        gamesDone: nextOffset >= totalGames,
+        newOffers: totals.newOffers,
+        priceChanges: totals.priceChanges,
+        removedOffers: totals.removedOffers,
+        unchangedOffers: totals.unchangedOffers,
+        samples: totals.samples,
+        errors: totals.errors.slice(0, 20),
+      });
+    }
+
+    if (phase === 'vouchers') {
+      const totals = {
+        newOffers: 0,
+        priceChanges: 0,
+        removedOffers: 0,
+        stockChanges: 0,
+        unchangedOffers: 0,
+        errors: [] as string[],
+        samples: {
+          priceChanges: [] as Json[],
+          newOffers: [] as Json[],
+          removedOffers: [] as Json[],
+        },
+      };
+
+      try {
+        const productsRes = await fetch(`${G2BULK_BASE}/products`);
+        const productsPayload = await productsRes.json().catch(() => ({}));
+        const products = Array.isArray(productsPayload.products) ? productsPayload.products : [];
+        const liveById = new Map<number, { cost: number; inStock: boolean; title: string }>();
+
+        for (const product of products) {
+          const productId = Number(product.id);
+          const cost = Number(product.unit_price);
+          const stock = Number(product.stock ?? 0);
+          if (!Number.isFinite(productId) || !Number.isFinite(cost) || cost <= 0) continue;
+          liveById.set(productId, {
+            cost,
+            inStock: stock > 0,
+            title: String(product.title || `Product ${productId}`),
+          });
+        }
+
+        const { data: dbOffers } = await serviceClient
+          .from('offers')
+          .select('id, name_en, g2bulk_product_id, g2bulk_cost_usd, active')
+          .eq('catalog_source', 'g2bulk')
+          .eq('g2bulk_type', 'voucher');
+
+        const dbById = new Map<number, { cost: number; active: boolean; title: string }>();
+        for (const offer of dbOffers || []) {
+          const productId = Number(offer.g2bulk_product_id);
+          if (!Number.isFinite(productId)) continue;
+          dbById.set(productId, {
+            cost: Number(offer.g2bulk_cost_usd ?? 0),
+            active: offer.active !== false,
+            title: String(offer.name_en || `Product ${productId}`),
+          });
+        }
+
+        for (const [productId, live] of liveById) {
+          const dbEntry = dbById.get(productId);
+          if (!dbEntry) {
+            totals.newOffers += 1;
+            pushCheckSample(totals.samples.newOffers, { game: 'Voucher', offer: live.title });
+            continue;
+          }
+
+          if (Math.abs(dbEntry.cost - live.cost) > 0.001) {
+            totals.priceChanges += 1;
+            pushCheckSample(totals.samples.priceChanges, {
+              game: 'Voucher',
+              offer: live.title,
+              was: dbEntry.cost,
+              now: live.cost,
+            });
+          } else if (dbEntry.active !== live.inStock) {
+            totals.stockChanges += 1;
+          } else {
+            totals.unchangedOffers += 1;
+          }
+        }
+
+        for (const [productId, dbEntry] of dbById) {
+          if (!liveById.has(productId) && dbEntry.active) {
+            totals.removedOffers += 1;
+            pushCheckSample(totals.samples.removedOffers, { game: 'Voucher', offer: dbEntry.title });
+          }
+        }
+      } catch (err) {
+        totals.errors.push(err instanceof Error ? err.message : 'Voucher check failed');
+      }
+
+      return jsonResponse({
+        success: true,
+        phase: 'vouchers',
+        ...totals,
+        errors: totals.errors.slice(0, 20),
+      });
+    }
+
+    if (phase === 'finalize') {
+      const initTotals = (body.initTotals as Json) || {};
+      const gamesTotals = (body.gamesTotals as Json) || {};
+      const vouchersTotals = (body.vouchersTotals as Json) || {};
+      const initSamples = (body.initSamples as Json) || {};
+      const gamesSamples = (body.gamesSamples as Json) || {};
+      const vouchersSamples = (body.vouchersSamples as Json) || {};
+
+      const summary = {
+        newGames: Number(initTotals.newGames) || 0,
+        removedGames: Number(initTotals.removedGames) || 0,
+        newOffers: (Number(gamesTotals.newOffers) || 0) + (Number(vouchersTotals.newOffers) || 0),
+        priceChanges: (Number(gamesTotals.priceChanges) || 0) + (Number(vouchersTotals.priceChanges) || 0),
+        removedOffers: (Number(gamesTotals.removedOffers) || 0) + (Number(vouchersTotals.removedOffers) || 0),
+        stockChanges: Number(vouchersTotals.stockChanges) || 0,
+        unchangedOffers: (Number(gamesTotals.unchangedOffers) || 0) + (Number(vouchersTotals.unchangedOffers) || 0),
+        samples: {
+          newGames: Array.isArray(initSamples.newGames) ? initSamples.newGames.slice(0, 8) : [],
+          removedGames: Array.isArray(initSamples.removedGames) ? initSamples.removedGames.slice(0, 8) : [],
+          priceChanges: [
+            ...(Array.isArray(gamesSamples.priceChanges) ? gamesSamples.priceChanges : []),
+            ...(Array.isArray(vouchersSamples.priceChanges) ? vouchersSamples.priceChanges : []),
+          ].slice(0, 8),
+          newOffers: [
+            ...(Array.isArray(gamesSamples.newOffers) ? gamesSamples.newOffers : []),
+            ...(Array.isArray(vouchersSamples.newOffers) ? vouchersSamples.newOffers : []),
+          ].slice(0, 8),
+          removedOffers: [
+            ...(Array.isArray(gamesSamples.removedOffers) ? gamesSamples.removedOffers : []),
+            ...(Array.isArray(vouchersSamples.removedOffers) ? vouchersSamples.removedOffers : []),
+          ].slice(0, 8),
+        },
+      };
+
+      const totalChanges = summary.newGames + summary.removedGames
+        + summary.newOffers + summary.priceChanges
+        + summary.removedOffers + summary.stockChanges;
+      const fullSummary = {
+        ...summary,
+        totalChanges,
+        upToDate: totalChanges === 0,
+      };
+
+      await serviceClient.from('store_settings').update({
+        g2bulk_last_check_at: now,
+        g2bulk_check_summary: fullSummary,
+        g2bulk_sync_state: null,
+        updated_at: now,
+      }).eq('id', 1);
+
+      return jsonResponse({
+        success: true,
+        phase: 'finalize',
+        summary: fullSummary,
+        checkedAt: now,
+      });
+    }
+
+    return jsonResponse({ success: false, message: `Unknown check phase: ${phase}` }, 400);
+  }
+
+  if (action === 'browseCatalog') {
+    const { data: settings } = await serviceClient
+      .from('store_settings')
+      .select('g2bulk_markup_percent')
+      .eq('id', 1)
+      .maybeSingle();
+    const markup = Number(settings?.g2bulk_markup_percent ?? 15);
+    const subAction = String(body.subAction || 'listGames');
+
+    async function fetchG2GamesPublic() {
+      const gamesRes = await fetch(`${G2BULK_BASE}/games`);
+      const gamesPayload = await gamesRes.json().catch(() => ({}));
+      return Array.isArray(gamesPayload.games) ? gamesPayload.games : [];
+    }
+
+    if (subAction === 'listGames') {
+      const g2Games = await fetchG2GamesPublic();
+      const groups = new Map<string, { baseKey: string; baseName: string; image_url: string | null; variantCount: number }>();
+
+      for (const g of g2Games) {
+        const code = String(g.code || '').trim();
+        if (!code || SKIP_GAME_CODES.has(code.toLowerCase())) continue;
+        const meta = parseG2BulkGameMeta(code, String(g.name || code));
+        const image = absImageUrl(g.image_url as string | undefined);
+        if (!groups.has(meta.baseKey)) {
+          groups.set(meta.baseKey, {
+            baseKey: meta.baseKey,
+            baseName: meta.baseName,
+            image_url: image,
+            variantCount: 0,
+          });
+        }
+        const group = groups.get(meta.baseKey)!;
+        group.variantCount += 1;
+        if (!group.image_url && image) group.image_url = image;
+      }
+
+      const games = [...groups.values()].map((group) => ({
+        id: `live:parent:${group.baseKey}`,
+        slug: slugify(group.baseKey),
+        name_en: group.baseName,
+        name_ar: group.baseName,
+        points_name: 'Top-up',
+        image_url: group.image_url,
+        logo_url: group.image_url,
+        redemption_method: 'uid',
+        catalog_source: 'live',
+        active: true,
+        group_base_key: group.baseKey,
+        variant_count: group.variantCount,
+      }));
+
+      return jsonResponse({ success: true, games });
+    }
+
+    if (subAction === 'gameGroup') {
+      const baseKey = String(body.baseKey || '').trim().toLowerCase();
+      if (!baseKey) return jsonResponse({ success: false, message: 'baseKey required' }, 400);
+
+      const g2Games = await fetchG2GamesPublic();
+      const variants = g2Games.filter((g) => {
+        const code = String(g.code || '').trim();
+        if (!code || SKIP_GAME_CODES.has(code.toLowerCase())) return false;
+        return parseG2BulkGameMeta(code, String(g.name || code)).baseKey === baseKey;
+      });
+
+      const parentMeta = variants[0]
+        ? parseG2BulkGameMeta(String(variants[0].code), String(variants[0].name))
+        : { baseKey, baseName: baseKey, regionLabel: 'Global' };
+
+      const games: Json[] = [];
+      const offers: Json[] = [];
+      const parentId = `live:parent:${baseKey}`;
+
+      const variantPayloads = await Promise.all(variants.map(async (g) => {
+        const code = String(g.code || '').trim();
+        const meta = parseG2BulkGameMeta(code, String(g.name || code));
+        const catRes = await fetch(`${G2BULK_BASE}/games/${encodeURIComponent(code)}/catalogue`);
+        const catPayload = await catRes.json().catch(() => ({}));
+        const catalogues = Array.isArray(catPayload.catalogues) ? catPayload.catalogues : [];
+        return { g, code, meta, catalogues };
+      }));
+
+      for (const { g, code, meta, catalogues } of variantPayloads) {
+        const variantId = `live:variant:${code}`;
+
+        games.push({
+          id: variantId,
+          slug: slugify(code),
+          parent_game_id: parentId,
+          region_label: meta.regionLabel,
+          g2bulk_game_code: code,
+          name_en: String(g.name || meta.baseName),
+          name_ar: String(g.name || meta.baseName),
+          image_url: absImageUrl(g.image_url as string | undefined),
+          catalog_source: 'live',
+          redemption_method: 'uid',
+          catalog_segment: 'topup',
+          active: true,
+        });
+
+        for (const item of catalogues) {
+          const catalogueName = String(item.name || '').trim();
+          const cost = Number(item.amount);
+          if (!catalogueName || !Number.isFinite(cost) || cost <= 0) continue;
+
+          offers.push({
+            id: `live:topup:${code}:${catalogueName}`,
+            game_id: variantId,
+            name_en: catalogueName,
+            name_ar: catalogueName,
+            price: applyMarkup(cost, markup),
+            region: meta.regionLabel,
+            g2bulk_type: 'topup',
+            g2bulk_game_code: code,
+            g2bulk_catalogue_name: catalogueName,
+            g2bulk_cost_usd: cost,
+            catalog_source: 'live',
+            active: true,
+          });
+        }
+      }
+
+      const parent = {
+        id: parentId,
+        slug: slugify(baseKey),
+        name_en: parentMeta.baseName,
+        name_ar: parentMeta.baseName,
+        group_base_key: baseKey,
+        catalog_source: 'live',
+        redemption_method: 'uid',
+        active: variants.length > 0,
+        image_url: absImageUrl(variants[0]?.image_url as string | undefined),
+      };
+
+      return jsonResponse({ success: true, parent, games, offers });
+    }
+
+    if (subAction === 'vouchers') {
+      const segmentFilter = String(body.segment || '').trim();
+      const categoriesRes = await fetch(`${G2BULK_BASE}/category`);
+      const categoriesPayload = await categoriesRes.json().catch(() => ({}));
+      const categories = Array.isArray(categoriesPayload.categories) ? categoriesPayload.categories : [];
+      const categoryMeta = new Map<number, { title: string; image_url: string | null; product_count: number }>();
+      for (const cat of categories) {
+        const id = Number(cat.id);
+        if (!Number.isFinite(id)) continue;
+        categoryMeta.set(id, {
+          title: String(cat.title || `Category ${id}`),
+          image_url: absImageUrl(cat.image_url as string | undefined),
+          product_count: Number(cat.product_count ?? 0),
+        });
+      }
+
+      const productsRes = await fetch(`${G2BULK_BASE}/products`);
+      const productsPayload = await productsRes.json().catch(() => ({}));
+      const products = Array.isArray(productsPayload.products) ? productsPayload.products : [];
+      const byCategory = new Map<number, Json[]>();
+
+      for (const product of products) {
+        const categoryId = Number(product.category_id);
+        if (!Number.isFinite(categoryId)) continue;
+        if (!byCategory.has(categoryId)) byCategory.set(categoryId, []);
+        byCategory.get(categoryId)!.push(product);
+      }
+
+      const games: Json[] = [];
+      const offers: Json[] = [];
+
+      const categoryIds = new Set<number>([
+        ...categoryMeta.keys(),
+        ...byCategory.keys(),
+      ]);
+
+      for (const categoryId of categoryIds) {
+        const meta = categoryMeta.get(categoryId);
+        const items = byCategory.get(categoryId) || [];
+        const title = meta?.title || String(items[0]?.category_title || `Category ${categoryId}`);
+        const segment = classifyVoucherSegment(title);
+        if (segmentFilter && segment !== segmentFilter) continue;
+
+        const gameId = `live:voucher:${categoryId}`;
+        const categoryImage = meta?.image_url
+          || absImageUrl(items.find((item) => item.image_url)?.image_url as string | undefined);
+        const hasStock = items.some((item) => Number(item.stock ?? 0) > 0);
+
+        games.push({
+          id: gameId,
+          slug: slugify(`cards-${categoryId}-${title}`),
+          name_en: title,
+          name_ar: title,
+          image_url: categoryImage,
+          redemption_method: 'redeem_code',
+          catalog_source: 'live',
+          catalog_segment: segment,
+          active: hasStock || items.length > 0 || (meta?.product_count ?? 0) > 0,
+          g2bulk_category_id: categoryId,
+        });
+
+        for (const product of items) {
+          const productId = Number(product.id);
+          const stock = Number(product.stock ?? 0);
+          const cost = Number(product.unit_price);
+          if (!Number.isFinite(productId) || !Number.isFinite(cost) || cost <= 0) continue;
+
+          offers.push({
+            id: `live:voucher:${productId}`,
+            game_id: gameId,
+            name_en: String(product.title || `Product ${productId}`),
+            name_ar: String(product.title || `Product ${productId}`),
+            price: applyMarkup(cost, markup),
+            g2bulk_type: 'voucher',
+            g2bulk_product_id: productId,
+            g2bulk_cost_usd: cost,
+            catalog_source: 'live',
+            active: stock > 0,
+          });
+        }
+      }
+
+      return jsonResponse({ success: true, games, offers, segment: segmentFilter || 'all' });
+    }
+
+    return jsonResponse({ success: false, message: `Unknown browse subAction: ${subAction}` }, 400);
+  }
+
+  if (action === 'ensureCatalogItems') {
+    if (!userId) return jsonResponse({ success: false, message: 'Unauthorized' }, 401);
+
+    const items = Array.isArray(body.items) ? body.items : [];
+    const now = new Date().toISOString();
+
+    const { data: settings } = await serviceClient
+      .from('store_settings')
+      .select('g2bulk_markup_percent')
+      .eq('id', 1)
+      .maybeSingle();
+    const markup = Number(settings?.g2bulk_markup_percent ?? 15);
+
+    const resolved: { liveId: string; offerId: string }[] = [];
+
+    for (const raw of items) {
+      const liveId = String(raw.id || '');
+      const g2bulkType = String(raw.g2bulk_type || 'topup');
+
+      if (g2bulkType === 'topup') {
+        const code = String(raw.g2bulk_game_code || '').trim();
+        const catalogueName = String(raw.g2bulk_catalogue_name || '').trim();
+        if (!code || !catalogueName) continue;
+
+        const meta = parseG2BulkGameMeta(code, String(raw.game_name || code));
+        const parentSlug = slugify(meta.baseKey);
+        let parentId: string;
+
+        const { data: existingParent } = await serviceClient
+          .from('games')
+          .select('id')
+          .eq('slug', parentSlug)
+          .is('parent_game_id', null)
+          .maybeSingle();
+
+        if (existingParent?.id) {
+          parentId = existingParent.id as string;
+        } else {
+          const { data: insertedParent, error: parentError } = await serviceClient
+            .from('games')
+            .insert({
+              name_en: meta.baseName,
+              name_ar: meta.baseName,
+              slug: parentSlug,
+              points_name: 'Top-up',
+              redemption_method: 'uid',
+              catalog_source: 'g2bulk',
+              active: true,
+              show_in_carousel: false,
+              g2bulk_synced_at: now,
+            })
+            .select('id')
+            .single();
+          if (parentError) throw parentError;
+          parentId = insertedParent.id as string;
+        }
+
+        const { data: existingChild } = await serviceClient
+          .from('games')
+          .select('id')
+          .eq('g2bulk_game_code', code)
+          .maybeSingle();
+
+        const childRow = {
+          name_en: String(raw.game_name || `${meta.baseName} (${meta.regionLabel})`),
+          name_ar: String(raw.game_name || `${meta.baseName} (${meta.regionLabel})`),
+          slug: slugify(code),
+          parent_game_id: parentId,
+          region_label: meta.regionLabel,
+          g2bulk_game_code: code,
+          redemption_method: 'uid',
+          catalog_source: 'g2bulk',
+          active: true,
+          show_in_carousel: false,
+          g2bulk_synced_at: now,
+        };
+
+        let childId = existingChild?.id as string | undefined;
+        if (childId) {
+          await serviceClient.from('games').update(childRow).eq('id', childId);
+        } else {
+          const { data: insertedChild, error: childError } = await serviceClient
+            .from('games')
+            .insert(childRow)
+            .select('id')
+            .single();
+          if (childError) throw childError;
+          childId = insertedChild.id as string;
+        }
+
+        const cost = Number(raw.g2bulk_cost_usd ?? raw.price);
+        const offerRow = {
+          game_id: childId,
+          name_en: catalogueName,
+          name_ar: catalogueName,
+          price: Number.isFinite(cost) && cost > 0 ? applyMarkup(cost, markup) : Number(raw.price) || 0.01,
+          g2bulk_type: 'topup',
+          g2bulk_catalogue_name: catalogueName,
+          g2bulk_cost_usd: Number.isFinite(cost) ? cost : null,
+          catalog_source: 'g2bulk',
+          active: true,
+          region: meta.regionLabel,
+          g2bulk_synced_at: now,
+        };
+
+        const { data: existingOffer } = await serviceClient
+          .from('offers')
+          .select('id')
+          .eq('game_id', childId)
+          .eq('g2bulk_catalogue_name', catalogueName)
+          .maybeSingle();
+
+        let offerId = existingOffer?.id as string | undefined;
+        if (offerId) {
+          await serviceClient.from('offers').update(offerRow).eq('id', offerId);
+        } else {
+          const { data: insertedOffer, error: offerError } = await serviceClient
+            .from('offers')
+            .insert(offerRow)
+            .select('id')
+            .single();
+          if (offerError) throw offerError;
+          offerId = insertedOffer.id as string;
+        }
+
+        if (offerId) resolved.push({ liveId, offerId });
+        continue;
+      }
+
+      if (g2bulkType === 'voucher') {
+        const productId = Number(raw.g2bulk_product_id);
+        if (!Number.isFinite(productId)) continue;
+
+        let offerId: string | undefined;
+        const { data: existingOffer } = await serviceClient
+          .from('offers')
+          .select('id')
+          .eq('g2bulk_product_id', productId)
+          .maybeSingle();
+        offerId = existingOffer?.id as string | undefined;
+
+        if (!offerId) {
+          const productRes = await fetch(`${G2BULK_BASE}/products/${productId}`);
+          const productPayload = await productRes.json().catch(() => ({}));
+          const product = productPayload.product || productPayload;
+          const categoryId = Number(product.category_id);
+          const title = String(product.category_title || product.title || `Product ${productId}`);
+          const slug = slugify(`cards-${categoryId}-${title}`);
+          const cost = Number(product.unit_price);
+
+          const { data: gameRow } = await serviceClient
+            .from('games')
+            .select('id')
+            .eq('g2bulk_source_id', categoryId)
+            .eq('redemption_method', 'redeem_code')
+            .maybeSingle();
+
+          let gameId = gameRow?.id as string | undefined;
+          if (!gameId) {
+            const { data: insertedGame } = await serviceClient
+              .from('games')
+              .insert({
+                name_en: title,
+                name_ar: title,
+                slug,
+                points_name: 'Gift card',
+                redemption_method: 'redeem_code',
+                catalog_source: 'g2bulk',
+                g2bulk_source_id: categoryId,
+                active: true,
+                show_in_carousel: false,
+                g2bulk_synced_at: now,
+              })
+              .select('id')
+              .single();
+            gameId = insertedGame?.id as string;
+          }
+
+          const { data: insertedOffer } = await serviceClient
+            .from('offers')
+            .insert({
+              game_id: gameId,
+              name_en: String(product.title || `Product ${productId}`),
+              name_ar: String(product.title || `Product ${productId}`),
+              price: applyMarkup(cost, markup),
+              g2bulk_type: 'voucher',
+              g2bulk_product_id: productId,
+              g2bulk_cost_usd: cost,
+              catalog_source: 'g2bulk',
+              active: Number(product.stock ?? 0) > 0,
+              g2bulk_synced_at: now,
+            })
+            .select('id')
+            .single();
+          offerId = insertedOffer?.id as string;
+        }
+
+        if (offerId) resolved.push({ liveId, offerId });
+      }
+    }
+
+    return jsonResponse({ success: true, resolved });
   }
 
   return jsonResponse({ success: false, message: 'Unknown action' }, 400);

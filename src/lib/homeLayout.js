@@ -29,6 +29,13 @@ export const HOME_SECTION_TYPES = {
     descriptionAr: 'أكواد شحن فورية من G2Bulk',
     singleton: true,
   },
+  gaming_accounts: {
+    labelEn: 'Gaming Accounts & Subscriptions',
+    labelAr: 'حسابات واشتراكات الألعاب',
+    descriptionEn: 'Xbox, PlayStation, and platform codes from G2Bulk',
+    descriptionAr: 'Xbox و PlayStation وأكواد المنصات من G2Bulk',
+    singleton: true,
+  },
   game_picks: {
     labelEn: 'Custom Game Cards',
     labelAr: 'بطاقات ألعاب مخصصة',
@@ -84,6 +91,13 @@ export const DEFAULT_HOME_LAYOUT = [
     limit: 8,
   },
   {
+    id: 'games',
+    type: 'games',
+    enabled: true,
+    title_en: 'Choose a Game',
+    title_ar: 'اختر لعبتك',
+  },
+  {
     id: 'gift_cards',
     type: 'gift_cards',
     enabled: true,
@@ -92,11 +106,12 @@ export const DEFAULT_HOME_LAYOUT = [
     limit: 6,
   },
   {
-    id: 'games',
-    type: 'games',
+    id: 'gaming_accounts',
+    type: 'gaming_accounts',
     enabled: true,
-    title_en: 'Choose a Game',
-    title_ar: 'اختر لعبتك',
+    title_en: 'Gaming Accounts',
+    title_ar: 'حسابات الألعاب',
+    limit: 6,
   },
   {
     id: 'customer_reviews',
@@ -127,6 +142,9 @@ function defaultSectionConfig(type, id) {
   }
   if (type === 'gift_cards') {
     return { ...base, title_en: 'Gift Cards & Vouchers', title_ar: 'بطاقات الهدايا', limit: 6 };
+  }
+  if (type === 'gaming_accounts') {
+    return { ...base, title_en: 'Gaming Accounts', title_ar: 'حسابات الألعاب', limit: 6 };
   }
   if (type === 'game_picks' || type === 'offer_picks') {
     return {

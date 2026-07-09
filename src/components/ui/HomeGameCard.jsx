@@ -1,8 +1,8 @@
-import { Ticket, Gamepad2 } from 'lucide-react';
+import { Ticket, Gamepad2, UserCircle, Globe } from 'lucide-react';
 import AdminEditButton from '../admin/AdminEditButton';
 import BorderGlow from './BorderGlow';
 import { presetImageUrl } from '../../lib/imageUtils';
-import { isVoucherGame } from '../../lib/catalogUtils';
+import { isGamingAccountGame, isGiftCardGame, isVoucherGame } from '../../lib/catalogUtils';
 
 export default function HomeGameCard({
   game,
@@ -14,7 +14,10 @@ export default function HomeGameCard({
   onEditGame,
   isAdmin = false,
 }) {
-  const isVoucher = variant === 'voucher' || isVoucherGame(game);
+  const isAccount = variant === 'account' || isGamingAccountGame(game);
+  const isVoucher = !isAccount && (variant === 'voucher' || isGiftCardGame(game) || isVoucherGame(game));
+  const regionCount = Number(game.variant_count || game.region_count || 0);
+  const hasRegions = !isVoucher && !isAccount && regionCount > 1;
   if (!game) return null;
 
   return (
@@ -52,11 +55,33 @@ export default function HomeGameCard({
         ) : (
           <div className="absolute inset-0 bg-[var(--bg-elevated)]" />
         )}
-        <div className={`absolute inset-0 bg-gradient-to-t ${isVoucher ? 'from-violet-950/90 via-violet-900/20' : 'from-black/70 via-black/30'} to-transparent`} />
-        {isVoucher && (
-          <div className="absolute top-3 left-3 z-10 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-violet-500/20 border border-violet-400/30 text-[10px] font-bold text-violet-100">
-            <Ticket className="w-3 h-3" />
-            {lang === 'ar' ? t.voucherBadge || 'كود' : t.voucherBadge || 'Code'}
+        <div className={`absolute inset-0 bg-gradient-to-t ${
+          isAccount
+            ? 'from-sky-950/90 via-sky-900/20'
+            : isVoucher
+              ? 'from-violet-950/90 via-violet-900/20'
+              : 'from-black/70 via-black/30'
+        } to-transparent`} />
+        {(isVoucher || isAccount || hasRegions) && (
+          <div className={`absolute top-3 left-3 z-10 inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold ${
+            isAccount
+              ? 'bg-sky-500/20 border border-sky-400/30 text-sky-100'
+              : isVoucher
+                ? 'bg-violet-500/20 border border-violet-400/30 text-violet-100'
+                : 'bg-[var(--accent)]/20 border border-[var(--accent)]/30 text-white'
+          }`}>
+            {isAccount ? <UserCircle className="w-3 h-3" /> : isVoucher ? <Ticket className="w-3 h-3" /> : <Globe className="w-3 h-3" />}
+            {lang === 'ar'
+              ? (isAccount
+                ? (t.accountBadge || 'حساب')
+                : isVoucher
+                  ? (t.voucherBadge || 'كود')
+                  : `${regionCount} ${t.regionsBadge || 'مناطق'}`)
+              : (isAccount
+                ? (t.accountBadge || 'Account')
+                : isVoucher
+                  ? (t.voucherBadge || 'Code')
+                  : `${regionCount} ${t.regionsBadge || 'regions'}`)}
           </div>
         )}
         <div className="absolute bottom-0 left-0 right-0 p-4">
@@ -65,7 +90,14 @@ export default function HomeGameCard({
           </div>
           <div className="flex items-center justify-between gap-2 mt-1">
             <span className="text-xs sm:text-sm text-white/70 inline-flex items-center gap-1">
-              {isVoucher ? (
+              {isAccount ? (
+                <>
+                  <UserCircle className="w-3 h-3" />
+                  {offerCount != null
+                    ? `${offerCount} ${lang === 'ar' ? (t.accountPacks || 'خطة') : (t.accountPacks || 'plans')}`
+                    : (lang === 'ar' ? t.gamingAccount || 'حساب ألعاب' : t.gamingAccount || 'Gaming account')}
+                </>
+              ) : isVoucher ? (
                 <>
                   <Ticket className="w-3 h-3" />
                   {offerCount != null

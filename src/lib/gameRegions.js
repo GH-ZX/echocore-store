@@ -112,18 +112,104 @@ export function parseG2BulkGameMeta(code = '', name = '') {
   };
 }
 
+function slugifyBaseKey(value = '') {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'game';
+}
+
+export function getGameBaseMeta(game) {
+  if (!game) return { baseKey: '', baseName: '', regionLabel: 'Global' };
+  return parseG2BulkGameMeta(game.g2bulk_game_code || game.slug || '', game.name_en || game.name_ar || '');
+}
+
+function isVoucherLike(game) {
+  return !!game && game.redemption_method === 'redeem_code';
+}
+
 export function isStorefrontGame(game) {
   return !!game && !game.parent_game_id;
 }
 
-export function getStorefrontGames(games = []) {
-  return games.filter(isStorefrontGame);
+function dedupeRegionalTopupGames(games = []) {
+  const active = games.filter((game) => game && game.active !== false);
+  const childCodes = new Set(
+    active.filter((game) => game.parent_game_id && game.g2bulk_game_code)
+      .map((game) => game.g2bulk_game_code),
+  );
+
+  const byBase = new Map();
+  active.forEach((game) => {
+    if (!isStorefrontGame(game)) return;
+    if (isVoucherLike(game)) return;
+    if (game.g2bulk_game_code && childCodes.has(game.g2bulk_game_code)) return;
+
+    const meta = getGameBaseMeta(game);
+    const key = meta.baseKey || `solo:${game.id}`;
+
+    if (!byBase.has(key)) {
+      byBase.set(key, {
+        ...game,
+        slug: meta.baseKey ? slugifyBaseKey(meta.baseKey) : game.slug,
+        name_en: meta.baseName || game.name_en,
+        name_ar: meta.baseName || game.name_ar,
+        group_base_key: meta.baseKey || game.group_base_key,
+      });
+    }
+  });
+
+  return [...byBase.values()];
 }
 
-export function getRegionVariants(games = [], parentId) {
+/** Top-up games only — one card per title (Valorant, PUBG, …), regions live on the detail page. */
+export function getStorefrontGames(games = []) {
+  return dedupeRegionalTopupGames(games);
+}
+
+/** Voucher parents (gift cards + gaming accounts) — separate from game top-ups. */
+export function getStorefrontVoucherGames(games = []) {
+  return games.filter((game) =>
+    game
+    && game.active !== false
+    && isStorefrontGame(game)
+    && isVoucherLike(game));
+}
+
+export function getAllStorefrontProducts(games = []) {
+  return [...getStorefrontGames(games), ...getStorefrontVoucherGames(games)];
+}
+
+export function getRegionVariants(games = [], parentOrId) {
+  const parentId = typeof parentOrId === 'object' ? parentOrId?.id : parentOrId;
   if (!parentId) return [];
-  return games
+
+  const parent = games.find((game) => game.id === parentId);
+  const children = games
     .filter((game) => game.parent_game_id === parentId && game.active !== false)
+    .map((game) => ({
+      ...game,
+      region_label: game.region_label || getGameBaseMeta(game).regionLabel,
+    }));
+
+  if (children.length > 0) {
+    return children.sort((a, b) => String(a.region_label || '').localeCompare(String(b.region_label || '')));
+  }
+
+  if (!parent) return [];
+
+  const baseKey = parent.group_base_key || getGameBaseMeta(parent).baseKey;
+  if (!baseKey) return [];
+
+  return games
+    .filter((game) => game.active !== false && !game.parent_game_id && game.g2bulk_game_code)
+    .filter((game) => getGameBaseMeta(game).baseKey === baseKey)
+    .map((game) => ({
+      ...game,
+      region_label: game.region_label || getGameBaseMeta(game).regionLabel,
+    }))
     .sort((a, b) => String(a.region_label || '').localeCompare(String(b.region_label || '')));
 }
 
@@ -152,8 +238,20 @@ export function resolveStorefrontGame(games = [], gameOrSlug) {
     : gameOrSlug;
 
   if (!game) return null;
-  if (!game.parent_game_id) return game;
-  return games.find((row) => row.id === game.parent_game_id) || game;
+
+  if (game.parent_game_id) {
+    return games.find((row) => row.id === game.parent_game_id) || game;
+  }
+
+  if (isVoucherLike(game) && isStorefrontGame(game)) {
+    return game;
+  }
+
+  const storefront = getStorefrontGames(games);
+  const meta = getGameBaseMeta(game);
+  const grouped = storefront.find((row) => row.group_base_key === meta.baseKey
+    || row.slug === slugifyBaseKey(meta.baseKey));
+  return grouped || game;
 }
 
 export function getDisplayGameForOffer(offer, games = []) {
@@ -173,7 +271,7 @@ export function getFulfillmentGameForOffer(offer, games = []) {
 
 export function offerBelongsToStorefront(offer, games = [], storefrontIds = null) {
   if (!offer) return false;
-  const ids = storefrontIds || new Set(getStorefrontGames(games).map((game) => game.id));
+  const ids = storefrontIds || new Set(getAllStorefrontProducts(games).map((game) => game.id));
   if (ids.has(offer.game_id)) return true;
 
   const childToParent = buildChildToParentMap(games);

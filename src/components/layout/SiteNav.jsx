@@ -1,15 +1,29 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
-import { Gamepad2, HelpCircle, BookOpen, Mail, ChevronDown, Sparkles, Percent, Ticket } from 'lucide-react';
+import {
+  HelpCircle, BookOpen, Mail, ChevronDown, Sparkles, Percent, LayoutGrid,
+} from 'lucide-react';
+import {
+  CATALOG_MENU_PATHS,
+  CATALOG_NAV_ITEMS,
+  getCatalogNavDesc,
+  getCatalogNavLabel,
+} from '../../lib/catalogNav';
 
 /* ───── Navigation structure ─────
-   - Link items: Games, Offers (direct links)
+   - Categories: hover menu (Games, Gift cards, Accounts)
+   - Link: Offers
    - Dropdown: More (How it Works, FAQ, Contact) */
 
 export const NAV_ITEMS = [
-  { type: 'link', path: '/games', icon: Gamepad2, labelKey: 'allGames', fallbackEn: 'Games', fallbackAr: 'الألعاب' },
-  { type: 'link', path: '/gift-cards', icon: Ticket, labelKey: 'giftCards', fallbackEn: 'Gift cards', fallbackAr: 'بطاقات الهدايا' },
+  {
+    type: 'categories',
+    icon: LayoutGrid,
+    labelKey: 'shopCategories',
+    fallbackEn: 'Categories',
+    fallbackAr: 'الأقسام',
+  },
   { type: 'link', path: '/sale', icon: Percent, labelKey: 'saleOffers', fallbackEn: 'Offers', fallbackAr: 'العروض' },
   {
     type: 'dropdown',
@@ -33,6 +47,16 @@ export function getNavLabel(t, lang, item) {
 /** Flat list of all nav destinations — mobile drawer */
 export function getFlatNavLinks(items = NAV_ITEMS) {
   return items.flatMap((item) => {
+    if (item.type === 'categories') {
+      return CATALOG_NAV_ITEMS.map((sub) => ({
+        path: sub.path,
+        icon: sub.icon,
+        labelKey: sub.labelKey,
+        fallbackEn: sub.fallbackEn,
+        fallbackAr: sub.fallbackAr,
+        group: item.labelKey,
+      }));
+    }
     if (item.type === 'link') {
       return [{
         path: item.path,
@@ -70,14 +94,8 @@ function NavGlow({ active }) {
   return <span className="site-nav-item-glow" aria-hidden="true" />;
 }
 
-function NavMoreDropdown({ t, lang, navigate, item, isPathActive, isGroupActive }) {
-  const [open, setOpen] = useState(false);
+function useNavDropdownPosition(triggerRef, open) {
   const [coords, setCoords] = useState({ top: 0, left: 0 });
-  const triggerRef = useRef(null);
-  const panelRef = useRef(null);
-  const location = useLocation();
-
-  const active = isGroupActive(item);
 
   const updatePosition = useCallback(() => {
     if (!triggerRef.current) return;
@@ -86,11 +104,7 @@ function NavMoreDropdown({ t, lang, navigate, item, isPathActive, isGroupActive 
       top: rect.bottom + 8,
       left: rect.left + rect.width / 2,
     });
-  }, []);
-
-  useEffect(() => {
-    setOpen(false);
-  }, [location.pathname]);
+  }, [triggerRef]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -103,6 +117,142 @@ function NavMoreDropdown({ t, lang, navigate, item, isPathActive, isGroupActive 
       window.removeEventListener('resize', onReposition);
     };
   }, [open, updatePosition]);
+
+  return { coords, updatePosition };
+}
+
+function useCloseOnNavigate(setOpen) {
+  const location = useLocation();
+  useEffect(() => {
+    setOpen(false);
+  }, [location.pathname, setOpen]);
+}
+
+function NavCategoriesDropdown({ t, lang, navigate, item, isPathActive }) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef(null);
+  const panelRef = useRef(null);
+  const closeTimerRef = useRef(null);
+  const { coords, updatePosition } = useNavDropdownPosition(triggerRef, open);
+  useCloseOnNavigate(setOpen);
+
+  const active = CATALOG_MENU_PATHS.some((path) => isPathActive(path));
+
+  const clearCloseTimer = () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+
+  const scheduleClose = () => {
+    clearCloseTimer();
+    closeTimerRef.current = setTimeout(() => setOpen(false), 140);
+  };
+
+  const handleOpen = () => {
+    clearCloseTimer();
+    updatePosition();
+    setOpen(true);
+  };
+
+  useEffect(() => () => clearCloseTimer(), []);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open]);
+
+  const Icon = item.icon;
+
+  const panel = open && typeof document !== 'undefined'
+    ? createPortal(
+      <div
+        ref={panelRef}
+        className="site-nav-dropdown-portal site-nav-dropdown-portal--categories"
+        role="menu"
+        style={{
+          position: 'fixed',
+          top: coords.top,
+          left: coords.left,
+        }}
+        onMouseEnter={clearCloseTimer}
+        onMouseLeave={scheduleClose}
+      >
+        <ul className="site-nav-category-list">
+          {CATALOG_NAV_ITEMS.map((sub) => {
+            const SubIcon = sub.icon;
+            const subActive = isPathActive(sub.path);
+            const label = getCatalogNavLabel(t, lang, sub);
+            const desc = getCatalogNavDesc(t, lang, sub);
+
+            return (
+              <li key={sub.path}>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={`site-nav-category-item site-nav-category-item--${sub.accent} ${subActive ? 'site-nav-category-item--active' : ''}`}
+                  onClick={() => {
+                    navigate(sub.path);
+                    setOpen(false);
+                  }}
+                >
+                  <span className={`site-nav-category-icon site-nav-category-icon--${sub.accent}`} aria-hidden="true">
+                    <SubIcon className="site-nav-category-icon-svg" strokeWidth={2} />
+                  </span>
+                  <span className="site-nav-category-copy">
+                    <span className="site-nav-category-label">{label}</span>
+                    {desc && <span className="site-nav-category-desc">{desc}</span>}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>,
+      document.body,
+    )
+    : null;
+
+  return (
+    <li
+      className="site-nav-item-wrap site-nav-item-wrap--categories"
+      onMouseEnter={handleOpen}
+      onMouseLeave={scheduleClose}
+    >
+      <button
+        ref={triggerRef}
+        type="button"
+        className={triggerClass(active, open)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => {
+          updatePosition();
+          setOpen((prev) => !prev);
+        }}
+      >
+        <Icon className="site-nav-trigger-icon" strokeWidth={2} />
+        <span>{getNavLabel(t, lang, item)}</span>
+        <ChevronDown className="site-nav-chevron" strokeWidth={2.5} aria-hidden="true" />
+        <NavGlow active={active} />
+      </button>
+      {panel}
+    </li>
+  );
+}
+
+function NavMoreDropdown({ t, lang, navigate, item, isPathActive, isGroupActive }) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef(null);
+  const panelRef = useRef(null);
+  const { coords, updatePosition } = useNavDropdownPosition(triggerRef, open);
+  useCloseOnNavigate(setOpen);
+
+  const active = isGroupActive(item);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -201,6 +351,19 @@ export default function SiteNav({ t, lang, navigate, className = '' }) {
       <ul className="site-nav-list">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
+
+          if (item.type === 'categories') {
+            return (
+              <NavCategoriesDropdown
+                key={item.labelKey}
+                t={t}
+                lang={lang}
+                navigate={navigate}
+                item={item}
+                isPathActive={isPathActive}
+              />
+            );
+          }
 
           if (item.type === 'link') {
             const active = isPathActive(item.path);

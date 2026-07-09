@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const GAMES_BATCH_SIZE = 8;
+const GAMES_BATCH_SIZE = 24;
 const STALE_SYNC_MS = 2 * 60 * 60 * 1000;
 
 const corsHeaders = {

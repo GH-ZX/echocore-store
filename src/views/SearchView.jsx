@@ -1,11 +1,11 @@
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, Gamepad2, Tag } from 'lucide-react';
-import BorderGlow from '../components/ui/BorderGlow';
+import { Search, Gamepad2, Tag, Ticket, UserCircle } from 'lucide-react';
+import HomeGameCard from '../components/ui/HomeGameCard';
 import SaleOfferCard from '../components/ui/SaleOfferCard';
-import { presetImageUrl } from '../lib/imageUtils';
 import { getDisplayGameForOffer } from '../lib/gameRegions';
+import { countActiveOffers, getGiftCardGames, getGamingAccountGames, getTopupGames } from '../lib/catalogUtils';
 import { filterGamesByQuery, filterOffersByQuery } from '../lib/searchUtils';
 
 const pageMotion = {
@@ -44,10 +44,33 @@ export default function SearchView({
     [games, query],
   );
 
+  const matchedTopupGames = useMemo(
+    () => getTopupGames(matchedGames),
+    [matchedGames],
+  );
+
+  const matchedGiftCardGames = useMemo(
+    () => getGiftCardGames(matchedGames).map((game) => ({
+      ...game,
+      offerCount: countActiveOffers(game.id, offers),
+    })),
+    [matchedGames, offers],
+  );
+
+  const matchedAccountGames = useMemo(
+    () => getGamingAccountGames(matchedGames).map((game) => ({
+      ...game,
+      offerCount: countActiveOffers(game.id, offers),
+    })),
+    [matchedGames, offers],
+  );
+
   const matchedOffers = useMemo(
     () => filterOffersByQuery(offers, games, query).slice(0, 12),
     [offers, games, query],
   );
+
+  const catalogCount = matchedTopupGames.length + matchedGiftCardGames.length + matchedAccountGames.length;
 
   if (!query) {
     return (
@@ -85,8 +108,8 @@ export default function SearchView({
           {loading
             ? (isAr ? t.loading || 'جاري التحميل...' : t.loading || 'Loading...')
             : (isAr
-              ? `${matchedGames.length} لعبة • ${matchedOffers.length} عرض`
-              : `${matchedGames.length} games • ${matchedOffers.length} offers`)}
+              ? `${catalogCount} منتج • ${matchedOffers.length} عرض`
+              : `${catalogCount} products • ${matchedOffers.length} offers`)}
         </p>
       </div>
 
@@ -102,7 +125,7 @@ export default function SearchView({
             />
           ))}
         </div>
-      ) : matchedGames.length === 0 && matchedOffers.length === 0 ? (
+      ) : catalogCount === 0 && matchedOffers.length === 0 ? (
         <motion.div
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -115,7 +138,7 @@ export default function SearchView({
         </motion.div>
       ) : (
         <div className="space-y-10">
-          {matchedGames.length > 0 && (
+          {matchedTopupGames.length > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-5">
                 <Gamepad2 className="w-5 h-5 text-[var(--accent)]" />
@@ -128,45 +151,72 @@ export default function SearchView({
                 animate="animate"
                 className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
               >
-                {matchedGames.map((game) => (
+                {matchedTopupGames.map((game) => (
                   <motion.div key={game.id} variants={itemMotion}>
-                    <BorderGlow
-                      edgeSensitivity={25}
-                      borderRadius={16}
-                      glowRadius={30}
-                      glowIntensity={0.8}
-                      coneSpread={25}
-                      fillOpacity={0.35}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => onSelectGame?.(game)}
-                        className="games-card group w-full text-left transition-all duration-300 active:scale-[0.985]"
-                      >
-                        <div className="relative h-48 sm:h-52">
-                          {game.image_url ? (
-                            <img
-                              src={presetImageUrl(game.image_url, 'cardCover')}
-                              alt={isAr ? game.name_ar : game.name_en}
-                              loading="lazy"
-                              decoding="async"
-                              className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                            />
-                          ) : (
-                            <div className="absolute inset-0 bg-[var(--bg-elevated)]" />
-                          )}
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
-                          <div className="absolute bottom-0 left-0 right-0 p-4">
-                            <div className="font-bold text-lg sm:text-xl text-white">
-                              {isAr ? game.name_ar : game.name_en}
-                            </div>
-                            <div className="text-xs sm:text-sm text-white/70 mt-0.5">
-                              {game.points_name} {isAr ? 'توب أب' : 'top-ups'}
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                    </BorderGlow>
+                    <HomeGameCard
+                      game={game}
+                      lang={lang}
+                      t={t}
+                      onSelectGame={onSelectGame}
+                    />
+                  </motion.div>
+                ))}
+              </motion.div>
+            </section>
+          )}
+
+          {matchedGiftCardGames.length > 0 && (
+            <section>
+              <div className="flex items-center gap-2 mb-5">
+                <Ticket className="w-5 h-5 text-violet-300" />
+                <h2 className="text-xl font-bold">{isAr ? t.searchGiftCards || 'بطاقات الهدايا' : t.searchGiftCards || 'Gift cards'}</h2>
+              </div>
+
+              <motion.div
+                variants={listMotion}
+                initial="initial"
+                animate="animate"
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+              >
+                {matchedGiftCardGames.map((game) => (
+                  <motion.div key={game.id} variants={itemMotion}>
+                    <HomeGameCard
+                      game={game}
+                      lang={lang}
+                      t={t}
+                      variant="voucher"
+                      offerCount={game.offerCount}
+                      onSelectGame={onSelectGame}
+                    />
+                  </motion.div>
+                ))}
+              </motion.div>
+            </section>
+          )}
+
+          {matchedAccountGames.length > 0 && (
+            <section>
+              <div className="flex items-center gap-2 mb-5">
+                <UserCircle className="w-5 h-5 text-sky-300" />
+                <h2 className="text-xl font-bold">{isAr ? t.searchGamingAccounts || 'حسابات الألعاب' : t.searchGamingAccounts || 'Gaming accounts'}</h2>
+              </div>
+
+              <motion.div
+                variants={listMotion}
+                initial="initial"
+                animate="animate"
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+              >
+                {matchedAccountGames.map((game) => (
+                  <motion.div key={game.id} variants={itemMotion}>
+                    <HomeGameCard
+                      game={game}
+                      lang={lang}
+                      t={t}
+                      variant="account"
+                      offerCount={game.offerCount}
+                      onSelectGame={onSelectGame}
+                    />
                   </motion.div>
                 ))}
               </motion.div>

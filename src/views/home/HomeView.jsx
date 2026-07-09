@@ -8,8 +8,8 @@ import HomeGameCard from '../../components/ui/HomeGameCard';
 import CustomerReviewsSection from './CustomerReviewsSection';
 import AdminAddCard from '../../components/admin/AdminAddCard';
 import { getCarouselGames } from '../../lib/carouselUtils';
-import { getDisplayGameForOffer, getStorefrontGames, offerBelongsToStorefront } from '../../lib/gameRegions';
-import { countActiveOffers, getTopupGames, getVoucherGames } from '../../lib/catalogUtils';
+import { getDisplayGameForOffer, offerBelongsToStorefront } from '../../lib/gameRegions';
+import { countActiveOffers, getGiftCardGames, getGamingAccountGames, getTopupGames } from '../../lib/catalogUtils';
 import { pickStableOffers } from '../../lib/customerReviews';
 import { DEFAULT_HOME_LAYOUT, getSectionLabel, normalizeHomeLayout } from '../../lib/homeLayout';
 
@@ -69,12 +69,18 @@ export default function HomeView({
 
   const layout = useMemo(() => normalizeHomeLayout(homeLayout), [homeLayout]);
 
-  const storefrontGames = useMemo(() => getStorefrontGames(games), [games]);
   const topupGames = useMemo(() => getTopupGames(games), [games]);
-  const voucherGames = useMemo(
-    () => getVoucherGames(games)
+  const giftCardGames = useMemo(
+    () => getGiftCardGames(games)
       .map((game) => ({ ...game, offerCount: countActiveOffers(game.id, offers) }))
-      .filter((game) => game.offerCount > 0 || isAdmin),
+      .filter((game) => game.offerCount > 0 || game.catalog_source === 'live' || isAdmin),
+    [games, offers, isAdmin],
+  );
+
+  const gamingAccountGames = useMemo(
+    () => getGamingAccountGames(games)
+      .map((game) => ({ ...game, offerCount: countActiveOffers(game.id, offers) }))
+      .filter((game) => game.offerCount > 0 || game.catalog_source === 'live' || isAdmin),
     [games, offers, isAdmin],
   );
 
@@ -112,7 +118,7 @@ export default function HomeView({
     return map;
   }, [layout, offersWithGames]);
 
-  const carouselGames = getCarouselGames(storefrontGames);
+  const carouselGames = getCarouselGames(topupGames);
 
   const carouselItems = carouselGames.map((g) => ({
     id: g.id,
@@ -342,7 +348,7 @@ export default function HomeView({
           title_en: section.title_en || t.giftCards || 'Gift Cards & Vouchers',
           title_ar: section.title_ar || t.giftCards || 'بطاقات الهدايا',
         };
-        if (voucherGames.length === 0 && !(isAdmin && onAddGame)) return null;
+        if (giftCardGames.length === 0 && !(isAdmin && onAddGame)) return null;
         return (
           <div className="games-section">
             {renderSectionHeading(giftSection, 'games')}
@@ -355,7 +361,7 @@ export default function HomeView({
             ) : (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {voucherGames.slice(0, limit).map((game) => (
+                  {giftCardGames.slice(0, limit).map((game) => (
                     <HomeGameCard
                       key={game.id}
                       game={game}
@@ -369,7 +375,7 @@ export default function HomeView({
                     />
                   ))}
                 </div>
-                {voucherGames.length > limit && (
+                {giftCardGames.length > limit && (
                   <div className="flex justify-center mt-6">
                     <Link to="/gift-cards" className="btn btn-secondary inline-flex items-center gap-2">
                       {t.viewAllGiftCards || (lang === 'ar' ? 'كل بطاقات الهدايا' : 'View all gift cards')}
@@ -383,9 +389,58 @@ export default function HomeView({
         );
       }
 
+      case 'gaming_accounts': {
+        const limit = Math.max(1, Math.min(12, Number(section.limit) || 6));
+        const accountsSection = {
+          ...section,
+          title_en: section.title_en || t.gamingAccounts || 'Gaming Accounts',
+          title_ar: section.title_ar || t.gamingAccounts || 'حسابات الألعاب',
+        };
+        if (gamingAccountGames.length === 0 && !(isAdmin && onAddGame)) return null;
+        return (
+          <div className="games-section">
+            {renderSectionHeading(accountsSection, 'games')}
+            {loading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="card h-48 sm:h-52 animate-pulse bg-[var(--bg-surface)]" />
+                ))}
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {gamingAccountGames.slice(0, limit).map((game) => (
+                    <HomeGameCard
+                      key={game.id}
+                      game={game}
+                      lang={lang}
+                      t={t}
+                      variant="account"
+                      offerCount={game.offerCount}
+                      onSelectGame={onSelectGame}
+                      onEditGame={onEditGame}
+                      isAdmin={isAdmin}
+                    />
+                  ))}
+                </div>
+                {gamingAccountGames.length > limit && (
+                  <div className="flex justify-center mt-6">
+                    <Link to="/accounts" className="btn btn-secondary inline-flex items-center gap-2">
+                      {t.viewAllGamingAccounts || (lang === 'ar' ? 'كل الحسابات' : 'View all accounts')}
+                      <ChevronDown className="w-4 h-4" />
+                    </Link>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        );
+      }
+
       case 'game_picks': {
         const picked = (section.game_ids || [])
-          .map((id) => storefrontGames.find((game) => game.id === id) || games.find((game) => game.id === id))
+          .map((id) => topupGames.find((game) => game.id === id) || games.find((game) => game.id === id))
+          .filter((game) => game && !game.parent_game_id)
           .filter(Boolean);
         if (picked.length === 0 && !(isAdmin && onAddGame)) return null;
         return renderGamesGrid(picked, section, {});

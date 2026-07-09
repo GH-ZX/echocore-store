@@ -52,7 +52,7 @@ function SectionEditor({ section, games, offers, reviews = [], isAr, t = {}, onC
         </div>
       </div>
 
-      {(section.type === 'sale_offers' || section.type === 'suggested_offers') && (
+      {(section.type === 'sale_offers' || section.type === 'suggested_offers' || section.type === 'gift_cards' || section.type === 'gaming_accounts') && (
         <div>
           <label className="text-xs text-[var(--text-muted)] block mb-1.5">
             {t.homeSectionCardLimit || (isAr ? 'عدد البطاقات' : 'Card limit')}
@@ -60,9 +60,12 @@ function SectionEditor({ section, games, offers, reviews = [], isAr, t = {}, onC
           <input
             type="number"
             min={1}
-            max={10}
-            value={section.limit ?? 8}
-            onChange={(e) => onChange({ ...section, limit: Number(e.target.value) || 8 })}
+            max={(section.type === 'gift_cards' || section.type === 'gaming_accounts') ? 12 : 10}
+            value={section.limit ?? ((section.type === 'gift_cards' || section.type === 'gaming_accounts') ? 6 : 8)}
+            onChange={(e) => onChange({
+              ...section,
+              limit: Number(e.target.value) || ((section.type === 'gift_cards' || section.type === 'gaming_accounts') ? 6 : 8),
+            })}
             className="w-28 bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
           />
         </div>

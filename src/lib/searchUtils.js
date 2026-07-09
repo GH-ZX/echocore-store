@@ -1,4 +1,4 @@
-import { getDisplayGameForOffer, getStorefrontGames, offerBelongsToStorefront } from './gameRegions';
+import { getAllStorefrontProducts, getDisplayGameForOffer, offerBelongsToStorefront } from './gameRegions';
 
 export function normalizeSearchTerm(value = '') {
   return String(value).trim().toLowerCase();
@@ -6,7 +6,7 @@ export function normalizeSearchTerm(value = '') {
 
 export function filterGamesByQuery(games = [], query = '') {
   const term = normalizeSearchTerm(query);
-  const storefront = getStorefrontGames(games);
+  const storefront = getAllStorefrontProducts(games);
   if (!term) return storefront;
 
   return storefront.filter((game) => {

@@ -54,6 +54,7 @@ export async function saveG2bulkSettings({
   markupPercent,
   apiKey,
   catalogOnly,
+  catalogMode,
   autoSyncEnabled,
   autoSyncHour,
   autoSyncTimezone,
@@ -63,22 +64,23 @@ export async function saveG2bulkSettings({
     p_markup_percent: markupPercent ?? 15,
     p_api_key: apiKey !== undefined ? (apiKey?.trim() || '') : null,
     p_catalog_only: catalogOnly !== undefined ? !!catalogOnly : null,
+    p_catalog_mode: catalogMode !== undefined ? (catalogMode?.trim() || 'sync') : null,
     p_auto_sync_enabled: autoSyncEnabled !== undefined ? !!autoSyncEnabled : null,
     p_auto_sync_hour: autoSyncHour !== undefined ? Number(autoSyncHour) : null,
     p_auto_sync_timezone: autoSyncTimezone !== undefined ? (autoSyncTimezone?.trim() || null) : null,
   });
   if (error) {
     const msg = error.message || '';
-    if (/g2bulk_auto_sync|function.*does not exist/i.test(msg)) {
-      throw new Error('Run supabase_g2bulk_auto_sync_migration.sql in Supabase SQL Editor, then retry.');
+    if (/g2bulk_auto_sync|g2bulk_catalog_mode|function.*does not exist/i.test(msg)) {
+      throw new Error('Run supabase_g2bulk_live_catalog_migration.sql in Supabase SQL Editor, then retry.');
     }
     throw error;
   }
   return data;
 }
 
-const GAMES_BATCH_SIZE = 12;
-const CHECK_BATCH_SIZE = 12;
+const GAMES_BATCH_SIZE = 32;
+const CHECK_BATCH_SIZE = 32;
 
 function mergeCheckTotals(base, extra = {}) {
   return {

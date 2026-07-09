@@ -103,6 +103,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     g2bulk_enabled: false,
     g2bulk_markup_percent: 15,
     g2bulk_catalog_only: true,
+    g2bulk_catalog_mode: 'sync',
     g2bulk_auto_sync_enabled: true,
     g2bulk_auto_sync_hour: 5,
     g2bulk_auto_sync_timezone: 'Asia/Damascus',
@@ -124,6 +125,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         g2bulk_enabled: data.g2bulk_enabled ?? false,
         g2bulk_markup_percent: data.g2bulk_markup_percent ?? 15,
         g2bulk_catalog_only: data.g2bulk_catalog_only ?? true,
+        g2bulk_catalog_mode: data.g2bulk_catalog_mode || 'sync',
         g2bulk_auto_sync_enabled: data.g2bulk_auto_sync_enabled ?? true,
         g2bulk_auto_sync_hour: data.g2bulk_auto_sync_hour ?? 5,
         g2bulk_auto_sync_timezone: data.g2bulk_auto_sync_timezone || 'Asia/Damascus',
@@ -160,6 +162,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
       enabled: payload.g2bulk_enabled,
       markupPercent: parseFloat(payload.g2bulk_markup_percent) || 15,
       catalogOnly: payload.g2bulk_catalog_only,
+      catalogMode: payload.g2bulk_catalog_mode,
       autoSyncEnabled: payload.g2bulk_auto_sync_enabled,
       autoSyncHour: Number(payload.g2bulk_auto_sync_hour),
       autoSyncTimezone: payload.g2bulk_auto_sync_timezone,
@@ -176,6 +179,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
       await persistSettings();
       setSuccess(t.g2bulkSettingsSaved || (isAr ? 'تم حفظ إعدادات G2Bulk' : 'G2Bulk settings saved'));
       await load();
+      await onCatalogSynced?.(form.g2bulk_catalog_only);
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err.message || (isAr ? 'فشل الحفظ' : 'Save failed'));
@@ -526,12 +530,39 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
               className="input w-full max-w-[120px]"
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium mb-1.5">
+              {isAr ? 'مصدر الكتالوج' : 'Catalog source'}
+            </label>
+            <select
+              value={form.g2bulk_catalog_mode || 'sync'}
+              onChange={(e) => setForm((p) => ({ ...p, g2bulk_catalog_mode: e.target.value }))}
+              className="input w-full max-w-md"
+            >
+              <option value="sync">
+                {isAr ? 'مزامنة — سريع للزوار، يحتاج استيراد' : 'Sync — fast browsing, requires import'}
+              </option>
+              <option value="live">
+                {isAr ? 'مباشر — من API مباشرة، بدون انتظار المزامنة' : 'Live — read G2Bulk API directly, no sync wait'}
+              </option>
+            </select>
+            <p className="text-xs text-[var(--text-muted)] mt-1.5 max-w-xl">
+              {form.g2bulk_catalog_mode === 'live'
+                ? (isAr
+                  ? 'الأسعار والمخزون يُقرأان من G2Bulk عند التصفح. الطلبات تُسجَّل في قاعدة البيانات عند الدفع.'
+                  : 'Prices and stock are read from G2Bulk while browsing. Orders are saved to the database at checkout.')
+                : (isAr
+                  ? 'الكتالوج يُخزَّن في قاعدة البيانات بعد المزامنة — الأفضل للإنتاج والسرعة.'
+                  : 'Catalog is stored in the database after sync — best for production speed.')}
+            </p>
+          </div>
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"
               checked={form.g2bulk_catalog_only}
               onChange={(e) => setForm((p) => ({ ...p, g2bulk_catalog_only: e.target.checked }))}
               className="rounded border-[var(--border)]"
+              disabled={form.g2bulk_catalog_mode === 'live'}
             />
             <span className="text-sm">
               {t.g2bulkCatalogOnly || (isAr ? 'عرض منتجات G2Bulk فقط' : 'Show only G2Bulk products')}

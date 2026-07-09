@@ -1,4 +1,12 @@
-import { getStorefrontGames, isStorefrontGame } from './gameRegions';
+import { getStorefrontGames, getStorefrontVoucherGames, isStorefrontGame } from './gameRegions';
+import {
+  CATALOG_SEGMENTS,
+  getGameCatalogSegment,
+  isGiftCardGame,
+  isGamingAccountGame,
+} from './catalogSegments';
+
+export { CATALOG_SEGMENTS, getGameCatalogSegment, isGiftCardGame, isGamingAccountGame };
 
 export function isVoucherGame(game) {
   return !!game && game.redemption_method === 'redeem_code';
@@ -12,7 +20,15 @@ export function isTopupGame(game) {
 }
 
 export function getVoucherGames(games = []) {
-  return getStorefrontGames(games).filter((game) => isVoucherGame(game) && game.active !== false);
+  return getStorefrontVoucherGames(games);
+}
+
+export function getGiftCardGames(games = []) {
+  return getStorefrontVoucherGames(games).filter((game) => isGiftCardGame(game));
+}
+
+export function getGamingAccountGames(games = []) {
+  return getStorefrontVoucherGames(games).filter((game) => isGamingAccountGame(game));
 }
 
 export function getTopupGames(games = []) {
@@ -24,10 +40,21 @@ export function countActiveOffers(gameId, offers = []) {
   return offers.filter((offer) => offer.game_id === gameId && offer.active !== false).length;
 }
 
-export function offerBelongsToCatalog(offer, games = [], { vouchers = true, topups = true } = {}) {
+export function offerBelongsToCatalog(offer, games = [], {
+  vouchers = true,
+  topups = true,
+  giftCards = true,
+  gamingAccounts = true,
+} = {}) {
   if (!offer?.game_id) return false;
   const game = games.find((row) => row.id === offer.game_id);
   if (!game || !isStorefrontGame(game) || game.active === false) return false;
-  if (isVoucherGame(game)) return vouchers;
+  if (isVoucherGame(game)) {
+    if (!vouchers) return false;
+    const segment = getGameCatalogSegment(game);
+    if (segment === CATALOG_SEGMENTS.gamingAccount) return gamingAccounts;
+    if (segment === CATALOG_SEGMENTS.giftCard) return giftCards;
+    return vouchers;
+  }
   return topups;
 }

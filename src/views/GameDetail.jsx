@@ -10,11 +10,13 @@ import { Ticket, Zap } from 'lucide-react';
 import { isVoucherGame } from '../lib/catalogUtils';
 import {
   findVariantByRegionParam,
+  getGameBaseMeta,
   getRegionVariants,
   pickDefaultVariant,
   regionParamSlug,
   resolveStorefrontGame,
 } from '../lib/gameRegions';
+import { fetchLiveGameGroup } from '../lib/liveCatalog';
 
 export default function GameDetail({
   games,
@@ -27,9 +29,12 @@ export default function GameDetail({
   updateProduct,
   updateGame,
   loadingGames = false,
+  catalogMode = 'sync',
+  onLiveCatalogUpdate,
   onSelectOffer,
   onBuyNow,
 }) {
+  const [loadingLiveGroup, setLoadingLiveGroup] = useState(false);
   const { slug } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const matchedGame = games.find((g) => (g.slug || g.id) === slug) || games.find((g) => g.id === slug);
@@ -38,10 +43,37 @@ export default function GameDetail({
     () => (storefrontGame ? getRegionVariants(games, storefrontGame.id) : []),
     [games, storefrontGame],
   );
-  const hasRegions = regionVariants.length > 1;
+  const isVoucher = isVoucherGame(storefrontGame);
+  const hasRegions = !isVoucher && (
+    regionVariants.length > 1
+    || Number(storefrontGame?.variant_count || 0) > 1
+  );
   const regionParam = searchParams.get('region') || '';
 
   const [selectedVariantId, setSelectedVariantId] = useState(null);
+
+  useEffect(() => {
+    if (catalogMode !== 'live' || !storefrontGame || isVoucherGame(storefrontGame)) return undefined;
+
+    const baseKey = storefrontGame.group_base_key || getGameBaseMeta(storefrontGame).baseKey;
+    if (!baseKey) return undefined;
+
+    let cancelled = false;
+    setLoadingLiveGroup(true);
+    fetchLiveGameGroup(baseKey)
+      .then((payload) => {
+        if (cancelled) return;
+        onLiveCatalogUpdate?.(payload);
+      })
+      .catch((err) => {
+        if (!cancelled) console.error('Live game group load failed:', err);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingLiveGroup(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [catalogMode, storefrontGame?.id, storefrontGame?.group_base_key, onLiveCatalogUpdate]);
 
   useEffect(() => {
     if (!storefrontGame) return;
@@ -73,7 +105,7 @@ export default function GameDetail({
     setSearchParams(next, { replace: true });
   };
 
-  if (loadingGames || (!storefrontGame && games.length === 0)) {
+  if (loadingGames || loadingLiveGroup || (!storefrontGame && games.length === 0)) {
     return (
       <div className="max-w-4xl mx-auto py-16 sm:py-20">
         <div className="flex flex-col items-center justify-center gap-3">
@@ -96,7 +128,6 @@ export default function GameDetail({
   }
 
   const game = storefrontGame;
-  const isVoucher = isVoucherGame(game);
   const gameOffers = offers.filter((o) => o.game_id === activeGameId && o.active !== false);
   const displayServers = isVoucher ? [] : (Array.isArray(activeVariant?.servers) ? activeVariant.servers : []);
 
