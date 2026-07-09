@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Trash2, Upload, Link as LinkIcon, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid, MessageSquare } from 'lucide-react';
+import { Trash2, Upload, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid, MessageSquare } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uploadImage } from '../../lib/uploadImage';
 
@@ -38,7 +38,9 @@ export default function AdminView({
   onHomeLayoutSaved,
   reviews = [],
   onReviewsChanged,
+  onNotify,
 }) {
+  const notifyError = (message) => onNotify?.(message, 'error');
   const location = useLocation();
   const [activeTab, setActiveTab] = useState(() => location.state?.adminTab || 'overview');
   const tabButtonRefs = useRef({});
@@ -158,7 +160,7 @@ export default function AdminView({
           const uploadedLogo = await uploadImage(gameLogoFile, 'game-logo');
           if (uploadedLogo) finalLogo = uploadedLogo;
         } catch (uploadErr) {
-          throw new Error(t.imageUploadFailed || (uploadErr.message + '\nMake sure storage policies allow authenticated uploads.\n\nRun fix_sale_upload_rls.sql in Supabase SQL editor.'));
+          throw new Error(t.imageUploadFailed || (uploadErr.message + '\nMake sure storage policies allow authenticated uploads.\n\nRun fix_sale_upload_rls.sql in Supabase SQL editor.'), { cause: uploadErr });
         } finally {
           setGameUploading(false);
         }
@@ -169,7 +171,7 @@ export default function AdminView({
           const uploaded = await uploadImage(gameCoverFile, 'game-cover');
           if (uploaded) finalImage = uploaded;
         } catch (uploadErr) {
-          throw new Error(t.imageUploadFailed || (uploadErr.message + '\nMake sure storage policies allow authenticated uploads.\n\nRun fix_sale_upload_rls.sql in Supabase SQL editor.'));
+          throw new Error(t.imageUploadFailed || (uploadErr.message + '\nMake sure storage policies allow authenticated uploads.\n\nRun fix_sale_upload_rls.sql in Supabase SQL editor.'), { cause: uploadErr });
         } finally {
           setGameUploading(false);
         }
@@ -248,7 +250,7 @@ export default function AdminView({
     const { error } = await supabase.from('games').delete().eq('id', gameId);
     if (error) {
       console.error('Delete game error:', error);
-      alert(t.failedToDeleteGame + ': ' + error.message);
+      notifyError(`${t.failedToDeleteGame}: ${error.message}`);
       return;
     }
     if (refreshProducts) await refreshProducts();
@@ -308,7 +310,7 @@ export default function AdminView({
           const uploaded = await uploadImage(saleCoverFile, 'sale');
           if (uploaded) finalSaleImage = uploaded;
         } catch (uploadErr) {
-          throw new Error(t.imageUploadFailed || (uploadErr.message + '\nMake sure storage policies allow authenticated uploads.\n\nRun fix_sale_upload_rls.sql in Supabase SQL editor.'));
+          throw new Error(t.imageUploadFailed || (uploadErr.message + '\nMake sure storage policies allow authenticated uploads.\n\nRun fix_sale_upload_rls.sql in Supabase SQL editor.'), { cause: uploadErr });
         } finally {
           setUploading(false);
         }

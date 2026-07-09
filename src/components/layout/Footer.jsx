@@ -156,8 +156,8 @@ export default function Footer({ lang = 'en' }) {
         <div className="mt-10 pt-6 border-t border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-y-3 text-xs text-[var(--text-muted)]">
           <p>{content.copyright}</p>
           <div className="flex items-center gap-x-5">
-            <Link to="/contact" className="hover:text-[var(--text-secondary)] transition-colors">{content.links.privacy}</Link>
-            <Link to="/contact" className="hover:text-[var(--text-secondary)] transition-colors">{content.links.terms}</Link>
+            <Link to="/privacy" className="hover:text-[var(--text-secondary)] transition-colors">{content.links.privacy}</Link>
+            <Link to="/terms" className="hover:text-[var(--text-secondary)] transition-colors">{content.links.terms}</Link>
             <span className="hidden sm:inline">•</span>
             <span>Secure • Instant • Trusted</span>
           </div>

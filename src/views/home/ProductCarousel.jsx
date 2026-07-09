@@ -6,7 +6,7 @@ import AdminAddCard from '../../components/admin/AdminAddCard';
 import BorderGlow from '../../components/ui/BorderGlow';
 
 const AUTOPLAY_MS = 6000;
-const TICK_MS = 40;
+
 
 export default function ProductCarousel({
   products,

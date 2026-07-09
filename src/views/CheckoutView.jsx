@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { buildPaymentMethods, getDefaultPaymentMethod } from '../lib/paymentMethods';
 
-export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComplete, currentBalance = 0, paymentConfig = {} }) {
+export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComplete, currentBalance = 0, paymentConfig = {}, onNotify }) {
+  const notifyError = (message) => onNotify?.(message, 'error');
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSimModal, setShowSimModal] = useState(false);
   const [simRef, setSimRef] = useState('');
+  const [pendingShamRef, setPendingShamRef] = useState('');
 
   const totalNum = cart.reduce((s, i) => s + parseFloat(i.price), 0);
   const total = totalNum.toFixed(2);
@@ -36,7 +38,7 @@ export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComp
         const result = await submitOrder(cart, selectedMethod);
         onComplete(result);
       } catch (e) {
-        alert((t.checkoutFailed || 'Checkout failed') + ': ' + (e.message || ''));
+        notifyError(`${t.checkoutFailed || 'Checkout failed'}: ${e.message || ''}`);
       } finally {
         setIsProcessing(false);
       }
@@ -44,10 +46,11 @@ export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComp
     }
 
     if (!usableMethods.some((m) => m.id === selectedMethod)) {
-      alert(lang === 'ar' ? 'طريقة الدفع غير متاحة' : 'Payment method unavailable');
+      notifyError(lang === 'ar' ? 'طريقة الدفع غير متاحة' : 'Payment method unavailable');
       return;
     }
 
+    setPendingShamRef(`ECHOCORE-${Date.now().toString().slice(-7)}`);
     setShowSimModal(true);
     setSimRef('');
   };
@@ -65,7 +68,7 @@ export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComp
         onComplete(result);
       }, 700);
     } catch (e) {
-      alert((t.paymentFailed || 'Payment failed') + ': ' + (e.message || ''));
+      notifyError(`${t.paymentFailed || 'Payment failed'}: ${e.message || ''}`);
       setIsProcessing(false);
       setShowSimModal(false);
     }
@@ -145,7 +148,7 @@ export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComp
 
             <div className="bg-black/60 rounded-2xl p-4 mb-4 text-center">
               <div className="text-green-400 text-sm mb-1">SHAMCASH REFERENCE</div>
-              <div className="font-mono text-lg">ECHOCORE-{Date.now().toString().slice(-7)}</div>
+              <div className="font-mono text-lg">{pendingShamRef || simRef}</div>
               <p className="text-xs text-[var(--text-muted)] mt-2">
                 {lang === 'ar' ? 'ادفع عبر تطبيق ShamCash ثم أكّد' : 'Pay in ShamCash app, then confirm'}
               </p>

@@ -40,7 +40,7 @@
   - apex-legends-logo.png
   - call-of-duty-logo.png
   كما يوجد ملفان احتياطيان بالفعل: `placeholder-logo.png` و `placeholder-cover.png`.
-- إضافة منتجات جديدة: استخدم `src/data/mockProducts.js` وأضف الحقول `logoFile` و/أو `image` و/أو `coverFile` حسب الحاجة.
+- إضافة ألعاب وعروض: من لوحة الإدارة `/dashboard` (بعد تعيين `role = admin` في Supabase). الصور تُرفع إلى bucket `product-images`.
 
 نصائح النشر
 - النشر على **GitHub Pages** عبر `.github/workflows/deploy.yml` (يدفع تلقائياً عند push إلى `main`).

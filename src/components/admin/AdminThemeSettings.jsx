@@ -388,8 +388,7 @@ function ColorField({ field, value, onChange, t, lang }) {
   );
 }
 
-function ThemePreview({ theme, t, lang }) {
-  const isAr = lang === 'ar';
+function ThemePreview({ theme, t }) {
   const full = buildFullTheme(theme);
 
   return (
@@ -691,7 +690,7 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
             ))}
           </div>
 
-          <ThemePreview theme={form} t={t} lang={lang} />
+          <ThemePreview theme={form} t={t} />
         </div>
 
         <BackgroundSettings

@@ -37,6 +37,9 @@ export default defineConfig(({ command, mode }) => {
               if (id.includes('lucide-react')) {
                 return 'vendor-icons'
               }
+              if (id.includes('ogl') || id.includes('/Aurora')) {
+                return 'vendor-effects'
+              }
             }
           },
         },

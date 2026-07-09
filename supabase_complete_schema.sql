@@ -140,6 +140,19 @@ CREATE TABLE IF NOT EXISTS public.customer_reviews (
 CREATE INDEX IF NOT EXISTS customer_reviews_status_idx ON public.customer_reviews (status);
 CREATE INDEX IF NOT EXISTS customer_reviews_sort_idx ON public.customer_reviews (sort_order, created_at DESC);
 
+-- CONTACT MESSAGES (Storefront contact form submissions)
+CREATE TABLE IF NOT EXISTS public.contact_messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  name text,
+  email text NOT NULL,
+  message text NOT NULL,
+  status text NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'read', 'archived')),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS contact_messages_status_idx ON public.contact_messages (status, created_at DESC);
+
 -- =====================================================
 -- 2. ROW LEVEL SECURITY (RLS) & POLICIES
 -- =====================================================
@@ -152,6 +165,7 @@ ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.store_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.customer_reviews ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.contact_messages ENABLE ROW LEVEL SECURITY;
 
 -- Helper: admin check without RLS recursion inside policies
 CREATE OR REPLACE FUNCTION public.is_admin()
@@ -283,6 +297,27 @@ CREATE POLICY "Users submit pending reviews" ON public.customer_reviews
 DROP POLICY IF EXISTS "Admins manage reviews" ON public.customer_reviews;
 CREATE POLICY "Admins manage reviews" ON public.customer_reviews
   FOR ALL TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "Anyone can submit contact messages" ON public.contact_messages;
+CREATE POLICY "Anyone can submit contact messages" ON public.contact_messages
+  FOR INSERT TO anon, authenticated
+  WITH CHECK (
+    char_length(email) BETWEEN 4 AND 255
+    AND email ~* '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+    AND char_length(message) BETWEEN 10 AND 5000
+    AND (user_id IS NULL OR user_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS "Admins read contact messages" ON public.contact_messages;
+CREATE POLICY "Admins read contact messages" ON public.contact_messages
+  FOR SELECT TO authenticated
+  USING (public.is_admin());
+
+DROP POLICY IF EXISTS "Admins update contact messages" ON public.contact_messages;
+CREATE POLICY "Admins update contact messages" ON public.contact_messages
+  FOR UPDATE TO authenticated
   USING (public.is_admin())
   WITH CHECK (public.is_admin());
 

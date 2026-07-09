@@ -6,7 +6,7 @@ import BorderGlow from '../components/ui/BorderGlow';
 import AdminGameEditModal from '../components/admin/AdminGameEditModal';
 import AdminOfferEditModal from '../components/admin/AdminOfferEditModal';
 
-export default function GameDetail({ games, offers, t = {}, lang, navigate, addToCart, user, updateProduct, updateGame, loadingGames = false }) {
+export default function GameDetail({ games, offers, t = {}, lang, navigate, addToCart: _addToCart, user, updateProduct, updateGame, loadingGames = false }) {
   const { slug } = useParams();
   const game = games.find((g) => (g.slug || g.id) === slug) || games.find((g) => g.id === slug);
   const isAdmin = user?.role === 'admin';

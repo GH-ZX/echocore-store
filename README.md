@@ -58,6 +58,7 @@ cd echocore-store
 
 ```bash
 npm install
+cp .env.example .env   # أضف مفاتيح Supabase
 ```
 
 ### 3. شغّل بيئة التطوير
@@ -90,25 +91,15 @@ npm run preview
 
 ```
 src/
-├── App.jsx                 # مكون التطبيق الرئيسي
-├── main.jsx               # نقطة الدخول
-├── index.css              # الأنماط العامة
-├── assets/                # الصور والشعارات
-│   ├── valorant.png       # صورة العرض
-│   ├── valorant-logo.png  # شعار اللعبة
-│   ├── lol.png
-│   ├── lol-logo.png
-│   └── ...
-├── components/            # مكونات React
-│   ├── Header.jsx
-│   ├── HomeView.jsx
-│   ├── ProductCarousel.jsx # كاروسيل الألعاب الرئيسي
-│   ├── CartView.jsx
-│   ├── CheckoutView.jsx
-│   └── ...
+├── App.jsx                 # Shell, auth, routes, cart, orders
+├── main.jsx                # Entry point
+├── index.css               # Global styles + theme tokens
+├── assets/                 # Game logos and cover art
+├── components/             # Layout, UI, admin widgets
+├── views/                  # Page-level route components
+├── lib/                    # Supabase, cart, payments, theme helpers
 └── data/
-    ├── mockProducts.js    # قاعدة بيانات المنتجات (نموذجية)
-    └── translations.js    # نصوص التطبيق (عربي/إنجليزي)
+    └── translations.js     # App copy (Arabic / English)
 ```
 
 ## 🎮 المنتجات المدعومة
@@ -155,23 +146,13 @@ src/assets/
 - `valorant-logo.png` — شعار Valorant الصغير
 - `valorant.png` — صورة غلاف Valorant الكبيرة
 
-## 📝 إضافة منتجات جديدة
+## 📝 إضافة ألعاب وعروض جديدة
 
-عدّل `src/data/mockProducts.js` وأضف عنصر جديد:
+المنتجات تُدار من **لوحة الإدارة** (`/dashboard`) بعد تسجيل الدخول كمسؤول — الألعاب والعروض تُخزَّن في Supabase (`games`, `offers`).
 
-```javascript
-{
-  id: 13,
-  name_en: "Game Name",
-  name_ar: "Game Name",  // الأسماء تبقى بالإنجليزية
-  price: 9.99,
-  category: "games",
-  icon: "Gamepad2",
-  color: "from-color-500 to-color-600",
-  logoFile: "game-name-logo.png",
-  coverFile: "game-name-cover.png"  // اختياري
-}
-```
+1. شغّل المخطط SQL من [supabase_complete_schema.sql](./supabase_complete_schema.sql)
+2. عيّن `role = admin` لحسابك في جدول `profiles`
+3. افتح `/dashboard` → أضف لعبة ثم عروضها
 
 ## 🔐 أدوار المستخدمين
 
@@ -184,9 +165,7 @@ src/assets/
 - إضافة/حذف المنتجات
 - إدارة المتجر
 
-**دخول تجريبي:**
-- البريد: `admin@ex.com`
-- كلمة المرور: `admin`
+**مسؤول:** أنشئ حساباً عادياً ثم غيّر `role` إلى `admin` في جدول `profiles` بلوحة Supabase.
 
 ## 📄 الملفات المهمة
 

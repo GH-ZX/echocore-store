@@ -1,42 +1,61 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import { submitContactMessage } from '../lib/contact';
 
-export default function ContactView({ t = {}, lang = 'en' }) {
+export default function ContactView({ t = {}, lang = 'en', user = null }) {
   const isAr = lang === 'ar';
 
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    message: ''
+    name: user?.name || '',
+    email: user?.email || '',
+    message: '',
   });
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (error) setError('');
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.email || !formData.message) {
-      alert(isAr ? 'الرجاء إدخال البريد الإلكتروني والرسالة' : 'Please enter your email and message');
+    if (!formData.email?.trim() || !formData.message?.trim()) {
+      setError(isAr ? 'الرجاء إدخال البريد الإلكتروني والرسالة' : 'Please enter your email and message');
       return;
     }
 
     setIsSubmitting(true);
+    setError('');
 
-    // Simulate API call / sending
-    await new Promise(resolve => setTimeout(resolve, 800));
+    try {
+      await submitContactMessage({
+        name: formData.name,
+        email: formData.email,
+        message: formData.message,
+        userId: user?.id,
+      });
 
-    setIsSubmitting(false);
-    setSubmitted(true);
-
-    // Reset form after a delay
-    setTimeout(() => {
-      setFormData({ name: '', email: '', message: '' });
-      setSubmitted(false);
-    }, 3000);
+      setSubmitted(true);
+      setTimeout(() => {
+        setFormData({
+          name: user?.name || '',
+          email: user?.email || '',
+          message: '',
+        });
+        setSubmitted(false);
+      }, 4000);
+    } catch (err) {
+      setError(
+        t.contactSubmitFailed
+          || (isAr ? 'تعذر إرسال الرسالة. حاول مرة أخرى أو راسلنا مباشرة.' : 'Could not send your message. Please try again or email us directly.'),
+      );
+      console.error('Contact form error:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -58,8 +77,8 @@ export default function ContactView({ t = {}, lang = 'en' }) {
               {t.messageSent}
             </h3>
             <p className="text-[var(--text-secondary)]">
-              {isAr 
-                ? 'شكراً لتواصلك. سنقوم بالرد عليك خلال 24 ساعة.' 
+              {isAr
+                ? 'شكراً لتواصلك. سنقوم بالرد عليك خلال 24 ساعة.'
                 : 'Thank you for reaching out. We will reply within 24 hours.'}
             </p>
           </div>
@@ -90,7 +109,7 @@ export default function ContactView({ t = {}, lang = 'en' }) {
                 onChange={handleChange}
                 required
                 className="input w-full"
-                placeholder={isAr ? 'your@email.com' : 'your@email.com'}
+                placeholder="your@email.com"
               />
             </div>
 
@@ -108,6 +127,10 @@ export default function ContactView({ t = {}, lang = 'en' }) {
                 placeholder={t.messagePlaceholder}
               />
             </div>
+
+            {error && (
+              <p className="text-sm text-red-400 text-center">{error}</p>
+            )}
 
             <button
               type="submit"

@@ -34,10 +34,11 @@ function hexToHslStr(hex) {
   if (max === min) return `0 0 ${Math.round(l * 100)}`;
   const d = max - min;
   const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-  let h = 0;
-  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
-  else if (max === g) h = ((b - r) / d + 2) / 6;
-  else h = ((r - g) / d + 4) / 6;
+  const h = max === r
+    ? ((g - b) / d + (g < b ? 6 : 0)) / 6
+    : max === g
+      ? ((b - r) / d + 2) / 6
+      : ((r - g) / d + 4) / 6;
   return `${Math.round(h * 360)} ${Math.round(s * 100)} ${Math.round(l * 100)}`;
 }
 
@@ -114,7 +115,6 @@ const BorderGlow = ({
   }, []);
 
   // Read theme accent colors from CSS variables (surfaced by the app's theme system)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const { accent, hover, dark, bgSurface } = readThemeColors();
   void themeVer; // used to force re-read on theme change
 

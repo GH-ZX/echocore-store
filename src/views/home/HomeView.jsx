@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useState } from 'react';
 import ProductCarousel from './ProductCarousel';
 import SaleOfferCard from '../../components/ui/SaleOfferCard';
 import HomeGameCard from '../../components/ui/HomeGameCard';
@@ -10,13 +10,6 @@ import { DEFAULT_HOME_LAYOUT, getSectionLabel, normalizeHomeLayout } from '../..
 
 function buildOfferPoolKey(offers = []) {
   return offers.map((offer) => offer.id).sort().join('|');
-}
-
-function buildSuggestedSectionsKey(sections = []) {
-  return sections
-    .filter((section) => section.type === 'suggested_offers')
-    .map((section) => `${section.id}:${section.enabled ? 1 : 0}:${section.limit ?? 8}`)
-    .join('|');
 }
 
 function pickSaleOffers(offers, limit = 8) {
@@ -33,7 +26,7 @@ export default function HomeView({
   games = [],
   offers = [],
   loading = false,
-  addToCart,
+  addToCart: _addToCart,
   onSelectGame,
   onSelectOffer,
   onEditOffer,
@@ -45,13 +38,13 @@ export default function HomeView({
   onBuyNow,
   isAdmin = false,
   searchQuery = '',
-  onSearchChange,
+  onSearchChange: _onSearchChange,
   homeLayout = DEFAULT_HOME_LAYOUT,
   reviews = [],
   user = null,
   onReviewSubmitted,
 }) {
-  const sessionSeedRef = useRef(`home-${Date.now()}`);
+  const [sessionSeed] = useState(() => `home-${Date.now()}`);
 
   const getLocalLogo = (slug) => {
     if (!slug) return null;
@@ -60,7 +53,9 @@ export default function HomeView({
       if (s.includes('valorant')) return new URL('../../assets/valorant-logo.png', import.meta.url).href;
       if (s.includes('league') || s.includes('lol')) return new URL('../../assets/lol-logo.png', import.meta.url).href;
       if (s.includes('xbox')) return new URL('../../assets/xbox-logo.png', import.meta.url).href;
-    } catch {}
+    } catch {
+      // Local asset unavailable for this slug.
+    }
     return null;
   };
 
@@ -72,7 +67,6 @@ export default function HomeView({
   );
 
   const offerPoolKey = useMemo(() => buildOfferPoolKey(offersWithGames), [offersWithGames]);
-  const suggestedSectionsKey = useMemo(() => buildSuggestedSectionsKey(layout), [layout]);
 
   const suggestedOffersMap = useMemo(() => {
     const map = new Map();
@@ -83,13 +77,13 @@ export default function HomeView({
           pickStableOffers(
             offersWithGames,
             section.limit ?? 8,
-            `${sessionSeedRef.current}:${section.id}:${offerPoolKey}`,
+            `${sessionSeed}:${section.id}:${offerPoolKey}`,
           ),
         );
       }
     });
     return map;
-  }, [layout, offerPoolKey, suggestedSectionsKey, offersWithGames]);
+  }, [layout, offerPoolKey, offersWithGames, sessionSeed]);
 
   const saleOffersMap = useMemo(() => {
     const map = new Map();

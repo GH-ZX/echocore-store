@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
-export default function SuccessView({ navigate, games = [], t = {}, lang = 'ar' }) {
+export default function SuccessView({ navigate, games: _games = [], t = {}, lang = 'ar' }) {
   const [searchParams] = useSearchParams();
   const orderId = searchParams.get('orderId');
   const [orderDetails, setOrderDetails] = useState(null);

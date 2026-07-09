@@ -1,8 +1,12 @@
 import { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Mail, Lock, User } from 'lucide-react';
 import EchoLogo from '../../components/ui/EchoLogo';
 
 export default function LoginView({ t, lang = 'ar', handleAuthLogin, handleAuthSignup, onLoginSuccess }) {
+  const location = useLocation();
+  const redirectTo = typeof location.state?.from === 'string' ? location.state.from : '/';
+
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,15 +25,14 @@ export default function LoginView({ t, lang = 'ar', handleAuthLogin, handleAuthS
       if (isSignup) {
         const result = await handleAuthSignup(email, password, name);
         if (result.autoLogin && result.userData) {
-          // Email confirmation is disabled in Supabase → auto login
-          onLoginSuccess(result.userData);
+          onLoginSuccess(result.userData, redirectTo);
         } else {
           setSuccessMsg(result.message || (t.createAccount + '. ' + (lang === 'ar' ? 'تحقق من بريدك الإلكتروني للتأكيد.' : 'Check your email to confirm.')));
           setIsSignup(false);
         }
       } else {
         const userData = await handleAuthLogin(email, password);
-        onLoginSuccess(userData);
+        onLoginSuccess(userData, redirectTo);
       }
     } catch (err) {
       setError(err.message || t.authError);

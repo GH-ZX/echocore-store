@@ -11,7 +11,7 @@ export default function AllGamesView({
   isAdmin = false,
   loading = false,
   searchQuery = '',
-  onSearchChange
+  onSearchChange: _onSearchChange
 }) {
   const isAr = lang === 'ar';
 

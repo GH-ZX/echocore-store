@@ -372,11 +372,11 @@ function hexToHue(hex) {
   if (max === min) return LOGO_REFERENCE_HUE;
 
   const delta = max - min;
-  let hue = 0;
-
-  if (max === r) hue = ((g - b) / delta + (g < b ? 6 : 0)) / 6;
-  else if (max === g) hue = ((b - r) / delta + 2) / 6;
-  else hue = ((r - g) / delta + 4) / 6;
+  const hue = max === r
+    ? ((g - b) / delta + (g < b ? 6 : 0)) / 6
+    : max === g
+      ? ((b - r) / delta + 2) / 6
+      : ((r - g) / delta + 4) / 6;
 
   return hue * 360;
 }

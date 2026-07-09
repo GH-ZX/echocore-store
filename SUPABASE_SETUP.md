@@ -23,7 +23,7 @@ Instead of running multiple separate SQL files, we have consolidated the entire 
 👉 Run all SQL commands located in [supabase_complete_schema.sql](file:///c:/Users/Administrator/Coding/echocore-store/supabase_complete_schema.sql) in your Supabase **SQL Editor**.
 
 This unified script will:
-1. Create all 8 required tables (`profiles`, `games`, `offers`, `orders`, `order_items`, `transactions`, `store_settings`, `customer_reviews`).
+1. Create all required tables (`profiles`, `games`, `offers`, `orders`, `order_items`, `transactions`, `store_settings`, `customer_reviews`, `contact_messages`).
 2. Apply appropriate **Row Level Security (RLS)** and access policies.
 3. Establish security triggers (e.g., auto-creating profiles on signup).
 4. Register crucial transactional RPC functions (like atomic order processing `create_order_atomic` and balance deduction).
@@ -44,6 +44,8 @@ This migration:
 - Removes unsafe direct INSERT policies on orders/transactions
 
 Checkout and recharge **will not work** until this migration (or the updated full schema) is applied.
+
+The contact form also requires the `contact_messages` table (included in the full schema and security migration).
 
 ### Storage & Image Assets Setup (Recommended)
 1. In your Supabase dashboard, navigate to **Storage > Buckets**.
@@ -76,3 +78,21 @@ The admin panel will only appear for users with `role = 'admin'`.
 
 You now have a **real** database-backed store.
 Everything (products, auth, orders) lives in Supabase.
+
+## 7. Production RLS checklist (admin orders & profiles)
+
+The admin dashboard loads **all orders** and joins **customer names** from `profiles`. This is intentional, but only safe when RLS is configured correctly:
+
+| Table | Required policy |
+|-------|-----------------|
+| `profiles` | Users read **own** row; admins read **all** (`is_admin()`) |
+| `orders` | Users read **own** orders; admins read **all** |
+| `order_items` | Matches parent order access |
+
+The app also skips order fetches client-side unless `user.role === 'admin'`, but **never rely on the client alone** — run `supabase_security_migration.sql` (or the full schema) before going live.
+
+Verify in Supabase SQL Editor as a non-admin test user: `SELECT * FROM orders` and `SELECT * FROM profiles` should return only permitted rows.
+
+## 8. Bundle size notes
+
+Production JS is split into vendor chunks in `vite.config.js` (React, Supabase, motion, carousel, icons). Secondary routes are lazy-loaded from `App.jsx`. After `npm run build`, check `dist/assets/` sizes if you add heavy dependencies.

@@ -1,9 +1,12 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import StoreBackground from './components/backgrounds/StoreBackground';
 import { getCarouselGames, sortGamesByCarousel } from './lib/carouselUtils';
-import { CheckCircle, Loader2, Globe } from 'lucide-react';
+import { Loader2, Globe } from 'lucide-react';
+import AppToast from './components/ui/AppToast';
 import { supabase, resolveUserData } from './lib/supabase';
 import { createOrderAtomic, confirmOrderPayment, creditUserBalance } from './lib/orders';
+import { syncCartWithOffers, pickCartSnapshot, cartsAreEquivalent, getCartLineKey } from './lib/cartUtils';
+import ProtectedRoute from './components/routing/ProtectedRoute';
 import { fetchPaymentMethods } from './lib/storeSettings';
 import { applyTheme, fetchSiteTheme, normalizeThemeOverrides } from './lib/theme';
 import { DEFAULT_HOME_LAYOUT, fetchHomeLayout, normalizeHomeLayout } from './lib/homeLayout';
@@ -15,27 +18,29 @@ import Header from './components/layout/Header';
 import HomeView from './views/home/HomeView';
 import Footer from './components/layout/Footer';
 
-import LoginView from './views/auth/LoginView';
-import CartView from './views/CartView';
-import CheckoutView from './views/CheckoutView';
-import AllGamesView from './views/AllGamesView';
-import SaleOffersView from './views/SaleOffersView';
-import FAQView from './views/FAQView';
-import HowItWorksView from './views/HowItWorksView';
-import ContactView from './views/ContactView';
-import RechargeView from './views/RechargeView';
-import BuyView from './views/BuyView';
-import ProfileView from './views/profile/ProfileView';
+const LoginView = lazy(() => import('./views/auth/LoginView'));
+const CartView = lazy(() => import('./views/CartView'));
+const CheckoutView = lazy(() => import('./views/CheckoutView'));
+const AllGamesView = lazy(() => import('./views/AllGamesView'));
+const SaleOffersView = lazy(() => import('./views/SaleOffersView'));
+const FAQView = lazy(() => import('./views/FAQView'));
+const HowItWorksView = lazy(() => import('./views/HowItWorksView'));
+const ContactView = lazy(() => import('./views/ContactView'));
+const RechargeView = lazy(() => import('./views/RechargeView'));
+const BuyView = lazy(() => import('./views/BuyView'));
+const ProfileView = lazy(() => import('./views/profile/ProfileView'));
 
 import AdminOfferEditModal from './components/admin/AdminOfferEditModal';
 import AdminGameEditModal from './components/admin/AdminGameEditModal';
 const AdminView = lazy(() => import('./views/admin/AdminView'));
 const AdminCarouselManager = lazy(() => import('./components/admin/AdminCarouselManager'));
 
-// Statically import extracted views
-import GameDetail from './views/GameDetail';
-import OfferDetail from './views/OfferDetail';
-import SuccessView from './views/SuccessView';
+const GameDetail = lazy(() => import('./views/GameDetail'));
+const OfferDetail = lazy(() => import('./views/OfferDetail'));
+const SuccessView = lazy(() => import('./views/SuccessView'));
+const NotFoundView = lazy(() => import('./views/NotFoundView'));
+const PrivacyView = lazy(() => import('./views/PrivacyView'));
+const TermsView = lazy(() => import('./views/TermsView'));
 
 function PageLoader({ lang = 'ar' }) {
   return (
@@ -104,9 +109,12 @@ export default function App() {
   const location = useLocation();
   const hasShownLoginToast = useRef(false);
   const lastSyncedUserIdRef = useRef(null);
+
   const cartIconRef = useRef(null);
   const navigateRef = useRef(navigate);
-  navigateRef.current = navigate;
+  useEffect(() => {
+    navigateRef.current = navigate;
+  }, [navigate]);
 
   const [lang, setLang] = useState(() => {
     const saved = localStorage.getItem('echocore-lang');
@@ -121,6 +129,7 @@ export default function App() {
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [cart, setCart] = useState([]);
+  const [cartPriceUpdated, setCartPriceUpdated] = useState(false);
   const [paymentConfig, setPaymentConfig] = useState({
     shamcash: true,
     binance: false,
@@ -131,8 +140,8 @@ export default function App() {
   const [homeLayout, setHomeLayout] = useState(DEFAULT_HOME_LAYOUT);
   const [reviews, setReviews] = useState([]);
   const [notification, setNotification] = useState(null);
+  const toastTimerRef = useRef(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
   const [flyingItems, setFlyingItems] = useState([]);
   const [adminEditOffer, setAdminEditOffer] = useState(null);
   const [adminEditGame, setAdminEditGame] = useState(null);
@@ -143,6 +152,22 @@ export default function App() {
     return saved === 'en' || saved === 'ar' ? saved : 'ar';
   });
   const isAdmin = user?.role === 'admin';
+
+  const showToast = useCallback((message, type = 'success') => {
+    if (!message) return;
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setNotification({ message, type });
+    toastTimerRef.current = setTimeout(() => {
+      setNotification(null);
+      toastTimerRef.current = null;
+    }, type === 'error' ? 4500 : 3200);
+  }, []);
+
+  const showNotification = useCallback((msg) => showToast(msg, 'success'), [showToast]);
+
+  useEffect(() => () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+  }, []);
 
   const t = translations[lang];
 
@@ -219,6 +244,12 @@ export default function App() {
   };
 
   const fetchOrders = async () => {
+    // Client guard — server RLS must also restrict orders/profiles to admins in production.
+    if (user?.role !== 'admin') {
+      setOrders([]);
+      return;
+    }
+
     setLoadingOrders(true);
     try {
       // Fetch orders + items (without profile join to avoid RLS/relation issues)
@@ -327,9 +358,19 @@ export default function App() {
   const submitOrder = async (currentCart, paymentMethod, { paymentReference } = {}) => {
     if (!user?.id) throw new Error('Not logged in');
 
-    const total = currentCart.reduce((sum, item) => sum + parseFloat(item.price), 0);
+    const { items: syncedCart, removedCount } = syncCartWithOffers(currentCart, offers);
+    if (syncedCart.length === 0) {
+      throw new Error(lang === 'ar' ? 'السلة فارغة أو العروض لم تعد متاحة' : 'Cart is empty or offers are no longer available');
+    }
+    if (removedCount > 0) {
+      setCart(syncedCart);
+      throw new Error(lang === 'ar' ? 'تمت إزالة عروض غير متاحة من السلة' : 'Unavailable offers were removed from your cart');
+    }
+    setCart(syncedCart);
 
-    const items = currentCart.map((item) => ({
+    const total = syncedCart.reduce((sum, item) => sum + parseFloat(item.price), 0);
+
+    const items = syncedCart.map((item) => ({
       offer_id: item.id,
       name_snapshot: lang === 'ar' ? item.name_ar : item.name_en,
       price: parseFloat(item.price),
@@ -466,7 +507,7 @@ export default function App() {
 
     if (error) {
       console.error(error);
-      alert('Delete failed. Are you admin?');
+      showToast(t.failedToDelete || 'Delete failed. Are you admin?', 'error');
       return;
     }
     setOffers(prev => prev.filter(p => p.id !== productId));
@@ -502,7 +543,7 @@ export default function App() {
   };
 
   const createGame = async (gameData) => {
-    const { id, show_in_carousel, ...payload } = gameData;
+    const { id: _omitId, show_in_carousel, ...payload } = gameData;
 
     const { data, error } = await supabase
       .from('games')
@@ -636,7 +677,7 @@ export default function App() {
       await reorderCarouselGames(updates);
       showNotification(t.carouselUpdated || 'Carousel order saved');
     } catch (err) {
-      alert(err.message);
+      showToast(err.message, 'error');
     }
   };
 
@@ -761,7 +802,6 @@ export default function App() {
       refreshHomeLayout(),
       refreshReviews(),
     ]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist cart (simple universal localStorage)
@@ -772,7 +812,6 @@ export default function App() {
     } catch {
       // corrupted localStorage — start with empty cart
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -784,20 +823,32 @@ export default function App() {
     if (location.pathname === '/dashboard' && user?.role === 'admin') {
       fetchOrders();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, user?.role]);
 
-  const showNotification = (msg) => {
-    setNotification(msg);
-    setTimeout(() => setNotification(null), 3200);
-  };
+  // Keep cart prices in sync when offers load or admin prices change
+  useEffect(() => {
+    if (!offers.length || cart.length === 0) return;
+
+    const { items, removedCount, priceUpdated } = syncCartWithOffers(cart, offers);
+    if (!cartsAreEquivalent(cart, items)) {
+      setCart(items);
+      if (removedCount > 0) {
+        showNotification(
+          t.cartItemsRemoved
+            || (lang === 'ar' ? 'تمت إزالة عروض غير متاحة من السلة' : 'Unavailable offers were removed from your cart'),
+        );
+      }
+    }
+    if (priceUpdated) setCartPriceUpdated(true);
+  }, [offers, cart, lang, t.cartItemsRemoved, showNotification]);
 
   const addToCart = (product, e = null) => {
     if (!user) {
       navigate('/login');
       return;
     }
-    setCart(prev => [...prev, product]);
+    setCart((prev) => [...prev, pickCartSnapshot(product)]);
+    setCartPriceUpdated(false);
     showNotification(t.addMsg);
 
     // Cart icon bump animation
@@ -833,15 +884,16 @@ export default function App() {
 
   const getCartTotal = () => cart.reduce((total, item) => total + parseFloat(item.price), 0).toFixed(2);
 
-  const removeCartItem = (index) => {
-    setCart(prev => prev.filter((_, i) => i !== index));
+  const removeCartItem = (lineId) => {
+    setCart((prev) => prev.filter((item) => getCartLineKey(item) !== lineId));
   };
 
   // Called by LoginView after successful Supabase auth
-  const handleLoginSuccess = (userData) => {
+  const handleLoginSuccess = (userData, redirectTo = '/') => {
     lastSyncedUserIdRef.current = userData.id;
     setUser(userData);
-    navigate('/');
+    const destination = typeof redirectTo === 'string' && redirectTo.startsWith('/') ? redirectTo : '/';
+    navigate(destination);
     // Only show login toast once per actual login action
     if (!hasShownLoginToast.current) {
       hasShownLoginToast.current = true;
@@ -1005,7 +1057,7 @@ export default function App() {
           <Route
             path="/contact"
             element={
-              <ContactView t={t} lang={lang} />
+              <ContactView t={t} lang={lang} user={user} />
             }
           />
 
@@ -1062,29 +1114,35 @@ export default function App() {
           <Route
             path="/cart"
             element={
-              <CartView
-                t={t}
-                lang={lang}
-                cart={cart}
-                getCartTotal={getCartTotal}
-                onRemoveItem={removeCartItem}
-                onCheckout={() => navigate('/checkout')}
-              />
+              <ProtectedRoute user={user} loadingAuth={loadingAuth} lang={lang}>
+                <CartView
+                  t={t}
+                  lang={lang}
+                  cart={cart}
+                  getCartTotal={getCartTotal}
+                  onRemoveItem={removeCartItem}
+                  onCheckout={() => navigate('/checkout')}
+                  priceUpdated={cartPriceUpdated}
+                />
+              </ProtectedRoute>
             }
           />
 
           <Route
             path="/checkout"
             element={
-              <CheckoutView
-                t={t}
-                lang={lang}
-                cart={cart}
-                submitOrder={submitOrder}
-                onComplete={handleCheckoutComplete}
-                currentBalance={user?.balance || 0}
-                paymentConfig={paymentConfig}
-              />
+              <ProtectedRoute user={user} loadingAuth={loadingAuth} lang={lang}>
+                <CheckoutView
+                  t={t}
+                  lang={lang}
+                  cart={cart}
+                  submitOrder={submitOrder}
+                  onComplete={handleCheckoutComplete}
+                  currentBalance={user?.balance || 0}
+                  paymentConfig={paymentConfig}
+                  onNotify={showToast}
+                />
+              </ProtectedRoute>
             }
           />
 
@@ -1127,33 +1185,42 @@ export default function App() {
           <Route
             path="/recharge"
             element={
-              <RechargeView
-                t={t}
-                lang={lang}
-                navigate={navigate}
-                user={user}
-                currentBalance={user?.balance || 0}
-                onRechargeComplete={handleRecharge}
-                paymentConfig={paymentConfig}
-              />
+              <ProtectedRoute user={user} loadingAuth={loadingAuth} lang={lang}>
+                <RechargeView
+                  t={t}
+                  lang={lang}
+                  navigate={navigate}
+                  user={user}
+                  currentBalance={user?.balance || 0}
+                  onRechargeComplete={handleRecharge}
+                  paymentConfig={paymentConfig}
+                  onNotify={showToast}
+                />
+              </ProtectedRoute>
             }
           />
+
+          <Route path="/privacy" element={<PrivacyView lang={lang} />} />
+          <Route path="/terms" element={<TermsView lang={lang} />} />
 
           {/* Instant Buy + UID entry page */}
           <Route
             path="/buy/:offerId"
             element={
-              <BuyView
-                t={t}
-                lang={lang}
-                navigate={navigate}
-                user={user}
-                games={games}
-                offers={offers}
-                currentBalance={user?.balance || 0}
-                onPurchase={submitPurchase}
-                paymentConfig={paymentConfig}
-              />
+              <ProtectedRoute user={user} loadingAuth={loadingAuth} lang={lang}>
+                <BuyView
+                  t={t}
+                  lang={lang}
+                  navigate={navigate}
+                  user={user}
+                  games={games}
+                  offers={offers}
+                  currentBalance={user?.balance || 0}
+                  onPurchase={submitPurchase}
+                  paymentConfig={paymentConfig}
+                  onNotify={showToast}
+                />
+              </ProtectedRoute>
             }
           />
 
@@ -1184,6 +1251,7 @@ export default function App() {
                   onHomeLayoutSaved={refreshHomeLayout}
                   reviews={reviews}
                   onReviewsChanged={refreshReviews}
+                  onNotify={showToast}
                 />
               ) : (
                 <Navigate to="/" replace />
@@ -1197,8 +1265,10 @@ export default function App() {
             element={<Navigate to="/" replace />}
           />
 
-          {/* Catch all */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route
+            path="*"
+            element={<NotFoundView t={t} lang={lang} navigate={navigate} />}
+          />
         </Routes>
         </Suspense>
       </main>
@@ -1284,14 +1354,7 @@ export default function App() {
       )}
 
       {notification && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="fixed bottom-6 right-4 left-4 sm:left-auto sm:right-6 sm:w-80 toast toast-enter text-[var(--text-primary)] px-5 py-3.5 rounded-xl flex items-center gap-3 z-50"
-        >
-          <CheckCircle className="text-[var(--accent)] w-5 h-5 flex-shrink-0" strokeWidth={2.5} />
-          <span className="font-semibold text-sm leading-snug">{notification}</span>
-        </div>
+        <AppToast message={notification.message} type={notification.type} />
       )}
     </div>
       </div>

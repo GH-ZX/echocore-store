@@ -70,7 +70,7 @@ export async function createShamcashInvoice({ apiBaseUrl, apiToken, accountId, a
     try {
       await shamcashRequest(apiBaseUrl, apiToken, '/balances', { account_id: accountId });
     } catch (err) {
-      throw new Error(`ShamCash not ready: ${err.message}`);
+      throw new Error(`ShamCash not ready: ${err.message}`, { cause: err });
     }
   }
 

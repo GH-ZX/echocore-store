@@ -66,10 +66,6 @@ export default function ProfileView({
   const [nameError, setNameError] = useState('');
 
   useEffect(() => {
-    setNameDraft(user?.name || '');
-  }, [user?.name]);
-
-  useEffect(() => {
     if (!user?.id) return;
 
     const load = async () => {
@@ -205,7 +201,10 @@ export default function ProfileView({
                   <h1 className="text-xl sm:text-2xl md:text-3xl font-black truncate">{user.name}</h1>
                   <button
                     type="button"
-                    onClick={() => setEditingName(true)}
+                    onClick={() => {
+                      setNameDraft(user?.name || '');
+                      setEditingName(true);
+                    }}
                     className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors flex-shrink-0"
                     aria-label={t.editName || 'Edit name'}
                   >

@@ -1,0 +1,78 @@
+const CART_SNAPSHOT_FIELDS = [
+  'id',
+  'game_id',
+  'name_ar',
+  'name_en',
+  'price',
+  'color',
+  'is_sale',
+  'original_price',
+  'sale_image_url',
+];
+
+function createCartLineId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `line-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/** Slim offer snapshot for cart storage (avoids stale nested data). */
+export function pickCartSnapshot(offer, existingLineId) {
+  const snapshot = CART_SNAPSHOT_FIELDS.reduce((acc, key) => {
+    if (offer[key] !== undefined) acc[key] = offer[key];
+    return acc;
+  }, {});
+
+  snapshot._cartLineId = existingLineId || createCartLineId();
+  return snapshot;
+}
+
+/** Reconcile cart line items with current offer prices from the catalog. */
+export function syncCartWithOffers(cart, offers = []) {
+  if (!Array.isArray(cart) || cart.length === 0) {
+    return { items: [], removedCount: 0, priceUpdated: false };
+  }
+
+  const offerMap = new Map(offers.map((offer) => [String(offer.id), offer]));
+  let removedCount = 0;
+  let priceUpdated = false;
+
+  const items = cart
+    .map((item) => {
+      const fresh = offerMap.get(String(item.id));
+      if (!fresh || fresh.active === false) {
+        removedCount += 1;
+        return null;
+      }
+
+      const nextPrice = parseFloat(fresh.price);
+      const prevPrice = parseFloat(item.price);
+      if (!Number.isNaN(nextPrice) && !Number.isNaN(prevPrice) && nextPrice !== prevPrice) {
+        priceUpdated = true;
+      }
+
+      return pickCartSnapshot(fresh, item._cartLineId);
+    })
+    .filter(Boolean);
+
+  return { items, removedCount, priceUpdated };
+}
+
+export function getCartLineKey(item) {
+  return item._cartLineId || String(item.id);
+}
+
+export function cartsAreEquivalent(left = [], right = []) {
+  if (left.length !== right.length) return false;
+  return left.every((item, index) => {
+    const other = right[index];
+    return (
+      String(item.id) === String(other.id)
+      && item._cartLineId === other._cartLineId
+      && parseFloat(item.price) === parseFloat(other.price)
+      && item.name_en === other.name_en
+      && item.name_ar === other.name_ar
+    );
+  });
+}

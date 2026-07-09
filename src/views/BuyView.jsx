@@ -13,7 +13,9 @@ export default function BuyView({
   currentBalance = 0, 
   onPurchase,
   paymentConfig = {},
+  onNotify,
 }) {
+  const notifyError = (message) => onNotify?.(message, 'error');
   const { offerId } = useParams();
 
   const offer = offers.find(o => String(o.id) === String(offerId));
@@ -26,12 +28,44 @@ export default function BuyView({
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSimModal, setShowSimModal] = useState(false);
   const [simRef, setSimRef] = useState('');
+  const [pendingShamRef, setPendingShamRef] = useState('');
   const merchantName = paymentConfig.shamcashMerchantName || 'ECHOCORE Store';
 
   // For games with 'both' redemption, user must choose one
   const [redemptionChoice, setRedemptionChoice] = useState('uid');
 
-  if (!offer || !game) {
+  const isValidOffer = !!(offer && game);
+  const needsUid = isValidOffer && (game.redemption_method === 'uid' || game.redemption_method === 'both');
+  const needsCode = isValidOffer && (game.redemption_method === 'redeem_code' || game.redemption_method === 'both');
+  const isBoth = isValidOffer && game.redemption_method === 'both';
+  const showUidForm = needsUid && (!isBoth || redemptionChoice === 'uid');
+
+  const price = offer ? parseFloat(offer.price) : 0;
+  const total = price.toFixed(2);
+  const hasEnough = currentBalance >= price;
+
+  const paymentMethods = useMemo(
+    () => (isValidOffer
+      ? buildPaymentMethods(t, lang, paymentConfig, { includeBalance: true, currentBalance: hasEnough ? currentBalance : 0 })
+      : []),
+    [t, lang, paymentConfig, hasEnough, currentBalance, isValidOffer]
+  );
+
+  const usableMethods = paymentMethods.filter((m) => !m.disabled && !m.comingSoon);
+
+  const [selectedMethod, setSelectedMethod] = useState(() => {
+    const methods = buildPaymentMethods(t, lang, paymentConfig, { includeBalance: true, currentBalance });
+    return currentBalance >= (offer ? parseFloat(offer.price) : 0) ? 'balance' : getDefaultPaymentMethod(methods);
+  });
+
+  useEffect(() => {
+    if (!isValidOffer) return;
+    if (!usableMethods.some((m) => m.id === selectedMethod)) {
+      setSelectedMethod(hasEnough ? 'balance' : getDefaultPaymentMethod(paymentMethods));
+    }
+  }, [paymentMethods, selectedMethod, usableMethods, hasEnough, isValidOffer]);
+
+  if (!isValidOffer) {
     return (
       <div className="max-w-md mx-auto text-center py-20">
         <p className="text-xl text-[var(--text-sec)]">{t.offerNotFound || 'Offer not found'}</p>
@@ -39,33 +73,6 @@ export default function BuyView({
       </div>
     );
   }
-
-  const needsUid = game.redemption_method === 'uid' || game.redemption_method === 'both';
-  const needsCode = game.redemption_method === 'redeem_code' || game.redemption_method === 'both';
-  const isBoth = game.redemption_method === 'both';
-  const showUidForm = needsUid && (!isBoth || redemptionChoice === 'uid');
-
-  const price = parseFloat(offer.price);
-  const total = price.toFixed(2);
-  const hasEnough = currentBalance >= price;
-
-  const paymentMethods = useMemo(
-    () => buildPaymentMethods(t, lang, paymentConfig, { includeBalance: true, currentBalance: hasEnough ? currentBalance : 0 }),
-    [t, lang, paymentConfig, hasEnough, currentBalance]
-  );
-
-  const usableMethods = paymentMethods.filter((m) => !m.disabled && !m.comingSoon);
-
-  const [selectedMethod, setSelectedMethod] = useState(() => {
-    const methods = buildPaymentMethods(t, lang, paymentConfig, { includeBalance: true, currentBalance });
-    return hasEnough ? 'balance' : getDefaultPaymentMethod(methods);
-  });
-
-  useEffect(() => {
-    if (!usableMethods.some((m) => m.id === selectedMethod)) {
-      setSelectedMethod(hasEnough ? 'balance' : getDefaultPaymentMethod(paymentMethods));
-    }
-  }, [paymentMethods, selectedMethod, usableMethods, hasEnough]);
 
   const currentMethod = paymentMethods.find((m) => m.id === selectedMethod) || usableMethods[0];
 
@@ -96,7 +103,7 @@ export default function BuyView({
           navigate(`/success?orderId=${result.orderId}`);
         }
       } catch (e) {
-        alert((t.error || 'Error') + ': ' + (e.message || ''));
+        notifyError(`${t.error || 'Error'}: ${e.message || ''}`);
       } finally {
         setIsProcessing(false);
       }
@@ -104,10 +111,11 @@ export default function BuyView({
     }
 
     if (!usableMethods.some((m) => m.id === selectedMethod)) {
-      alert(lang === 'ar' ? 'طريقة الدفع غير متاحة' : 'Payment method unavailable');
+      notifyError(lang === 'ar' ? 'طريقة الدفع غير متاحة' : 'Payment method unavailable');
       return;
     }
 
+    setPendingShamRef(`ECHOCORE-${Date.now().toString().slice(-8)}`);
     setShowSimModal(true);
     setSimRef('');
   };
@@ -131,7 +139,7 @@ export default function BuyView({
         }
       }, 850);
     } catch (e) {
-      alert('Payment simulation / order failed: ' + (e.message || ''));
+      notifyError(`${t.paymentFailed || 'Payment failed'}: ${e.message || ''}`);
       setIsProcessing(false);
       setShowSimModal(false);
     }
@@ -334,7 +342,7 @@ export default function BuyView({
 
             <div className="p-4 bg-black/70 rounded-xl mb-5 text-center">
               <div className="text-green-400 mb-1 text-sm">SHAMCASH REFERENCE</div>
-              <div className="font-mono text-2xl tracking-widest">ECHOCORE-{Date.now().toString().slice(-8)}</div>
+              <div className="font-mono text-2xl tracking-widest">{pendingShamRef || simRef}</div>
               <p className="text-xs mt-2 text-[var(--text-muted)]">
                 {lang === 'ar' ? 'ادفع عبر تطبيق ShamCash ثم أكّد' : 'Pay in ShamCash app, then confirm'}
               </p>

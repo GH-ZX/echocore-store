@@ -386,3 +386,42 @@ STABLE AS $$
 $$;
 
 GRANT EXECUTE ON FUNCTION public.get_home_layout() TO anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 8. CONTACT FORM MESSAGES
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.contact_messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  name text,
+  email text NOT NULL,
+  message text NOT NULL,
+  status text NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'read', 'archived')),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS contact_messages_status_idx ON public.contact_messages (status, created_at DESC);
+
+ALTER TABLE public.contact_messages ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Anyone can submit contact messages" ON public.contact_messages;
+CREATE POLICY "Anyone can submit contact messages" ON public.contact_messages
+  FOR INSERT TO anon, authenticated
+  WITH CHECK (
+    char_length(email) BETWEEN 4 AND 255
+    AND email ~* '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+    AND char_length(message) BETWEEN 10 AND 5000
+    AND (user_id IS NULL OR user_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS "Admins read contact messages" ON public.contact_messages;
+CREATE POLICY "Admins read contact messages" ON public.contact_messages
+  FOR SELECT TO authenticated
+  USING (public.is_admin());
+
+DROP POLICY IF EXISTS "Admins update contact messages" ON public.contact_messages;
+CREATE POLICY "Admins update contact messages" ON public.contact_messages
+  FOR UPDATE TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());

@@ -222,10 +222,9 @@ These are local edits not yet committed — **merge carefully**:
 
 ## Known gaps / TODOs
 
-- No dedicated 404 page (catch-all → home)
-- Privacy/Terms footer links point to `/` (placeholder)
-- `mockProducts.js` legacy — products come from Supabase now
-- README partially outdated (still mentions mockProducts for adding products)
+- `App.jsx` remains a large god component (context split optional)
+- Bundle size ~900 KB JS raw — monitor as features grow (`vite.config.js` manual chunks + route lazy loading)
+- Admin order/profile reads depend on production RLS (`supabase_security_migration.sql`)
 
 ---
 
@@ -244,8 +243,7 @@ src/
 │   ├── *View.jsx           # Page views
 │   └── Admin*.jsx          # Admin modals/settings
 ├── data/
-│   ├── translations.js
-│   └── mockProducts.js     # Legacy
+│   └── translations.js
 └── lib/
     ├── supabase.js, theme.js, homeLayout.js, storeSettings.js
     ├── paymentMethods.js, shamcashApi.js

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, ImageIcon, Loader2, Sparkles } from 'lucide-react';
+import { ImageIcon, Loader2, Sparkles } from 'lucide-react';
 import { searchGameImages } from '../../lib/gameImageSearch';
 
 const QUICK_SUFFIXES = ['', 'game', 'wallpaper', 'key art'];

@@ -17,7 +17,6 @@ dist-ssr/
 
 # Local env files
 .env
-.env.*
 
 # OS files
 .DS_Store
@@ -42,3 +41,4 @@ coverage/
 npm-debug.log
 
 agent-tools/
+terminals/

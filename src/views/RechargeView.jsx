@@ -2,12 +2,14 @@ import { useState, useEffect, useMemo } from 'react';
 import { ArrowLeft, Loader2, CheckCircle, Wallet } from 'lucide-react';
 import { buildPaymentMethods, getDefaultPaymentMethod } from '../lib/paymentMethods';
 
-export default function RechargeView({ t, lang, navigate, user, currentBalance, onRechargeComplete, paymentConfig = {} }) {
+export default function RechargeView({ t, lang, navigate, user, currentBalance, onRechargeComplete, paymentConfig = {}, onNotify }) {
+  const notifyError = (message) => onNotify?.(message, 'error');
   const [selectedAmount, setSelectedAmount] = useState(10);
   const [customAmount, setCustomAmount] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSimModal, setShowSimModal] = useState(false);
   const [simRef, setSimRef] = useState('');
+  const [pendingShamRef, setPendingShamRef] = useState('');
 
   const paymentMethods = useMemo(
     () => buildPaymentMethods(t, lang, paymentConfig),
@@ -44,14 +46,15 @@ export default function RechargeView({ t, lang, navigate, user, currentBalance, 
   const startRecharge = () => {
     if (!isValidAmount || !usableMethods.length) return;
     if (!usableMethods.some((m) => m.id === selectedMethod)) {
-      alert(lang === 'ar' ? 'اختر طريقة دفع متاحة' : 'Select an available payment method');
+      notifyError(lang === 'ar' ? 'اختر طريقة دفع متاحة' : 'Select an available payment method');
       return;
     }
+    setPendingShamRef(`ECHOCORE-${Date.now().toString().slice(-7)}`);
     setShowSimModal(true);
     setSimRef('');
   };
 
-  const simulateApiCall = async (method, amount) => {
+  const simulateApiCall = async (method, _amount) => {
     await new Promise((r) => setTimeout(r, 1200));
     const refBase = `ECHOCORE-${Date.now().toString(36).toUpperCase()}`;
 
@@ -69,7 +72,7 @@ export default function RechargeView({ t, lang, navigate, user, currentBalance, 
 
   const confirmSimulatedPayment = async () => {
     if (!isValidAmount || !user?.id) {
-      alert('Invalid amount or not logged in');
+      notifyError(lang === 'ar' ? 'مبلغ غير صالح أو لم تسجل الدخول' : 'Invalid amount or not logged in');
       return;
     }
 
@@ -84,12 +87,10 @@ export default function RechargeView({ t, lang, navigate, user, currentBalance, 
         setSimRef('');
       }, 900);
     } catch (err) {
-      alert('Recharge failed: ' + (err.message || 'Unknown error'));
+      notifyError(`${t.rechargeFailed || 'Recharge failed'}: ${err.message || ''}`);
       setIsProcessing(false);
     }
   };
-
-  const selectedMethodDef = paymentMethods.find((m) => m.id === selectedMethod);
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -195,7 +196,7 @@ export default function RechargeView({ t, lang, navigate, user, currentBalance, 
 
             <div className="bg-black/60 p-4 rounded-2xl mb-5 text-center">
               <div className="text-green-400 text-sm mb-1">SHAMCASH REFERENCE</div>
-              <div className="font-mono text-lg tracking-wider mb-2">ECHOCORE-{Date.now().toString().slice(-7)}</div>
+              <div className="font-mono text-lg tracking-wider mb-2">{pendingShamRef || simRef}</div>
               <p className="text-xs text-[var(--text-muted)]">
                 {lang === 'ar'
                   ? 'افتح تطبيق ShamCash وادفع لهذا المرجع. اضغط تأكيد بعد الدفع.'
