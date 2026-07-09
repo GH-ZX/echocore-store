@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Trash2, Upload, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uploadImage } from '../../lib/uploadImage';
@@ -47,14 +47,16 @@ export default function AdminView({
   const notifyError = (message) => onNotify?.(message, 'error');
   const notifySuccess = (message) => onNotify?.(message, 'success');
   const location = useLocation();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(() => location.state?.adminTab || 'overview');
   const tabButtonRefs = useRef({});
 
   useEffect(() => {
-    if (location.state?.adminTab) {
-      setActiveTab(location.state.adminTab);
-    }
-  }, [location.state?.adminTab]);
+    const tab = location.state?.adminTab;
+    if (!tab) return;
+    setActiveTab(tab);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state?.adminTab, location.pathname, navigate]);
   const [newProduct, setNewProduct] = useState({
     game_id: '',
     name_en: '',

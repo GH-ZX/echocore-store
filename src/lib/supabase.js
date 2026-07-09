@@ -61,11 +61,16 @@ export const resolveUserData = async (authUser, { createIfMissing = false } = {}
     }
   }
 
+  if (!profile) {
+    // Transient profile fetch failure — caller should keep existing user state.
+    return null
+  }
+
   return {
     id: authUser.id,
     email: authUser.email,
-    name: profile?.name || authUser.email?.split('@')[0] || 'User',
-    role: profile?.role || 'user',
-    balance: profile?.balance ?? 0,
+    name: profile.name || authUser.email?.split('@')[0] || 'User',
+    role: profile.role || 'user',
+    balance: profile.balance ?? 0,
   }
 }

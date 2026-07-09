@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, CheckCircle, XCircle, RefreshCw, Wallet } from 'lucide-react';
 import {
   fetchAdminRechargeRequests,
@@ -8,15 +8,28 @@ import {
 
 export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, onNotify }) {
   const isAr = lang === 'ar';
-  const notifyError = (message) => onNotify?.(message, 'error');
-  const notifySuccess = (message) => onNotify?.(message, 'success');
+  const onNotifyRef = useRef(onNotify);
+  useEffect(() => {
+    onNotifyRef.current = onNotify;
+  }, [onNotify]);
+
+  const notifyError = useCallback((message) => {
+    onNotifyRef.current?.(message, 'error');
+  }, []);
+
+  const notifySuccess = useCallback((message) => {
+    onNotifyRef.current?.(message, 'success');
+  }, []);
 
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
   const [filter, setFilter] = useState('payment_sent');
   const [requests, setRequests] = useState([]);
+  const loadInFlightRef = useRef(false);
 
   const load = useCallback(async () => {
+    if (loadInFlightRef.current) return;
+    loadInFlightRef.current = true;
     setLoading(true);
     try {
       const data = await fetchAdminRechargeRequests(filter);
@@ -26,6 +39,7 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
       setRequests([]);
     } finally {
       setLoading(false);
+      loadInFlightRef.current = false;
     }
   }, [filter, notifyError]);
 
