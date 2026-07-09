@@ -18,8 +18,8 @@ export default function LegacyOfferRedirect({
     if (loading || !token) return;
     if (offer && game) {
       const path = target === 'buy'
-        ? getGameOfferBuyPath(offer, game)
-        : getGameOfferPath(offer, game);
+        ? getGameOfferBuyPath(offer, games)
+        : getGameOfferPath(offer, games);
       navigate(path, { replace: true });
     }
   }, [loading, token, offer, game, navigate, target]);

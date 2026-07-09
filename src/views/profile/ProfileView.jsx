@@ -17,6 +17,7 @@ import {
   Mail,
   Loader2,
   Sparkles,
+  Inbox,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import G2bulkWalletCard from '../../components/ui/G2bulkWalletCard';
@@ -299,9 +300,11 @@ export default function ProfileView({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
         {(isAdmin ? [
           { icon: ShieldCheck, label: t.adminDash, path: '/dashboard' },
+          { icon: Inbox, label: t.siteInboxTitle || (isAr ? 'بريد الموقع' : 'Site inbox'), path: '/notifications' },
           { icon: Gamepad2, label: t.allGames || (isAr ? 'تصفح الألعاب' : 'Browse Games'), path: '/games' },
           { icon: ShoppingCart, label: t.cart || (isAr ? 'السلة' : 'Cart'), path: '/cart' },
         ] : [
+          { icon: Inbox, label: t.siteInboxTitle || (isAr ? 'بريد الموقع' : 'Site inbox'), path: '/notifications' },
           { icon: Gamepad2, label: t.allGames || (isAr ? 'تصفح الألعاب' : 'Browse Games'), path: '/games' },
           { icon: ShoppingCart, label: t.cart || (isAr ? 'السلة' : 'Cart'), path: '/cart' },
           { icon: Wallet, label: t.recharge || (isAr ? 'شحن الرصيد' : 'Recharge'), action: onRecharge },

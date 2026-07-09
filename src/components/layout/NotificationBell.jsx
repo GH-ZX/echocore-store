@@ -39,6 +39,7 @@ export default function NotificationBell({
   onMarkAllRead = () => {},
   onClearAll = () => {},
   onNavigate = () => {},
+  onViewAllInbox = () => {},
 }) {
   const ref = useRef(null);
 
@@ -180,6 +181,19 @@ export default function NotificationBell({
                   );
                 })
               )}
+            </div>
+
+            <div className="header-notif-foot">
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onViewAllInbox();
+                }}
+                className="header-notif-view-all"
+              >
+                {t.viewAllNotifications || (lang === 'ar' ? 'فتح بريد الموقع' : 'Open site inbox')}
+              </button>
             </div>
           </motion.div>
         )}

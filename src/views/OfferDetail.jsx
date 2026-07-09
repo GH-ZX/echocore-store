@@ -21,7 +21,8 @@ export default function OfferDetail({
   onBuyNow,
 }) {
   const { gameSlug, offerSlug } = useParams();
-  const { offer, game } = resolveOfferRoute(offers, games, { gameSlug, offerSlug });
+  const { offer, game, storefrontGame } = resolveOfferRoute(offers, games, { gameSlug, offerSlug });
+  const displayGame = storefrontGame || game;
   const isAdmin = user?.role === 'admin';
   const [editingOffer, setEditingOffer] = useState(false);
   const [editingGame, setEditingGame] = useState(false);
@@ -50,10 +51,10 @@ export default function OfferDetail({
     <div className="max-w-4xl mx-auto">
       <div className="mb-4 sm:mb-6 flex flex-wrap items-center justify-between gap-2">
         <button
-          onClick={() => (game ? navigate(`/game/${game.slug || game.id}`) : navigate('/'))}
+          onClick={() => (displayGame ? navigate(`/game/${displayGame.slug || displayGame.id}`) : navigate('/'))}
           className="btn btn-secondary text-sm sm:text-base"
         >
-          ← Back to {game ? (lang === 'ar' ? game.name_ar : game.name_en) : 'Game'}
+          ← Back to {displayGame ? (lang === 'ar' ? displayGame.name_ar : displayGame.name_en) : 'Game'}
         </button>
         {isAdmin && (
           <div className="flex flex-wrap items-center gap-2">

@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Eye, EyeOff } from 'lucide-react';
 import ProductCarousel from './ProductCarousel';
 import SaleOfferCard from '../../components/ui/SaleOfferCard';
 import HomeGameCard from '../../components/ui/HomeGameCard';
 import CustomerReviewsSection from './CustomerReviewsSection';
 import AdminAddCard from '../../components/admin/AdminAddCard';
 import { getCarouselGames } from '../../lib/carouselUtils';
+import { getDisplayGameForOffer, getStorefrontGames, offerBelongsToStorefront } from '../../lib/gameRegions';
+import { countActiveOffers, getTopupGames, getVoucherGames } from '../../lib/catalogUtils';
 import { pickStableOffers } from '../../lib/customerReviews';
 import { DEFAULT_HOME_LAYOUT, getSectionLabel, normalizeHomeLayout } from '../../lib/homeLayout';
 
@@ -41,8 +44,9 @@ export default function HomeView({
   onMoveCarouselGame,
   onBuyNow,
   isAdmin = false,
-  searchQuery = '',
-  onSearchChange: _onSearchChange,
+  isAdminUser = false,
+  homePreviewAsUser = false,
+  onToggleHomePreview,
   homeLayout = DEFAULT_HOME_LAYOUT,
   reviews = [],
   user = null,
@@ -65,8 +69,17 @@ export default function HomeView({
 
   const layout = useMemo(() => normalizeHomeLayout(homeLayout), [homeLayout]);
 
+  const storefrontGames = useMemo(() => getStorefrontGames(games), [games]);
+  const topupGames = useMemo(() => getTopupGames(games), [games]);
+  const voucherGames = useMemo(
+    () => getVoucherGames(games)
+      .map((game) => ({ ...game, offerCount: countActiveOffers(game.id, offers) }))
+      .filter((game) => game.offerCount > 0 || isAdmin),
+    [games, offers, isAdmin],
+  );
+
   const offersWithGames = useMemo(
-    () => offers.filter((offer) => games.some((game) => game.id === offer.game_id)),
+    () => offers.filter((offer) => offerBelongsToStorefront(offer, games)),
     [offers, games],
   );
 
@@ -99,7 +112,7 @@ export default function HomeView({
     return map;
   }, [layout, offersWithGames]);
 
-  const carouselGames = getCarouselGames(games);
+  const carouselGames = getCarouselGames(storefrontGames);
 
   const carouselItems = carouselGames.map((g) => ({
     id: g.id,
@@ -114,13 +127,6 @@ export default function HomeView({
     category: 'games',
     price: 0,
   }));
-
-  const filteredGames = searchQuery.trim()
-    ? games.filter((g) =>
-        (g.name_en || '').toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
-        (g.name_ar || '').toLowerCase().includes(searchQuery.toLowerCase().trim())
-      )
-    : games;
 
   const renderSectionHeading = (section, style = 'sale') => {
     const title = getSectionLabel(section, lang);
@@ -200,7 +206,7 @@ export default function HomeView({
 
   const renderOfferCards = (items, section, addOptions = {}) => {
     const showAddCard = isAdmin && onAddOffer;
-    const visibleItems = items.filter((offer) => games.some((game) => game.id === offer.game_id));
+    const visibleItems = items.filter((offer) => offerBelongsToStorefront(offer, games));
     const hasItems = visibleItems.length > 0;
 
     if (!hasItems && !showAddCard && !loading) return null;
@@ -219,7 +225,7 @@ export default function HomeView({
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 items-stretch">
           {visibleItems.map((offer) => {
-            const game = games.find((g) => g.id === offer.game_id);
+            const game = getDisplayGameForOffer(offer, games);
 
             return (
               <SaleOfferCard
@@ -317,22 +323,69 @@ export default function HomeView({
       }
 
       case 'games': {
-        const isSearching = !!searchQuery.trim();
         const gamesSection = {
           ...section,
-          title_en: isSearching ? (t.searchResults || 'Search Results') : (section.title_en || t.chooseGame || 'Choose a Game'),
-          title_ar: isSearching ? (t.searchResults || 'نتائج البحث') : (section.title_ar || t.chooseGame || 'اختر لعبتك'),
+          title_en: section.title_en || t.chooseGame || 'Choose a Game',
+          title_ar: section.title_ar || t.chooseGame || 'اختر لعبتك',
         };
-        return renderGamesGrid(filteredGames, gamesSection, {
-          previewLimit: isSearching ? undefined : HOME_GAMES_PREVIEW,
-          totalCount: filteredGames.length,
-          showMoreLink: !isSearching,
+        return renderGamesGrid(topupGames, gamesSection, {
+          previewLimit: HOME_GAMES_PREVIEW,
+          totalCount: topupGames.length,
+          showMoreLink: true,
         });
+      }
+
+      case 'gift_cards': {
+        const limit = Math.max(1, Math.min(12, Number(section.limit) || 6));
+        const giftSection = {
+          ...section,
+          title_en: section.title_en || t.giftCards || 'Gift Cards & Vouchers',
+          title_ar: section.title_ar || t.giftCards || 'بطاقات الهدايا',
+        };
+        if (voucherGames.length === 0 && !(isAdmin && onAddGame)) return null;
+        return (
+          <div className="games-section">
+            {renderSectionHeading(giftSection, 'games')}
+            {loading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="card h-48 sm:h-52 animate-pulse bg-[var(--bg-surface)]" />
+                ))}
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {voucherGames.slice(0, limit).map((game) => (
+                    <HomeGameCard
+                      key={game.id}
+                      game={game}
+                      lang={lang}
+                      t={t}
+                      variant="voucher"
+                      offerCount={game.offerCount}
+                      onSelectGame={onSelectGame}
+                      onEditGame={onEditGame}
+                      isAdmin={isAdmin}
+                    />
+                  ))}
+                </div>
+                {voucherGames.length > limit && (
+                  <div className="flex justify-center mt-6">
+                    <Link to="/gift-cards" className="btn btn-secondary inline-flex items-center gap-2">
+                      {t.viewAllGiftCards || (lang === 'ar' ? 'كل بطاقات الهدايا' : 'View all gift cards')}
+                      <ChevronDown className="w-4 h-4" />
+                    </Link>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        );
       }
 
       case 'game_picks': {
         const picked = (section.game_ids || [])
-          .map((id) => games.find((game) => game.id === id))
+          .map((id) => storefrontGames.find((game) => game.id === id) || games.find((game) => game.id === id))
           .filter(Boolean);
         if (picked.length === 0 && !(isAdmin && onAddGame)) return null;
         return renderGamesGrid(picked, section, {});
@@ -343,8 +396,37 @@ export default function HomeView({
     }
   };
 
+  const isAr = lang === 'ar';
+
+  const previewFab = isAdminUser && typeof document !== 'undefined'
+    ? createPortal(
+      <button
+        type="button"
+        className={`home-preview-fab ${homePreviewAsUser ? 'home-preview-fab--active' : ''}`}
+        onClick={() => onToggleHomePreview?.(!homePreviewAsUser)}
+        title={
+          homePreviewAsUser
+            ? (t.homePreviewExit || (isAr ? 'العودة لوضع المسؤول' : 'Exit preview'))
+            : (t.homePreviewAsUser || (isAr ? 'معاينة كزائر' : 'Preview as customer'))
+        }
+        aria-label={
+          homePreviewAsUser
+            ? (t.homePreviewExit || (isAr ? 'العودة لوضع المسؤول' : 'Exit preview'))
+            : (t.homePreviewAsUser || (isAr ? 'معاينة كزائر' : 'Preview as customer'))
+        }
+        aria-pressed={homePreviewAsUser}
+      >
+        {homePreviewAsUser
+          ? <EyeOff className="w-5 h-5" strokeWidth={2} />
+          : <Eye className="w-5 h-5" strokeWidth={2} />}
+      </button>,
+      document.body,
+    )
+    : null;
+
   return (
     <div className="space-y-10 sm:space-y-14 md:space-y-16 animate-fade-in">
+      {previewFab}
       {layout.map((section) => {
         const content = renderSection(section);
         if (!content) return null;

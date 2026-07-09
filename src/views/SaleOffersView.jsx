@@ -1,5 +1,6 @@
 import React from 'react';
 import SaleOfferCard from '../components/ui/SaleOfferCard';
+import { getDisplayGameForOffer } from '../lib/gameRegions';
 
 export default function SaleOffersView({
   games = [],
@@ -45,7 +46,7 @@ export default function SaleOffersView({
       ) : (
         <div className="grid grid-cols-1 min-[400px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
           {saleOffers.map((offer) => {
-            const game = games.find(g => g.id === offer.game_id);
+            const game = getDisplayGameForOffer(offer, games);
             return (
               <SaleOfferCard
                 key={offer.id}

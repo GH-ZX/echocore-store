@@ -22,6 +22,13 @@ export const HOME_SECTION_TYPES = {
     descriptionAr: 'شبكة بكل الألعاب في المتجر',
     singleton: true,
   },
+  gift_cards: {
+    labelEn: 'Gift Cards & Vouchers',
+    labelAr: 'بطاقات الهدايا',
+    descriptionEn: 'Instant redeem-code products from G2Bulk',
+    descriptionAr: 'أكواد شحن فورية من G2Bulk',
+    singleton: true,
+  },
   game_picks: {
     labelEn: 'Custom Game Cards',
     labelAr: 'بطاقات ألعاب مخصصة',
@@ -77,6 +84,14 @@ export const DEFAULT_HOME_LAYOUT = [
     limit: 8,
   },
   {
+    id: 'gift_cards',
+    type: 'gift_cards',
+    enabled: true,
+    title_en: 'Gift Cards & Vouchers',
+    title_ar: 'بطاقات الهدايا',
+    limit: 6,
+  },
+  {
     id: 'games',
     type: 'games',
     enabled: true,
@@ -109,6 +124,9 @@ function defaultSectionConfig(type, id) {
   }
   if (type === 'games') {
     return { ...base, title_en: 'Choose a Game', title_ar: 'اختر لعبتك' };
+  }
+  if (type === 'gift_cards') {
+    return { ...base, title_en: 'Gift Cards & Vouchers', title_ar: 'بطاقات الهدايا', limit: 6 };
   }
   if (type === 'game_picks' || type === 'offer_picks') {
     return {

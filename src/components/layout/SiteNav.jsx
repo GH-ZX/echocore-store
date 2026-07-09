@@ -1,14 +1,15 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
-import { Gamepad2, HelpCircle, BookOpen, Mail, ChevronDown, Sparkles, Percent } from 'lucide-react';
+import { Gamepad2, HelpCircle, BookOpen, Mail, ChevronDown, Sparkles, Percent, Ticket } from 'lucide-react';
 
 /* ───── Navigation structure ─────
    - Link items: Games, Offers (direct links)
    - Dropdown: More (How it Works, FAQ, Contact) */
 
 export const NAV_ITEMS = [
-  { type: 'link', path: '/games', icon: Gamepad2, labelKey: 'allGames', fallbackEn: 'All Games', fallbackAr: 'جميع الألعاب' },
+  { type: 'link', path: '/games', icon: Gamepad2, labelKey: 'allGames', fallbackEn: 'Games', fallbackAr: 'الألعاب' },
+  { type: 'link', path: '/gift-cards', icon: Ticket, labelKey: 'giftCards', fallbackEn: 'Gift cards', fallbackAr: 'بطاقات الهدايا' },
   { type: 'link', path: '/sale', icon: Percent, labelKey: 'saleOffers', fallbackEn: 'Offers', fallbackAr: 'العروض' },
   {
     type: 'dropdown',

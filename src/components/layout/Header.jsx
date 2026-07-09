@@ -1,6 +1,6 @@
 import {
   ShoppingCart, User, LogOut, Globe, ShieldCheck, Search, X, Menu,
-  Loader2, Wallet, ChevronDown, Zap,
+  Loader2, Wallet, ChevronDown, Zap, ArrowRight,
 } from 'lucide-react';
 import G2bulkWalletCard from '../ui/G2bulkWalletCard';
 import { useAdminG2bulkWallet } from '../../hooks/useAdminG2bulkWallet';
@@ -38,8 +38,6 @@ export default function Header({
   cartLength,
   onLogout,
   navigate,
-  searchQuery = '',
-  onSearchChange = () => {},
   onRecharge = () => {},
   cartRef = null,
   langSwitching = false,
@@ -53,14 +51,17 @@ export default function Header({
   onNotificationsMarkAllRead = () => {},
   onNotificationsClearAll = () => {},
   onNotificationNavigate = () => {},
+  onOpenNotificationsInbox = () => {},
 }) {
   const location = useLocation();
   const isMobile = useIsMobile();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [searchDraft, setSearchDraft] = useState('');
   const searchRef = useRef(null);
   const inputRef = useRef(null);
+  const mobileSearchRef = useRef(null);
   const profileRef = useRef(null);
   const menuRef = useRef(null);
   const isAdmin = user?.role === 'admin';
@@ -81,6 +82,13 @@ export default function Header({
     // Only close overlays on route change — not when parent callbacks are recreated.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (location.pathname === '/search') {
+      const nextQuery = new URLSearchParams(location.search).get('q') || '';
+      setSearchDraft(nextQuery);
+    }
+  }, [location.pathname, location.search]);
 
   useEffect(() => {
     document.body.style.overflow = isMenuOpen ? 'hidden' : '';
@@ -114,9 +122,20 @@ export default function Header({
     }
   }, [isSearchOpen]);
 
-  const handleClearSearch = () => {
-    onSearchChange('');
+  const submitSearch = useCallback((rawValue = searchDraft) => {
+    const trimmed = String(rawValue || '').trim();
+    if (!trimmed) return;
+    navigate(`/search?q=${encodeURIComponent(trimmed)}`);
     setIsSearchOpen(false);
+    setIsMenuOpen(false);
+    onNotificationsClose();
+    setProfileOpen(false);
+  }, [navigate, onNotificationsClose, searchDraft]);
+
+  const handleClearSearch = () => {
+    setSearchDraft('');
+    inputRef.current?.focus();
+    mobileSearchRef.current?.focus();
   };
 
   const handleNav = (path) => {
@@ -149,6 +168,7 @@ export default function Header({
       onMarkAllRead={onNotificationsMarkAllRead}
       onClearAll={onNotificationsClearAll}
       onNavigate={handleBellNavigate}
+      onViewAllInbox={onOpenNotificationsInbox}
     />
   ) : null;
 
@@ -309,41 +329,62 @@ export default function Header({
               <Search strokeWidth={2} />
             </motion.button>
           ) : (
-            <motion.div
+            <motion.form
               key="search-field"
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 'auto', opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
+              initial={{ width: 0, opacity: 0, scale: 0.96 }}
+              animate={{ width: 'auto', opacity: 1, scale: 1 }}
+              exit={{ width: 0, opacity: 0, scale: 0.96 }}
               transition={{ type: 'spring', stiffness: 340, damping: 22, mass: 0.85 }}
               className="header-search-field"
+              onSubmit={(event) => {
+                event.preventDefault();
+                submitSearch();
+              }}
             >
               <div className="pl-2.5 text-[var(--accent)]" aria-hidden="true">
                 <Search className="w-4 h-4" strokeWidth={2} />
               </div>
               <input
                 ref={inputRef}
-                type="search"
-                value={searchQuery}
-                onChange={(e) => onSearchChange(e.target.value)}
+                type="text"
+                inputMode="search"
+                enterKeyHint="search"
+                autoComplete="off"
+                value={searchDraft}
+                onChange={(e) => setSearchDraft(e.target.value)}
                 placeholder={lang === 'ar' ? 'ابحث عن لعبة...' : 'Search games...'}
                 className="header-search-input"
                 onKeyDown={(e) => { if (e.key === 'Escape') setIsSearchOpen(false); }}
                 aria-label={lang === 'ar' ? 'بحث عن لعبة' : 'Search games'}
               />
-              {searchQuery && (
-                <button type="button" onClick={handleClearSearch} className="header-search-btn" aria-label="Clear search">
-                  <X className="w-3.5 h-3.5" strokeWidth={2} />
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setIsSearchOpen(false)}
-                className="header-search-btn border-l border-[var(--border)]"
-                aria-label="Close search"
+              <AnimatePresence>
+                {searchDraft && (
+                  <motion.button
+                    key="search-clear"
+                    type="button"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    transition={{ duration: 0.15 }}
+                    onClick={handleClearSearch}
+                    className="header-search-btn"
+                    aria-label={lang === 'ar' ? 'مسح البحث' : 'Clear search'}
+                  >
+                    <X className="w-3.5 h-3.5" strokeWidth={2} />
+                  </motion.button>
+                )}
+              </AnimatePresence>
+              <motion.button
+                type="submit"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="header-search-submit"
+                aria-label={lang === 'ar' ? 'بحث' : 'Search'}
+                disabled={!searchDraft.trim()}
               >
-                <X className="w-3.5 h-3.5" strokeWidth={2} />
-              </button>
-            </motion.div>
+                <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
+              </motion.button>
+            </motion.form>
           )}
         </AnimatePresence>
 
@@ -462,21 +503,39 @@ export default function Header({
                 dir={lang === 'ar' ? 'rtl' : 'ltr'}
               >
                 <div className="header-mobile-drawer-inner">
-                  <label className="header-mobile-search">
+                  <form
+                    className="header-mobile-search"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      submitSearch();
+                    }}
+                  >
                     <Search className="w-4 h-4 text-[var(--accent)] flex-shrink-0" strokeWidth={2} />
                     <input
-                      type="search"
-                      value={searchQuery}
-                      onChange={(e) => onSearchChange(e.target.value)}
+                      ref={mobileSearchRef}
+                      type="text"
+                      inputMode="search"
+                      enterKeyHint="search"
+                      autoComplete="off"
+                      value={searchDraft}
+                      onChange={(e) => setSearchDraft(e.target.value)}
                       placeholder={lang === 'ar' ? 'ابحث عن لعبة...' : 'Search games...'}
                       aria-label={lang === 'ar' ? 'بحث عن لعبة' : 'Search games'}
                     />
-                    {searchQuery && (
-                      <button type="button" onClick={handleClearSearch} className="header-mobile-search-clear" aria-label="Clear">
+                    {searchDraft && (
+                      <button type="button" onClick={handleClearSearch} className="header-mobile-search-clear" aria-label={lang === 'ar' ? 'مسح' : 'Clear'}>
                         <X className="w-4 h-4" strokeWidth={2} />
                       </button>
                     )}
-                  </label>
+                    <button
+                      type="submit"
+                      className="header-mobile-search-submit"
+                      aria-label={lang === 'ar' ? 'بحث' : 'Search'}
+                      disabled={!searchDraft.trim()}
+                    >
+                      <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
+                    </button>
+                  </form>
 
                   <nav aria-label={lang === 'ar' ? 'التنقل الرئيسي' : 'Main navigation'}>
                     <MobileNavLinks

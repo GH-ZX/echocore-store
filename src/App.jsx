@@ -17,6 +17,8 @@ import ScrollToTop from './components/routing/ScrollToTop';
 import LegacyOfferRedirect from './components/routing/LegacyOfferRedirect';
 import { getGameOfferBuyPath, getGameOfferPath } from './lib/offerRoutes';
 import AllGamesView from './views/AllGamesView';
+import SearchView from './views/SearchView';
+import GiftCardsView from './views/GiftCardsView';
 import GameDetail from './views/GameDetail';
 import OfferDetail from './views/OfferDetail';
 import BuyView from './views/BuyView';
@@ -32,9 +34,12 @@ import {
   clearAllNotifications,
   subscribeToNotifications,
 } from './lib/notifications';
-import { adminMockFulfillOrder, isMockFulfillmentEnabled } from './lib/devTools';
+import {
+  adminMockFulfillOrder,
+  isMockFulfillmentEnabled,
+} from './lib/devTools';
 import { translations } from './data/translations';
-import { Routes, Route, useNavigate, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, useNavigate, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import Header from './components/layout/Header';
 import HomeView from './views/home/HomeView';
@@ -49,6 +54,7 @@ const HowItWorksView = lazy(() => import('./views/HowItWorksView'));
 const ContactView = lazy(() => import('./views/ContactView'));
 const RechargeView = lazy(() => import('./views/RechargeView'));
 const ProfileView = lazy(() => import('./views/profile/ProfileView'));
+const NotificationsView = lazy(() => import('./views/NotificationsView'));
 
 import AdminOfferEditModal from './components/admin/AdminOfferEditModal';
 import AdminGameEditModal from './components/admin/AdminGameEditModal';
@@ -125,6 +131,7 @@ function LangSwitchOverlay({ lang, active }) {
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const hasShownLoginToast = useRef(false);
   const lastSyncedUserIdRef = useRef(null);
 
@@ -164,7 +171,7 @@ export default function App() {
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const toastTimerRef = useRef(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const notificationsFetchGenRef = useRef(0);
   const [flyingItems, setFlyingItems] = useState([]);
   const [adminEditOffer, setAdminEditOffer] = useState(null);
   const [adminEditGame, setAdminEditGame] = useState(null);
@@ -175,6 +182,8 @@ export default function App() {
     return saved === 'en' || saved === 'ar' ? saved : 'ar';
   });
   const isAdmin = user?.role === 'admin';
+  const [homePreviewAsUser, setHomePreviewAsUser] = useState(false);
+  const homeShowsAdminChrome = isAdmin && !homePreviewAsUser;
 
   const showToast = useCallback((message, type = 'success') => {
     if (!message) return;
@@ -188,20 +197,25 @@ export default function App() {
 
   const showNotification = useCallback((msg) => showToast(msg, 'success'), [showToast]);
 
-  const refreshNotifications = useCallback(async (userId = user?.id) => {
+  const refreshNotifications = useCallback(async (userId = user?.id, limit = 30) => {
     if (!userId) return;
+    const fetchGen = notificationsFetchGenRef.current + 1;
+    notificationsFetchGenRef.current = fetchGen;
     setNotificationsLoading(true);
     try {
       const [items, count] = await Promise.all([
-        fetchNotifications(30),
+        fetchNotifications(limit),
         fetchUnreadCount(),
       ]);
+      if (notificationsFetchGenRef.current !== fetchGen) return;
       setNotifications(items);
       setUnreadCount(count);
     } catch (err) {
       console.error('Failed to load notifications:', err);
     } finally {
-      setNotificationsLoading(false);
+      if (notificationsFetchGenRef.current === fetchGen) {
+        setNotificationsLoading(false);
+      }
     }
   }, [user?.id]);
 
@@ -266,11 +280,41 @@ export default function App() {
     });
   }, [refreshNotifications]);
 
+  const handleRefreshInbox = useCallback(() => {
+    refreshNotifications(user?.id, 40);
+  }, [refreshNotifications, user?.id]);
+
   useEffect(() => () => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
   }, []);
 
   const t = translations[lang];
+
+  useEffect(() => {
+    if (location.pathname !== '/') {
+      setHomePreviewAsUser(false);
+      return;
+    }
+    setHomePreviewAsUser(searchParams.get('preview') === 'user');
+  }, [location.pathname, searchParams]);
+
+  const handleToggleHomePreview = useCallback((asUser) => {
+    const next = !!asUser;
+    setHomePreviewAsUser(next);
+    if (location.pathname !== '/') {
+      navigate(next ? '/?preview=user' : '/');
+      return;
+    }
+    if (next) {
+      setSearchParams({ preview: 'user' }, { replace: true });
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+  }, [location.pathname, navigate, setSearchParams]);
+
+  const handlePreviewHomepage = useCallback(() => {
+    navigate('/?preview=user');
+  }, [navigate]);
 
   const openGame = (game) => {
     if (!game) return;
@@ -279,14 +323,12 @@ export default function App() {
 
   const openOffer = useCallback((offer) => {
     if (!offer) return;
-    const game = games.find((g) => g.id === offer.game_id);
-    navigate(getGameOfferPath(offer, game));
+    navigate(getGameOfferPath(offer, games));
   }, [games, navigate]);
 
   const openBuyOffer = useCallback((offer) => {
     if (!offer) return;
-    const game = games.find((g) => g.id === offer.game_id);
-    navigate(getGameOfferBuyPath(offer, game));
+    navigate(getGameOfferBuyPath(offer, games));
   }, [games, navigate]);
 
   const toggleLanguage = async () => {
@@ -1187,8 +1229,6 @@ export default function App() {
         cartLength={cart.length}
         onLogout={handleLogout}
         navigate={navigate}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
         onRecharge={() => navigate('/recharge')}
         cartRef={cartIconRef}
         notifications={notifications}
@@ -1201,6 +1241,7 @@ export default function App() {
         onNotificationsMarkAllRead={handleNotificationsMarkAllRead}
         onNotificationsClearAll={handleNotificationsClearAll}
         onNotificationNavigate={handleNotificationNavigate}
+        onOpenNotificationsInbox={() => navigate('/notifications')}
       />
 
       <motion.div
@@ -1228,15 +1269,16 @@ export default function App() {
                     onSelectGame={openGame}
                     onSelectOffer={openOffer}
                     onBuyNow={openBuyOffer}
-                    onEditOffer={isAdmin ? setAdminEditOffer : undefined}
-                    onEditGame={isAdmin ? setAdminEditGame : undefined}
-                    onAddGame={isAdmin ? (options = {}) => setAdminEditGame({ id: null, show_in_carousel: !!options.showInCarousel }) : undefined}
-                    onAddOffer={isAdmin ? (options = {}) => setAdminEditOffer({ id: null, is_sale: !!options.isSale }) : undefined}
-                    onManageCarousel={isAdmin ? () => setAdminCarouselOpen(true) : undefined}
-                    onMoveCarouselGame={isAdmin ? moveCarouselGame : undefined}
-                    isAdmin={isAdmin}
-                    searchQuery={searchQuery}
-                    onSearchChange={setSearchQuery}
+                    onEditOffer={homeShowsAdminChrome ? setAdminEditOffer : undefined}
+                    onEditGame={homeShowsAdminChrome ? setAdminEditGame : undefined}
+                    onAddGame={homeShowsAdminChrome ? (options = {}) => setAdminEditGame({ id: null, show_in_carousel: !!options.showInCarousel }) : undefined}
+                    onAddOffer={homeShowsAdminChrome ? (options = {}) => setAdminEditOffer({ id: null, is_sale: !!options.isSale }) : undefined}
+                    onManageCarousel={homeShowsAdminChrome ? () => setAdminCarouselOpen(true) : undefined}
+                    onMoveCarouselGame={homeShowsAdminChrome ? moveCarouselGame : undefined}
+                    isAdmin={homeShowsAdminChrome}
+                    isAdminUser={isAdmin}
+                    homePreviewAsUser={homePreviewAsUser}
+                    onToggleHomePreview={handleToggleHomePreview}
                     homeLayout={homeLayout}
                     reviews={reviews}
                     user={user}
@@ -1257,10 +1299,40 @@ export default function App() {
                 onSelectGame={openGame}
                 onEditGame={isAdmin ? setAdminEditGame : undefined}
                 isAdmin={isAdmin}
-                searchQuery={searchQuery}
-                onSearchChange={setSearchQuery}
               />
             }
+          />
+
+          <Route
+            path="/gift-cards"
+            element={(
+              <GiftCardsView
+                games={games}
+                offers={offers}
+                t={t}
+                lang={lang}
+                loading={loadingGames}
+                onSelectGame={openGame}
+                onEditGame={isAdmin ? setAdminEditGame : undefined}
+                isAdmin={isAdmin}
+              />
+            )}
+          />
+
+          <Route
+            path="/search"
+            element={(
+              <SearchView
+                games={games}
+                offers={offers}
+                t={t}
+                lang={lang}
+                loading={loadingGames}
+                onSelectGame={openGame}
+                onSelectOffer={openOffer}
+                onBuyNow={openBuyOffer}
+              />
+            )}
           />
 
           {/* Sale Offers page */}
@@ -1443,6 +1515,27 @@ export default function App() {
             }
           />
 
+          <Route
+            path="/notifications"
+            element={
+              <ProtectedRoute user={user} loadingAuth={loadingAuth} lang={lang}>
+                <NotificationsView
+                  t={t}
+                  lang={lang}
+                  user={user}
+                  notifications={notifications}
+                  unreadCount={unreadCount}
+                  loading={notificationsLoading}
+                  onRefresh={handleRefreshInbox}
+                  onMarkRead={handleNotificationMarkRead}
+                  onMarkAllRead={handleNotificationsMarkAllRead}
+                  onClearAll={handleNotificationsClearAll}
+                  onNavigate={handleNotificationNavigate}
+                />
+              </ProtectedRoute>
+            }
+          />
+
           {/* User Profile */}
           <Route
             path="/profile"
@@ -1532,6 +1625,7 @@ export default function App() {
                   onApproveOrder={handleApproveOrder}
                   onRejectOrder={handleRejectOrder}
                   onDevBalanceCredited={handleDevBalanceCredited}
+                  onPreviewHomepage={handlePreviewHomepage}
                 />
               ) : (
                 <Navigate to="/" replace />

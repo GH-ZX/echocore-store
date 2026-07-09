@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { ArrowLeft, Loader2, CheckCircle, User, Server, QrCode, Clock } from 'lucide-react';
+import { ArrowLeft, Loader2, CheckCircle, User, Server, QrCode, Clock, Ticket, Zap } from 'lucide-react';
+import { isVoucherGame } from '../lib/catalogUtils';
 import { buildPaymentMethods, getDefaultPaymentMethod } from '../lib/paymentMethods';
 import { markOrderPaymentSent } from '../lib/orders';
 import { resolveOfferRoute } from '../lib/offerRoutes';
@@ -45,7 +46,8 @@ export default function BuyView({
   const needsUid = isValidOffer && (game.redemption_method === 'uid' || game.redemption_method === 'both');
   const needsCode = isValidOffer && (game.redemption_method === 'redeem_code' || game.redemption_method === 'both');
   const isBoth = isValidOffer && game.redemption_method === 'both';
-  const showUidForm = needsUid && (!isBoth || redemptionChoice === 'uid');
+  const isVoucherOnly = isValidOffer && isVoucherGame(game);
+  const showUidForm = needsUid && (!isBoth || redemptionChoice === 'uid') && !isVoucherOnly;
 
   const price = offer ? parseFloat(offer.price) : 0;
   const total = price.toFixed(2);
@@ -170,7 +172,9 @@ export default function BuyView({
   };
 
   const name = lang === 'ar' ? offer.name_ar : offer.name_en;
+  const regionLabel = game?.region_label || offer?.region || null;
   const gameName = lang === 'ar' ? game.name_ar : game.name_en;
+  const purchaseSubtitle = regionLabel ? `${gameName} (${regionLabel}) • ${name}` : `${gameName} • ${name}`;
 
   if (step === 'payment' || step === 'pending') {
     return (
@@ -187,7 +191,7 @@ export default function BuyView({
           <div className="mb-6 text-center">
             <div className="text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">ShamCash Pay</div>
             <h1 className="text-2xl font-black">{t.completeShamcashPayment || (isAr ? 'إتمام الدفع عبر ShamCash' : 'Complete ShamCash Payment')}</h1>
-            <p className="mt-1 text-[var(--text-sec)]">{gameName} • {name}</p>
+            <p className="mt-1 text-[var(--text-sec)]">{purchaseSubtitle}</p>
           </div>
 
           <div className="text-center mb-6">
@@ -274,9 +278,20 @@ export default function BuyView({
 
       <div className="card p-8">
         <div className="mb-8 text-center">
-          <div className="text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">INSTANT PURCHASE</div>
-          <h1 className="text-3xl font-black">{t.buyInstantly}</h1>
-          <p className="mt-1 text-[var(--text-sec)]">{gameName} • {name}</p>
+          <div className="text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">
+            {isVoucherOnly
+              ? (t.voucherCheckout || (isAr ? 'شراء كود' : 'Voucher checkout'))
+              : 'INSTANT PURCHASE'}
+          </div>
+          <h1 className="text-3xl font-black">
+            {isVoucherOnly ? (t.buyVoucher || (isAr ? 'اشترِ الكود' : 'Buy voucher code')) : t.buyInstantly}
+          </h1>
+          <p className="mt-1 text-[var(--text-sec)]">{purchaseSubtitle}</p>
+          {regionLabel && (
+            <p className="text-xs text-[var(--text-muted)] mt-1">
+              {t.region}: {regionLabel}
+            </p>
+          )}
         </div>
 
         <div className="flex justify-between items-baseline mb-6 p-4 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)]">
@@ -284,6 +299,29 @@ export default function BuyView({
           <div className="text-4xl font-black text-[var(--accent)]">${total}</div>
         </div>
 
+        {isVoucherOnly ? (
+          <div className="mb-8 rounded-2xl border border-violet-500/25 bg-violet-500/10 p-5">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-violet-500/15 text-violet-200">
+                <Ticket className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="font-semibold text-violet-100 mb-1">
+                  {t.voucherDeliveryTitle || (isAr ? 'تسليم فوري للكود' : 'Instant code delivery')}
+                </div>
+                <p className="text-sm text-[var(--text-sec)] leading-relaxed">
+                  {t.voucherDeliveryDesc || (isAr
+                    ? 'لا حاجة لـ UID أو سيرفر. بعد الدفع يظهر كود الشحن في إيصال الطلب ويمكنك نسخه فوراً.'
+                    : 'No UID or server needed. After payment your redeem code appears on the order receipt — copy it instantly.')}
+                </p>
+                <p className="text-xs text-[var(--text-muted)] mt-2 inline-flex items-center gap-1">
+                  <Zap className="w-3.5 h-3.5 text-violet-300" />
+                  {t.voucherFulfillmentNote || (isAr ? 'يُوفَّر تلقائياً عبر G2Bulk عند تفعيل التوريد' : 'Auto-fulfilled via G2Bulk when fulfillment is enabled')}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
         <div className="mb-8">
           <div className="font-semibold mb-3 flex items-center gap-2">
             <User className="w-4 h-4" />
@@ -383,6 +421,7 @@ export default function BuyView({
             <div className="text-xs text-amber-400 mb-2 mt-2">* {isAr ? 'الرجاء إدخال UID صحيح' : 'Please enter a valid UID'}</div>
           )}
         </div>
+        )}
 
         {!manualReady && (
           <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">

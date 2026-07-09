@@ -1,11 +1,20 @@
-import { useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { Globe, Loader2 } from 'lucide-react';
 import { presetImageUrl } from '../lib/imageUtils';
 import AdminEditButton from '../components/admin/AdminEditButton';
 import BorderGlow from '../components/ui/BorderGlow';
 import AdminGameEditModal from '../components/admin/AdminGameEditModal';
 import AdminOfferEditModal from '../components/admin/AdminOfferEditModal';
+import { Ticket, Zap } from 'lucide-react';
+import { isVoucherGame } from '../lib/catalogUtils';
+import {
+  findVariantByRegionParam,
+  getRegionVariants,
+  pickDefaultVariant,
+  regionParamSlug,
+  resolveStorefrontGame,
+} from '../lib/gameRegions';
 
 export default function GameDetail({
   games,
@@ -22,12 +31,49 @@ export default function GameDetail({
   onBuyNow,
 }) {
   const { slug } = useParams();
-  const game = games.find((g) => (g.slug || g.id) === slug) || games.find((g) => g.id === slug);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const matchedGame = games.find((g) => (g.slug || g.id) === slug) || games.find((g) => g.id === slug);
+  const storefrontGame = resolveStorefrontGame(games, matchedGame);
+  const regionVariants = useMemo(
+    () => (storefrontGame ? getRegionVariants(games, storefrontGame.id) : []),
+    [games, storefrontGame],
+  );
+  const hasRegions = regionVariants.length > 1;
+  const regionParam = searchParams.get('region') || '';
+
+  const [selectedVariantId, setSelectedVariantId] = useState(null);
+
+  useEffect(() => {
+    if (!storefrontGame) return;
+
+    if (regionVariants.length === 0) {
+      setSelectedVariantId(storefrontGame.id);
+      return;
+    }
+
+    const fromParam = findVariantByRegionParam(regionVariants, regionParam);
+    const fromDirectChild = matchedGame?.parent_game_id === storefrontGame.id ? matchedGame : null;
+    const nextVariant = fromParam || fromDirectChild || pickDefaultVariant(regionVariants);
+    setSelectedVariantId(nextVariant?.id || storefrontGame.id);
+  }, [storefrontGame, regionVariants, regionParam, matchedGame]);
+
+  const activeVariant = regionVariants.find((variant) => variant.id === selectedVariantId)
+    || (regionVariants.length === 0 ? storefrontGame : pickDefaultVariant(regionVariants));
+  const activeGameId = activeVariant?.id || storefrontGame?.id;
+
   const isAdmin = user?.role === 'admin';
   const [editingOffer, setEditingOffer] = useState(null);
   const [editingGame, setEditingGame] = useState(false);
 
-  if (loadingGames || (!game && games.length === 0)) {
+  const handleRegionSelect = (variant) => {
+    if (!variant) return;
+    setSelectedVariantId(variant.id);
+    const next = new URLSearchParams(searchParams);
+    next.set('region', regionParamSlug(variant.region_label));
+    setSearchParams(next, { replace: true });
+  };
+
+  if (loadingGames || (!storefrontGame && games.length === 0)) {
     return (
       <div className="max-w-4xl mx-auto py-16 sm:py-20">
         <div className="flex flex-col items-center justify-center gap-3">
@@ -40,21 +86,24 @@ export default function GameDetail({
     );
   }
 
-  if (!game) {
+  if (!storefrontGame) {
     return (
       <div className="max-w-4xl mx-auto text-center py-20">
         <p className="text-xl text-[var(--text-sec)]">{t.gameNotFound}</p>
-        <button onClick={() => navigate('/')} className="btn btn-secondary mt-4">{t.backToHome}</button>
+        <button type="button" onClick={() => navigate('/')} className="btn btn-secondary mt-4">{t.backToHome}</button>
       </div>
     );
   }
 
-  const gameOffers = offers.filter((o) => o.game_id === game.id);
+  const game = storefrontGame;
+  const isVoucher = isVoucherGame(game);
+  const gameOffers = offers.filter((o) => o.game_id === activeGameId && o.active !== false);
+  const displayServers = isVoucher ? [] : (Array.isArray(activeVariant?.servers) ? activeVariant.servers : []);
 
   return (
     <div className="max-w-6xl mx-auto">
       <div className="mb-4 sm:mb-6 flex flex-wrap items-center justify-between gap-2">
-        <button onClick={() => navigate('/')} className="btn btn-secondary text-sm sm:text-base">
+        <button type="button" onClick={() => navigate('/')} className="btn btn-secondary text-sm sm:text-base">
           {t.backToHome || (lang === 'ar' ? 'العودة إلى الرئيسية' : '← Back to Home')}
         </button>
         {isAdmin && (
@@ -81,14 +130,77 @@ export default function GameDetail({
             <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-white">
               {lang === 'ar' ? game.name_ar : game.name_en}
             </h1>
-            <p className="text-white/70 text-lg mt-1">{game.points_name} Top-ups</p>
-            <p className="text-white/50 text-sm mt-1">{t.redemptionMethod || 'Redemption'}: {game.redemption_method === 'uid' ? (t.redemptionUid || 'UID') : game.redemption_method === 'redeem_code' ? (t.redemptionCode || 'Redeem Code') : (t.redemptionBoth || 'UID or Redeem Code')}</p>
-            {Array.isArray(game.servers) && game.servers.length > 0 && (
-              <p className="text-white/40 text-xs mt-0.5">{t.availableServers}: {game.servers.join(' • ')}</p>
+            <p className="text-white/70 text-lg mt-1">
+              {isVoucher
+                ? (lang === 'ar' ? t.giftCard || 'بطاقة هدايا' : t.giftCard || 'Gift card & voucher codes')
+                : `${game.points_name} Top-ups`}
+            </p>
+            <p className="text-white/50 text-sm mt-1">
+              {isVoucher
+                ? (t.voucherRedemption || (lang === 'ar' ? 'استلام: كود شحن فوري بعد الدفع' : 'Delivery: instant redeem code after payment'))
+                : `${t.redemptionMethod || 'Redemption'}: ${game.redemption_method === 'uid' ? (t.redemptionUid || 'UID') : game.redemption_method === 'redeem_code' ? (t.redemptionCode || 'Redeem Code') : (t.redemptionBoth || 'UID or Redeem Code')}`}
+            </p>
+            {displayServers.length > 0 && (
+              <p className="text-white/40 text-xs mt-0.5">{t.availableServers}: {displayServers.join(' • ')}</p>
             )}
           </div>
         </div>
       </div>
+
+      {isVoucher && (
+        <div className="mb-8 rounded-2xl border border-violet-500/25 bg-violet-500/10 p-5">
+          <div className="flex items-start gap-3">
+            <Ticket className="w-5 h-5 text-violet-300 mt-0.5 shrink-0" />
+            <div className="text-sm text-[var(--text-sec)] space-y-2">
+              <p className="font-semibold text-violet-100">
+                {t.howVouchersWork || (lang === 'ar' ? 'كيف تعمل بطاقات الهدايا؟' : 'How gift cards work')}
+              </p>
+              <ol className="list-decimal ps-5 space-y-1 text-xs leading-relaxed">
+                <li>{t.voucherStep1 || (lang === 'ar' ? 'اختر الباقة وادفع' : 'Pick a pack and pay')}</li>
+                <li>{t.voucherStep2 || (lang === 'ar' ? 'انسخ الكود من إيصال الطلب' : 'Copy the code from your order receipt')}</li>
+                <li>{t.voucherStep3 || (lang === 'ar' ? 'فعّل الكود داخل اللعبة أو المنصة' : 'Redeem it in-game or on the platform')}</li>
+              </ol>
+              <p className="text-[10px] text-[var(--text-muted)] inline-flex items-center gap-1">
+                <Zap className="w-3 h-3" />
+                {t.voucherStockNote || (lang === 'ar' ? 'العروض غير المتوفرة تُخفى تلقائياً عند نفاد المخزون' : 'Out-of-stock packs are hidden automatically')}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {hasRegions && !isVoucher && (
+        <div className="mb-8">
+          <div className="flex items-center gap-2 mb-3">
+            <Globe className="w-4 h-4 text-[var(--accent)]" />
+            <h2 className="text-lg font-bold">{t.selectRegion || (lang === 'ar' ? 'اختر المنطقة' : 'Select region')}</h2>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {regionVariants.map((variant) => {
+              const isActive = variant.id === activeGameId;
+              return (
+                <button
+                  key={variant.id}
+                  type="button"
+                  onClick={() => handleRegionSelect(variant)}
+                  className={`px-4 py-2 rounded-full text-sm font-semibold border transition ${
+                    isActive
+                      ? 'border-[var(--accent)] bg-[var(--accent)]/15 text-white'
+                      : 'border-[var(--border)] text-[var(--text-sec)] hover:border-[var(--accent)]/50'
+                  }`}
+                >
+                  {variant.region_label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-[var(--text-muted)] mt-2">
+            {t.regionOffersNote || (lang === 'ar'
+              ? 'الأسعار والعروض تختلف حسب المنطقة. اختر منطقة حسابك قبل الشراء.'
+              : 'Prices and packs vary by region. Choose your account region before buying.')}
+          </p>
+        </div>
+      )}
 
       <h2 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6">{t.availableOffers}</h2>
 
@@ -117,7 +229,6 @@ export default function GameDetail({
                   />
                 </div>
               )}
-              {/* Game logo + name header */}
               <div className="flex items-center gap-2.5 mb-2.5">
                 {game.logo_url && (
                   <img
@@ -133,19 +244,16 @@ export default function GameDetail({
                 </div>
               </div>
 
-              {/* Offer name */}
               <div className="font-bold text-base sm:text-lg leading-tight mb-1 line-clamp-2 flex-1">
                 {lang === 'ar' ? offer.name_ar : offer.name_en}
               </div>
 
-              {/* Region */}
-              {offer.region && (
+              {(offer.region || activeVariant?.region_label) && (
                 <div className="text-[10px] text-[var(--text-sec)] mb-2.5">
-                  {t.region}: {offer.region}
+                  {t.region}: {offer.region || activeVariant?.region_label}
                 </div>
               )}
 
-              {/* Price section */}
               <div className="mt-auto pt-2 border-t border-[var(--border)]">
                 {offer.is_sale && offer.original_price ? (
                   <div>
@@ -160,19 +268,20 @@ export default function GameDetail({
                 )}
               </div>
 
-              {/* Actions */}
               <div className="mt-4 flex gap-2">
-                <button 
+                <button
+                  type="button"
                   onClick={(e) => { e.stopPropagation(); onBuyNow?.(offer); }}
                   className="flex-1 btn btn-primary text-xs py-2 font-semibold active:scale-[0.985]"
                 >
                   {t.buyNow}
                 </button>
-                <button 
+                <button
+                  type="button"
                   onClick={(e) => { e.stopPropagation(); onSelectOffer?.(offer); }}
                   className="flex-1 btn btn-secondary text-xs py-2"
                 >
-                  {t.details || (lang==='ar' ? 'تفاصيل' : 'Details')}
+                  {t.details || (lang === 'ar' ? 'تفاصيل' : 'Details')}
                 </button>
               </div>
             </div>

@@ -47,6 +47,7 @@ export default function AdminView({
   onApproveOrder,
   onRejectOrder,
   onDevBalanceCredited,
+  onPreviewHomepage,
 }) {
   const notifyError = (message) => onNotify?.(message, 'error');
   const notifySuccess = (message) => onNotify?.(message, 'success');
@@ -895,7 +896,11 @@ export default function AdminView({
                       <div className="flex items-start gap-2 min-w-0 flex-1">
                         {g.logo_url && <img src={g.logo_url} alt="" className="h-6 w-6 object-contain rounded flex-shrink-0" onError={e=>e.target.style.display='none'} />}
                         <div className="min-w-0">
-                          <div className="text-sm break-words">{lang === 'ar' ? g.name_ar : g.name_en} ({g.points_name}) — {g.redemption_method || 'both'}</div>
+                          <div className="text-sm break-words">
+                            {lang === 'ar' ? g.name_ar : g.name_en} ({g.points_name}) — {g.redemption_method || 'both'}
+                            {g.region_label && <span className="text-[var(--accent)]"> • {g.region_label}</span>}
+                            {g.parent_game_id && <span className="text-[var(--text-muted)] text-xs"> (variant)</span>}
+                          </div>
                           {Array.isArray(g.servers) && g.servers.length > 0 && (
                             <div className="text-[10px] mt-1 text-[var(--accent)]/80 break-words">{g.servers.join(' • ')}</div>
                           )}
@@ -1347,6 +1352,7 @@ export default function AdminView({
             offers={offers}
             reviews={reviews}
             onSaved={onHomeLayoutSaved}
+            onPreviewHomepage={onPreviewHomepage}
           />
         </Suspense>
       )}
@@ -1365,6 +1371,7 @@ export default function AdminView({
           <AdminDevTools
             t={t}
             lang={lang}
+            offers={offers}
             orders={orders}
             onBalanceCredited={onDevBalanceCredited}
             onNotify={onNotify}

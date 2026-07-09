@@ -6,6 +6,7 @@ import {
   AlertCircle,
   RefreshCw,
   Save,
+  Eye,
   Plus,
   Trash2,
   ChevronUp,
@@ -222,6 +223,7 @@ export default function AdminHomeLayoutSettings({
   offers = [],
   reviews = [],
   onSaved,
+  onPreviewHomepage,
 }) {
   const isAr = lang === 'ar';
   const [loading, setLoading] = useState(true);
@@ -340,6 +342,16 @@ export default function AdminHomeLayoutSettings({
                 : 'Add, remove, and reorder card sections on the home page.')}
             </p>
           </div>
+          {onPreviewHomepage && (
+            <button
+              type="button"
+              onClick={onPreviewHomepage}
+              className="btn btn-secondary inline-flex items-center gap-2 text-sm py-2.5 px-4"
+            >
+              <Eye className="w-4 h-4" strokeWidth={2} />
+              {t.homePreviewAsUser || (isAr ? 'معاينة كزائر' : 'Preview as customer')}
+            </button>
+          )}
         </div>
 
         <div className="space-y-3 mb-6">

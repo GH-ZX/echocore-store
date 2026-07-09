@@ -78,6 +78,31 @@ export async function saveG2bulkSettings({
 }
 
 const GAMES_BATCH_SIZE = 12;
+const CHECK_BATCH_SIZE = 12;
+
+function mergeCheckTotals(base, extra = {}) {
+  return {
+    newGames: (base.newGames || 0) + (extra.newGames || 0),
+    removedGames: (base.removedGames || 0) + (extra.removedGames || 0),
+    newOffers: (base.newOffers || 0) + (extra.newOffers || 0),
+    priceChanges: (base.priceChanges || 0) + (extra.priceChanges || 0),
+    removedOffers: (base.removedOffers || 0) + (extra.removedOffers || 0),
+    stockChanges: (base.stockChanges || 0) + (extra.stockChanges || 0),
+    unchangedOffers: (base.unchangedOffers || 0) + (extra.unchangedOffers || 0),
+    errors: [...(base.errors || []), ...(extra.errors || [])],
+  };
+}
+
+function mergeCheckSamples(base, extra = {}) {
+  const take = (left = [], right = [], max = 8) => [...left, ...right].slice(0, max);
+  return {
+    newGames: take(base.newGames, extra.newGames),
+    removedGames: take(base.removedGames, extra.removedGames),
+    priceChanges: take(base.priceChanges, extra.priceChanges),
+    newOffers: take(base.newOffers, extra.newOffers),
+    removedOffers: take(base.removedOffers, extra.removedOffers),
+  };
+}
 
 /**
  * Admin: import games + offers from G2Bulk in batches (avoids edge-function timeout).
@@ -165,6 +190,100 @@ export async function syncG2bulkCatalog({
     ...totals,
     errors: totals.errors.slice(0, 20),
     syncedAt: finalized.syncedAt,
+  };
+}
+
+/**
+ * Admin: read-only catalog diff vs G2Bulk (batched; does not write offers).
+ */
+export async function checkG2bulkCatalog({
+  includeVouchers = true,
+  onProgress,
+  signal,
+} = {}) {
+  const emptyTotals = () => ({
+    newGames: 0,
+    removedGames: 0,
+    newOffers: 0,
+    priceChanges: 0,
+    removedOffers: 0,
+    stockChanges: 0,
+    unchangedOffers: 0,
+    errors: [],
+  });
+
+  const checkAbort = () => {
+    if (signal?.aborted) throw new Error('Catalog check cancelled');
+  };
+
+  checkAbort();
+  onProgress?.({ phase: 'init' });
+
+  const init = await invokeG2bulk({
+    action: 'checkCatalog',
+    phase: 'init',
+  });
+
+  const initTotals = {
+    ...emptyTotals(),
+    newGames: init.newGames ?? 0,
+    removedGames: init.removedGames ?? 0,
+  };
+  const initSamples = init.samples || { newGames: [], removedGames: [] };
+
+  let gamesTotals = emptyTotals();
+  let gamesSamples = { priceChanges: [], newOffers: [], removedOffers: [] };
+  const totalGames = init.totalGames ?? 0;
+  let offset = 0;
+
+  onProgress?.({ phase: 'games', current: 0, total: totalGames });
+
+  while (offset < totalGames) {
+    checkAbort();
+    const batch = await invokeG2bulk({
+      action: 'checkCatalog',
+      phase: 'games',
+      offset,
+      limit: CHECK_BATCH_SIZE,
+    });
+
+    gamesTotals = mergeCheckTotals(gamesTotals, batch);
+    gamesSamples = mergeCheckSamples(gamesSamples, batch.samples || {});
+
+    offset = batch.nextOffset ?? offset + CHECK_BATCH_SIZE;
+    onProgress?.({ phase: 'games', current: Math.min(offset, totalGames), total: totalGames });
+    if (batch.gamesDone) break;
+  }
+
+  let vouchersTotals = emptyTotals();
+  let vouchersSamples = { priceChanges: [], newOffers: [], removedOffers: [] };
+
+  if (includeVouchers) {
+    checkAbort();
+    onProgress?.({ phase: 'vouchers', current: totalGames, total: totalGames });
+    const vouchers = await invokeG2bulk({ action: 'checkCatalog', phase: 'vouchers' });
+    vouchersTotals = mergeCheckTotals(vouchersTotals, vouchers);
+    vouchersSamples = mergeCheckSamples(vouchersSamples, vouchers.samples || {});
+  }
+
+  checkAbort();
+  onProgress?.({ phase: 'finalize' });
+
+  const finalized = await invokeG2bulk({
+    action: 'checkCatalog',
+    phase: 'finalize',
+    initTotals,
+    gamesTotals,
+    vouchersTotals,
+    initSamples,
+    gamesSamples,
+    vouchersSamples,
+  });
+
+  return {
+    summary: finalized.summary,
+    checkedAt: finalized.checkedAt,
+    errors: [...initTotals.errors, ...gamesTotals.errors, ...vouchersTotals.errors].slice(0, 20),
   };
 }
 

@@ -9,8 +9,10 @@ export function sortGamesByCarousel(games = []) {
 
 const CAROUSEL_FALLBACK_LIMIT = 12;
 
+import { isStorefrontGame } from './gameRegions';
+
 export function getCarouselGames(games = []) {
-  const sorted = sortGamesByCarousel(games);
+  const sorted = sortGamesByCarousel(games.filter(isStorefrontGame));
   const explicit = sorted.filter((g) => g.show_in_carousel === true);
   if (explicit.length > 0) return explicit;
 

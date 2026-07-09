@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 
 const DEV_RPC_MSG =
-  'Developer tools are not configured. Run supabase_notifications_v2_migration.sql in Supabase.';
+  'Developer tools are not configured. Run supabase_notifications_v2/v3 migrations in Supabase.';
 
 function isMissingRpc(error) {
   return error?.message?.includes('function') && error?.message?.includes('does not exist');
@@ -11,7 +11,15 @@ export const isMockFulfillmentEnabled = () => (
   import.meta.env.VITE_MOCK_FULFILLMENT === 'true'
 );
 
-/** Admin: add test balance without a real recharge payment */
+export async function adminGetDevWallet() {
+  const { data, error } = await supabase.rpc('admin_get_dev_wallet');
+  if (error) {
+    if (isMissingRpc(error)) throw new Error(DEV_RPC_MSG);
+    throw error;
+  }
+  return data;
+}
+
 export async function adminCreditTestBalance(amount = 100) {
   const { data, error } = await supabase.rpc('admin_credit_test_balance', {
     p_amount: amount,
@@ -23,7 +31,27 @@ export async function adminCreditTestBalance(amount = 100) {
   return data;
 }
 
-/** Admin: mark an order fulfilled with a mock redeem code (no G2Bulk API call) */
+export async function adminClearTestBalance() {
+  const { data, error } = await supabase.rpc('admin_clear_test_balance');
+  if (error) {
+    if (isMissingRpc(error)) throw new Error(DEV_RPC_MSG);
+    throw error;
+  }
+  return data;
+}
+
+export async function adminRunMockPurchase(offerId, mockCode = null) {
+  const { data, error } = await supabase.rpc('admin_run_mock_purchase', {
+    p_offer_id: offerId,
+    p_mock_code: mockCode?.trim() || null,
+  });
+  if (error) {
+    if (isMissingRpc(error)) throw new Error(DEV_RPC_MSG);
+    throw error;
+  }
+  return data;
+}
+
 export async function adminMockFulfillOrder(orderId, mockCode = null) {
   const { data, error } = await supabase.rpc('admin_mock_fulfill_order', {
     p_order_id: orderId,
@@ -35,3 +63,4 @@ export async function adminMockFulfillOrder(orderId, mockCode = null) {
   }
   return data;
 }
+

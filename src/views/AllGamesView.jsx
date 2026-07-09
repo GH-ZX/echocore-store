@@ -2,6 +2,7 @@ import React from 'react';
 import AdminEditButton from '../components/admin/AdminEditButton';
 import BorderGlow from '../components/ui/BorderGlow';
 import { presetImageUrl } from '../lib/imageUtils';
+import { getTopupGames } from '../lib/catalogUtils';
 
 export default function AllGamesView({ 
   games = [], 
@@ -11,32 +12,21 @@ export default function AllGamesView({
   onEditGame,
   isAdmin = false,
   loading = false,
-  searchQuery = '',
-  onSearchChange: _onSearchChange
 }) {
   const isAr = lang === 'ar';
 
-  const filteredGames = searchQuery.trim()
-    ? games.filter(g =>
-        (g.name_en || '').toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
-        (g.name_ar || '').toLowerCase().includes(searchQuery.toLowerCase().trim())
-      )
-    : games;
+  const storefrontGames = getTopupGames(games);
 
   return (
     <div className="max-w-7xl mx-auto">
       <div className="mb-8 md:mb-10">
         <h1 className="games-page-title section-heading text-3xl md:text-4xl font-black mb-2">
-          {searchQuery.trim() 
-            ? (isAr ? t.searchResults || 'نتائج البحث' : t.searchResults || 'Search Results') 
-            : (isAr ? t.allGames || 'جميع الألعاب' : t.allGames || 'All Games')}
+          {isAr ? t.allGames || 'جميع الألعاب' : t.allGames || 'All Games'}
         </h1>
         <p className="games-page-subtitle section-subheading text-left mx-0 max-w-[50ch]">
-          {searchQuery.trim()
-            ? (isAr ? `${t.resultsFor || 'نتائج لـ'} "${searchQuery}"` : `${t.resultsFor || 'Results for'} "${searchQuery}"`)
-            : (isAr 
-              ? t.chooseGame || 'اختر لعبتك المفضلة وابدأ الشحن فوراً' 
-              : t.chooseGame || 'Choose your favorite game and start topping up instantly')}
+          {isAr
+            ? t.chooseGame || 'اختر لعبتك المفضلة وابدأ الشحن فوراً'
+            : t.chooseGame || 'Choose your favorite game and start topping up instantly'}
         </p>
       </div>
 
@@ -46,15 +36,13 @@ export default function AllGamesView({
             <div key={i} className="card h-48 sm:h-52 animate-pulse bg-[var(--bg-surface)]" />
           ))}
         </div>
-      ) : filteredGames.length === 0 ? (
+      ) : storefrontGames.length === 0 ? (
         <div className="text-center py-12 text-[var(--text-sec)]">
-          {searchQuery.trim()
-            ? (isAr ? t.noResults || 'لا توجد نتائج مطابقة.' : t.noResults || 'No games match your search.')
-            : (isAr ? t.noGamesAvailable || 'لا توجد ألعاب متاحة حالياً.' : t.noGamesAvailable || 'No games available yet.')}
+          {isAr ? t.noGamesAvailable || 'لا توجد ألعاب متاحة حالياً.' : t.noGamesAvailable || 'No games available yet.'}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredGames.map((game) => (
+          {storefrontGames.map((game) => (
             <BorderGlow
               key={game.id}
               edgeSensitivity={25}

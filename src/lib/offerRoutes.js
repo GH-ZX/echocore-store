@@ -1,3 +1,10 @@
+import {
+  getChildGameIds,
+  getDisplayGameForOffer,
+  getFulfillmentGameForOffer,
+  resolveStorefrontGame,
+} from './gameRegions';
+
 export function slugify(value = '') {
   return String(value)
     .toLowerCase()
@@ -18,20 +25,26 @@ export function getGameSlug(game) {
   return game?.slug || game?.id || '';
 }
 
-export function getGameOfferPath(offer, game) {
+export function getGameOfferPath(offer, gamesOrGame) {
+  const games = Array.isArray(gamesOrGame) ? gamesOrGame : [gamesOrGame].filter(Boolean);
+  const game = Array.isArray(gamesOrGame)
+    ? getDisplayGameForOffer(offer, gamesOrGame)
+    : (gamesOrGame || getDisplayGameForOffer(offer, games));
   const gameSlug = getGameSlug(game);
   return `/game/${gameSlug}/${getOfferSlug(offer)}`;
 }
 
-export function getGameOfferBuyPath(offer, game) {
-  return `${getGameOfferPath(offer, game)}/buy`;
+export function getGameOfferBuyPath(offer, gamesOrGame) {
+  return `${getGameOfferPath(offer, gamesOrGame)}/buy`;
 }
 
 export function resolveGameFromParams(games, gameSlug) {
   if (!gameSlug) return null;
-  return games.find((g) => (g.slug || g.id) === gameSlug)
+  const matched = games.find((g) => (g.slug || g.id) === gameSlug)
     || games.find((g) => g.id === gameSlug)
     || null;
+  if (!matched) return null;
+  return resolveStorefrontGame(games, matched);
 }
 
 export function resolveOfferFromParams(offers, token, gameId = null) {
@@ -50,17 +63,29 @@ export function resolveOfferFromParams(offers, token, gameId = null) {
 }
 
 export function resolveOfferRoute(offers, games, { gameSlug, offerSlug, id, offerId }) {
-  const game = resolveGameFromParams(games, gameSlug);
+  const storefrontGame = resolveGameFromParams(games, gameSlug);
   const token = offerSlug || id || offerId;
+  const scopeIds = storefrontGame ? getChildGameIds(games, storefrontGame) : null;
 
-  if (game && token) {
-    const inGame = resolveOfferFromParams(offers, token, game.id);
-    if (inGame) return { offer: inGame, game };
+  if (storefrontGame && token) {
+    const scopedOffers = scopeIds
+      ? offers.filter((offer) => scopeIds.includes(offer.game_id))
+      : offers;
+    const inGame = resolveOfferFromParams(scopedOffers, token);
+    if (inGame) {
+      const fulfillmentGame = getFulfillmentGameForOffer(inGame, games) || storefrontGame;
+      return { offer: inGame, game: fulfillmentGame, storefrontGame };
+    }
   }
 
   const offer = resolveOfferFromParams(offers, token);
-  if (!offer) return { offer: null, game: null };
+  if (!offer) return { offer: null, game: null, storefrontGame: null };
 
-  const resolvedGame = games.find((g) => g.id === offer.game_id) || game || null;
-  return { offer, game: resolvedGame };
+  const fulfillmentGame = getFulfillmentGameForOffer(offer, games);
+  const displayGame = getDisplayGameForOffer(offer, games) || storefrontGame || fulfillmentGame;
+  return {
+    offer,
+    game: fulfillmentGame || displayGame,
+    storefrontGame: displayGame,
+  };
 }
