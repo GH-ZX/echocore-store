@@ -13,7 +13,6 @@ import { createOrderAtomic, confirmOrderPayment, rejectOrderPayment } from './li
 import { fulfillOrderG2bulk } from './lib/g2bulk';
 import {
   ensureCatalogItems,
-  fetchLiveGameGroup,
   fetchLiveFullCatalog,
   isLiveCatalogId,
   mergeCatalogRows,
@@ -424,7 +423,7 @@ export default function App() {
     }
   };
 
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     // Client guard — server RLS must also restrict orders/profiles to admins in production.
     if (user?.role !== 'admin') {
       setOrders([]);
@@ -472,7 +471,7 @@ export default function App() {
     } finally {
       setLoadingOrders(false);
     }
-  };
+  }, [user?.role]);
 
   const refreshDataAfterAuth = (role) => {
     // Catalog is public — already loaded on mount; refetching on login caused loading flashes and auth deadlocks.
@@ -1281,7 +1280,7 @@ export default function App() {
     if (location.pathname.startsWith('/dashboard') && user?.role === 'admin') {
       fetchOrders();
     }
-  }, [location.pathname, user?.role]);
+  }, [location.pathname, user?.role, fetchOrders]);
 
   useEffect(() => {
     if (!user?.id) {

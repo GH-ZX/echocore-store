@@ -89,7 +89,7 @@ export default function GameDetail({
       });
 
     return () => { cancelled = true; };
-  }, [catalogMode, storefrontGame?.id, storefrontGame?.group_base_key, onLiveCatalogUpdate]);
+  }, [catalogMode, storefrontGame, onLiveCatalogUpdate]);
 
   useEffect(() => {
     if (!storefrontGame) return;

@@ -41,7 +41,7 @@ export default function NotificationsView({
 
   useEffect(() => {
     onRefresh?.();
-  }, [user?.id]);
+  }, [user?.id, onRefresh]);
 
   const handleOpenItem = useCallback(async (item) => {
     const formatted = formatNotification(item, t, lang);

@@ -77,7 +77,7 @@ export default function AdminExistingGamesList({
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={t.searchGames || (isAr ? 'ابحث...' : 'Search...')}
+            placeholder={t.searchGamesPlaceholder || (isAr ? 'ابحث...' : 'Search...')}
             className="input text-xs py-2 w-full sm:w-44 min-w-0"
           />
           <select

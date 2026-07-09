@@ -22,7 +22,7 @@ export default function LegacyOfferRedirect({
         : getGameOfferPath(offer, games);
       navigate(path, { replace: true });
     }
-  }, [loading, token, offer, game, navigate, target]);
+  }, [loading, token, offer, game, games, navigate, target]);
 
   if (loading || (!offer && offers.length === 0)) {
     return (

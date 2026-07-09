@@ -74,8 +74,7 @@ function ToggleField({ label, value, onChange }) {
   );
 }
 
-function AppearanceSettings({ form, t, lang, onChange, onColorModeChange }) {
-  const isAr = lang === 'ar';
+function AppearanceSettings({ form, t, onChange, onColorModeChange }) {
   const colorMode = form['color-mode'] ?? 'dark';
   const glowsEnabled = form['glows-enabled'] ?? 'true';
   const surfacesOpacityEnabled = form['surfaces-opacity-enabled'] ?? 'false';
@@ -1265,7 +1264,6 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
         <AppearanceSettings
           form={form}
           t={t}
-          lang={lang}
           onChange={handleFieldChange}
           onColorModeChange={handleColorModeChange}
         />

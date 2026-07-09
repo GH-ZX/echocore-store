@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Wallet,
@@ -175,7 +175,7 @@ export default function ProfileView({
     };
 
     load();
-  }, [user?.id]);
+  }, [user]);
 
   useEffect(() => {
     if (searchParams.get('edit') === '1') {
@@ -210,7 +210,10 @@ export default function ProfileView({
   const displayAvatar = removeAvatar ? '' : (avatarPreview || avatarUrl);
   const memberSince = formatDate(profileMeta?.created_at, lang);
 
-  const formatDetail = (value) => (emptyProfileValue(value) ? notSetLabel : String(value).trim());
+  const formatDetail = useCallback(
+    (value) => (emptyProfileValue(value) ? notSetLabel : String(value).trim()),
+    [notSetLabel],
+  );
 
   const profileDetails = useMemo(() => [
     { key: 'name', label: t.displayName || (isAr ? 'اسم العرض' : 'Display name'), icon: UserRound, value: formatDetail(savedName) },
@@ -221,7 +224,7 @@ export default function ProfileView({
     { key: 'favorite_game', label: t.profileFavoriteGame || (isAr ? 'اللعبة المفضلة' : 'Favorite game'), icon: Gamepad2, value: formatDetail(savedFavoriteGame) },
     { key: 'discord', label: t.profileDiscord || (isAr ? 'Discord' : 'Discord'), icon: AtSign, value: formatDetail(savedDiscord) },
     { key: 'player_uid', label: t.profileDefaultUid || (isAr ? 'معرّف اللاعب الافتراضي' : 'Default player ID'), icon: Hash, value: formatDetail(savedPlayerUid) },
-  ], [savedName, savedBio, savedPhone, savedCountry, savedFavoriteGame, savedDiscord, savedPlayerUid, user.email, t, isAr, notSetLabel]);
+  ], [savedName, savedBio, savedPhone, savedCountry, savedFavoriteGame, savedDiscord, savedPlayerUid, user.email, t, isAr, formatDetail]);
 
   const isDirty = useMemo(() => {
     const base = {

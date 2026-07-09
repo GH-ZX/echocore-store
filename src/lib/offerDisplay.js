@@ -27,7 +27,7 @@ export function sortOffersByPrice(offers = []) {
   return [...offers].sort((a, b) => Number.parseFloat(a.price) - Number.parseFloat(b.price));
 }
 
-export function getRedemptionSteps(game, t = {}, lang = 'ar') {
+export function getRedemptionSteps(game, _t = {}, lang = 'ar') {
   const isAr = lang === 'ar';
   const slug = String(game?.slug || '').toLowerCase();
 

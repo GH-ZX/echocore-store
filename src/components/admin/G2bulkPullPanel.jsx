@@ -179,7 +179,7 @@ export default function G2bulkPullPanel({
     } else {
       loadCatalog({ background: false });
     }
-  }, [open, loadCatalog]);
+  }, [open, loadCatalog, catalog, initialSelection]);
 
   useEffect(() => {
     if (!open) return undefined;

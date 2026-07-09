@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   FlaskConical,
@@ -53,7 +53,7 @@ export default function AdminDevTools({
   const notifyError = (message) => onNotify?.(message, 'error');
   const notifySuccess = (message) => onNotify?.(message, 'success');
 
-  const refreshWallet = async () => {
+  const refreshWallet = useCallback(async () => {
     try {
       const data = await adminGetDevWallet();
       setWallet({
@@ -62,14 +62,14 @@ export default function AdminDevTools({
       });
       return data;
     } catch (err) {
-      notifyError(err.message);
+      onNotify?.(err.message, 'error');
       return null;
     }
-  };
+  }, [onNotify]);
 
   useEffect(() => {
     refreshWallet();
-  }, []);
+  }, [refreshWallet]);
 
   useEffect(() => {
     if (!offerId && purchasableOffers.length > 0) {

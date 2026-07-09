@@ -1,7 +1,4 @@
-import {
-  normalizeRegionLabel,
-  parseG2BulkGameMeta,
-} from './regionMeta';
+import { parseG2BulkGameMeta } from './regionMeta';
 
 export { normalizeRegionLabel, parseG2BulkGameMeta } from './regionMeta';
 

@@ -136,21 +136,6 @@ export const DEFAULT_HOME_LAYOUT = [
 
 const VALID_TYPES = new Set(Object.keys(HOME_SECTION_TYPES));
 
-/** Keep the games grid directly under the hero carousel. */
-function ensureGamesAfterCarousel(sections = []) {
-  const gamesIdx = sections.findIndex((section) => section.type === 'games');
-  if (gamesIdx < 0) return sections;
-
-  const carouselIdx = sections.findIndex((section) => section.type === 'carousel');
-  const targetIdx = carouselIdx >= 0 ? carouselIdx + 1 : 0;
-  if (gamesIdx === targetIdx) return sections;
-
-  const next = [...sections];
-  const [gamesSection] = next.splice(gamesIdx, 1);
-  next.splice(targetIdx, 0, gamesSection);
-  return next;
-}
-
 function defaultSectionConfig(type, id) {
   const meta = HOME_SECTION_TYPES[type];
   if (!meta) return null;
@@ -287,7 +272,6 @@ export function evaluateHomeSectionStatus(section, context = {}) {
     gamingAccountCount = 0,
     saleOfferCount = 0,
     offerCount = 0,
-    approvedReviewCount = 0,
     games = [],
     offers = [],
     reviews = [],
