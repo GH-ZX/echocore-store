@@ -563,6 +563,32 @@ html, body {
 }
 
 /* Home Games section */
+.g2bulk-wallet-card {
+  box-shadow: 0 0 40px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.g2bulk-wallet-amount {
+  background: linear-gradient(135deg, #fff 0%, var(--accent) 120%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.home-games-preview {
+  max-height: 920px;
+  overflow: hidden;
+}
+
+.home-games-preview-fade {
+  pointer-events: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 180px;
+  background: linear-gradient(to bottom, transparent, var(--bg-primary) 88%);
+}
+
 .games-section .games-section-title {
   color: var(--games-title);
 }
@@ -1886,8 +1912,19 @@ html, body {
 }
 
 .carousel-slide {
+  flex: 0 0 100%;
+  min-width: 0;
   height: var(--carousel-height);
   min-height: 300px;
+  background: #060b19;
+}
+
+.carousel-slide-media {
+  position: absolute;
+  inset: -6%;
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
 }
 
 /* Carousel slide — gentle zoom toward the chosen focus point */

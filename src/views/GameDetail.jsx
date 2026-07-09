@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
+import { presetImageUrl } from '../lib/imageUtils';
 import AdminEditButton from '../components/admin/AdminEditButton';
 import BorderGlow from '../components/ui/BorderGlow';
 import AdminGameEditModal from '../components/admin/AdminGameEditModal';
@@ -68,7 +69,7 @@ export default function GameDetail({
         <div className="relative h-72 md:h-96">
           {game.image_url && (
             <img
-              src={game.image_url}
+              src={presetImageUrl(game.image_url, 'heroCover')}
               alt={lang === 'ar' ? game.name_ar : game.name_en}
               loading="lazy"
               decoding="async"

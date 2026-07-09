@@ -7,6 +7,17 @@ export function sortGamesByCarousel(games = []) {
   });
 }
 
+const CAROUSEL_FALLBACK_LIMIT = 12;
+
 export function getCarouselGames(games = []) {
-  return sortGamesByCarousel(games).filter((g) => g.show_in_carousel !== false);
+  const sorted = sortGamesByCarousel(games);
+  const explicit = sorted.filter((g) => g.show_in_carousel === true);
+  if (explicit.length > 0) return explicit;
+
+  return sorted
+    .filter((g) =>
+      g.active !== false
+      && g.redemption_method !== 'redeem_code'
+      && (g.image_url || g.logo_url))
+    .slice(0, CAROUSEL_FALLBACK_LIMIT);
 }

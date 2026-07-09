@@ -1,7 +1,9 @@
 import {
   ShoppingCart, User, LogOut, Globe, ShieldCheck, Search, X, Menu,
-  Loader2, Wallet, ChevronDown,
+  Loader2, Wallet, ChevronDown, Zap,
 } from 'lucide-react';
+import G2bulkWalletCard from '../ui/G2bulkWalletCard';
+import { useAdminG2bulkWallet } from '../../hooks/useAdminG2bulkWallet';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
@@ -60,6 +62,8 @@ export default function Header({
   const inputRef = useRef(null);
   const profileRef = useRef(null);
   const menuRef = useRef(null);
+  const isAdmin = user?.role === 'admin';
+  const { wallet: g2bulkWallet, loading: g2bulkLoading } = useAdminG2bulkWallet(isAdmin);
 
   const closeAll = useCallback(() => {
     setIsMenuOpen(false);
@@ -216,18 +220,38 @@ export default function Header({
 
             <div className="header-profile-dd-divider" />
 
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => { onRecharge(); setProfileOpen(false); }}
-              className="header-profile-dd-item justify-between"
-            >
-              <span className="flex items-center gap-2.5">
-                <Wallet className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
-                {t.recharge || 'Balance'}
-              </span>
-              <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
-            </button>
+            {isAdmin ? (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => handleNav('/dashboard')}
+                className="header-profile-dd-item justify-between"
+              >
+                <span className="flex items-center gap-2.5">
+                  <Zap className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
+                  {lang === 'ar' ? 'رصيد G2Bulk' : 'G2Bulk wallet'}
+                </span>
+                <G2bulkWalletCard
+                  compact
+                  lang={lang}
+                  balance={g2bulkWallet?.balance ?? 0}
+                  loading={g2bulkLoading}
+                />
+              </button>
+            ) : (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { onRecharge(); setProfileOpen(false); }}
+                className="header-profile-dd-item justify-between"
+              >
+                <span className="flex items-center gap-2.5">
+                  <Wallet className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
+                  {t.recharge || 'Balance'}
+                </span>
+                <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
+              </button>
+            )}
 
             {user?.role === 'admin' && (
               <button
@@ -487,15 +511,32 @@ export default function Header({
 
                   {user ? (
                     <div className="header-mobile-account">
-                      <button
-                        type="button"
-                        onClick={() => { onRecharge(); setIsMenuOpen(false); }}
-                        className="header-mobile-action"
-                      >
-                        <Wallet className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
-                        <span>{t.recharge || 'Recharge'}</span>
-                        <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
-                      </button>
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          onClick={() => handleNav('/dashboard')}
+                          className="header-mobile-action"
+                        >
+                          <Zap className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
+                          <span>{lang === 'ar' ? 'رصيد G2Bulk' : 'G2Bulk wallet'}</span>
+                          <G2bulkWalletCard
+                            compact
+                            lang={lang}
+                            balance={g2bulkWallet?.balance ?? 0}
+                            loading={g2bulkLoading}
+                          />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => { onRecharge(); setIsMenuOpen(false); }}
+                          className="header-mobile-action"
+                        >
+                          <Wallet className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
+                          <span>{t.recharge || 'Recharge'}</span>
+                          <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
+                        </button>
+                      )}
 
                       <div className="flex items-center gap-2">
                         <button

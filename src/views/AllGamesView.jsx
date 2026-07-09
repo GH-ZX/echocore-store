@@ -1,6 +1,7 @@
 import React from 'react';
 import AdminEditButton from '../components/admin/AdminEditButton';
 import BorderGlow from '../components/ui/BorderGlow';
+import { presetImageUrl } from '../lib/imageUtils';
 
 export default function AllGamesView({ 
   games = [], 
@@ -80,8 +81,10 @@ export default function AllGamesView({
               <div className="relative h-48 sm:h-52">
                 {game.image_url ? (
                   <img 
-                    src={game.image_url} 
-                    alt={isAr ? game.name_ar : game.name_en} 
+                    src={presetImageUrl(game.image_url, 'cardCover')} 
+                    alt={isAr ? game.name_ar : game.name_en}
+                    loading="lazy"
+                    decoding="async"
                     className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                 ) : (

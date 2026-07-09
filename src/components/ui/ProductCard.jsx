@@ -1,5 +1,6 @@
 import { ShoppingCart } from 'lucide-react';
 import BorderGlow from './BorderGlow';
+import { presetImageUrl } from '../../lib/imageUtils';
 
 /**
  * Universal Product Card — fully DB driven.
@@ -29,7 +30,9 @@ export default function ProductCard({
 
   // Fallback image (use placeholder or external)
   const placeholder = new URL('../../assets/placeholder-cover.svg', import.meta.url).href;
-  const imgSrc = product.image_url || placeholder;
+  const imgSrc = product.image_url
+    ? presetImageUrl(product.image_url, 'cardCover')
+    : placeholder;
 
   const handleAdd = (e) => {
     e.stopPropagation();

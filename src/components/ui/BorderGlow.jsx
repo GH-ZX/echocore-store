@@ -150,13 +150,16 @@ const BorderGlow = ({
     return degrees;
   }, [getCenterOfElement]);
 
-  const handlePointerMove = useCallback((e) => {
+  const pointerRafRef = useRef(0);
+  const pendingPointerRef = useRef(null);
+
+  const applyPointerPosition = useCallback((clientX, clientY) => {
     const card = cardRef.current;
     if (!card) return;
 
     const rect = card.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
 
     const edge = getEdgeProximity(card, x, y);
     const angle = getCursorAngle(card, x, y);
@@ -164,6 +167,22 @@ const BorderGlow = ({
     card.style.setProperty('--edge-proximity', `${(edge * 100).toFixed(3)}`);
     card.style.setProperty('--cursor-angle', `${angle.toFixed(3)}deg`);
   }, [getEdgeProximity, getCursorAngle]);
+
+  const handlePointerMove = useCallback((e) => {
+    pendingPointerRef.current = { clientX: e.clientX, clientY: e.clientY };
+    if (pointerRafRef.current) return;
+
+    pointerRafRef.current = requestAnimationFrame(() => {
+      pointerRafRef.current = 0;
+      const pending = pendingPointerRef.current;
+      if (!pending) return;
+      applyPointerPosition(pending.clientX, pending.clientY);
+    });
+  }, [applyPointerPosition]);
+
+  useEffect(() => () => {
+    if (pointerRafRef.current) cancelAnimationFrame(pointerRafRef.current);
+  }, []);
 
   useEffect(() => {
     if (!animated || !cardRef.current) return;

@@ -63,8 +63,13 @@ export default function SuccessView({ navigate, games: _games = [], t = {}, lang
   const playerServer = firstItem.player_server;
   const hasUid = !!playerUid;
 
-  const demoCode = hasUid ? null : `CODE-${orderId.slice(0, 8).toUpperCase()}`;
+  const deliveryCodes = orderItems.flatMap((item) => {
+    if (!item.delivery_items) return [];
+    return Array.isArray(item.delivery_items) ? item.delivery_items : [];
+  });
+  const hasCodes = deliveryCodes.length > 0;
   const isArabic = lang === 'ar';
+  const fulfillmentStatus = orderDetails.fulfillment_status;
 
   return (
     <div className="max-w-4xl mx-auto p-6">
@@ -86,6 +91,9 @@ export default function SuccessView({ navigate, games: _games = [], t = {}, lang
           <div><span className="text-[var(--text-muted)]">{isArabic ? 'طريقة الدفع' : 'Payment Method'}:</span> {orderDetails.payment_method === 'balance' ? (t.payFromBalance || 'رصيد الحساب') : orderDetails.payment_method}</div>
           <div><span className="text-[var(--text-muted)]">{t.date}:</span> {new Date(orderDetails.created_at).toLocaleString()}</div>
           <div><span className="text-[var(--text-muted)]">{isArabic ? 'الحالة' : 'Status'}:</span> <span className="capitalize text-emerald-400">{orderDetails.status || 'completed'}</span></div>
+          {fulfillmentStatus && fulfillmentStatus !== 'pending' && (
+            <div><span className="text-[var(--text-muted)]">{isArabic ? 'التوريد' : 'Fulfillment'}:</span> <span className="capitalize">{fulfillmentStatus}</span></div>
+          )}
         </div>
       </div>
 
@@ -124,21 +132,24 @@ export default function SuccessView({ navigate, games: _games = [], t = {}, lang
         )}
       </div>
 
-      {/* Redeem Code Section - ONLY for redeem_code purchases */}
-      {!hasUid && demoCode && (
+      {/* Redeem codes from G2Bulk fulfillment */}
+      {hasCodes && (
         <div className="card p-6 mb-6">
-          <h2 className="font-bold text-xl mb-4">
-            {t.yourRedeemCode}
-          </h2>
-          <div className="bg-[var(--bg-primary)] p-6 rounded-xl text-center mb-4">
-            <div className="text-4xl font-mono tracking-widest text-[var(--accent)] mb-2">{demoCode}</div>
-            <p className="text-xs text-[var(--text-muted)]">
-              {t.demoCodeNote}
-            </p>
+          <h2 className="font-bold text-xl mb-4">{t.yourRedeemCode}</h2>
+          <div className="space-y-3">
+            {deliveryCodes.map((code, idx) => (
+              <div key={idx} className="bg-[var(--bg-primary)] p-4 rounded-xl text-center">
+                <div className="text-xl sm:text-2xl font-mono tracking-wide text-[var(--accent)] break-all">{code}</div>
+              </div>
+            ))}
           </div>
-          <p className="text-[var(--text-sec)] text-sm">
-            {t.useCodeInGame}
-          </p>
+          <p className="text-[var(--text-sec)] text-sm mt-4">{t.useCodeInGame}</p>
+        </div>
+      )}
+
+      {!hasUid && !hasCodes && fulfillmentStatus === 'fulfilling' && (
+        <div className="card p-6 mb-6 text-center text-[var(--text-sec)]">
+          {isArabic ? 'جاري تجهيز الكود — حدّث الصفحة خلال دقيقة.' : 'Preparing your code — refresh in a minute.'}
         </div>
       )}
 

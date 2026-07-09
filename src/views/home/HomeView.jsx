@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ChevronDown } from 'lucide-react';
 import ProductCarousel from './ProductCarousel';
 import SaleOfferCard from '../../components/ui/SaleOfferCard';
 import HomeGameCard from '../../components/ui/HomeGameCard';
@@ -7,6 +9,8 @@ import AdminAddCard from '../../components/admin/AdminAddCard';
 import { getCarouselGames } from '../../lib/carouselUtils';
 import { pickStableOffers } from '../../lib/customerReviews';
 import { DEFAULT_HOME_LAYOUT, getSectionLabel, normalizeHomeLayout } from '../../lib/homeLayout';
+
+const HOME_GAMES_PREVIEW = 8;
 
 function buildOfferPoolKey(offers = []) {
   return offers.map((offer) => offer.id).sort().join('|');
@@ -137,6 +141,10 @@ export default function HomeView({
   const renderGamesGrid = (items, section, addOptions = {}) => {
     const showAddCard = isAdmin && onAddGame;
     const hasItems = items.length > 0;
+    const previewLimit = addOptions.previewLimit;
+    const totalCount = addOptions.totalCount ?? items.length;
+    const displayItems = previewLimit ? items.slice(0, previewLimit) : items;
+    const showMoreLink = !!addOptions.showMoreLink && totalCount > (previewLimit || items.length);
 
     if (!hasItems && !showAddCard && !loading) {
       return (
@@ -161,26 +169,39 @@ export default function HomeView({
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {items.map((game) => (
-              <HomeGameCard
-                key={game.id}
-                game={game}
-                lang={lang}
-                t={t}
-                onSelectGame={onSelectGame}
-                onEditGame={onEditGame}
-                isAdmin={isAdmin}
-              />
-            ))}
-            {showAddCard && (
-              <AdminAddCard
-                variant="game"
-                ariaLabel={t.addGame || (lang === 'ar' ? 'إضافة لعبة' : 'Add game')}
-                onClick={() => onAddGame(addOptions)}
-              />
+          <>
+            <div className={`relative ${showMoreLink ? 'home-games-preview' : ''}`}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {displayItems.map((game) => (
+                  <HomeGameCard
+                    key={game.id}
+                    game={game}
+                    lang={lang}
+                    t={t}
+                    onSelectGame={onSelectGame}
+                    onEditGame={onEditGame}
+                    isAdmin={isAdmin}
+                  />
+                ))}
+                {showAddCard && !showMoreLink && (
+                  <AdminAddCard
+                    variant="game"
+                    ariaLabel={t.addGame || (lang === 'ar' ? 'إضافة لعبة' : 'Add game')}
+                    onClick={() => onAddGame(addOptions)}
+                  />
+                )}
+              </div>
+              {showMoreLink && <div className="home-games-preview-fade" aria-hidden />}
+            </div>
+            {showMoreLink && (
+              <div className="flex justify-center mt-6">
+                <Link to="/games" className="btn btn-secondary inline-flex items-center gap-2">
+                  {t.showMoreGames || (lang === 'ar' ? `عرض كل الألعاب (${totalCount})` : `Show more games (${totalCount})`)}
+                  <ChevronDown className="w-4 h-4" />
+                </Link>
+              </div>
             )}
-          </div>
+          </>
         )}
       </div>
     );
@@ -305,12 +326,17 @@ export default function HomeView({
       }
 
       case 'games': {
+        const isSearching = !!searchQuery.trim();
         const gamesSection = {
           ...section,
-          title_en: searchQuery.trim() ? (t.searchResults || 'Search Results') : (section.title_en || t.chooseGame || 'Choose a Game'),
-          title_ar: searchQuery.trim() ? (t.searchResults || 'نتائج البحث') : (section.title_ar || t.chooseGame || 'اختر لعبتك'),
+          title_en: isSearching ? (t.searchResults || 'Search Results') : (section.title_en || t.chooseGame || 'Choose a Game'),
+          title_ar: isSearching ? (t.searchResults || 'نتائج البحث') : (section.title_ar || t.chooseGame || 'اختر لعبتك'),
         };
-        return renderGamesGrid(filteredGames, gamesSection, {});
+        return renderGamesGrid(filteredGames, gamesSection, {
+          previewLimit: isSearching ? undefined : HOME_GAMES_PREVIEW,
+          totalCount: filteredGames.length,
+          showMoreLink: !isSearching,
+        });
       }
 
       case 'game_picks': {

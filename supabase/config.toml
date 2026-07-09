@@ -1,0 +1,2 @@
+[functions.g2bulk-sync-cron]
+verify_jwt = false

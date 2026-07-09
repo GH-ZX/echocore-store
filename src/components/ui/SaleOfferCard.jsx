@@ -1,6 +1,7 @@
 import React from 'react';
 import AdminEditButton from '../admin/AdminEditButton';
 import BorderGlow from './BorderGlow';
+import { presetImageUrl } from '../../lib/imageUtils';
 
 export default function SaleOfferCard({
   offer,
@@ -43,7 +44,7 @@ export default function SaleOfferCard({
       <div className="relative aspect-[16/10] sm:aspect-[4/3] overflow-hidden bg-[var(--bg-elevated)] flex-shrink-0">
         {offer.sale_image_url || game.image_url ? (
           <img
-            src={offer.sale_image_url || game.image_url}
+            src={presetImageUrl(offer.sale_image_url || game.image_url, 'cardCover')}
             alt={offerName}
             className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             loading="lazy"

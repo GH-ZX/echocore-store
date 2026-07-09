@@ -19,6 +19,8 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import G2bulkWalletCard from '../../components/ui/G2bulkWalletCard';
+import { useAdminG2bulkWallet } from '../../hooks/useAdminG2bulkWallet';
 
 function getInitials(name, email) {
   const source = (name || email || '?').trim();
@@ -64,6 +66,8 @@ export default function ProfileView({
   const [nameDraft, setNameDraft] = useState(user?.name || '');
   const [savingName, setSavingName] = useState(false);
   const [nameError, setNameError] = useState('');
+  const isAdmin = user?.role === 'admin';
+  const { wallet: g2bulkWallet, loading: g2bulkLoading, error: g2bulkError, refresh: refreshG2bulk } = useAdminG2bulkWallet(isAdmin);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -238,29 +242,51 @@ export default function ProfileView({
             </div>
           </div>
 
-          <div className="sm:ml-auto flex flex-col sm:items-end gap-2">
-            <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">{t.currentBalance || (isAr ? 'رصيدك' : 'Your Balance')}</p>
-            <p className="text-3xl sm:text-4xl font-black font-mono text-[var(--accent)]">${balance.toFixed(2)}</p>
-            <button
-              type="button"
-              onClick={onRecharge}
-              className="action-chip btn btn-primary !h-11 !min-h-11 !border-0 gap-2 px-5"
-            >
-              <Wallet className="w-4 h-4" />
-              {t.recharge || 'Recharge'}
-            </button>
+          <div className="sm:ml-auto w-full sm:w-auto">
+            {isAdmin ? (
+              <G2bulkWalletCard
+                balance={g2bulkWallet?.balance ?? 0}
+                username={g2bulkWallet?.username}
+                loading={g2bulkLoading}
+                error={g2bulkError}
+                lang={lang}
+                onRefresh={refreshG2bulk}
+                onManage={() => navigate('/dashboard')}
+                manageLabel={isAr ? 'لوحة G2Bulk' : 'G2Bulk dashboard'}
+              />
+            ) : (
+              <div className="flex flex-col sm:items-end gap-2">
+                <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">
+                  {t.currentBalance || (isAr ? 'رصيدك' : 'Your Balance')}
+                </p>
+                <p className="text-3xl sm:text-4xl font-black font-mono text-[var(--accent)]">${balance.toFixed(2)}</p>
+                <button
+                  type="button"
+                  onClick={onRecharge}
+                  className="action-chip btn btn-primary !h-11 !min-h-11 !border-0 gap-2 px-5"
+                >
+                  <Wallet className="w-4 h-4" />
+                  {t.recharge || 'Recharge'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {[
+        {(isAdmin ? [
+          { icon: ShoppingBag, label: t.totalOrders || (isAr ? 'الطلبات' : 'Orders'), value: userOrders.length, color: 'text-blue-400' },
+          { icon: Receipt, label: t.totalSpent || (isAr ? 'إجمالي الإنفاق' : 'Total Spent'), value: `$${totalSpent.toFixed(2)}`, color: 'text-[var(--accent)]' },
+          { icon: Wallet, label: isAr ? 'رصيد G2Bulk' : 'G2Bulk balance', value: g2bulkLoading ? '…' : (g2bulkWallet ? `$${g2bulkWallet.balance.toFixed(2)}` : '—'), color: 'text-emerald-400' },
+          { icon: User, label: t.accountType || (isAr ? 'نوع الحساب' : 'Account'), value: isAr ? 'مدير' : 'Admin', color: 'text-violet-400' },
+        ] : [
           { icon: ShoppingBag, label: t.totalOrders || (isAr ? 'الطلبات' : 'Orders'), value: userOrders.length, color: 'text-blue-400' },
           { icon: Receipt, label: t.totalSpent || (isAr ? 'إجمالي الإنفاق' : 'Total Spent'), value: `$${totalSpent.toFixed(2)}`, color: 'text-[var(--accent)]' },
           { icon: ArrowUpRight, label: t.totalRecharged || (isAr ? 'إجمالي الشحن' : 'Total Recharged'), value: `$${totalRecharges.toFixed(2)}`, color: 'text-emerald-400' },
-          { icon: User, label: t.accountType || (isAr ? 'نوع الحساب' : 'Account'), value: user.role === 'admin' ? (isAr ? 'مدير' : 'Admin') : (isAr ? 'لاعب' : 'Gamer'), color: 'text-violet-400' },
-        ].map((stat) => (
+          { icon: User, label: t.accountType || (isAr ? 'نوع الحساب' : 'Account'), value: isAr ? 'لاعب' : 'Gamer', color: 'text-violet-400' },
+        ]).map((stat) => (
           <div key={stat.label} className="card p-4 sm:p-5">
             <stat.icon className={`w-5 h-5 mb-2 ${stat.color}`} />
             <p className="text-[10px] sm:text-xs text-[var(--text-muted)] uppercase tracking-wide">{stat.label}</p>
@@ -271,12 +297,15 @@ export default function ProfileView({
 
       {/* Quick actions */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-        {[
+        {(isAdmin ? [
+          { icon: ShieldCheck, label: t.adminDash, path: '/dashboard' },
+          { icon: Gamepad2, label: t.allGames || (isAr ? 'تصفح الألعاب' : 'Browse Games'), path: '/games' },
+          { icon: ShoppingCart, label: t.cart || (isAr ? 'السلة' : 'Cart'), path: '/cart' },
+        ] : [
           { icon: Gamepad2, label: t.allGames || (isAr ? 'تصفح الألعاب' : 'Browse Games'), path: '/games' },
           { icon: ShoppingCart, label: t.cart || (isAr ? 'السلة' : 'Cart'), path: '/cart' },
           { icon: Wallet, label: t.recharge || (isAr ? 'شحن الرصيد' : 'Recharge'), action: onRecharge },
-          ...(user.role === 'admin' ? [{ icon: ShieldCheck, label: t.adminDash, path: '/dashboard' }] : []),
-        ].map((action) => (
+        ]).map((action) => (
           <button
             key={action.label}
             type="button"

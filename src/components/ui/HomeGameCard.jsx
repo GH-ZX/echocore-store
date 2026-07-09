@@ -1,5 +1,6 @@
 import AdminEditButton from '../admin/AdminEditButton';
 import BorderGlow from './BorderGlow';
+import { presetImageUrl } from '../../lib/imageUtils';
 
 export default function HomeGameCard({
   game,
@@ -37,7 +38,7 @@ export default function HomeGameCard({
       <div className="relative h-48 sm:h-52">
         {game.image_url ? (
           <img
-            src={game.image_url}
+            src={presetImageUrl(game.image_url, 'cardCover')}
             alt={lang === 'ar' ? game.name_ar : game.name_en}
             loading="lazy"
             decoding="async"

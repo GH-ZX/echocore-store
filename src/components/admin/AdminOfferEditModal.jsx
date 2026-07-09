@@ -13,6 +13,10 @@ export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t 
     sale_image_url: '',
     is_sale: false,
     original_price: '',
+    g2bulk_type: '',
+    g2bulk_catalogue_name: '',
+    g2bulk_product_id: '',
+    g2bulk_cost_usd: '',
   });
   const [saleCoverFile, setSaleCoverFile] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -34,6 +38,10 @@ export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t 
         sale_image_url: '',
         is_sale: !!offer.is_sale,
         original_price: '',
+        g2bulk_type: '',
+        g2bulk_catalogue_name: '',
+        g2bulk_product_id: '',
+        g2bulk_cost_usd: '',
       });
     } else {
       setForm({
@@ -46,6 +54,10 @@ export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t 
         sale_image_url: offer.sale_image_url || '',
         is_sale: !!offer.is_sale,
         original_price: offer.original_price || '',
+        g2bulk_type: offer.g2bulk_type || '',
+        g2bulk_catalogue_name: offer.g2bulk_catalogue_name || '',
+        g2bulk_product_id: offer.g2bulk_product_id ?? '',
+        g2bulk_cost_usd: offer.g2bulk_cost_usd ?? '',
       });
     }
 
@@ -86,6 +98,10 @@ export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t 
         sale_image_url: finalSaleImage,
         is_sale: !!form.is_sale,
         original_price: form.is_sale ? (parseFloat(form.original_price) || null) : null,
+        g2bulk_type: form.g2bulk_type || null,
+        g2bulk_catalogue_name: form.g2bulk_catalogue_name?.trim() || null,
+        g2bulk_product_id: form.g2bulk_product_id ? parseInt(form.g2bulk_product_id, 10) : null,
+        g2bulk_cost_usd: form.g2bulk_cost_usd ? parseFloat(form.g2bulk_cost_usd) : null,
       });
       onClose();
     } catch (err) {
@@ -189,6 +205,40 @@ export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t 
               className="input"
             />
           )}
+
+          <div className="rounded-xl border border-[var(--border)] p-3 space-y-3 bg-[var(--bg-primary)]/40">
+            <div className="text-xs font-bold text-[var(--accent)] uppercase tracking-wide">G2Bulk</div>
+            <select
+              value={form.g2bulk_type}
+              onChange={(e) => setForm({ ...form, g2bulk_type: e.target.value })}
+              className="input w-full text-sm"
+            >
+              <option value="">{t.g2bulkTypeAuto || 'Auto (from game redemption)'}</option>
+              <option value="topup">{t.g2bulkTypeTopup || 'Direct top-up'}</option>
+              <option value="voucher">{t.g2bulkTypeVoucher || 'Gift card / voucher code'}</option>
+            </select>
+            <input
+              placeholder={t.g2bulkCatalogueName || 'Catalogue name e.g. 60 UC'}
+              value={form.g2bulk_catalogue_name}
+              onChange={(e) => setForm({ ...form, g2bulk_catalogue_name: e.target.value })}
+              className="input w-full text-sm font-mono"
+            />
+            <input
+              type="number"
+              placeholder={t.g2bulkProductId || 'Voucher product ID (gift cards)'}
+              value={form.g2bulk_product_id}
+              onChange={(e) => setForm({ ...form, g2bulk_product_id: e.target.value })}
+              className="input w-full text-sm font-mono"
+            />
+            <input
+              type="number"
+              step="0.0001"
+              placeholder={t.g2bulkCostUsd || 'Your G2Bulk cost (USD)'}
+              value={form.g2bulk_cost_usd}
+              onChange={(e) => setForm({ ...form, g2bulk_cost_usd: e.target.value })}
+              className="input w-full text-sm"
+            />
+          </div>
 
           <div>
             <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 block">{t.description || 'Description'}</label>

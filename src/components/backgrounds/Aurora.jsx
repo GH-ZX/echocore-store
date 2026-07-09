@@ -186,11 +186,12 @@ export default function Aurora({
     const ctn = ctnDom.current;
     if (!ctn) return;
 
+    const isMobile = window.matchMedia('(max-width: 767px)').matches;
     const renderer = new Renderer({
       alpha: true,
       premultipliedAlpha: true,
       antialias: false,
-      dpr: Math.min(window.devicePixelRatio || 1, 1.5),
+      dpr: Math.min(window.devicePixelRatio || 1, isMobile ? 1 : 1.5),
     });
     const gl = renderer.gl;
     gl.clearColor(0, 0, 0, 0);
@@ -255,15 +256,27 @@ export default function Aurora({
     const handleThemeChange = () => syncUniforms();
     window.addEventListener('themechange', handleThemeChange);
 
-    // Cursor / touch tracking — moves the aurora center
-    const handlePointer = (e) => {
+    // Cursor / touch tracking — moves the aurora center (throttled to animation frames)
+    let pointerRaf = 0;
+    let pendingPointer = null;
+    const applyPointer = (clientX, clientY) => {
       if (!responsive || !ctn) return;
-      const src = e.touches?.[0] || e;
       const rect = ctn.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
       mouseRef.current = {
-        x: (src.clientX - rect.left) / rect.width,
-        y: (src.clientY - rect.top) / rect.height,
+        x: (clientX - rect.left) / rect.width,
+        y: (clientY - rect.top) / rect.height,
       };
+    };
+    const handlePointer = (e) => {
+      const src = e.touches?.[0] || e;
+      pendingPointer = { clientX: src.clientX, clientY: src.clientY };
+      if (pointerRaf) return;
+      pointerRaf = requestAnimationFrame(() => {
+        pointerRaf = 0;
+        if (!pendingPointer) return;
+        applyPointer(pendingPointer.clientX, pendingPointer.clientY);
+      });
     };
     window.addEventListener('pointermove', handlePointer);
     window.addEventListener('touchmove', handlePointer, { passive: true });
@@ -287,6 +300,12 @@ export default function Aurora({
 
     const handleVisibility = () => {
       isVisible = !document.hidden;
+      if (!isVisible && animateId) {
+        cancelAnimationFrame(animateId);
+        animateId = 0;
+      } else if (isVisible && !animateId) {
+        animateId = requestAnimationFrame(update);
+      }
     };
     document.addEventListener('visibilitychange', handleVisibility);
 
@@ -294,6 +313,7 @@ export default function Aurora({
     window.addEventListener('resize', resize);
 
     return () => {
+      if (pointerRaf) cancelAnimationFrame(pointerRaf);
       cancelAnimationFrame(animateId);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('resize', resize);

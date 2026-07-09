@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Trash2, Upload, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign } from 'lucide-react';
+import { Trash2, Upload, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Zap } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uploadImage } from '../../lib/uploadImage';
 
@@ -11,6 +11,7 @@ const AdminThemeSettings = lazy(() => import('../../components/admin/AdminThemeS
 const AdminHomeLayoutSettings = lazy(() => import('../../components/admin/AdminHomeLayoutSettings'));
 const AdminReviewsManager = lazy(() => import('../../components/admin/AdminReviewsManager'));
 const AdminRechargeManager = lazy(() => import('../../components/admin/AdminRechargeManager'));
+const AdminG2BulkSettings = lazy(() => import('../../components/admin/AdminG2BulkSettings'));
 
 function AdminTabLoader() {
   return (
@@ -35,6 +36,7 @@ export default function AdminView({
   refreshOffers,
   refreshOrders,
   onPaymentSettingsSaved,
+  onCatalogSynced,
   onThemeSaved,
   onHomeLayoutSaved,
   reviews = [],
@@ -506,6 +508,7 @@ export default function AdminView({
             { id: 'products', label: t.gamesAndOffers, shortLabel: t.tabGamesShort, icon: Package },
             { id: 'orders', label: t.ordersTab, shortLabel: t.tabOrdersShort, icon: ShoppingCart },
             { id: 'payments', label: t.paymentsTab, shortLabel: t.tabPaymentsShort, icon: Wallet },
+            { id: 'g2bulk', label: t.g2bulkTab || 'G2Bulk', shortLabel: 'G2B', icon: Zap },
             { id: 'recharges', label: t.rechargesTab, shortLabel: t.tabRechargesShort, icon: CircleDollarSign },
             { id: 'theme', label: t.themeTab, shortLabel: t.tabThemeShort, icon: Palette },
             { id: 'home', label: t.homeLayoutTab, shortLabel: t.tabHomeShort, icon: LayoutGrid },
@@ -1302,6 +1305,12 @@ export default function AdminView({
             lang={lang}
             onSaved={onPaymentSettingsSaved}
           />
+        </Suspense>
+      )}
+
+      {activeTab === 'g2bulk' && (
+        <Suspense fallback={<AdminTabLoader />}>
+          <AdminG2BulkSettings t={t} lang={lang} onCatalogSynced={onCatalogSynced} />
         </Suspense>
       )}
 

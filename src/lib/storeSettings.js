@@ -19,7 +19,7 @@ export async function fetchPaymentMethods() {
   const { data, error } = await supabase.rpc('get_payment_methods');
   if (error) {
     console.error('get_payment_methods:', error);
-    return { shamcash: true, binance: false, mastercard: false, shamcashMerchantName: 'ECHOCORE Store' };
+    return { shamcash: true, binance: false, mastercard: false, shamcashMerchantName: 'ECHOCORE Store', g2bulkCatalogOnly: true };
   }
   return data || { shamcash: false, binance: false, mastercard: false };
 }

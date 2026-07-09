@@ -22,6 +22,7 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
     description_ar: '',
     carousel_focus_x: 50,
     carousel_focus_y: 50,
+    g2bulk_game_code: '',
   });
   const [logoFile, setLogoFile] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
@@ -49,6 +50,7 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
         description_ar: '',
         carousel_focus_x: 50,
         carousel_focus_y: 50,
+        g2bulk_game_code: '',
       });
     } else {
       setForm({
@@ -63,6 +65,7 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
         description_ar: game.description_ar || '',
         carousel_focus_x: game.carousel_focus_x ?? 50,
         carousel_focus_y: game.carousel_focus_y ?? 50,
+        g2bulk_game_code: game.g2bulk_game_code || '',
       });
     }
 
@@ -125,6 +128,7 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
         description_ar: form.description_ar || form.description_en || '',
         carousel_focus_x: form.carousel_focus_x ?? 50,
         carousel_focus_y: form.carousel_focus_y ?? 50,
+        g2bulk_game_code: form.g2bulk_game_code?.trim() || null,
       });
       onClose();
     } catch (err) {
@@ -205,6 +209,18 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
               <option value="redeem_code">{t.redemptionCode || 'Redeem code only'}</option>
               <option value="both">{t.redemptionBoth || 'Both'}</option>
             </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 block">
+              {t.g2bulkGameCode || 'G2Bulk game code'}
+            </label>
+            <input
+              placeholder="pubgm, mlbb, free_fire…"
+              value={form.g2bulk_game_code}
+              onChange={(e) => setForm({ ...form, g2bulk_game_code: e.target.value })}
+              className="input w-full font-mono text-sm"
+            />
           </div>
 
           <div>

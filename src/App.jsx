@@ -5,6 +5,7 @@ import { Loader2, Globe } from 'lucide-react';
 import AppToast from './components/ui/AppToast';
 import { supabase, resolveUserData } from './lib/supabase';
 import { createOrderAtomic, confirmOrderPayment, rejectOrderPayment } from './lib/orders';
+import { fulfillOrderG2bulk } from './lib/g2bulk';
 import { syncCartWithOffers, pickCartSnapshot, cartsAreEquivalent, getCartLineKey } from './lib/cartUtils';
 import ProtectedRoute from './components/routing/ProtectedRoute';
 import ScrollToTop from './components/routing/ScrollToTop';
@@ -146,6 +147,7 @@ export default function App() {
     mastercard: false,
     shamcashMerchantName: 'ECHOCORE Store',
     shamcashConfigured: false,
+    g2bulkCatalogOnly: true,
   });
   const [homeLayout, setHomeLayout] = useState(DEFAULT_HOME_LAYOUT);
   const [reviews, setReviews] = useState([]);
@@ -290,14 +292,17 @@ export default function App() {
   // ============================================
   // LOAD PRODUCTS FROM SUPABASE (REAL DB)
   // ============================================
-  const fetchGames = async ({ background = false } = {}) => {
+  const fetchGames = async ({ background = false, catalogOnly = paymentConfig.g2bulkCatalogOnly } = {}) => {
     if (!background) setLoadingGames(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('games')
         .select('*')
-        .eq('active', true)
-        .order('created_at', { ascending: true });
+        .eq('active', true);
+      if (catalogOnly) {
+        query = query.eq('catalog_source', 'g2bulk');
+      }
+      const { data, error } = await query.order('created_at', { ascending: true });
 
       if (error) {
         console.error('Failed to load games:', error);
@@ -313,13 +318,16 @@ export default function App() {
     }
   };
 
-  const fetchOffers = async () => {
+  const fetchOffers = async ({ catalogOnly = paymentConfig.g2bulkCatalogOnly } = {}) => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('offers')
         .select('*')
-        .eq('active', true)
-        .order('created_at', { ascending: true });
+        .eq('active', true);
+      if (catalogOnly) {
+        query = query.eq('catalog_source', 'g2bulk');
+      }
+      const { data, error } = await query.order('created_at', { ascending: true });
 
       if (error) {
         console.error('Failed to load offers:', error);
@@ -486,6 +494,10 @@ export default function App() {
       };
     }
 
+    if (data.status === 'completed' && data.orderId) {
+      tryFulfillOrder(data.orderId);
+    }
+
     return { orderId: data.orderId, status: data.status || 'completed' };
   };
 
@@ -534,12 +546,33 @@ export default function App() {
       };
     }
 
+    if (data.status === 'completed' && data.orderId) {
+      tryFulfillOrder(data.orderId);
+    }
+
     return { orderId: data.orderId, status: data.status || 'completed' };
+  };
+
+  const tryFulfillOrder = async (orderId) => {
+    try {
+      await fulfillOrderG2bulk(orderId);
+    } catch (e) {
+      console.error('G2Bulk fulfillment:', e);
+      showToast(
+        lang === 'ar'
+          ? 'فشل التوريد التلقائي — راجع لوحة الإدارة'
+          : (e.message || 'Auto-fulfillment failed — check admin dashboard'),
+        'error',
+      );
+    }
   };
 
   const handleApproveOrder = async (orderId) => {
     const result = await confirmOrderPayment(orderId);
     await fetchOrders();
+    if (result?.status === 'completed') {
+      await tryFulfillOrder(orderId);
+    }
     return result;
   };
 
@@ -563,8 +596,11 @@ export default function App() {
       description_ar: productData.description_ar || '',
       sale_image_url: productData.sale_image_url || null,
       is_sale: !!productData.is_sale,
-      original_price: productData.is_sale ? (parseFloat(productData.original_price) || null) : null
-      // No amount, no main image_url for offers
+      original_price: productData.is_sale ? (parseFloat(productData.original_price) || null) : null,
+      g2bulk_type: productData.g2bulk_type || null,
+      g2bulk_catalogue_name: productData.g2bulk_catalogue_name?.trim() || null,
+      g2bulk_product_id: productData.g2bulk_product_id ? parseInt(productData.g2bulk_product_id, 10) : null,
+      g2bulk_cost_usd: productData.g2bulk_cost_usd ? parseFloat(productData.g2bulk_cost_usd) : null,
     };
 
     const { data, error } = await supabase
@@ -611,8 +647,11 @@ export default function App() {
         description_ar: payload.description_ar || '',
         sale_image_url: payload.sale_image_url || null,
         is_sale: !!payload.is_sale,
-        original_price: payload.is_sale ? (parseFloat(payload.original_price) || null) : null
-        // amount and main image_url intentionally omitted
+        original_price: payload.is_sale ? (parseFloat(payload.original_price) || null) : null,
+        g2bulk_type: payload.g2bulk_type || null,
+        g2bulk_catalogue_name: payload.g2bulk_catalogue_name?.trim() || null,
+        g2bulk_product_id: payload.g2bulk_product_id ? parseInt(payload.g2bulk_product_id, 10) : null,
+        g2bulk_cost_usd: payload.g2bulk_cost_usd ? parseFloat(payload.g2bulk_cost_usd) : null,
       })
       .eq('id', id)
       .select()
@@ -646,6 +685,7 @@ export default function App() {
         carousel_focus_y: payload.carousel_focus_y ?? 50,
         show_in_carousel: !!show_in_carousel,
         carousel_order: show_in_carousel ? getCarouselGames(games).length : games.length,
+        g2bulk_game_code: payload.g2bulk_game_code?.trim() || null,
         active: true,
       })
       .select()
@@ -689,6 +729,7 @@ export default function App() {
         description_ar: payload.description_ar || '',
         carousel_focus_x: payload.carousel_focus_x ?? 50,
         carousel_focus_y: payload.carousel_focus_y ?? 50,
+        g2bulk_game_code: payload.g2bulk_game_code?.trim() || null,
       })
       .eq('id', id)
       .select()
@@ -794,6 +835,14 @@ export default function App() {
       const hash = window.location.hash;
       if (!hash.includes('access_token')) return;
 
+      const hashParams = new URLSearchParams(hash.replace(/^#/, ''));
+      const authType = hashParams.get('type');
+
+      if (authType === 'recovery') {
+        window.history.replaceState({}, '', '/login?recovery=1');
+        return;
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return;
 
@@ -802,6 +851,7 @@ export default function App() {
 
       lastSyncedUserIdRef.current = userData.id;
       setUser(userData);
+      window.history.replaceState({}, '', '/login');
       navigateRef.current('/', { replace: true });
 
       if (!hasShownLoginToast.current) {
@@ -879,16 +929,29 @@ export default function App() {
     setReviews(nextReviews);
   };
 
-  // Load storefront data in parallel — orders only for admins (dashboard)
-  useEffect(() => {
-    Promise.allSettled([
-      fetchGames(),
-      fetchOffers(),
-      refreshPaymentConfig(),
-      refreshSiteTheme(),
-      refreshHomeLayout(),
-      refreshReviews(),
+  const refreshCatalog = async (catalogOnly) => {
+    const config = await fetchPaymentMethods();
+    setPaymentConfig(config);
+    const onlyG2bulk = catalogOnly ?? config.g2bulkCatalogOnly;
+    await Promise.all([
+      fetchGames({ catalogOnly: onlyG2bulk }),
+      fetchOffers({ catalogOnly: onlyG2bulk }),
     ]);
+  };
+
+  // Load storefront data — payment config first so G2Bulk catalog filter applies
+  useEffect(() => {
+    (async () => {
+      const config = await fetchPaymentMethods();
+      setPaymentConfig(config);
+      await Promise.allSettled([
+        fetchGames({ catalogOnly: config.g2bulkCatalogOnly }),
+        fetchOffers({ catalogOnly: config.g2bulkCatalogOnly }),
+        refreshSiteTheme(),
+        refreshHomeLayout(),
+        refreshReviews(),
+      ]);
+    })();
   }, []);
 
   // Persist cart (simple universal localStorage)
@@ -1002,6 +1065,14 @@ export default function App() {
   };
 
   // Called by LoginView after successful Supabase auth
+  const resolveUserAfterAuth = async (authUser) => {
+    const userData = await resolveUserData(authUser, { createIfMissing: true });
+    if (!userData) {
+      throw new Error(lang === 'ar' ? 'تعذر تحميل الملف الشخصي' : 'Failed to load user profile');
+    }
+    return userData;
+  };
+
   const handleLoginSuccess = (userData, redirectTo = '/') => {
     lastSyncedUserIdRef.current = userData.id;
     setUser(userData);
@@ -1269,6 +1340,7 @@ export default function App() {
                 handleAuthLogin={handleAuthLogin}
                 handleAuthSignup={handleAuthSignup}
                 onLoginSuccess={handleLoginSuccess}
+                resolveUserAfterAuth={resolveUserAfterAuth}
               />
             }
           />
@@ -1400,6 +1472,7 @@ export default function App() {
                   refreshOffers={fetchOffers}
                   refreshOrders={fetchOrders}
                   onPaymentSettingsSaved={refreshPaymentConfig}
+                  onCatalogSynced={refreshCatalog}
                   onThemeSaved={refreshSiteTheme}
                   onHomeLayoutSaved={refreshHomeLayout}
                   reviews={reviews}

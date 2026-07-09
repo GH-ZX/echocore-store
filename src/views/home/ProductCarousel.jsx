@@ -1,12 +1,22 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
 import { ChevronLeft, ChevronRight, Gamepad2, Gift, Settings2, ChevronUp, ChevronDown, Plus } from 'lucide-react';
 import AdminEditButton from '../../components/admin/AdminEditButton';
 import AdminAddCard from '../../components/admin/AdminAddCard';
-import BorderGlow from '../../components/ui/BorderGlow';
+import { presetImageUrl } from '../../lib/imageUtils';
 
 const AUTOPLAY_MS = 6000;
+const DEFAULT_ACCENT = { r: 34, g: 211, b: 238 };
 
+function slideDistance(index, active, total) {
+  const direct = Math.abs(index - active);
+  return Math.min(direct, total - direct);
+}
+
+function shouldLoadSlide(index, active, total) {
+  if (total <= 2) return true;
+  return slideDistance(index, active, total) <= 1;
+}
 
 export default function ProductCarousel({
   products,
@@ -33,8 +43,18 @@ export default function ProductCarousel({
   });
   const [activeSlide, setActiveSlide] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
-  const [accent, setAccent] = useState({ r: 34, g: 211, b: 238 });
-  const [logoAccent, setLogoAccent] = useState({ r: 34, g: 211, b: 238 });
+  const [accent, setAccent] = useState(DEFAULT_ACCENT);
+  const [logoAccent, setLogoAccent] = useState(DEFAULT_ACCENT);
+  const [kenBurnsEnabled, setKenBurnsEnabled] = useState(false);
+  const colorJobRef = useRef(0);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px) and (prefers-reduced-motion: no-preference)');
+    const sync = () => setKenBurnsEnabled(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
 
   useEffect(() => {
     if (!embla || isPaused) return;
@@ -52,98 +72,82 @@ export default function ProductCarousel({
     return () => embla.off('select', onSelect);
   }, [embla]);
 
-  const extractColor = useCallback((src) => {
+  const extractAverageColor = useCallback((src, setter) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       try {
         const canvas = document.createElement('canvas');
-        canvas.width = 48;
-        canvas.height = 48;
+        canvas.width = 24;
+        canvas.height = 24;
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, 48, 48);
-        const d = ctx.getImageData(0, 0, 48, 48).data;
+        ctx.drawImage(img, 0, 0, 24, 24);
+        const d = ctx.getImageData(0, 0, 24, 24).data;
         let r = 0, g = 0, b = 0, n = 0;
         for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
         const raw = { r: r / n, g: g / n, b: b / n };
         const mx = Math.max(raw.r, raw.g, raw.b);
         const boost = mx > 30 ? Math.min(255 / mx, 2.2) : 1;
-        setAccent({
+        setter({
           r: Math.min(255, Math.round(raw.r * boost)),
           g: Math.min(255, Math.round(raw.g * boost)),
           b: Math.min(255, Math.round(raw.b * boost)),
         });
       } catch {
-        setAccent({ r: 34, g: 211, b: 238 });
+        setter(DEFAULT_ACCENT);
       }
     };
-    img.onerror = () => setAccent({ r: 34, g: 211, b: 238 });
-    img.src = src;
-  }, []);
-
-  const extractLogoColor = useCallback((src) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = 48;
-        canvas.height = 48;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, 48, 48);
-        const d = ctx.getImageData(0, 0, 48, 48).data;
-        let r = 0, g = 0, b = 0, n = 0;
-        for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
-        const raw = { r: r / n, g: g / n, b: b / n };
-        const mx = Math.max(raw.r, raw.g, raw.b);
-        const boost = mx > 30 ? Math.min(255 / mx, 2.2) : 1;
-        setLogoAccent({
-          r: Math.min(255, Math.round(raw.r * boost)),
-          g: Math.min(255, Math.round(raw.g * boost)),
-          b: Math.min(255, Math.round(raw.b * boost)),
-        });
-      } catch {
-        setLogoAccent({ r: 34, g: 211, b: 238 });
-      }
-    };
-    img.onerror = () => setLogoAccent({ r: 34, g: 211, b: 238 });
+    img.onerror = () => setter(DEFAULT_ACCENT);
     img.src = src;
   }, []);
 
   useEffect(() => {
     const item = slides[activeSlide];
     if (!item) return;
-    const src = item.image_url || item.image || placeholderCover;
-    extractColor(src);
-    const logoSrc = item.logo_url || item.logo || placeholderLogo;
-    extractLogoColor(logoSrc);
-  }, [activeSlide, slides, extractColor, extractLogoColor, placeholderCover, placeholderLogo]);
 
-  const getImg = (item) => item.image_url || item.image || placeholderCover;
+    const jobId = ++colorJobRef.current;
+    const timer = window.setTimeout(() => {
+      if (colorJobRef.current !== jobId) return;
+      const coverSrc = presetImageUrl(
+        item.image_url || item.image || placeholderCover,
+        'colorSample',
+      );
+      const logoSrc = presetImageUrl(
+        item.logo_url || item.logo || placeholderLogo,
+        'colorSample',
+      );
+      extractAverageColor(coverSrc, setAccent);
+      extractAverageColor(logoSrc, setLogoAccent);
+    }, 120);
 
-  const getLogo = (item) => {
-    if (item.logo_url) return item.logo_url;
-    return item.logo || placeholderLogo;
-  };
+    return () => window.clearTimeout(timer);
+  }, [activeSlide, slides, extractAverageColor, placeholderCover, placeholderLogo]);
+
+  const getCoverUrl = useCallback(
+    (item) => presetImageUrl(item.image_url || item.image || placeholderCover, 'carouselCover'),
+    [placeholderCover],
+  );
+
+  const getLogo = useCallback(
+    (item) => item.logo_url || item.logo || placeholderLogo,
+    [placeholderLogo],
+  );
 
   const ac = (a) => `rgba(${accent.r},${accent.g},${accent.b},${a})`;
   const acSolid = `rgb(${accent.r},${accent.g},${accent.b})`;
   const logoAcSolid = `rgb(${logoAccent.r},${logoAccent.g},${logoAccent.b})`;
 
   const currentItem = slides[activeSlide] || slides[0];
+  const slideCount = slides.length;
+
+  const sectionClassName = useMemo(
+    () => 'mt-4 sm:mt-8 relative overflow-hidden rounded-[20px] border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.35)]',
+    [],
+  );
 
   return (
-    <BorderGlow
-      className="mt-4 sm:mt-8"
-      edgeSensitivity={22}
-      borderRadius={20}
-      glowRadius={40}
-      glowIntensity={0.9}
-      coneSpread={28}
-      fillOpacity={0}
-    >
     <section
-      className="relative overflow-hidden rounded-[inherit]"
+      className={sectionClassName}
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
       aria-label={lang === 'ar' ? 'سلايدر الألعاب المميزة' : 'Featured games carousel'}
@@ -202,12 +206,13 @@ export default function ProductCarousel({
               const focusX = item.carousel_focus_x ?? 50;
               const focusY = item.carousel_focus_y ?? 50;
               const isActiveSlide = slideIndex === activeSlide;
-              const imgSrc = getImg(item);
+              const loadImage = shouldLoadSlide(slideIndex, activeSlide, slideCount);
+              const imgSrc = getCoverUrl(item);
 
               return (
                 <div
                   key={item.id}
-                  className="carousel-slide relative flex-none w-full overflow-hidden cursor-pointer"
+                  className="carousel-slide relative overflow-hidden cursor-pointer"
                   role="button"
                   tabIndex={0}
                   onClick={() => onSelectProduct?.(item)}
@@ -218,18 +223,22 @@ export default function ProductCarousel({
                     }
                   }}
                 >
-                  <div
-                    className={`absolute inset-[-6%] ${isActiveSlide ? 'carousel-slide-ken-burns' : ''} ${isPaused ? 'paused' : ''}`}
-                    style={{
-                      backgroundImage: `url(${imgSrc})`,
-                      backgroundSize: 'cover',
-                      backgroundPosition: `${focusX}% ${focusY}%`,
-                      backgroundRepeat: 'no-repeat',
-                      '--focus-x': `${focusX}%`,
-                      '--focus-y': `${focusY}%`,
-                    }}
-                    aria-hidden="true"
-                  />
+                  {loadImage ? (
+                    <div
+                      className={`carousel-slide-media ${
+                        kenBurnsEnabled && isActiveSlide ? 'carousel-slide-ken-burns' : ''
+                      } ${isPaused ? 'paused' : ''}`}
+                      style={{
+                        backgroundImage: `url(${imgSrc})`,
+                        backgroundPosition: `${focusX}% ${focusY}%`,
+                        '--focus-x': `${focusX}%`,
+                        '--focus-y': `${focusY}%`,
+                      }}
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 bg-[var(--bg-elevated)]" aria-hidden="true" />
+                  )}
                   <div
                     className="absolute inset-0"
                     style={{
@@ -272,7 +281,7 @@ export default function ProductCarousel({
                           : (t.digitalCard || (lang === 'ar' ? 'بطاقات رقمية' : 'Digital cards'))}
                       </span>
                       {item.price > 0 && (
-                        <span className="text-[11px] font-bold rounded-full px-3 py-1.5 bg-white/[0.12] border border-white/20 text-white backdrop-blur-sm">
+                        <span className="text-[11px] font-bold rounded-full px-3 py-1.5 bg-white/[0.12] border border-white/20 text-white">
                           ${parseFloat(item.price).toFixed(2)}
                         </span>
                       )}
@@ -315,6 +324,7 @@ export default function ProductCarousel({
       </div>
       )}
 
+      {slides.length > 0 && (
       <div
         className="relative"
         style={{
@@ -330,18 +340,19 @@ export default function ProductCarousel({
           }}
         />
         <div
-          className="absolute top-0 left-0 right-0 h-[1px] opacity-40"
+          className="absolute top-0 left-0 right-0 h-[1px] opacity-40 pointer-events-none"
           style={{ background: `linear-gradient(90deg, transparent, ${acSolid}, transparent)`, transition: 'background 0.6s ease' }}
         />
         <div
-          className="absolute bottom-0 left-0 right-0 h-[1px] opacity-25"
+          className="absolute bottom-0 left-0 right-0 h-[1px] opacity-25 pointer-events-none"
           style={{ background: `linear-gradient(90deg, transparent, ${acSolid}, transparent)`, transition: 'background 0.6s ease' }}
         />
         <div
-          className="absolute inset-0"
+          className="absolute inset-0 pointer-events-none"
           style={{
             background: 'linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.88) 100%)',
             backdropFilter: 'blur(18px)',
+            WebkitBackdropFilter: 'blur(18px)',
           }}
         />
 
@@ -382,9 +393,11 @@ export default function ProductCarousel({
                       <img
                         src={logoSrc}
                         alt={item.name_en}
-                        width="70"
-                        height="32"
-                        className="h-full w-auto max-w-[70px] object-contain transition-all duration-300"
+                        width={70}
+                        height={40}
+                        loading="lazy"
+                        decoding="async"
+                        className="block h-8 sm:h-10 w-auto max-w-[70px] object-contain transition-all duration-300"
                         style={{
                           filter: isActive
                             ? `drop-shadow(0 1px 2px rgba(0,0,0,0.5)) drop-shadow(0 0 2px ${logoAcSolid})`
@@ -458,7 +471,7 @@ export default function ProductCarousel({
           )}
         </div>
       </div>
+      )}
     </section>
-    </BorderGlow>
   );
 }

@@ -5,6 +5,7 @@ import AdminEditButton from '../components/admin/AdminEditButton';
 import AdminGameEditModal from '../components/admin/AdminGameEditModal';
 import AdminOfferEditModal from '../components/admin/AdminOfferEditModal';
 import { resolveOfferRoute } from '../lib/offerRoutes';
+import { presetImageUrl } from '../lib/imageUtils';
 
 export default function OfferDetail({
   games,
@@ -68,13 +69,13 @@ export default function OfferDetail({
         <div className="relative h-64 md:h-80">
           {(offer.sale_image_url || offer.image_url) ? (
             <img
-              src={offer.sale_image_url || offer.image_url}
+              src={presetImageUrl(offer.sale_image_url || offer.image_url, 'heroCover')}
               alt={lang === 'ar' ? offer.name_ar : offer.name_en}
               className="absolute inset-0 w-full h-full object-cover"
             />
           ) : game?.image_url && (
             <img
-              src={game.image_url}
+              src={presetImageUrl(game.image_url, 'heroCover')}
               alt=""
               className="absolute inset-0 w-full h-full object-cover"
             />
