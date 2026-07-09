@@ -172,7 +172,7 @@ export default function Header({
             type="button"
             onClick={openSearch}
             className={iconBtn()}
-            aria-label={lang === 'ar' ? 'بحث عن لعبة' : 'Search games'}
+            aria-label={t.headerSearchGames}
           >
             <Search strokeWidth={2} />
           </motion.button>
@@ -200,10 +200,10 @@ export default function Header({
               autoComplete="off"
               value={searchDraft}
               onChange={(e) => setSearchDraft(e.target.value)}
-              placeholder={lang === 'ar' ? 'ابحث...' : 'Search...'}
+              placeholder={t.searchPlaceholderShort}
               className="header-search-input"
               onKeyDown={(e) => { if (e.key === 'Escape') setIsSearchOpen(false); }}
-              aria-label={lang === 'ar' ? 'بحث عن لعبة' : 'Search games'}
+              aria-label={t.headerSearchGames}
             />
             <AnimatePresence>
               {searchDraft && (
@@ -216,7 +216,7 @@ export default function Header({
                   transition={{ duration: 0.15 }}
                   onClick={handleClearSearch}
                   className="header-search-btn"
-                  aria-label={lang === 'ar' ? 'مسح البحث' : 'Clear search'}
+                  aria-label={t.clearSearch}
                 >
                   <X className="w-3.5 h-3.5" strokeWidth={2} />
                 </motion.button>
@@ -227,7 +227,7 @@ export default function Header({
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               className="header-search-submit"
-              aria-label={lang === 'ar' ? 'بحث' : 'Search'}
+              aria-label={t.searchAction}
               disabled={!searchDraft.trim()}
             >
               <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
@@ -278,7 +278,7 @@ export default function Header({
       type="button"
       onClick={() => navigate('/cart')}
       className={`header-btn header-btn-icon relative ${extraClass}`}
-      aria-label={t.cart || 'Cart'}
+      aria-label={t.cart}
     >
       <ShoppingCart strokeWidth={2} />
       {cartLength > 0 && (
@@ -340,10 +340,10 @@ export default function Header({
                 </span>
                 <span className="header-profile-dd-balance-copy">
                   <span className="header-profile-dd-balance-label">
-                    {lang === 'ar' ? 'رصيد G2Bulk' : 'G2Bulk wallet'}
+                    {t.g2bulkWallet}
                   </span>
                   <span className="header-profile-dd-balance-hint">
-                    {lang === 'ar' ? 'عرض في لوحة التحكم' : 'View in dashboard'}
+                    {t.viewInDashboard}
                   </span>
                 </span>
                 <G2bulkWalletCard
@@ -365,10 +365,10 @@ export default function Header({
                 </span>
                 <span className="header-profile-dd-balance-copy">
                   <span className="header-profile-dd-balance-label">
-                    {t.recharge || 'Balance'}
+                    {t.recharge}
                   </span>
                   <span className="header-profile-dd-balance-hint">
-                    {lang === 'ar' ? 'شحن الرصيد' : 'Top up wallet'}
+                    {t.topUpWallet}
                   </span>
                 </span>
                 <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
@@ -396,7 +396,7 @@ export default function Header({
               className="header-profile-dd-item header-profile-dd-item--danger"
             >
               <LogOut className="w-4 h-4" strokeWidth={2} />
-              {t.logout || 'Sign Out'}
+              {t.logout}
             </button>
           </div>
         </motion.div>
@@ -416,7 +416,7 @@ export default function Header({
           setProfileOpen((prev) => !prev);
         }}
         className={`header-btn header-profile-trigger ${profileOpen ? 'header-btn--accent' : ''}`}
-        aria-label={lang === 'ar' ? 'قائمة الحساب' : 'Account menu'}
+        aria-label={t.accountMenu}
         aria-expanded={profileOpen}
         aria-haspopup="menu"
       >
@@ -452,7 +452,7 @@ export default function Header({
           onClick={onLangToggle}
           disabled={langSwitching}
           className={iconBtn()}
-          aria-label={lang === 'ar' ? 'Switch to English' : 'Switch to Arabic'}
+          aria-label={lang === 'ar' ? t.switchToEnglish : t.switchToArabic}
           aria-busy={langSwitching}
         >
           {langSwitching ? (
@@ -491,7 +491,7 @@ export default function Header({
           type="button"
           onClick={() => navigate('/')}
           className="header-brand flex-shrink-0 min-w-0 group"
-          aria-label={lang === 'ar' ? 'الصفحة الرئيسية' : 'Home'}
+          aria-label={t.homeAria}
         >
           <span className="header-brand-mark">
             <EchoLogo className="header-brand-logo" />
@@ -532,7 +532,7 @@ export default function Header({
               });
             }}
             className={iconBtn(isMenuOpen ? 'header-btn--accent' : '')}
-            aria-label={isMenuOpen ? (lang === 'ar' ? 'إغلاق القائمة' : 'Close menu') : (lang === 'ar' ? 'فتح القائمة' : 'Open menu')}
+            aria-label={isMenuOpen ? t.closeMenu : t.openMenu}
             aria-expanded={isMenuOpen}
             aria-controls="mobile-nav-drawer"
           >
@@ -553,14 +553,14 @@ export default function Header({
                 transition={{ duration: 0.2 }}
                 className="header-mobile-backdrop md:hidden"
                 onClick={() => setIsMenuOpen(false)}
-                aria-label={lang === 'ar' ? 'إغلاق القائمة' : 'Close menu'}
+                aria-label={t.closeMenu}
               />
               <motion.div
                 ref={menuRef}
                 id="mobile-nav-drawer"
                 role="dialog"
                 aria-modal="true"
-                aria-label={lang === 'ar' ? 'قائمة التنقل' : 'Navigation menu'}
+                aria-label={t.navigationMenu}
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
@@ -569,7 +569,7 @@ export default function Header({
                 dir={lang === 'ar' ? 'rtl' : 'ltr'}
               >
                 <div className="header-mobile-drawer-inner">
-                  <nav aria-label={lang === 'ar' ? 'التنقل الرئيسي' : 'Main navigation'}>
+                  <nav aria-label={t.mainNavigation}>
                     <MobileNavLinks
                       t={t}
                       lang={lang}
@@ -589,8 +589,8 @@ export default function Header({
                       className="header-mobile-action"
                     >
                       <Globe className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
-                      <span>{lang === 'ar' ? 'English' : 'العربية'}</span>
-                      <span className="header-mobile-action-meta">{lang === 'ar' ? 'EN' : 'AR'}</span>
+                      <span>{lang === 'ar' ? t.langEnglish : t.langArabic}</span>
+                      <span className="header-mobile-action-meta">{lang === 'ar' ? t.langCodeEn : t.langCodeAr}</span>
                     </button>
 
                     {user?.role === 'admin' && (
@@ -612,7 +612,7 @@ export default function Header({
                           className="header-mobile-action"
                         >
                           <Zap className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
-                          <span>{lang === 'ar' ? 'رصيد G2Bulk' : 'G2Bulk wallet'}</span>
+                          <span>{t.g2bulkWallet}</span>
                           <G2bulkWalletCard
                             compact
                             lang={lang}
@@ -627,7 +627,7 @@ export default function Header({
                           className="header-mobile-action"
                         >
                           <Wallet className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
-                          <span>{t.recharge || 'Recharge'}</span>
+                          <span>{t.recharge}</span>
                           <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
                         </button>
                       )}
@@ -655,7 +655,7 @@ export default function Header({
                           type="button"
                           onClick={() => { closeAll(); onLogout(); }}
                           className="header-btn header-btn--danger header-btn-icon header-mobile-logout-btn"
-                          aria-label={t.logout || 'Sign out'}
+                          aria-label={t.logout}
                         >
                           <LogOut className="w-4 h-4" strokeWidth={2} />
                         </button>

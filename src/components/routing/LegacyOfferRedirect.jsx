@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { getT } from '../../lib/i18n';
 import { getGameOfferBuyPath, getGameOfferPath, resolveOfferRoute } from '../../lib/offerRoutes';
 
 export default function LegacyOfferRedirect({
@@ -9,6 +10,7 @@ export default function LegacyOfferRedirect({
   lang = 'ar',
   target = 'offer',
 }) {
+  const t = getT(lang);
   const { id, offerId } = useParams();
   const navigate = useNavigate();
   const token = id || offerId;
@@ -27,7 +29,7 @@ export default function LegacyOfferRedirect({
   if (loading || (!offer && offers.length === 0)) {
     return (
       <div className="flex items-center justify-center min-h-[40vh] text-[var(--text-sec)] animate-pulse">
-        {lang === 'ar' ? 'جاري التحميل...' : 'Loading...'}
+        {t.loading}
       </div>
     );
   }
@@ -35,14 +37,14 @@ export default function LegacyOfferRedirect({
   if (!offer) {
     return (
       <div className="max-w-md mx-auto text-center py-20 text-[var(--text-sec)]">
-        {lang === 'ar' ? 'العرض غير موجود' : 'Offer not found'}
+        {t.offerNotFound}
       </div>
     );
   }
 
   return (
     <div className="flex items-center justify-center min-h-[40vh] text-[var(--text-sec)] animate-pulse">
-      {lang === 'ar' ? 'جاري التحويل...' : 'Redirecting...'}
+      {t.redirecting}
     </div>
   );
 }

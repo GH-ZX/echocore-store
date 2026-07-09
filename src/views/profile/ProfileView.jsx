@@ -68,7 +68,6 @@ export default function ProfileView({
   onRecharge,
   onUpdateProfile,
 }) {
-  const isAr = lang === 'ar';
   const [searchParams, setSearchParams] = useSearchParams();
   const fileInputRef = useRef(null);
   const editPanelRef = useRef(null);
@@ -94,7 +93,7 @@ export default function ProfileView({
   const [profileError, setProfileError] = useState('');
   const [profileSuccess, setProfileSuccess] = useState('');
 
-  const notSetLabel = isAr ? 'غير محدد' : 'Not set';
+  const notSetLabel = t.notSet;
 
   const isAdmin = user?.role === 'admin';
   const { wallet: g2bulkWallet, loading: g2bulkLoading, error: g2bulkError, refresh: refreshG2bulk } = useAdminG2bulkWallet(isAdmin);
@@ -216,15 +215,15 @@ export default function ProfileView({
   );
 
   const profileDetails = useMemo(() => [
-    { key: 'name', label: t.displayName || (isAr ? 'اسم العرض' : 'Display name'), icon: UserRound, value: formatDetail(savedName) },
-    { key: 'email', label: t.emailAddress || (isAr ? 'البريد الإلكتروني' : 'Email'), icon: Mail, value: user.email, fullWidth: true },
-    { key: 'bio', label: t.profileBio || (isAr ? 'نبذة قصيرة' : 'Short bio'), icon: Sparkles, value: formatDetail(savedBio), fullWidth: true },
-    { key: 'phone', label: t.profilePhone || (isAr ? 'الهاتف' : 'Phone'), icon: Phone, value: formatDetail(savedPhone) },
-    { key: 'country', label: t.profileCountry || (isAr ? 'الدولة' : 'Country'), icon: MapPin, value: formatDetail(savedCountry) },
-    { key: 'favorite_game', label: t.profileFavoriteGame || (isAr ? 'اللعبة المفضلة' : 'Favorite game'), icon: Gamepad2, value: formatDetail(savedFavoriteGame) },
-    { key: 'discord', label: t.profileDiscord || (isAr ? 'Discord' : 'Discord'), icon: AtSign, value: formatDetail(savedDiscord) },
-    { key: 'player_uid', label: t.profileDefaultUid || (isAr ? 'معرّف اللاعب الافتراضي' : 'Default player ID'), icon: Hash, value: formatDetail(savedPlayerUid) },
-  ], [savedName, savedBio, savedPhone, savedCountry, savedFavoriteGame, savedDiscord, savedPlayerUid, user.email, t, isAr, formatDetail]);
+    { key: 'name', label: t.displayName, icon: UserRound, value: formatDetail(savedName) },
+    { key: 'email', label: t.emailAddress, icon: Mail, value: user.email, fullWidth: true },
+    { key: 'bio', label: t.profileBio, icon: Sparkles, value: formatDetail(savedBio), fullWidth: true },
+    { key: 'phone', label: t.profilePhone, icon: Phone, value: formatDetail(savedPhone) },
+    { key: 'country', label: t.profileCountry, icon: MapPin, value: formatDetail(savedCountry) },
+    { key: 'favorite_game', label: t.profileFavoriteGame, icon: Gamepad2, value: formatDetail(savedFavoriteGame) },
+    { key: 'discord', label: t.profileDiscord, icon: AtSign, value: formatDetail(savedDiscord) },
+    { key: 'player_uid', label: t.profileDefaultUid, icon: Hash, value: formatDetail(savedPlayerUid) },
+  ], [savedName, savedBio, savedPhone, savedCountry, savedFavoriteGame, savedDiscord, savedPlayerUid, user.email, t, formatDetail]);
 
   const isDirty = useMemo(() => {
     const base = {
@@ -309,7 +308,7 @@ export default function ProfileView({
   const saveProfile = async () => {
     const trimmedName = nameDraft.trim();
     if (!trimmedName) {
-      setProfileError(isAr ? 'الاسم مطلوب' : 'Name is required');
+      setProfileError(t.nameRequired);
       return;
     }
 
@@ -355,7 +354,7 @@ export default function ProfileView({
         avatar_url: updated.avatar_url || '',
       });
 
-      setProfileSuccess(t.profileSaved || (isAr ? 'تم حفظ الملف الشخصي' : 'Profile saved'));
+      setProfileSuccess(t.profileSaved);
       setEditingProfile(false);
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev);
@@ -363,7 +362,7 @@ export default function ProfileView({
         return next;
       }, { replace: true });
     } catch (err) {
-      setProfileError(err.message || (isAr ? 'فشل الحفظ' : 'Failed to save'));
+      setProfileError(err.message || t.profileSaveFailed);
     } finally {
       setSavingProfile(false);
     }
@@ -371,19 +370,19 @@ export default function ProfileView({
 
   const txLabel = (type) => {
     const map = {
-      recharge: isAr ? 'شحن رصيد' : 'Recharge',
-      purchase: isAr ? 'شراء' : 'Purchase',
-      refund: isAr ? 'استرداد' : 'Refund',
-      adjustment: isAr ? 'تعديل' : 'Adjustment',
+      recharge: t.recharge,
+      purchase: t.txnPurchase,
+      refund: t.txnRefund,
+      adjustment: t.txnAdjustment,
     };
     return map[type] || type;
   };
 
   const paymentLabel = (method) => {
-    if (method === 'balance') return t.payFromBalance || (isAr ? 'الرصيد' : 'Balance');
-    if (method === 'binance') return t.binance || 'Binance';
-    if (method === 'ShamCash') return t.shamCash || 'ShamCash';
-    if (method === 'mastercard') return t.mastercard || 'Card';
+    if (method === 'balance') return t.payFromBalance;
+    if (method === 'binance') return t.binance;
+    if (method === 'ShamCash') return t.shamCash;
+    if (method === 'mastercard') return t.mastercard;
     return method || '—';
   };
 
@@ -403,7 +402,7 @@ export default function ProfileView({
             />
             <div className="min-w-0 flex-1">
               <p className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)] mb-1">
-                {t.profileTitle || (isAr ? 'الملف الشخصي' : 'My Profile')}
+                {t.profileTitle}
               </p>
               <h1 className="text-xl sm:text-2xl md:text-3xl font-black truncate">{heroName}</h1>
               {heroBio?.trim() && (
@@ -416,19 +415,17 @@ export default function ProfileView({
                 </span>
                 <span className="flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-[var(--accent)]/70" />
-                  {t.memberSince || (isAr ? 'عضو منذ' : 'Member since')} {memberSince}
+                  {t.memberSince} {memberSince}
                 </span>
               </div>
               <div className="flex flex-wrap items-center gap-2 mt-3">
                 <span className={`profile-badge ${isAdmin ? 'profile-badge--admin' : 'profile-badge--player'}`}>
                   {isAdmin ? <ShieldCheck className="w-3 h-3" /> : <Gamepad2 className="w-3 h-3" />}
-                  {isAdmin
-                    ? (t.profileRoleAdmin || (isAr ? 'مدير' : 'Admin'))
-                    : (t.profileRolePlayer || (isAr ? 'لاعب' : 'Player'))}
+                  {isAdmin ? t.profileRoleAdmin : t.profileRolePlayer}
                 </span>
                 <span className="profile-badge profile-badge--verified">
                   <Sparkles className="w-3 h-3" />
-                  {t.verifiedGamer || (isAr ? 'عضو موثّق' : 'Verified Member')}
+                  {t.verifiedGamer}
                 </span>
               </div>
             </div>
@@ -444,12 +441,12 @@ export default function ProfileView({
                 lang={lang}
                 onRefresh={refreshG2bulk}
                 onManage={() => navigate('/dashboard')}
-                manageLabel={isAr ? 'لوحة G2Bulk' : 'G2Bulk dashboard'}
+                manageLabel={t.g2bulkDashboard}
               />
             ) : (
               <div className="profile-balance-panel">
                 <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">
-                  {t.currentBalance || (isAr ? 'رصيدك' : 'Your Balance')}
+                  {t.yourBalance}
                 </p>
                 <p className="text-3xl sm:text-4xl font-black font-mono text-[var(--accent)]">${balance.toFixed(2)}</p>
                 <button
@@ -458,7 +455,7 @@ export default function ProfileView({
                   className="action-chip btn btn-primary !h-11 !min-h-11 !border-0 gap-2 px-5 mt-3 w-full sm:w-auto"
                 >
                   <Wallet className="w-4 h-4" />
-                  {t.recharge || 'Recharge'}
+                  {t.recharge}
                 </button>
               </div>
             )}
@@ -471,16 +468,16 @@ export default function ProfileView({
           <div>
             <h2 className="font-bold text-lg flex items-center gap-2">
               <UserRound className="w-5 h-5 text-[var(--accent)]" />
-              {t.profileDetails || (isAr ? 'معلومات الحساب' : 'Account details')}
+              {t.profileDetails}
             </h2>
             <p className="text-xs text-[var(--text-muted)] mt-1">
-              {t.profileDetailsHelp || (isAr ? 'بياناتك الشخصية وتفضيلات الألعاب.' : 'Your personal info and gaming preferences.')}
+              {t.profileDetailsHelp}
             </p>
           </div>
           {!editingProfile && (
             <button type="button" onClick={openEditProfile} className="btn btn-secondary gap-2 px-4">
               <Pencil className="w-4 h-4" />
-              {t.editProfile || (isAr ? 'تعديل الملف' : 'Edit profile')}
+              {t.editProfile}
             </button>
           )}
         </div>
@@ -509,20 +506,20 @@ export default function ProfileView({
           <div>
             <h2 className="font-bold text-lg flex items-center gap-2">
               <Pencil className="w-5 h-5 text-[var(--accent)]" />
-              {t.profileSettings || (isAr ? 'تعديل الملف الشخصي' : 'Edit Profile')}
+              {t.profileSettings}
             </h2>
             <p className="text-xs text-[var(--text-muted)] mt-1">
-              {t.profileSettingsHelp || (isAr ? 'حدّث صورتك وبياناتك الشخصية وتفضيلات الألعاب.' : 'Update your photo, personal details, and gaming preferences.')}
+              {t.profileSettingsHelp}
             </p>
           </div>
           <button
             type="button"
             onClick={closeEditProfile}
             className="btn btn-secondary gap-2 px-3"
-            aria-label={t.cancelEdit || (isAr ? 'إلغاء' : 'Cancel')}
+            aria-label={t.cancelEdit}
           >
             <X className="w-4 h-4" />
-            {t.cancelEdit || (isAr ? 'إلغاء' : 'Cancel')}
+            {t.cancelEdit}
           </button>
         </div>
 
@@ -540,7 +537,7 @@ export default function ProfileView({
                 type="button"
                 className="profile-photo-change"
                 onClick={() => fileInputRef.current?.click()}
-                aria-label={t.changePhoto || (isAr ? 'تغيير الصورة' : 'Change photo')}
+                aria-label={t.changePhoto}
               >
                 <Camera className="w-4 h-4" />
               </button>
@@ -561,7 +558,7 @@ export default function ProfileView({
                 onClick={() => fileInputRef.current?.click()}
                 className="btn btn-secondary text-xs px-3 py-2"
               >
-                {t.uploadPhoto || (isAr ? 'رفع صورة' : 'Upload photo')}
+                {t.uploadPhoto}
               </button>
               {(displayAvatar || avatarUrl) && (
                 <button
@@ -570,19 +567,19 @@ export default function ProfileView({
                   className="btn btn-secondary text-xs px-3 py-2 text-red-400 border-red-500/25 hover:bg-red-500/10"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  {t.removePhoto || (isAr ? 'إزالة' : 'Remove')}
+                  {t.removePhoto}
                 </button>
               )}
             </div>
             <p className="text-[10px] text-[var(--text-muted)] mt-2 text-center md:text-left">
-              {t.photoHint || (isAr ? 'JPG أو PNG — حتى 2 ميجابايت' : 'JPG or PNG — up to 2 MB')}
+              {t.photoHint}
             </p>
           </div>
 
           <div className="space-y-4">
             <div>
               <label className="profile-field-label" htmlFor="profile-name">
-                {t.displayName || (isAr ? 'اسم العرض' : 'Display name')}
+                {t.displayName}
               </label>
               <input
                 id="profile-name"
@@ -591,13 +588,13 @@ export default function ProfileView({
                 onChange={(e) => setNameDraft(e.target.value)}
                 maxLength={40}
                 className="profile-field-input"
-                placeholder={isAr ? 'اسمك في المتجر' : 'Your store display name'}
+                placeholder={t.displayNamePlaceholder}
               />
             </div>
 
             <div>
               <label className="profile-field-label" htmlFor="profile-bio">
-                {t.profileBio || (isAr ? 'نبذة قصيرة' : 'Short bio')}
+                {t.profileBio}
               </label>
               <textarea
                 id="profile-bio"
@@ -606,7 +603,7 @@ export default function ProfileView({
                 maxLength={160}
                 rows={3}
                 className="profile-field-input profile-field-textarea resize-none"
-                placeholder={t.profileBioPlaceholder || (isAr ? 'لاعب MLBB، أحب عروض الشحن السريع...' : 'MLBB player, love fast top-ups...')}
+                placeholder={t.profileBioPlaceholder}
               />
               <p className="text-[10px] text-[var(--text-muted)] mt-1 text-right font-mono">
                 {bioDraft.length}/160
@@ -614,14 +611,14 @@ export default function ProfileView({
             </div>
 
             <div className="profile-field-readonly">
-              <span className="profile-field-label">{t.emailAddress || (isAr ? 'البريد الإلكتروني' : 'Email')}</span>
+              <span className="profile-field-label">{t.emailAddress}</span>
               <p className="text-sm text-[var(--text-sec)] mt-1 break-all">{user.email}</p>
             </div>
 
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
                 <label className="profile-field-label" htmlFor="profile-phone">
-                  {t.profilePhone || (isAr ? 'الهاتف' : 'Phone')}
+                  {t.profilePhone}
                 </label>
                 <input
                   id="profile-phone"
@@ -630,12 +627,12 @@ export default function ProfileView({
                   onChange={(e) => setPhoneDraft(e.target.value)}
                   maxLength={20}
                   className="profile-field-input"
-                  placeholder={t.profilePhonePlaceholder || (isAr ? '+963...' : '+1...')}
+                  placeholder={t.profilePhonePlaceholder}
                 />
               </div>
               <div>
                 <label className="profile-field-label" htmlFor="profile-country">
-                  {t.profileCountry || (isAr ? 'الدولة' : 'Country')}
+                  {t.profileCountry}
                 </label>
                 <input
                   id="profile-country"
@@ -644,12 +641,12 @@ export default function ProfileView({
                   onChange={(e) => setCountryDraft(e.target.value)}
                   maxLength={60}
                   className="profile-field-input"
-                  placeholder={t.profileCountryPlaceholder || (isAr ? 'سوريا، الإمارات...' : 'Syria, UAE...')}
+                  placeholder={t.profileCountryPlaceholder}
                 />
               </div>
               <div>
                 <label className="profile-field-label" htmlFor="profile-favorite-game">
-                  {t.profileFavoriteGame || (isAr ? 'اللعبة المفضلة' : 'Favorite game')}
+                  {t.profileFavoriteGame}
                 </label>
                 <input
                   id="profile-favorite-game"
@@ -658,12 +655,12 @@ export default function ProfileView({
                   onChange={(e) => setFavoriteGameDraft(e.target.value)}
                   maxLength={80}
                   className="profile-field-input"
-                  placeholder={t.profileFavoriteGamePlaceholder || (isAr ? 'Mobile Legends...' : 'Mobile Legends...')}
+                  placeholder={t.profileFavoriteGamePlaceholder}
                 />
               </div>
               <div>
                 <label className="profile-field-label" htmlFor="profile-discord">
-                  {t.profileDiscord || 'Discord'}
+                  {t.profileDiscord}
                 </label>
                 <input
                   id="profile-discord"
@@ -672,12 +669,12 @@ export default function ProfileView({
                   onChange={(e) => setDiscordDraft(e.target.value)}
                   maxLength={40}
                   className="profile-field-input"
-                  placeholder={t.profileDiscordPlaceholder || (isAr ? 'username#0000' : 'username')}
+                  placeholder={t.profileDiscordPlaceholder}
                 />
               </div>
               <div className="sm:col-span-2">
                 <label className="profile-field-label" htmlFor="profile-player-uid">
-                  {t.profileDefaultUid || (isAr ? 'معرّف اللاعب الافتراضي' : 'Default player ID')}
+                  {t.profileDefaultUid}
                 </label>
                 <input
                   id="profile-player-uid"
@@ -686,7 +683,7 @@ export default function ProfileView({
                   onChange={(e) => setPlayerUidDraft(e.target.value)}
                   maxLength={40}
                   className="profile-field-input font-mono"
-                  placeholder={t.profileDefaultUidPlaceholder || (isAr ? 'يُستخدم عند الشراء' : 'Used as default at checkout')}
+                  placeholder={t.profileDefaultUidPlaceholder}
                 />
               </div>
             </div>
@@ -702,7 +699,7 @@ export default function ProfileView({
                 className="btn btn-primary gap-2 px-5 disabled:opacity-50"
               >
                 {savingProfile ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                {t.saveProfile || (isAr ? 'حفظ التغييرات' : 'Save changes')}
+                {t.saveProfile}
               </button>
               <button
                 type="button"
@@ -711,7 +708,7 @@ export default function ProfileView({
                 className="btn btn-secondary gap-2 px-4 disabled:opacity-50"
               >
                 <RotateCcw className="w-4 h-4" />
-                {t.resetChanges || (isAr ? 'تراجع' : 'Reset')}
+                {t.resetChanges}
               </button>
             </div>
           </div>
@@ -721,15 +718,15 @@ export default function ProfileView({
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {(isAdmin ? [
-          { icon: ShoppingBag, label: t.totalOrders || (isAr ? 'الطلبات' : 'Orders'), value: userOrders.length, color: 'text-blue-400' },
-          { icon: Receipt, label: t.totalSpent || (isAr ? 'إجمالي الإنفاق' : 'Total Spent'), value: `$${totalSpent.toFixed(2)}`, color: 'text-[var(--accent)]' },
-          { icon: Wallet, label: isAr ? 'رصيد G2Bulk' : 'G2Bulk balance', value: g2bulkLoading ? '…' : (g2bulkWallet ? `$${g2bulkWallet.balance.toFixed(2)}` : '—'), color: 'text-emerald-400' },
-          { icon: UserRound, label: t.accountType || (isAr ? 'نوع الحساب' : 'Account'), value: isAr ? 'مدير' : 'Admin', color: 'text-violet-400' },
+          { icon: ShoppingBag, label: t.totalOrders, value: userOrders.length, color: 'text-blue-400' },
+          { icon: Receipt, label: t.totalSpent, value: `$${totalSpent.toFixed(2)}`, color: 'text-[var(--accent)]' },
+          { icon: Wallet, label: t.g2bulkBalance, value: g2bulkLoading ? '…' : (g2bulkWallet ? `$${g2bulkWallet.balance.toFixed(2)}` : '—'), color: 'text-emerald-400' },
+          { icon: UserRound, label: t.accountType, value: t.profileRoleAdmin, color: 'text-violet-400' },
         ] : [
-          { icon: ShoppingBag, label: t.totalOrders || (isAr ? 'الطلبات' : 'Orders'), value: userOrders.length, color: 'text-blue-400' },
-          { icon: Receipt, label: t.totalSpent || (isAr ? 'إجمالي الإنفاق' : 'Total Spent'), value: `$${totalSpent.toFixed(2)}`, color: 'text-[var(--accent)]' },
-          { icon: ArrowUpRight, label: t.totalRecharged || (isAr ? 'إجمالي الشحن' : 'Total Recharged'), value: `$${totalRecharges.toFixed(2)}`, color: 'text-emerald-400' },
-          { icon: UserRound, label: t.accountType || (isAr ? 'نوع الحساب' : 'Account'), value: isAr ? 'لاعب' : 'Gamer', color: 'text-violet-400' },
+          { icon: ShoppingBag, label: t.totalOrders, value: userOrders.length, color: 'text-blue-400' },
+          { icon: Receipt, label: t.totalSpent, value: `$${totalSpent.toFixed(2)}`, color: 'text-[var(--accent)]' },
+          { icon: ArrowUpRight, label: t.totalRecharged, value: `$${totalRecharges.toFixed(2)}`, color: 'text-emerald-400' },
+          { icon: UserRound, label: t.accountType, value: t.profileGamer, color: 'text-violet-400' },
         ]).map((stat) => (
           <div key={stat.label} className="card p-4 sm:p-5">
             <stat.icon className={`w-5 h-5 mb-2 ${stat.color}`} />
@@ -742,14 +739,14 @@ export default function ProfileView({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
         {(isAdmin ? [
           { icon: ShieldCheck, label: t.adminDash, path: '/dashboard' },
-          { icon: Inbox, label: t.siteInboxTitle || (isAr ? 'بريد الموقع' : 'Site inbox'), path: '/notifications' },
-          { icon: Gamepad2, label: t.browseGames || (isAr ? 'تصفح الألعاب' : 'Browse Games'), path: '/games' },
-          { icon: ShoppingCart, label: t.cart || (isAr ? 'السلة' : 'Cart'), path: '/cart' },
+          { icon: Inbox, label: t.siteInboxTitle, path: '/notifications' },
+          { icon: Gamepad2, label: t.browseGames, path: '/games' },
+          { icon: ShoppingCart, label: t.cart, path: '/cart' },
         ] : [
-          { icon: Inbox, label: t.siteInboxTitle || (isAr ? 'بريد الموقع' : 'Site inbox'), path: '/notifications' },
-          { icon: Gamepad2, label: t.browseGames || (isAr ? 'تصفح الألعاب' : 'Browse Games'), path: '/games' },
-          { icon: ShoppingCart, label: t.cart || (isAr ? 'السلة' : 'Cart'), path: '/cart' },
-          { icon: Wallet, label: t.recharge || (isAr ? 'شحن الرصيد' : 'Recharge'), action: onRecharge },
+          { icon: Inbox, label: t.siteInboxTitle, path: '/notifications' },
+          { icon: Gamepad2, label: t.browseGames, path: '/games' },
+          { icon: ShoppingCart, label: t.cart, path: '/cart' },
+          { icon: Wallet, label: t.recharge, action: onRecharge },
         ]).map((action) => (
           <button
             key={action.label}
@@ -766,7 +763,7 @@ export default function ProfileView({
       {loading ? (
         <div className="card p-12 text-center text-[var(--text-sec)]">
           <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-[var(--accent)]" />
-          {t.loadingProfile || (isAr ? 'جاري تحميل الملف الشخصي...' : 'Loading profile...')}
+          {t.loadingProfile}
         </div>
       ) : (
         <div className="grid lg:grid-cols-2 gap-4 sm:gap-6">
@@ -774,16 +771,16 @@ export default function ProfileView({
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-bold text-lg flex items-center gap-2">
                 <ShoppingBag className="w-5 h-5 text-[var(--accent)]" />
-                {t.myOrders || (isAr ? 'طلباتي' : 'My Orders')}
+                {t.myOrders}
               </h2>
               <span className="text-xs text-[var(--text-muted)] font-mono">{userOrders.length}</span>
             </div>
             {userOrders.length === 0 ? (
               <div className="text-center py-10 text-[var(--text-sec)]">
                 <ShoppingBag className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">{t.noOrdersYet || (isAr ? 'لا توجد طلبات بعد' : 'No orders yet')}</p>
+                <p className="text-sm">{t.noOrdersYet}</p>
                 <button type="button" onClick={() => navigate('/games')} className="action-chip btn btn-secondary mt-4 !h-11">
-                  {t.shopNow || (isAr ? 'تسوق الآن' : 'Shop Now')}
+                  {t.shopNow}
                 </button>
               </div>
             ) : (
@@ -820,15 +817,15 @@ export default function ProfileView({
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-bold text-lg flex items-center gap-2">
                 <Receipt className="w-5 h-5 text-[var(--accent)]" />
-                {t.transactionHistory || (isAr ? 'سجل المعاملات' : 'Transaction History')}
+                {t.transactionHistory}
               </h2>
             </div>
             {transactions.length === 0 ? (
               <div className="text-center py-10 text-[var(--text-sec)]">
                 <Receipt className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">{t.noTransactions || (isAr ? 'لا توجد معاملات بعد' : 'No transactions yet')}</p>
+                <p className="text-sm">{t.noTransactions}</p>
                 <button type="button" onClick={onRecharge} className="action-chip btn btn-secondary mt-4 !h-11">
-                  {t.rechargeNow || (isAr ? 'شحن الرصيد' : 'Recharge Now')}
+                  {t.rechargeNow}
                 </button>
               </div>
             ) : (

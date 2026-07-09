@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 
 const RPC_SETUP_MSG =
-  'Checkout is not configured. Run supabase_security_migration.sql in the Supabase SQL Editor.'
+  'Checkout is not configured. Run supabase_echocore_full.sql in the Supabase SQL Editor.'
 
 function assertRpcData(data, error) {
   if (error) {

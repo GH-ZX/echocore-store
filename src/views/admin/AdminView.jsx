@@ -1,15 +1,13 @@
 import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getAdminDashboardPath, isValidAdminTabSegment, resolveAdminTabFromPath } from '../../lib/adminRoutes';
-import { Trash2, Upload, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Zap, FlaskConical, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Trash2, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Zap, FlaskConical, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uploadImage } from '../../lib/uploadImage';
 import { getCatalogOfferStats } from '../../lib/catalogUtils';
 import AdminExistingGamesList from '../../components/admin/AdminExistingGamesList';
+import AdminGameEditModal from '../../components/admin/AdminGameEditModal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
-
-const ImageFocusPicker = lazy(() => import('../../components/admin/ImageFocusPicker'));
-const GameImageSearch = lazy(() => import('../../components/admin/GameImageSearch'));
 const AdminPaymentsSettings = lazy(() => import('../../components/admin/AdminPaymentsSettings'));
 const AdminThemeSettings = lazy(() => import('../../components/admin/AdminThemeSettings'));
 const AdminHomeLayoutSettings = lazy(() => import('../../components/admin/AdminHomeLayoutSettings'));
@@ -18,10 +16,10 @@ const AdminRechargeManager = lazy(() => import('../../components/admin/AdminRech
 const AdminG2BulkSettings = lazy(() => import('../../components/admin/AdminG2BulkSettings'));
 const AdminDevTools = lazy(() => import('../../components/admin/AdminDevTools'));
 
-function AdminTabLoader() {
+function AdminTabLoader({ label = 'Loading...' }) {
   return (
     <div className="flex items-center justify-center py-16 text-[var(--text-sec)] animate-pulse text-sm">
-      Loading...
+      {label}
     </div>
   );
 }
@@ -43,11 +41,11 @@ function buildAdminNavItems(t) {
     { id: 'products', label: t.gamesAndOffers, shortLabel: t.tabGamesShort, icon: Package },
     { id: 'orders', label: t.ordersTab, shortLabel: t.tabOrdersShort, icon: ShoppingCart },
     { id: 'payments', label: t.paymentsTab, shortLabel: t.tabPaymentsShort, icon: Wallet },
-    { id: 'g2bulk', label: t.g2bulkTab || 'G2Bulk', shortLabel: 'G2B', icon: Zap },
+    { id: 'g2bulk', label: t.g2bulkTab, shortLabel: 'G2B', icon: Zap },
     { id: 'recharges', label: t.rechargesTab, shortLabel: t.tabRechargesShort, icon: CircleDollarSign },
     { id: 'theme', label: t.themeTab, shortLabel: t.tabThemeShort, icon: Palette },
     { id: 'reviews', label: t.reviewsTab, shortLabel: t.tabReviewsShort, icon: MessageSquare },
-    { id: 'devtools', label: t.devToolsTab || 'Dev', shortLabel: 'DEV', icon: FlaskConical },
+    { id: 'devtools', label: t.devToolsTab, shortLabel: 'DEV', icon: FlaskConical },
   ];
 }
 
@@ -63,6 +61,7 @@ export default function AdminView({
   deleteProduct,
   deleteGame: deleteGameProp,
   updateGame,
+  saveGame,
   refreshProducts,
   refreshOffers,
   refreshOrders,
@@ -127,29 +126,7 @@ export default function AdminView({
   const [productFormError, setProductFormError] = useState('');
   const [productFormSuccess, setProductFormSuccess] = useState('');
 
-  const [gameFormError, setGameFormError] = useState('');
-  const [gameFormSuccess, setGameFormSuccess] = useState('');
-
-  // For adding new games
-  const [newGame, setNewGame] = useState({
-    name_en: '',
-    slug: '',
-    points_name: '',
-    logo_url: '',
-    image_url: '',
-    redemption_method: 'both',
-    description_en: '',
-    description_ar: '',
-    carousel_focus_x: 50,
-    carousel_focus_y: 50,
-  });
-  const [gameCoverFile, setGameCoverFile] = useState(null);
-  const [gameCoverPreviewUrl, setGameCoverPreviewUrl] = useState(null);
-  const [gameLogoFile, setGameLogoFile] = useState(null);
-  const [gameUploading, setGameUploading] = useState(false);
-
-  // Game editing
-  const [editingGameId, setEditingGameId] = useState(null);
+  const [gameModal, setGameModal] = useState(null);
 
   // Filter offers list by game
   const [filterGameId, setFilterGameId] = useState('');
@@ -158,7 +135,6 @@ export default function AdminView({
   const [expandedOrderId, setExpandedOrderId] = useState(null);
   const [processingOrderId, setProcessingOrderId] = useState(null);
 
-  const isAr = lang === 'ar';
   const isAwaitingShamcash = (order) => (
     order.payment_method === 'ShamCash'
     && (order.status === 'pending_payment' || order.status === 'payment_sent')
@@ -169,7 +145,7 @@ export default function AdminView({
     setProcessingOrderId(orderId);
     try {
       await onApproveOrder(orderId);
-      notifySuccess(t.orderApproved || (isAr ? 'تمت الموافقة على الطلب' : 'Order approved'));
+      notifySuccess(t.orderApproved);
     } catch (err) {
       notifyError(err.message);
     } finally {
@@ -182,7 +158,7 @@ export default function AdminView({
     setProcessingOrderId(orderId);
     try {
       await onRejectOrder(orderId);
-      notifySuccess(t.orderRejected || (isAr ? 'تم رفض الطلب' : 'Order rejected'));
+      notifySuccess(t.orderRejected);
     } catch (err) {
       notifyError(err.message);
     } finally {
@@ -192,10 +168,10 @@ export default function AdminView({
 
   const orderStatusLabel = (status) => {
     const map = {
-      pending_payment: isAr ? 'بانتظار الدفع' : 'Awaiting payment',
-      payment_sent: isAr ? 'بانتظار الموافقة' : 'Awaiting approval',
-      completed: isAr ? 'مكتمل' : 'Completed',
-      cancelled: isAr ? 'ملغى' : 'Cancelled',
+      pending_payment: t.orderStatusPendingPayment,
+      payment_sent: t.orderStatusPaymentSent,
+      completed: t.orderStatusCompleted,
+      cancelled: t.orderStatusCancelled,
     };
     return map[status] || status;
   };
@@ -212,7 +188,7 @@ export default function AdminView({
     <>
       {order.payment_reference && (
         <div className="text-xs mt-2">
-          <span className="text-[var(--text-muted)]">{t.paymentReference || 'Payment reference'}:</span>{' '}
+          <span className="text-[var(--text-muted)]">{t.paymentReference}:</span>{' '}
           <span className="font-mono">{order.payment_reference}</span>
         </div>
       )}
@@ -224,7 +200,7 @@ export default function AdminView({
             disabled={processingOrderId === order.id}
             className="btn btn-primary text-xs py-2 px-3"
           >
-            {processingOrderId === order.id ? '...' : (t.approveOrder || (isAr ? 'موافقة' : 'Approve'))}
+            {processingOrderId === order.id ? '...' : t.approveShort}
           </button>
           <button
             type="button"
@@ -232,7 +208,7 @@ export default function AdminView({
             disabled={processingOrderId === order.id}
             className="btn btn-secondary text-xs py-2 px-3"
           >
-            {t.rejectOrder || (isAr ? 'رفض' : 'Reject')}
+            {t.rejectShort}
           </button>
         </div>
       )}
@@ -254,123 +230,44 @@ export default function AdminView({
     }
   }, [sidebarCollapsed]);
 
-  useEffect(() => {
-    if (gameCoverFile) {
-      const url = URL.createObjectURL(gameCoverFile);
-      setGameCoverPreviewUrl(url);
-      return () => URL.revokeObjectURL(url);
-    }
-    setGameCoverPreviewUrl(newGame.image_url || null);
-  }, [gameCoverFile, newGame.image_url]);
-
-  const gameCoverForFocus = useMemo(() => gameCoverPreviewUrl, [gameCoverPreviewUrl]);
-
-  const handleAddGame = async (e) => {
-    e.preventDefault();
-    setGameFormError('');
-    setGameFormSuccess('');
-    if (!newGame.name_en || !newGame.slug) {
-      setGameFormError(t.gameNameAndSlugRequired);
-      return;
-    }
-
-    let finalLogo = newGame.logo_url;
-    let finalImage = newGame.image_url;
-
-    try {
-      if (gameLogoFile) {
-        setGameUploading(true);
-        try {
-          const uploadedLogo = await uploadImage(gameLogoFile, 'game-logo');
-          if (uploadedLogo) finalLogo = uploadedLogo;
-        } catch (uploadErr) {
-          throw new Error(t.imageUploadFailed || (uploadErr.message + '\nMake sure storage policies allow authenticated uploads.\n\nRun fix_sale_upload_rls.sql in Supabase SQL editor.'), { cause: uploadErr });
-        } finally {
-          setGameUploading(false);
-        }
-      }
-      if (gameCoverFile) {
-        setGameUploading(true);
-        try {
-          const uploaded = await uploadImage(gameCoverFile, 'game-cover');
-          if (uploaded) finalImage = uploaded;
-        } catch (uploadErr) {
-          throw new Error(t.imageUploadFailed || (uploadErr.message + '\nMake sure storage policies allow authenticated uploads.\n\nRun fix_sale_upload_rls.sql in Supabase SQL editor.'), { cause: uploadErr });
-        } finally {
-          setGameUploading(false);
-        }
-      }
-
-      const gameData = {
-        name_en: newGame.name_en.trim(),
-        name_ar: newGame.name_en.trim(),
-        slug: newGame.slug,
-        points_name: newGame.points_name || 'Points',
-        logo_url: finalLogo || null,
-        image_url: finalImage || null,
-        redemption_method: newGame.redemption_method || 'both',
-        description_en: newGame.description_en || '',
-        description_ar: newGame.description_ar || newGame.description_en || '',
-        carousel_focus_x: newGame.carousel_focus_x ?? 50,
-        carousel_focus_y: newGame.carousel_focus_y ?? 50,
-        active: true
-      };
-
-      if (editingGameId) {
-        // Update existing game
-        if (updateGame) {
-          await updateGame({ ...gameData, id: editingGameId });
-        } else {
-          const { error } = await supabase
-            .from('games')
-            .update(gameData)
-            .eq('id', editingGameId);
-          if (error) throw error;
-        }
-        setGameFormSuccess(t.gameUpdatedSuccess);
+  const handleSaveGame = async (gameData) => {
+    const payload = { ...gameData, active: true };
+    if (gameData.id) {
+      if (updateGame) {
+        await updateGame(payload);
       } else {
-        // Insert new game
         const { error } = await supabase
           .from('games')
-          .insert(gameData);
-
-        if (error) {
-          console.error('Add game error:', error);
-          setGameFormError(t.failedToAddGame + ': ' + error.message);
-          return;
-        }
-
-        // Auto-select the new game in the offer form
-        const { data: newG } = await supabase
-          .from('games')
-          .select('id')
-          .eq('slug', gameData.slug)
-          .limit(1);
-
-        if (newG && newG[0]) {
-          setNewProduct(prev => ({ ...prev, game_id: newG[0].id }));
-        }
-
-        setGameFormSuccess(t.gameAddedSelectOffer);
+          .update(payload)
+          .eq('id', gameData.id);
+        if (error) throw error;
       }
-
-      // Reset form
-      setNewGame({ name_en: '', slug: '', points_name: '', logo_url: '', image_url: '', redemption_method: 'both', description_en: '', description_ar: '' });
-      setGameLogoFile(null);
-      setGameCoverFile(null);
-      setEditingGameId(null);
-      if (refreshProducts) await refreshProducts();
-      if (refreshOffers) await refreshOffers();
-    } catch (err) {
-      setGameUploading(false);
-      console.error(err);
-      setGameFormError(t.failedToSaveGame);
+      notifySuccess(t.gameUpdatedSuccess);
+    } else if (saveGame) {
+      const created = await saveGame(payload);
+      if (created?.id) {
+        setNewProduct((prev) => ({ ...prev, game_id: created.id }));
+      }
+      notifySuccess(t.gameAddedSelectOffer);
+    } else {
+      const { data, error } = await supabase
+        .from('games')
+        .insert(payload)
+        .select()
+        .single();
+      if (error) throw error;
+      if (data?.id) {
+        setNewProduct((prev) => ({ ...prev, game_id: data.id }));
+      }
+      notifySuccess(t.gameAddedSelectOffer);
     }
+    if (refreshProducts) await refreshProducts();
+    if (refreshOffers) await refreshOffers();
   };
 
   const requestDeleteGame = (gameId) => {
     setConfirmAction({
-      title: t.deleteGame || t.delete,
+      title: t.deleteGame,
       message: t.deleteGameConfirm,
       onConfirm: async () => {
         try {
@@ -382,7 +279,7 @@ export default function AdminView({
             if (refreshProducts) await refreshProducts();
             if (refreshOffers) await refreshOffers();
           }
-          if (editingGameId === gameId) cancelEditGame();
+          if (gameModal?.id === gameId) setGameModal(null);
           setConfirmAction(null);
         } catch (err) {
           console.error('Delete game error:', err);
@@ -394,7 +291,7 @@ export default function AdminView({
 
   const requestDeleteOffer = (offerId) => {
     setConfirmAction({
-      title: t.delete || 'Delete',
+      title: t.delete,
       message: t.deleteOfferConfirm,
       onConfirm: async () => {
         try {
@@ -418,34 +315,7 @@ export default function AdminView({
     }
   };
 
-  const startEditGame = (game) => {
-    setEditingGameId(game.id);
-    setNewGame({
-      name_en: game.name_en || '',
-      slug: game.slug || '',
-      points_name: game.points_name || '',
-      logo_url: game.logo_url || '',
-      image_url: game.image_url || '',
-      redemption_method: game.redemption_method || 'both',
-      description_en: game.description_en || '',
-      description_ar: game.description_ar || '',
-      carousel_focus_x: game.carousel_focus_x ?? 50,
-      carousel_focus_y: game.carousel_focus_y ?? 50,
-    });
-    setGameLogoFile(null);
-    setGameCoverFile(null);
-    // Scroll to form
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
 
-  const cancelEditGame = () => {
-    setEditingGameId(null);
-    setNewGame({ name_en: '', slug: '', points_name: '', logo_url: '', image_url: '', redemption_method: 'both', description_en: '', description_ar: '', carousel_focus_x: 50, carousel_focus_y: 50 });
-    setGameLogoFile(null);
-    setGameCoverFile(null);
-    setGameFormError('');
-    setGameFormSuccess('');
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -470,7 +340,7 @@ export default function AdminView({
           const uploaded = await uploadImage(saleCoverFile, 'sale');
           if (uploaded) finalSaleImage = uploaded;
         } catch (uploadErr) {
-          throw new Error(t.imageUploadFailed || (uploadErr.message + '\nMake sure storage policies allow authenticated uploads.\n\nRun fix_sale_upload_rls.sql in Supabase SQL editor.'), { cause: uploadErr });
+          throw new Error(t.imageUploadFailed, { cause: uploadErr });
         } finally {
           setUploading(false);
         }
@@ -506,7 +376,7 @@ export default function AdminView({
       setTimeout(() => setProductFormSuccess(''), 2500);
     } catch (err) {
       console.error('Product save error:', err);
-      setProductFormError(err.message || t.failedToSaveOffer || 'Failed to save offer. Check console or RLS policies.');
+      setProductFormError(err.message || t.failedToSaveOffer);
     }
   };
 
@@ -556,23 +426,21 @@ export default function AdminView({
     <div className={`admin-shell admin-layout mt-4 sm:mt-6 animate-fade-in${sidebarCollapsed ? ' admin-layout--collapsed' : ''}`} dir="ltr">
       <aside
         className={`admin-sidebar${sidebarCollapsed ? ' admin-sidebar--collapsed' : ''}`}
-        aria-label={isAr ? 'قائمة لوحة التحكم' : 'Admin navigation'}
+        aria-label={t.adminNavLabel}
       >
         <button
           type="button"
           onClick={() => setSidebarCollapsed((value) => !value)}
           className="admin-sidebar__toggle"
           aria-expanded={!sidebarCollapsed}
-          title={sidebarCollapsed
-            ? (isAr ? 'توسيع القائمة' : 'Expand sidebar')
-            : (isAr ? 'طي القائمة' : 'Collapse sidebar')}
+          title={sidebarCollapsed ? t.expandSidebar : t.collapseSidebar}
         >
           {sidebarCollapsed
             ? <PanelLeftOpen className="w-4 h-4" />
             : <PanelLeftClose className="w-4 h-4" />}
           {!sidebarCollapsed && (
             <span className="admin-sidebar__toggle-label">
-              {isAr ? 'طي' : 'Collapse'}
+              {t.collapseShort}
             </span>
           )}
         </button>
@@ -622,10 +490,10 @@ export default function AdminView({
             <div className="dash-stat-card card p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-[var(--text-sec)] text-sm">{t.catalogGames || 'Games'}</div>
+                  <div className="text-[var(--text-sec)] text-sm">{t.catalogGames}</div>
                   <div className="text-3xl sm:text-4xl font-black mt-1">{catalogStats.games}</div>
                   <p className="text-[10px] text-[var(--text-muted)] mt-1 leading-snug">
-                    {t.catalogGamesHelp || 'Unified game titles with at least one live pack'}
+                    {t.catalogGamesHelp}
                   </p>
                 </div>
                 <div className="dash-stat-icon">
@@ -637,10 +505,10 @@ export default function AdminView({
             <div className="dash-stat-card card p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-[var(--text-sec)] text-sm">{t.topupPacks || 'Top-up packs'}</div>
+                  <div className="text-[var(--text-sec)] text-sm">{t.topupPacks}</div>
                   <div className="text-3xl sm:text-4xl font-black mt-1">{catalogStats.topupPacks}</div>
                   <p className="text-[10px] text-[var(--text-muted)] mt-1 leading-snug">
-                    {t.topupPacksHelp || 'UID / direct top-up bundles (VP, UC, diamonds)'}
+                    {t.topupPacksHelp}
                   </p>
                 </div>
                 <div className="dash-stat-icon">
@@ -652,10 +520,10 @@ export default function AdminView({
             <div className="dash-stat-card card p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-[var(--text-sec)] text-sm">{t.giftCodes || 'Gift codes'}</div>
+                  <div className="text-[var(--text-sec)] text-sm">{t.giftCodes}</div>
                   <div className="text-3xl sm:text-4xl font-black mt-1">{catalogStats.giftCodes}</div>
                   <p className="text-[10px] text-[var(--text-muted)] mt-1 leading-snug">
-                    {t.giftCodesHelp || 'Instant redeem codes & platform vouchers'}
+                    {t.giftCodesHelp}
                   </p>
                 </div>
                 <div className="dash-stat-icon">
@@ -692,11 +560,11 @@ export default function AdminView({
 
             <div className="card p-4 sm:p-6 text-sm text-[var(--text-sec)] leading-relaxed">
               <p className="font-semibold text-[var(--text-primary)] mb-2">
-                {t.catalogStatsLegend || 'What is the difference?'}
+                {t.catalogStatsLegend}
               </p>
-              <p>{t.catalogStatsLegendBody || 'Games are storefront titles (one Valorant card). Top-up packs are in-game currency bundles delivered via UID. Gift codes are redeemable voucher codes (gift cards, Xbox, Steam, etc.).'}</p>
+              <p>{t.catalogStatsLegendBody}</p>
               <p className="text-xs text-[var(--text-muted)] mt-2">
-                {t.catalogTotalPacks || 'Total live packs'}: {catalogStats.totalPacks}
+                {t.catalogTotalPacks}: {catalogStats.totalPacks}
               </p>
             </div>
           </div>
@@ -749,207 +617,39 @@ export default function AdminView({
       {/* PRODUCTS TAB */}
       {activeTab === 'products' && (
         <div className="space-y-8">
-          {/* GAMES MANAGEMENT (like offers sector) */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Add / Edit Game Form */}
-            <div className="lg:col-span-1 card p-4 sm:p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Plus className="w-5 h-5 text-[var(--accent)]" />
-                <h3 className="text-lg sm:text-xl font-bold">{editingGameId ? t.editGame : t.addNewGame}</h3>
+          <div className="card p-4 sm:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 className="text-lg sm:text-xl font-bold flex items-center gap-2">
+                  <Package className="w-5 h-5 text-[var(--accent)]" />
+                  {t.gamesAndOffers}
+                </h3>
+                <p className="text-xs text-[var(--text-muted)] mt-1">{t.englishNameOnlyHelp}</p>
               </div>
-              <p className="text-xs text-[var(--text-muted)] -mt-2 mb-3">{t.addOffersBelow}</p>
-
-              <form onSubmit={handleAddGame} className="space-y-4">
-                <input 
-                  placeholder={t.gameNameEnglish} 
-                  value={newGame.name_en} 
-                  onChange={e => {
-                    const val = e.target.value;
-                    if (editingGameId) {
-                      setNewGame({ ...newGame, name_en: val });
-                    } else {
-                      setNewGame({ ...newGame, name_en: val, slug: val.toLowerCase().replace(/\s+/g, '-') });
-                    }
-                  }} 
-                  className="input" 
-                  required 
-                />
-                <input 
-                  placeholder={t.slug} 
-                  value={newGame.slug} 
-                  onChange={e => setNewGame({ ...newGame, slug: e.target.value })} 
-                  className="input" 
-                />
-                <p className="text-[10px] text-[var(--text-muted)] -mt-2">{t.slugHelp}</p>
-                <input 
-                  placeholder={t.pointsName} 
-                  value={newGame.points_name} 
-                  onChange={e => setNewGame({ ...newGame, points_name: e.target.value })} 
-                  className="input" 
-                />
-
-                <input 
-                  placeholder={t.descriptionEnglish} 
-                  value={newGame.description_en || ''} 
-                  onChange={e => setNewGame({ ...newGame, description_en: e.target.value })} 
-                  className="input" 
-                />
-                <input 
-                  placeholder={t.descriptionArabic} 
-                  value={newGame.description_ar || ''} 
-                  onChange={e => setNewGame({ ...newGame, description_ar: e.target.value })} 
-                  className="input" 
-                />
-
-                <div>
-                  <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 block">{t.redemptionMethod || 'Redemption Method'}</label>
-                  <select 
-                    value={newGame.redemption_method} 
-                    onChange={e => setNewGame({ ...newGame, redemption_method: e.target.value })} 
-                    className="input w-full"
-                  >
-                    <option value="uid">{t.redemptionUid || 'UID only'}</option>
-                    <option value="redeem_code">{t.redemptionCode || 'Redeem Code only'}</option>
-                    <option value="both">{t.redemptionBoth || 'Both'}</option>
-                  </select>
-                </div>
-
-                <Suspense fallback={<AdminTabLoader />}>
-                  <GameImageSearch
-                    gameName={newGame.name_en}
-                    t={t}
-                    lang={lang}
-                    onSelectCover={(url) => {
-                      setGameCoverFile(null);
-                      setNewGame((prev) => ({
-                        ...prev,
-                        image_url: url,
-                        carousel_focus_x: 50,
-                        carousel_focus_y: 50,
-                      }));
-                    }}
-                    onSelectLogo={(url) => {
-                      setGameLogoFile(null);
-                      setNewGame((prev) => ({ ...prev, logo_url: url }));
-                    }}
-                  />
-                </Suspense>
-
-                <div>
-                  <label className="text-xs font-semibold text-[var(--text-sec)] mb-1.5 block flex items-center gap-1">
-                    <Upload className="w-3 h-3" /> {t.logoForCarousel}
-                  </label>
-                  <div className="flex flex-col gap-2">
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      onChange={e => setGameLogoFile(e.target.files?.[0] || null)} 
-                      className="input flex-1 text-sm file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-[var(--accent)] file:text-[#040812]" 
-                    />
-                    <input 
-                      placeholder={t.orPasteLogoURL} 
-                      value={newGame.logo_url || ''} 
-                      onChange={e => setNewGame({ ...newGame, logo_url: e.target.value })} 
-                      className="input flex-1 text-sm" 
-                    />
-                  </div>
-                  {gameLogoFile && <div className="text-xs text-emerald-400 mt-1">{t.willUploadLogo}: {gameLogoFile.name}</div>}
-                  {newGame.logo_url && !gameLogoFile && (
-                    <img src={newGame.logo_url} alt={t.preview} className="mt-2 h-10 object-contain" />
-                  )}
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-[var(--text-sec)] mb-1.5 block flex items-center gap-1">
-                    <Upload className="w-3 h-3" /> {t.coverPhoto}
-                  </label>
-                  <div className="flex flex-col gap-2">
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      onChange={e => {
-                        const file = e.target.files?.[0] || null;
-                        setGameCoverFile(file);
-                        if (file) setNewGame(prev => ({ ...prev, carousel_focus_x: 50, carousel_focus_y: 50 }));
-                      }} 
-                      className="input flex-1 text-sm file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-[var(--accent)] file:text-[#040812]" 
-                    />
-                    <input 
-                      placeholder={t.orPasteCoverURL} 
-                      value={newGame.image_url || ''} 
-                      onChange={e => setNewGame({ ...newGame, image_url: e.target.value })} 
-                      className="input flex-1 text-sm" 
-                    />
-                  </div>
-                  {gameCoverFile && <div className="text-xs text-emerald-400 mt-1">{t.willUploadCover}: {gameCoverFile.name}</div>}
-                  {newGame.image_url && !gameCoverFile && (
-                    <img src={newGame.image_url} alt={t.preview} className="mt-2 h-16 w-auto object-cover rounded border" />
-                  )}
-                </div>
-
-                {gameCoverForFocus && (
-                  <Suspense fallback={<AdminTabLoader />}>
-                  <ImageFocusPicker
-                    imageSrc={gameCoverForFocus}
-                    focusX={newGame.carousel_focus_x ?? 50}
-                    focusY={newGame.carousel_focus_y ?? 50}
-                    onChange={({ x, y }) => setNewGame(prev => ({ ...prev, carousel_focus_x: x, carousel_focus_y: y }))}
-                    t={t}
-                    lang={lang}
-                  />
-                  </Suspense>
-                )}
-
-                {gameFormError && (
-                  <div className="bg-red-500/10 border border-red-500/60 text-red-400 p-2 rounded text-xs">
-                    {gameFormError}
-                  </div>
-                )}
-                {gameFormSuccess && (
-                  <div className="bg-emerald-500/10 border border-emerald-500/60 text-emerald-400 p-2 rounded text-xs">
-                    {gameFormSuccess}
-                  </div>
-                )}
-
-                <div className="flex gap-2">
-                  <button 
-                    type="submit" 
-                    disabled={gameUploading} 
-                    className="btn btn-primary py-3 flex-1"
-                  >
-                    {gameUploading ? t.uploading : (editingGameId ? t.updateGameBtn : t.addNewGameBtn)}
-                  </button>
-                  {editingGameId && (
-                    <button 
-                      type="button" 
-                      onClick={cancelEditGame} 
-                      className="btn btn-secondary px-6"
-                    >
-                      {t.cancel}
-                    </button>
-                  )}
-                </div>
-              </form>
-              <p className="text-xs text-[var(--text-muted)] mt-3">{t.englishNameOnlyHelp || 'English name only. Logo appears at bottom of home carousel. Cover used for game cards. Edit existing games from the list below.'}</p>
+              <button
+                type="button"
+                onClick={() => setGameModal({})}
+                className="btn btn-primary inline-flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                {t.addNewGame}
+              </button>
             </div>
-
-            <div className="lg:col-span-2 card p-4 sm:p-6">
-              <AdminExistingGamesList
-                games={games}
-                offers={offers}
-                lang={lang}
-                t={t}
-                editingGameId={editingGameId}
-                onEdit={startEditGame}
-                onDelete={requestDeleteGame}
-              />
-            </div>
+            <AdminExistingGamesList
+              games={games}
+              offers={offers}
+              lang={lang}
+              t={t}
+              editingGameId={gameModal?.id}
+              onEdit={(game) => setGameModal(game)}
+              onDelete={requestDeleteGame}
+            />
           </div>
 
-          <div className="admin-products-divider" role="separator" aria-label={lang === 'ar' ? 'قسم العروض' : 'Offers section'}>
+          <div className="admin-products-divider" role="separator" aria-label={t.offersSectionAria}>
             <span className="admin-products-divider__line" aria-hidden="true" />
             <span className="admin-products-divider__label">
-              {t.offersSectionDivider || (lang === 'ar' ? 'العروض والباقات' : 'Offers & packs')}
+              {t.offersSectionDivider}
             </span>
             <span className="admin-products-divider__line" aria-hidden="true" />
           </div>
@@ -962,7 +662,7 @@ export default function AdminView({
                 <Plus className="w-5 h-5 text-[var(--accent)]" />
                 <h3 className="text-lg sm:text-xl font-bold">{editingId ? t.editOffer : t.addNewOffer}</h3>
               </div>
-              <p className="text-xs text-[var(--text-muted)] -mt-2 mb-3">{t.addGamesAbove || 'Add new games using the section above.'}</p>
+              <p className="text-xs text-[var(--text-muted)] -mt-2 mb-3">{t.addGamesAbove}</p>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -971,7 +671,7 @@ export default function AdminView({
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 block">{t.selectGame || 'Game'}</label>
+                <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 block">{t.selectGame}</label>
                 <select 
                   required
                   value={newProduct.game_id || ''} 
@@ -1086,7 +786,7 @@ export default function AdminView({
           <div className="lg:col-span-2 card p-4 sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
               <div className="min-w-0">
-                <span className="font-bold">{filteredOffersForList.length} {t.offersCount || 'Offers'}</span>
+                <span className="font-bold">{filteredOffersForList.length} {t.offersCount}</span>
                 {filterGameId && <span className="text-xs text-[var(--text-sec)] ml-2">{t.filtered}</span>}
               </div>
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
@@ -1095,7 +795,7 @@ export default function AdminView({
                   onChange={e => setFilterGameId(e.target.value)}
                   className="input text-xs py-2 w-full sm:w-auto min-w-0"
                 >
-                  <option value="">{t.allGamesOption || 'All Games'}</option>
+                  <option value="">{t.allGamesOption}</option>
                   {games.map(g => (
                     <option key={g.id} value={g.id}>{lang === 'ar' ? g.name_ar : g.name_en}</option>
                   ))}
@@ -1169,13 +869,13 @@ export default function AdminView({
         <div className="card p-4 sm:p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-5">
             <div className="min-w-0">
-              <h3 className="font-bold text-lg sm:text-xl">{t.ordersTab || 'Orders'} ({orders.length})</h3>
-              <p className="text-xs text-[var(--text-muted)] mt-0.5">{t.clickAnyRow || 'Click any row to see details and customer info'}</p>
+              <h3 className="font-bold text-lg sm:text-xl">{t.ordersTab} ({orders.length})</h3>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">{t.clickAnyRow}</p>
             </div>
             {refreshOrders && (
               <button onClick={refreshOrders} className="text-sm btn btn-secondary self-start sm:self-auto flex-shrink-0">
                 <RefreshCw className="w-4 h-4 sm:mr-1" />
-                <span className="hidden sm:inline">{t.refresh || 'Refresh'}</span>
+                <span className="hidden sm:inline">{t.refresh}</span>
               </button>
             )}
           </div>
@@ -1216,22 +916,22 @@ export default function AdminView({
                         </div>
                       </div>
                       <div className="flex items-center justify-between text-xs text-[var(--text-sec)]">
-                        <span>{items.length} {t.items || 'items'}</span>
+                        <span>{items.length} {t.items}</span>
                         <span>{isExpanded ? '−' : '+'}</span>
                       </div>
                     </button>
                     {isExpanded && (
                       <div className="px-4 pb-4 pt-0 border-t border-[var(--border)] text-sm">
                         <div className="flex flex-col gap-1 mb-3 text-xs">
-                          <div><span className="text-[var(--text-muted)]">{t.customerLabel || 'Customer:'}</span> <span className="font-medium">{customer}</span></div>
+                          <div><span className="text-[var(--text-muted)]">{t.customerLabel}</span> <span className="font-medium">{customer}</span></div>
                           <div>
-                            <span className="text-[var(--text-muted)]">{t.statusLabel || 'Status:'}</span>{' '}
+                            <span className="text-[var(--text-muted)]">{t.statusLabel}</span>{' '}
                             <span className={orderStatusColor(order.status)}>{orderStatusLabel(order.status || 'completed')}</span>
                           </div>
-                          <div><span className="text-[var(--text-muted)]">{t.payment || 'Payment:'}</span> <span className="capitalize">{order.payment_method || '—'}</span></div>
+                          <div><span className="text-[var(--text-muted)]">{t.payment}</span> <span className="capitalize">{order.payment_method || '—'}</span></div>
                           {renderOrderExtras(order)}
                         </div>
-                        <div className="text-[var(--text-sec)] mb-2 text-xs font-semibold uppercase tracking-wider">{t.itemsLabel || 'Items'}</div>
+                        <div className="text-[var(--text-sec)] mb-2 text-xs font-semibold uppercase tracking-wider">{t.itemsLabel}</div>
                         <div className="space-y-1">
                           {items.length > 0 ? items.map((item, idx) => (
                             <div key={idx} className="flex justify-between gap-3 text-xs py-0.5">
@@ -1239,7 +939,7 @@ export default function AdminView({
                               <span className="font-mono text-[var(--accent)] flex-shrink-0">${parseFloat(item.price).toFixed(2)} × {item.quantity || 1}</span>
                             </div>
                           )) : (
-                            <div className="text-[var(--text-muted)] text-xs">{t.noItemsRecorded || 'No items recorded'}</div>
+                            <div className="text-[var(--text-muted)] text-xs">{t.noItemsRecorded}</div>
                           )}
                         </div>
                       </div>
@@ -1252,12 +952,12 @@ export default function AdminView({
               <table className="w-full text-sm min-w-[720px]">
                 <thead>
                   <tr className="text-left text-[var(--text-sec)] border-b border-[var(--border)]">
-                    <th className="py-3 pr-4">{t.orderId || 'Order ID'}</th>
-                    <th className="py-3 pr-4">{t.customer || 'Customer'}</th>
-                    <th className="py-3 pr-4">{t.date || 'Date'}</th>
-                    <th className="py-3 pr-4">{t.total || 'Total'}</th>
-                    <th className="py-3 pr-4">{t.payment || 'Payment'}</th>
-                    <th className="py-3 pr-4">{t.items || 'Items'}</th>
+                    <th className="py-3 pr-4">{t.orderId}</th>
+                    <th className="py-3 pr-4">{t.customer}</th>
+                    <th className="py-3 pr-4">{t.date}</th>
+                    <th className="py-3 pr-4">{t.total}</th>
+                    <th className="py-3 pr-4">{t.payment}</th>
+                    <th className="py-3 pr-4">{t.items}</th>
                     <th className="py-3 w-8"></th>
                   </tr>
                 </thead>
@@ -1296,16 +996,16 @@ export default function AdminView({
                             <td colSpan={7} className="p-0">
                               <div className="bg-[var(--bg-primary)] px-4 py-4 text-sm border-b border-[var(--border)]">
                                 <div className="flex flex-wrap gap-x-8 gap-y-1 mb-3 text-xs">
-                                  <div><span className="text-[var(--text-muted)]">{t.customerLabel || 'Customer:'}</span> <span className="font-medium">{customer}</span></div>
+                                  <div><span className="text-[var(--text-muted)]">{t.customerLabel}</span> <span className="font-medium">{customer}</span></div>
                                   <div>
-                                    <span className="text-[var(--text-muted)]">{t.statusLabel || 'Status:'}</span>{' '}
+                                    <span className="text-[var(--text-muted)]">{t.statusLabel}</span>{' '}
                                     <span className={orderStatusColor(order.status)}>{orderStatusLabel(order.status || 'completed')}</span>
                                   </div>
-                                  <div><span className="text-[var(--text-muted)]">{t.payment || 'Payment:'}</span> <span className="capitalize">{order.payment_method || '—'}</span></div>
+                                  <div><span className="text-[var(--text-muted)]">{t.payment}</span> <span className="capitalize">{order.payment_method || '—'}</span></div>
                                 </div>
                                 {renderOrderExtras(order)}
 
-                                <div className="text-[var(--text-sec)] mb-2 text-xs font-semibold uppercase tracking-wider">{t.itemsLabel || 'Items'}</div>
+                                <div className="text-[var(--text-sec)] mb-2 text-xs font-semibold uppercase tracking-wider">{t.itemsLabel}</div>
                                 <div className="space-y-1 pl-1">
                                   {items.length > 0 ? items.map((item, idx) => (
                                     <div key={idx} className="flex justify-between text-xs py-0.5">
@@ -1313,7 +1013,7 @@ export default function AdminView({
                                       <span className="font-mono text-[var(--accent)]">${parseFloat(item.price).toFixed(2)} × {item.quantity || 1}</span>
                                     </div>
                                   )) : (
-                                    <div className="text-[var(--text-muted)] text-xs">{t.noItemsRecorded || 'No items recorded'}</div>
+                                    <div className="text-[var(--text-muted)] text-xs">{t.noItemsRecorded}</div>
                                   )}
                                 </div>
                               </div>
@@ -1332,7 +1032,7 @@ export default function AdminView({
       )}
 
       {activeTab === 'payments' && (
-        <Suspense fallback={<AdminTabLoader />}>
+        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
           <AdminPaymentsSettings
             t={t}
             lang={lang}
@@ -1342,13 +1042,13 @@ export default function AdminView({
       )}
 
       {activeTab === 'g2bulk' && (
-        <Suspense fallback={<AdminTabLoader />}>
+        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
           <AdminG2BulkSettings t={t} lang={lang} onCatalogSynced={onCatalogSynced} />
         </Suspense>
       )}
 
       {activeTab === 'recharges' && (
-        <Suspense fallback={<AdminTabLoader />}>
+        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
           <AdminRechargeManager
             t={t}
             lang={lang}
@@ -1359,7 +1059,7 @@ export default function AdminView({
       )}
 
       {activeTab === 'theme' && (
-        <Suspense fallback={<AdminTabLoader />}>
+        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
           <AdminThemeSettings
             t={t}
             lang={lang}
@@ -1369,7 +1069,7 @@ export default function AdminView({
       )}
 
       {activeTab === 'home' && (
-        <Suspense fallback={<AdminTabLoader />}>
+        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
           <AdminHomeLayoutSettings
             t={t}
             lang={lang}
@@ -1383,7 +1083,7 @@ export default function AdminView({
       )}
 
       {activeTab === 'reviews' && (
-        <Suspense fallback={<AdminTabLoader />}>
+        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
           <AdminReviewsManager
             t={t}
             onChanged={onReviewsChanged}
@@ -1392,7 +1092,7 @@ export default function AdminView({
       )}
 
       {activeTab === 'devtools' && (
-        <Suspense fallback={<AdminTabLoader />}>
+        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
           <AdminDevTools
             t={t}
             lang={lang}
@@ -1409,12 +1109,28 @@ export default function AdminView({
         </div>
       </div>
 
+      {gameModal && (
+        <AdminGameEditModal
+          game={gameModal}
+          lang={lang}
+          t={t}
+          onClose={() => setGameModal(null)}
+          onSave={handleSaveGame}
+          onDelete={deleteGameProp ? async (gameId) => {
+            await deleteGameProp(gameId);
+            if (gameModal?.id === gameId) setGameModal(null);
+            if (refreshProducts) await refreshProducts();
+            if (refreshOffers) await refreshOffers();
+          } : undefined}
+        />
+      )}
+
       <ConfirmDialog
         open={!!confirmAction}
         title={confirmAction?.title}
         message={confirmAction?.message}
-        confirmLabel={t.confirm || t.delete || 'Confirm'}
-        cancelLabel={t.cancel || 'Cancel'}
+        confirmLabel={t.confirm}
+        cancelLabel={t.cancel}
         loading={confirmLoading}
         onConfirm={handleConfirmAction}
         onCancel={() => setConfirmAction(null)}

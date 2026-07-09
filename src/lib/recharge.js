@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 
 const RPC_SETUP_MSG =
-  'Recharge is not configured. Run supabase_recharge_manual_migration.sql in the Supabase SQL Editor.';
+  'Recharge is not configured. Run supabase_echocore_full.sql in the Supabase SQL Editor.';
 
 function assertRpcData(data, error) {
   if (error) {

@@ -1,56 +1,88 @@
-تشغيل المشروع (ECHOCORE Store)
+# تشغيل المشروع (ECHOCORE Store)
 
-المتطلبات المسبقة
-- Node.js (يوصى بالإصدار 18 أو أحدث)
-- npm (يأتي مع Node.js)
+**الموقع المباشر:** https://www.echocore412.com
 
-التحضير والتشغيل محلياً
-1. استنسخ المستودع:
+## المتطلبات
 
-   git clone <repo-url>
-   cd echocore-store
+- Node.js 18+
+- npm
+- مشروع Supabase (انظر [SUPABASE_SETUP.ar.md](./SUPABASE_SETUP.ar.md))
 
-2. ثبّت الحزم:
+---
 
-   npm install
+## التشغيل محلياً
 
-3. شغّل بيئة التطوير (Vite):
+```bash
+git clone https://github.com/GH-ZX/echocore-store.git
+cd echocore-store
+npm install
+cp .env.example .env
+```
 
-   npm run dev
+أضف `VITE_SUPABASE_URL` و `VITE_SUPABASE_ANON_KEY` في `.env`.
 
-   ثم افتح المتصفح على: http://localhost:5173
+```bash
+npm run dev
+```
 
-البناء للبيئة الإنتاجية
-- بناء الحزمة:
+افتح: http://localhost:5173
 
-  npm run build
+---
 
-- معاينة مجسّدة من مخرجات البناء:
+## قاعدة البيانات
 
-  npm run preview
+شغّل ملفاً واحداً في Supabase SQL Editor:
 
-ملاحظات مهمة
-- ملفات البيئة: إذا احتجت متغيرات بيئة، ضعها في ملف `.env` ولكن لا ترفع هذا الملف إلى Git (موجود في `.gitignore`).
-- الأصول: ضع شعارات الألعاب والـ covers داخل `src/assets` بالصيغة التالية:
-  - valorant-logo.png
-  - lol-logo.png
-  - xbox-logo.png
-  - fortnite-logo.png
-  - minecraft-logo.png
-  - apex-legends-logo.png
-  - call-of-duty-logo.png
-  كما يوجد ملفان احتياطيان بالفعل: `placeholder-logo.png` و `placeholder-cover.png`.
-- إضافة ألعاب وعروض: من لوحة الإدارة `/dashboard` (بعد تعيين `role = admin` في Supabase). الصور تُرفع إلى bucket `product-images`.
+**[supabase_echocore_full.sql](./supabase_echocore_full.sql)**
 
-نصائح النشر
-- النشر على **GitHub Pages** عبر `.github/workflows/deploy.yml` (يدفع تلقائياً عند push إلى `main`).
-- للبناء المحلي: `npm run build` — الناتج في مجلد `dist/`.
-- الرابط المباشر: https://gh-zx.github.io/echocore-store/
+---
 
-أوامر مفيدة
-- `npm run dev` — تشغيل بيئة التطوير
-- `npm run build` — بناء للإنتاج
-- `npm run preview` — معاينة نتيجة البناء محلياً
-- `npm run lint` — تشغيل ESLint
+## البناء والمعاينة
 
-لتفاصيل النشر، راجع `.github/workflows/deploy.yml` و`vite.config.js` (base: `/echocore-store/`).
+```bash
+npm run build
+npm run preview
+```
+
+---
+
+## النشر (GitHub Pages)
+
+- الدفع إلى فرع `main` يفعّل `.github/workflows/deploy.yml`
+- الناتج في `dist/` يُرفع تلقائياً
+- النطاق: **www.echocore412.com** (عبر `VITE_SITE_DOMAIN` في أسرار GitHub)
+
+### أسرار GitHub Actions المطلوبة
+
+| السر | القيمة |
+|------|--------|
+| `VITE_SUPABASE_URL` | رابط مشروع Supabase |
+| `VITE_SUPABASE_ANON_KEY` | مفتاح anon |
+| `VITE_SITE_DOMAIN` | `www.echocore412.com` |
+| `VITE_BASE_PATH` | `/` |
+
+### Supabase Auth (إنتاج)
+
+- Site URL: `https://www.echocore412.com`
+- Redirect: `https://www.echocore412.com/login` و `https://www.echocore412.com/**`
+
+---
+
+## أوامر مفيدة
+
+| الأمر | الوصف |
+|-------|--------|
+| `npm run dev` | التطوير |
+| `npm run build` | بناء الإنتاج |
+| `npm run lint` | ESLint |
+| `npm run preview` | معاينة `dist/` |
+
+---
+
+## إدارة المتجر
+
+1. سجّل حساباً ثم `role = admin` في `profiles`
+2. افتح `/dashboard`
+3. الصور تُرفع إلى bucket `product-images` في Supabase
+
+للتفاصيل: `vite.config.js` · `.github/workflows/deploy.yml` · [PROJECT_MAP.ar.md](./PROJECT_MAP.ar.md)

@@ -28,7 +28,6 @@ function GoogleIcon() {
 
 export default function LoginView({
   t,
-  lang = 'ar',
   handleAuthLogin,
   handleAuthSignup,
   onLoginSuccess,
@@ -37,7 +36,6 @@ export default function LoginView({
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const redirectTo = typeof location.state?.from === 'string' ? location.state.from : '/';
-  const isAr = lang === 'ar';
 
   const [mode, setMode] = useState(() => (
     isPasswordRecoveryUrl() || isPasswordRecoveryPending() ? 'recovery' : 'login'
@@ -97,7 +95,7 @@ export default function LoginView({
     try {
       await signInWithGoogle();
     } catch (err) {
-      setError(err.message || (isAr ? 'فشل تسجيل الدخول بجوجل' : 'Google sign-in failed'));
+      setError(err.message || t.googleSignInFailed);
       setIsLoading(false);
     }
   };
@@ -110,13 +108,13 @@ export default function LoginView({
     try {
       if (mode === 'signup') {
         if (password !== confirmPassword) {
-          throw new Error(isAr ? 'كلمتا المرور غير متطابقتين' : 'Passwords do not match');
+          throw new Error(t.passwordMismatch);
         }
         const result = await handleAuthSignup(email, password, name);
         if (result.autoLogin && result.userData) {
           onLoginSuccess(result.userData, redirectTo);
         } else {
-          setSuccessMsg(result.message || (t.createAccount + '. ' + (isAr ? 'تحقق من بريدك للتأكيد.' : 'Check your email to confirm.')));
+          setSuccessMsg(result.message || `${t.createAccount}. ${t.checkEmailToConfirm}`);
           setMode('login');
         }
         return;
@@ -124,24 +122,22 @@ export default function LoginView({
 
       if (mode === 'forgot') {
         await requestPasswordReset(email);
-        setSuccessMsg(isAr
-          ? 'أرسلنا رابط إعادة تعيين كلمة المرور إلى بريدك.'
-          : 'We sent a password reset link to your email.');
+        setSuccessMsg(t.resetLinkSent);
         return;
       }
 
       if (mode === 'recovery') {
         if (password.length < 6) {
-          throw new Error(isAr ? 'كلمة المرور 6 أحرف على الأقل' : 'Password must be at least 6 characters');
+          throw new Error(t.passwordMinLength);
         }
         if (password !== confirmPassword) {
-          throw new Error(isAr ? 'كلمتا المرور غير متطابقتين' : 'Passwords do not match');
+          throw new Error(t.passwordMismatch);
         }
         await updatePassword(password);
         clearPasswordRecoveryPending();
         const { data: { user } } = await supabase.auth.getUser();
         if (user) await finishAuth(user);
-        setSuccessMsg(isAr ? 'تم تحديث كلمة المرور بنجاح' : 'Password updated successfully');
+        setSuccessMsg(t.passwordUpdatedSuccess);
         return;
       }
 
@@ -149,14 +145,12 @@ export default function LoginView({
         if (!otpSent) {
           await sendEmailOtp(email, { shouldCreateUser: true });
           setOtpSent(true);
-          setSuccessMsg(isAr
-            ? 'أرسلنا رمز التحقق إلى بريدك. أدخل الرمز خلال 10 دقائق.'
-            : 'We sent a verification code to your email. Enter it within 10 minutes.');
+          setSuccessMsg(t.otpSentNotice);
           return;
         }
 
         const { user } = await verifyEmailOtp(email, otpCode);
-        if (!user) throw new Error(isAr ? 'رمز غير صالح' : 'Invalid code');
+        if (!user) throw new Error(t.invalidOtpCode);
         await finishAuth(user);
         return;
       }
@@ -165,9 +159,7 @@ export default function LoginView({
         await sendEmailOtp(email, { shouldCreateUser: true });
         setMode('otp');
         setOtpSent(true);
-        setSuccessMsg(isAr
-          ? 'أرسلنا رمز التحقق إلى بريدك. أدخل الرمز خلال 10 دقائق.'
-          : 'We sent a verification code to your email. Enter it within 10 minutes.');
+        setSuccessMsg(t.otpSentNotice);
         return;
       }
 
@@ -191,25 +183,16 @@ export default function LoginView({
 
   const title = () => {
     if (mode === 'signup') return t.createAccount;
-    if (mode === 'forgot') return isAr ? 'نسيت كلمة المرور' : 'Forgot password';
-    if (mode === 'recovery') return isAr ? 'كلمة مرور جديدة' : 'New password';
-    if (mode === 'otp') return isAr ? 'دخول برمز OTP' : 'Sign in with OTP';
+    if (mode === 'forgot') return t.forgotPasswordTitle;
+    if (mode === 'recovery') return t.newPasswordTitle;
+    if (mode === 'otp') return t.signInWithOtpTitle;
     return t.login;
   };
 
   const subtitle = () => {
-    if (mode === 'forgot') {
-      return isAr ? 'أدخل بريدك وسنرسل رابط إعادة التعيين' : 'Enter your email and we will send a reset link';
-    }
-    if (mode === 'recovery') {
-      return isAr ? 'اختر كلمة مرور جديدة لحسابك' : 'Choose a new password for your account';
-    }
-    if (mode === 'otp') {
-      return otpSent
-        ? (isAr ? 'أدخل الرمز من البريد الإلكتروني' : 'Enter the code from your email')
-        : (isAr ? 'سنرسل رمزاً لمرة واحدة إلى بريدك' : 'We will email you a one-time code');
-    }
-    if (mode === 'signup') return t.loginDesc;
+    if (mode === 'forgot') return t.forgotPasswordDesc;
+    if (mode === 'recovery') return t.newPasswordDesc;
+    if (mode === 'otp') return otpSent ? t.otpSentDesc : t.otpDesc;
     return t.loginDesc;
   };
 
@@ -234,12 +217,12 @@ export default function LoginView({
               className="btn w-full py-3.5 bg-white text-gray-800 border border-[var(--border)] hover:bg-gray-50 disabled:opacity-60 flex items-center justify-center gap-3 font-semibold"
             >
               <GoogleIcon />
-              {isAr ? 'المتابعة مع Google' : 'Continue with Google'}
+              {t.continueWithGoogle}
             </button>
             <div className="flex items-center gap-3 my-6">
               <div className="flex-1 h-px bg-[var(--border)]" />
               <span className="text-xs text-[var(--text-muted)] uppercase tracking-wide">
-                {isAr ? 'أو' : 'or'}
+                {t.orDivider}
               </span>
               <div className="flex-1 h-px bg-[var(--border)]" />
             </div>
@@ -257,7 +240,7 @@ export default function LoginView({
                   : 'text-[var(--text-sec)] hover:text-white'
               }`}
             >
-              {isAr ? 'كلمة المرور' : 'Password'}
+              {t.passwordTab}
             </button>
             <button
               type="button"
@@ -268,7 +251,7 @@ export default function LoginView({
                   : 'text-[var(--text-sec)] hover:text-white'
               }`}
             >
-              {isAr ? 'رمز OTP' : 'Email OTP'}
+              {t.emailOtp}
             </button>
           </div>
         )}
@@ -321,7 +304,7 @@ export default function LoginView({
           {mode === 'otp' && otpSent && (
             <div>
               <label className="text-sm font-semibold flex items-center gap-2 mb-1.5 text-[var(--text-sec)]">
-                <KeyRound className="w-4 h-4 text-[var(--accent)]" /> {isAr ? 'رمز التحقق' : 'Verification code'}
+                <KeyRound className="w-4 h-4 text-[var(--accent)]" /> {t.verificationCode}
               </label>
               <input
                 ref={otpInputRef}
@@ -340,7 +323,7 @@ export default function LoginView({
                 onClick={() => { setOtpSent(false); setOtpCode(''); resetMessages(); }}
                 className="text-xs text-[var(--accent)] mt-2 hover:underline"
               >
-                {isAr ? 'إرسال رمز جديد' : 'Send a new code'}
+                {t.sendNewCode}
               </button>
             </div>
           )}
@@ -350,7 +333,7 @@ export default function LoginView({
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-sm font-semibold flex items-center gap-2 text-[var(--text-sec)]">
                   <Lock className="w-4 h-4 text-[var(--accent)]" />
-                  {mode === 'recovery' ? (isAr ? 'كلمة المرور الجديدة' : 'New password') : t.password}
+                  {mode === 'recovery' ? t.newPasswordLabel : t.password}
                 </label>
                 {mode === 'login' && loginMethod === 'password' && (
                   <button
@@ -358,7 +341,7 @@ export default function LoginView({
                     onClick={() => switchMode('forgot')}
                     className="text-xs text-[var(--accent)] hover:underline"
                   >
-                    {isAr ? 'نسيت كلمة المرور؟' : 'Forgot password?'}
+                    {t.forgotPassword}
                   </button>
                 )}
               </div>
@@ -377,7 +360,7 @@ export default function LoginView({
           {mode === 'recovery' && (
             <div>
               <label className="text-sm font-semibold flex items-center gap-2 mb-1.5 text-[var(--text-sec)]">
-                <Lock className="w-4 h-4 text-[var(--accent)]" /> {isAr ? 'تأكيد كلمة المرور' : 'Confirm password'}
+                <Lock className="w-4 h-4 text-[var(--accent)]" /> {t.confirmPasswordLabel}
               </label>
               <input
                 type="password"
@@ -394,7 +377,7 @@ export default function LoginView({
           {mode === 'signup' && (
             <div>
               <label className="text-sm font-semibold flex items-center gap-2 mb-1.5 text-[var(--text-sec)]">
-                <Lock className="w-4 h-4 text-[var(--accent)]" /> {isAr ? 'تأكيد كلمة المرور' : 'Confirm password'}
+                <Lock className="w-4 h-4 text-[var(--accent)]" /> {t.confirmPasswordLabel}
               </label>
               <input
                 type="password"
@@ -413,12 +396,12 @@ export default function LoginView({
             disabled={isLoading}
             className="btn btn-primary w-full py-4 disabled:opacity-60"
           >
-            {isLoading ? (t.processing || '...') : (
+            {isLoading ? t.processing : (
               mode === 'signup' ? t.createAccount
-                : mode === 'forgot' ? (isAr ? 'إرسال الرابط' : 'Send reset link')
-                  : mode === 'recovery' ? (isAr ? 'حفظ كلمة المرور' : 'Save password')
-                    : mode === 'otp' ? (otpSent ? (isAr ? 'تحقق والدخول' : 'Verify & sign in') : (isAr ? 'إرسال الرمز' : 'Send code'))
-                      : loginMethod === 'otp' ? (isAr ? 'متابعة برمز OTP' : 'Continue with OTP')
+                : mode === 'forgot' ? t.sendResetLink
+                  : mode === 'recovery' ? t.savePassword
+                    : mode === 'otp' ? (otpSent ? t.verifyAndSignIn : t.sendCode)
+                      : loginMethod === 'otp' ? t.continueWithOtp
                         : t.login
             )}
           </button>
@@ -432,7 +415,7 @@ export default function LoginView({
               className="inline-flex items-center gap-1.5 text-[var(--text-sec)] hover:text-[var(--accent)]"
             >
               <ArrowLeft className="w-4 h-4" />
-              {isAr ? 'العودة لتسجيل الدخول' : 'Back to login'}
+              {t.backToLogin}
             </button>
           )}
 

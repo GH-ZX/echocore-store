@@ -107,7 +107,7 @@ export async function updateUserProfileRecord(userId, patch = {}) {
       delete legacyPayload[key];
     }
     if (Object.keys(legacyPayload).length === 0) {
-      throw new Error('Run supabase_profile_extended_migration.sql to enable profile fields');
+      throw new Error('Run supabase_echocore_full.sql to enable profile fields');
     }
     result = await supabase
       .from('profiles')

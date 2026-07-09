@@ -1,113 +1,129 @@
-# ECHOCORE — Supabase Setup Guide (Make it REAL)
+# ECHOCORE — Supabase Setup Guide
 
-This guide turns the project into a production-ready digital store with real database, auth, and persistence.
+**Live site:** https://www.echocore412.com  
+**App version:** 0.5.0
 
-## 1. Create Supabase Project
+This guide configures Supabase for the ECHOCORE Store React app (auth, catalog, orders, balance, admin).
 
-1. Go to https://supabase.com and create a new project (free tier is perfect).
-2. Wait for it to provision (~1 min).
-3. Go to **Project Settings → API**
-   - Copy **Project URL** → `VITE_SUPABASE_URL`
-   - Copy **anon public** key → `VITE_SUPABASE_ANON_KEY`
+---
 
-4. Create `.env` file in project root:
+## Quick path (recommended)
+
+### 1. Create a Supabase project
+
+1. Go to [supabase.com](https://supabase.com) and create a project.
+2. **Project Settings → API** — copy:
+   - **Project URL** → `VITE_SUPABASE_URL`
+   - **anon public** key → `VITE_SUPABASE_ANON_KEY`
+
+3. Local `.env`:
    ```bash
    cp .env.example .env
    ```
    Paste the two values.
 
-## 2. Run the Database Schema & Seed Data
+### 2. Run the database (one file)
 
-Instead of running multiple separate SQL files, we have consolidated the entire database schema, security policies, triggers, custom RPC functions, storage configuration, and seed data into a single file:
+Open **SQL Editor** and run the entire file:
 
-👉 Run all SQL commands located in [supabase_complete_schema.sql](file:///c:/Users/Administrator/Coding/echocore-store/supabase_complete_schema.sql) in your Supabase **SQL Editor**.
+👉 **[supabase_echocore_full.sql](./supabase_echocore_full.sql)**
 
-This unified script will:
-1. Create all required tables (`profiles`, `games`, `offers`, `orders`, `order_items`, `transactions`, `store_settings`, `customer_reviews`, `contact_messages`).
-2. Apply appropriate **Row Level Security (RLS)** and access policies.
-3. Establish security triggers (e.g., auto-creating profiles on signup).
-4. Register crucial transactional RPC functions (like atomic order processing `create_order_atomic` and balance deduction).
-5. Provision the `"product-images"` storage bucket automatically and set up admin upload policies.
-6. Seed default settings, starter customer reviews, and a sample game (Mobile Legends) with packages.
+It is idempotent (`IF NOT EXISTS`, `CREATE OR REPLACE`). Safe for:
 
-### Security migration (required for existing projects)
+| Scenario | Action |
+|----------|--------|
+| **New project** | Run the full file once (sections §01–§15). |
+| **Existing ECHOCORE DB** | Re-run to apply any missing migrations. |
+| **Move to another Supabase** | New project + run full file + update secrets (see § Migrate below). |
 
-If you already ran an older version of the schema, also run:
+Do **not** run the optional §A/§B blocks at the bottom in production (they wipe data).
 
-👉 [supabase_security_migration.sql](./supabase_security_migration.sql) in the Supabase **SQL Editor**.
+### 3. Auth URL configuration
 
-This migration:
-- Restricts profile reads to the signed-in user (and admins)
-- Blocks client-side balance/role changes on profiles
-- Adds caller verification to balance/order RPCs
-- Creates external orders as `pending_payment` until confirmed
-- Removes unsafe direct INSERT policies on orders/transactions
+In **Authentication → URL configuration** (production):
 
-Checkout and recharge **will not work** until this migration (or the updated full schema) is applied.
+| Field | Value |
+|-------|--------|
+| Site URL | `https://www.echocore412.com` |
+| Redirect URLs | `https://www.echocore412.com/login` |
+| | `https://www.echocore412.com/**` |
+| | `http://localhost:5173/login` |
 
-The contact form also requires the `contact_messages` table (included in the full schema and security migration).
+### 4. Storage
 
-### Manual ShamCash recharge (required for balance top-ups)
+Confirm bucket **`product-images`** exists and is **public** (created by the SQL script).
 
-Run after the security migration:
+### 5. First admin
 
-👉 [supabase_recharge_manual_migration.sql](./supabase_recharge_manual_migration.sql)
+1. Sign up on the live site or locally.
+2. In **Table Editor → `profiles`**, set `role` to `admin` for your user.
 
-This migration:
-- Adds ShamCash QR image + pay code fields to `store_settings`
-- Creates `recharge_requests` (pending → admin approval flow)
-- **Removes self-service balance credit** — only admins can approve recharges
-- Exposes safe payment config via `get_payment_methods` (QR URL + pay code, no API token)
+### 6. Payments & recharge
 
-Then in **Admin → Payments**: upload QR, enter pay code, save.  
-Approve requests in **Admin → Recharges**.
+**Admin → Payments:** upload ShamCash QR, enter pay code, save.  
+**Admin → Recharges:** approve balance top-ups after verifying payment.
 
-### Storage & Image Assets Setup (Recommended)
-1. In your Supabase dashboard, navigate to **Storage > Buckets**.
-2. Verify that the `"product-images"` bucket was created and ensure it is set to **Public** so product images can load for site visitors.
-3. You can upload game banner/logo images here and use their public URLs as `image_url` or `logo_url` in your games catalog.
+---
 
+## GitHub Pages deploy secrets
 
-## 4. Create First Admin
+In the repo **Settings → Secrets and variables → Actions**:
 
-After you sign up normally (any email):
+| Secret | Example |
+|--------|---------|
+| `VITE_SUPABASE_URL` | `https://xxxx.supabase.co` |
+| `VITE_SUPABASE_ANON_KEY` | anon key |
+| `VITE_SITE_DOMAIN` | `www.echocore412.com` |
+| `VITE_BASE_PATH` | `/` |
 
-1. In Supabase → **Table Editor** → `profiles`
-2. Find your user row and change `role` to `admin`
+The workflow (`.github/workflows/deploy.yml`) runs lint + build and writes `CNAME` when `VITE_SITE_DOMAIN` is set.
 
-## 5. Run the App
+**Never** add `G2BULK_API_KEY`, `service_role`, or `VITE_MOCK_FULFILLMENT=true` to production build secrets.
 
-```bash
-npm run dev
-```
+---
 
-Login with any email/password (Supabase will create the user).
+## Migrate to another Supabase project
 
-The admin panel will only appear for users with `role = 'admin'`.
+Use the **same** `supabase_echocore_full.sql` on the new project:
 
-## 6. Next Level (Optional)
+1. Create new Supabase project → run §01–§15 from the full SQL file.
+2. Configure Auth URLs (table above).
+3. Update GitHub Actions secrets (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`).
+4. **Edge Function secrets** (Dashboard → Edge Functions): re-enter `G2BULK_API_KEY`, cron secrets — not stored in the frontend.
+5. **Storage:** re-upload or migrate `product-images` if you need existing assets.
+6. **Users:** customers re-register, or restore from a Supabase backup (advanced).
 
-- Add image upload in AdminView using `supabase.storage`
-- Add real-time product updates with Supabase subscriptions
-- Add order history view for users
+Point DNS for `www.echocore412.com` to GitHub Pages (or keep hosting; only API URL changes).
 
-You now have a **real** database-backed store.
-Everything (products, auth, orders) lives in Supabase.
+---
 
-## 7. Production RLS checklist (admin orders & profiles)
+## Security checklist (production)
 
-The admin dashboard loads **all orders** and joins **customer names** from `profiles`. This is intentional, but only safe when RLS is configured correctly:
+Run before accepting real payments:
 
-| Table | Required policy |
-|-------|-----------------|
-| `profiles` | Users read **own** row; admins read **all** (`is_admin()`) |
-| `orders` | Users read **own** orders; admins read **all** |
-| `order_items` | Matches parent order access |
+- [ ] `supabase_echocore_full.sql` applied (includes security + recharge locks)
+- [ ] As a **non-admin** test user: `SELECT * FROM orders` returns only own rows
+- [ ] `get_payment_methods` does not expose ShamCash API token
+- [ ] `store_settings` readable only by admins (RLS)
+- [ ] `VITE_MOCK_FULFILLMENT` is **not** set in production CI
 
-The app also skips order fetches client-side unless `user.role === 'admin'`, but **never rely on the client alone** — run `supabase_security_migration.sql` (or the full schema) before going live.
+See [SUPABASE_SETUP.ar.md](./SUPABASE_SETUP.ar.md) for the Arabic version.
 
-Verify in Supabase SQL Editor as a non-admin test user: `SELECT * FROM orders` and `SELECT * FROM profiles` should return only permitted rows.
+---
 
-## 8. Bundle size notes
+## SQL file
 
-Production JS is split into vendor chunks in `vite.config.js` (React, Supabase, motion, carousel, icons). Secondary routes are lazy-loaded from `App.jsx`. After `npm run build`, check `dist/assets/` sizes if you add heavy dependencies.
+| File | Purpose |
+|------|---------|
+| `supabase_echocore_full.sql` | **Only file to run** — complete schema (~2,800 lines) |
+| `scripts/*.sql` | Debug / one-off ops (optional, not setup) |
+
+---
+
+## Optional next steps
+
+- G2Bulk: Admin → G2Bulk tab + Edge Function secrets
+- Custom domain already live at `www.echocore412.com`
+- Notifications: included in full SQL (v1–v3)
+
+You now have a real database-backed store; all catalog, auth, and orders live in Supabase.

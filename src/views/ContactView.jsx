@@ -1,9 +1,7 @@
 import { useState } from 'react';
 import { submitContactMessage } from '../lib/contact';
 
-export default function ContactView({ t = {}, lang = 'en', user = null }) {
-  const isAr = lang === 'ar';
-
+export default function ContactView({ t = {}, user = null }) {
   const [formData, setFormData] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -23,7 +21,7 @@ export default function ContactView({ t = {}, lang = 'en', user = null }) {
     e.preventDefault();
 
     if (!formData.email?.trim() || !formData.message?.trim()) {
-      setError(isAr ? 'الرجاء إدخال البريد الإلكتروني والرسالة' : 'Please enter your email and message');
+      setError(t.contactEmailMessageRequired);
       return;
     }
 
@@ -48,10 +46,7 @@ export default function ContactView({ t = {}, lang = 'en', user = null }) {
         setSubmitted(false);
       }, 4000);
     } catch (err) {
-      setError(
-        t.contactSubmitFailed
-          || (isAr ? 'تعذر إرسال الرسالة. حاول مرة أخرى أو راسلنا مباشرة.' : 'Could not send your message. Please try again or email us directly.'),
-      );
+      setError(t.contactSubmitFailed);
       console.error('Contact form error:', err);
     } finally {
       setIsSubmitting(false);
@@ -62,7 +57,7 @@ export default function ContactView({ t = {}, lang = 'en', user = null }) {
     <div className="max-w-xl mx-auto">
       <div className="text-center mb-8">
         <h1 className="text-3xl md:text-4xl font-black mb-2">
-          {t.contactUs || (isAr ? 'تواصل معنا' : 'Contact Us')}
+          {t.contactUs}
         </h1>
         <p className="text-[var(--text-secondary)]">
           {t.contactSubtitle}
@@ -77,9 +72,7 @@ export default function ContactView({ t = {}, lang = 'en', user = null }) {
               {t.messageSent}
             </h3>
             <p className="text-[var(--text-secondary)]">
-              {isAr
-                ? 'شكراً لتواصلك. سنقوم بالرد عليك خلال 24 ساعة.'
-                : 'Thank you for reaching out. We will reply within 24 hours.'}
+              {t.contactThankYouBody}
             </p>
           </div>
         ) : (

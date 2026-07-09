@@ -1,0 +1,29 @@
+---
+description: ECHOCORE Store i18n and architecture standards — no hardcoded bilingual UI, use translations.js/pageContent.js, reuse existing patterns
+globs:
+  - src/**/*
+alwaysApply: true
+---
+
+# ECHOCORE standards
+
+Read `.grok/skills/echocore-standards/SKILL.md` for full rules. Apply on every change.
+
+## i18n (non-negotiable)
+
+- **No** `isAr ? 'ar' : 'en'`, `lang === 'ar' ? '...'`, or `t.key || (isAr ? '...')` for user-visible text.
+- Add copy to `src/data/translations.js` or `src/data/pageContent.js` (both `ar` and `en`).
+- Use `t.key` in components; `formatMessage(t.key, vars)` from `src/lib/i18n.js` for placeholders.
+- Pass `t` from `App.jsx` to views. URLs/names in `buildInfo.js`, not sentences.
+
+## Implementation
+
+- Search and reuse existing `lib/`, modals, and layout shells before new code.
+- Do not duplicate forms (e.g. game edit: use `AdminGameEditModal`, not a second form in `AdminView`).
+- One data path for Supabase mutations; no copy-paste CRUD in views.
+- Remove unused `isAr` when only used for copy.
+- Run `npm run lint` and `npm run build` before finishing.
+
+## Bloat audit
+
+See `.grok/skills/echocore-standards/references/bloat-audit.md` for file hotspots and cleanup order.

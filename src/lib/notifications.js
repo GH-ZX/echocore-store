@@ -2,7 +2,7 @@ import { supabase } from './supabase';
 import { getAdminDashboardPath } from './adminRoutes';
 
 const RPC_SETUP_MSG =
-  'Notifications are not configured. Run supabase_notifications_migration.sql in the Supabase SQL Editor.';
+  'Notifications are not configured. Run supabase_echocore_full.sql in the Supabase SQL Editor.';
 
 function isMissingRpc(error) {
   return error?.message?.includes('function') && error?.message?.includes('does not exist');

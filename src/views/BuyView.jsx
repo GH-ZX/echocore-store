@@ -23,7 +23,6 @@ export default function BuyView({
   const notifyError = (message) => onNotify?.(message, 'error');
   const notifySuccess = (message) => onNotify?.(message, 'success');
   const { gameSlug, offerSlug } = useParams();
-  const isAr = lang === 'ar';
 
   const { offer, game } = resolveOfferRoute(offers, games, { gameSlug, offerSlug });
 
@@ -80,7 +79,7 @@ export default function BuyView({
     return (
       <div className="max-w-2xl mx-auto py-20 text-center text-[var(--text-sec)]">
         <Loader2 className="w-8 h-8 animate-spin mx-auto text-[var(--accent)]" />
-        <p className="mt-3">{t.loadingOffer || (isAr ? 'جاري تحميل العرض...' : 'Loading offer...')}</p>
+        <p className="mt-3">{t.loadingOffer}</p>
       </div>
     );
   }
@@ -88,8 +87,8 @@ export default function BuyView({
   if (!isValidOffer) {
     return (
       <div className="max-w-md mx-auto text-center py-20">
-        <p className="text-xl text-[var(--text-sec)]">{t.offerNotFound || 'Offer not found'}</p>
-        <button type="button" onClick={() => navigate('/')} className="btn btn-secondary mt-4">Back</button>
+        <p className="text-xl text-[var(--text-sec)]">{t.offerNotFound}</p>
+        <button type="button" onClick={() => navigate('/')} className="btn btn-secondary mt-4">{t.back}</button>
       </div>
     );
   }
@@ -117,7 +116,7 @@ export default function BuyView({
           navigate(`/success?orderId=${result.orderId}`);
         }
       } catch (e) {
-        notifyError(brandUserText(`${t.error || 'Error'}: ${e.message || ''}`));
+        notifyError(brandUserText(`${t.error}: ${e.message || ''}`));
       } finally {
         setIsProcessing(false);
       }
@@ -125,12 +124,12 @@ export default function BuyView({
     }
 
     if (!usableMethods.some((m) => m.id === selectedMethod)) {
-      notifyError(isAr ? 'طريقة الدفع غير متاحة' : 'Payment method unavailable');
+      notifyError(t.paymentMethodUnavailable);
       return;
     }
 
     if (isShamCash && !manualReady) {
-      notifyError(t.rechargeNotConfigured || (isAr ? 'دفع ShamCash غير مُعدّ بعد من الإدارة' : 'ShamCash manual payment is not configured yet'));
+      notifyError(t.shamcashBuyNotConfigured);
       return;
     }
 
@@ -147,7 +146,7 @@ export default function BuyView({
         setStep(result.status === 'payment_sent' ? 'pending' : 'payment');
       }
     } catch (e) {
-      notifyError(brandUserText(`${t.paymentFailed || 'Payment failed'}: ${e.message || ''}`));
+      notifyError(brandUserText(`${t.paymentFailed}: ${e.message || ''}`));
     } finally {
       setIsProcessing(false);
     }
@@ -161,10 +160,7 @@ export default function BuyView({
       const result = await markOrderPaymentSent(activeOrder.orderId);
       setActiveOrder((prev) => ({ ...prev, ...result, status: 'payment_sent' }));
       setStep('pending');
-      notifySuccess(
-        t.orderPendingApproval
-          || (isAr ? 'تم استلام طلبك. سيُكتمل الشراء بعد تأكيد الإدارة.' : 'Request received. Your order will complete after admin approval.'),
-      );
+      notifySuccess(t.orderPendingApproval);
     } catch (e) {
       notifyError(brandUserText(e.message || t.paymentFailed));
     } finally {
@@ -185,18 +181,18 @@ export default function BuyView({
           onClick={() => { setStep('details'); setActiveOrder(null); }}
           className="flex items-center gap-2 mb-6 text-sm text-[var(--text-sec)] hover:text-white"
         >
-          <ArrowLeft className="w-4 h-4" /> {t.back || (isAr ? 'رجوع' : 'Back')}
+          <ArrowLeft className="w-4 h-4" /> {t.back}
         </button>
 
         <div className="card p-8">
           <div className="mb-6 text-center">
             <div className="text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">ShamCash Pay</div>
-            <h1 className="text-2xl font-black">{t.completeShamcashPayment || (isAr ? 'إتمام الدفع عبر ShamCash' : 'Complete ShamCash Payment')}</h1>
+            <h1 className="text-2xl font-black">{t.completeShamcashPayment}</h1>
             <p className="mt-1 text-[var(--text-sec)]">{purchaseSubtitle}</p>
           </div>
 
           <div className="text-center mb-6">
-            <div className="text-sm text-[var(--text-muted)]">{t.total || 'Total'}</div>
+            <div className="text-sm text-[var(--text-muted)]">{t.total}</div>
             <div className="text-4xl font-black font-mono text-[var(--accent)]">
               ${activeOrder?.total != null ? parseFloat(activeOrder.total).toFixed(2) : total}
             </div>
@@ -222,7 +218,7 @@ export default function BuyView({
             {payCode && (
               <div className="mt-4">
                 <div className="text-xs text-[var(--text-muted)] mb-1">
-                  {t.shamcashPayCodeLabel || (isAr ? 'رمز / حساب الدفع' : 'Payment code / account')}
+                  {t.shamcashPayCodeLabel}
                 </div>
                 <div className="font-mono text-lg tracking-wide break-all text-[var(--text-primary)] bg-black/30 rounded-xl px-4 py-3">
                   {payCode}
@@ -233,12 +229,11 @@ export default function BuyView({
 
           <div className="rounded-2xl border border-[var(--border)] bg-black/40 p-4 text-center mb-5">
             <div className="text-green-400 text-xs mb-1 uppercase tracking-wider">
-              {t.paymentReference || (isAr ? 'مرجع الدفع' : 'Payment reference')}
+              {t.paymentReference}
             </div>
             <div className="font-mono text-lg tracking-wider">{activeOrder?.reference || '—'}</div>
             <p className="text-xs text-[var(--text-muted)] mt-2">
-              {t.includeReferenceNote
-                || (isAr ? 'أرسل المبلغ عبر ShamCash مع هذا المرجع في الملاحظة إن أمكن.' : 'Send the exact amount via ShamCash and include this reference in the note if possible.')}
+              {t.includeReferenceNote}
             </p>
           </div>
 
@@ -252,16 +247,15 @@ export default function BuyView({
               {isProcessing ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> {t.processing}</>
               ) : (
-                t.confirmPaymentSent || (isAr ? 'لقد أرسلت الدفع' : 'I have sent the payment')
+                t.confirmPaymentSent
               )}
             </button>
           ) : (
             <div className="text-center py-4 rounded-2xl border border-amber-500/30 bg-amber-500/10">
               <Clock className="w-8 h-8 mx-auto text-amber-300 mb-2" />
-              <div className="font-bold text-amber-100">{t.awaitingAdminApproval || (isAr ? 'بانتظار موافقة الإدارة' : 'Awaiting admin approval')}</div>
+              <div className="font-bold text-amber-100">{t.awaitingAdminApproval}</div>
               <p className="text-xs text-[var(--text-sec)] mt-2 max-w-sm mx-auto">
-                {t.orderPendingDesc
-                  || (isAr ? 'سيُكتمل طلبك بعد أن يتحقق المسؤول من استلام المبلغ في ShamCash.' : 'Your order will complete after an admin verifies the ShamCash payment.')}
+                {t.orderPendingDesc}
               </p>
               <CheckCircle className="w-5 h-5 mx-auto text-emerald-400 mt-3" />
             </div>
@@ -274,18 +268,16 @@ export default function BuyView({
   return (
     <div className="max-w-2xl mx-auto">
       <button type="button" onClick={() => navigate(-1)} className="flex items-center gap-2 mb-6 text-sm text-[var(--text-sec)] hover:text-white">
-        <ArrowLeft className="w-4 h-4" /> {t.back || (isAr ? 'رجوع' : 'Back')}
+        <ArrowLeft className="w-4 h-4" /> {t.back}
       </button>
 
       <div className="card p-8">
         <div className="mb-8 text-center">
           <div className="text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">
-            {isVoucherOnly
-              ? (t.voucherCheckout || (isAr ? 'شراء كود' : 'Voucher checkout'))
-              : 'INSTANT PURCHASE'}
+            {isVoucherOnly ? t.voucherCheckout : t.instantPurchaseLabel}
           </div>
           <h1 className="text-3xl font-black">
-            {isVoucherOnly ? (t.buyVoucher || (isAr ? 'اشترِ الكود' : 'Buy voucher code')) : t.buyInstantly}
+            {isVoucherOnly ? t.buyVoucher : t.buyInstantly}
           </h1>
           <p className="mt-1 text-[var(--text-sec)]">{purchaseSubtitle}</p>
           {regionLabel && (
@@ -296,7 +288,7 @@ export default function BuyView({
         </div>
 
         <div className="flex justify-between items-baseline mb-6 p-4 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)]">
-          <div className="text-sm text-[var(--text-muted)]">{t.total || 'Total'}</div>
+          <div className="text-sm text-[var(--text-muted)]">{t.total}</div>
           <div className="text-4xl font-black text-[var(--accent)]">${total}</div>
         </div>
 
@@ -308,16 +300,14 @@ export default function BuyView({
               </div>
               <div>
                 <div className="font-semibold text-violet-100 mb-1">
-                  {t.voucherDeliveryTitle || (isAr ? 'تسليم فوري للكود' : 'Instant code delivery')}
+                  {t.voucherDeliveryTitle}
                 </div>
                 <p className="text-sm text-[var(--text-sec)] leading-relaxed">
-                  {t.voucherDeliveryDesc || (isAr
-                    ? 'لا حاجة لـ UID أو سيرفر. بعد الدفع يظهر كود الشحن في إيصال الطلب ويمكنك نسخه فوراً.'
-                    : 'No UID or server needed. After payment your redeem code appears on the order receipt — copy it instantly.')}
+                  {t.voucherDeliveryDesc}
                 </p>
                 <p className="text-xs text-[var(--text-muted)] mt-2 inline-flex items-center gap-1">
                   <Zap className="w-3.5 h-3.5 text-violet-300" />
-                  {t.voucherFulfillmentNote || (isAr ? 'يُسلَّم الكود تلقائياً بعد إتمام الدفع' : 'Your code is delivered automatically after payment')}
+                  {t.voucherFulfillmentNote}
                 </p>
               </div>
             </div>
@@ -332,7 +322,7 @@ export default function BuyView({
           {isBoth && (
             <div className="mb-4">
               <div className="text-xs text-[var(--text-muted)] mb-1.5 font-medium">
-                {t.chooseRedemptionMethod || (isAr ? 'اختر طريقة الاسترداد' : 'Choose redemption method')}
+                {t.chooseRedemptionMethod}
               </div>
               <div className="flex gap-3">
                 <button
@@ -340,14 +330,14 @@ export default function BuyView({
                   onClick={() => setRedemptionChoice('uid')}
                   className={`flex-1 py-3 rounded-2xl border text-sm font-semibold transition ${redemptionChoice === 'uid' ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border)] hover:border-[var(--accent)]/60'}`}
                 >
-                  {t.useUid || (isAr ? 'استخدم UID' : 'Use UID')}
+                  {t.useUid}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setRedemptionChoice('redeem_code'); setPlayerUid(''); setPlayerServer(''); }}
                   className={`flex-1 py-3 rounded-2xl border text-sm font-semibold transition ${redemptionChoice === 'redeem_code' ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border)] hover:border-[var(--accent)]/60'}`}
                 >
-                  {t.useRedeemCode || (isAr ? 'استخدم كود الشحن' : 'Use Redeem Code')}
+                  {t.useRedeemCode}
                 </button>
               </div>
             </div>
@@ -356,7 +346,7 @@ export default function BuyView({
           {showUidForm && (
             <div className="mb-3">
               <label className="text-xs text-[var(--text-muted)] block mb-1">
-                {isAr ? 'معرف اللاعب (UID)' : 'Player UID / User ID'} <span className="text-red-400">*</span>
+                {t.playerUidLabel} <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
@@ -371,7 +361,7 @@ export default function BuyView({
           <div>
             <label className="text-xs text-[var(--text-muted)] block mb-1 flex items-center gap-1">
               <Server className="w-3.5 h-3.5" />
-              {t.selectServer || (isAr ? 'السيرفر / المنطقة' : 'Server / Region')}
+              {t.selectServer}
               {availableServers.length > 0 && <span className="text-red-400 ml-1">*</span>}
             </label>
 
@@ -382,7 +372,7 @@ export default function BuyView({
                 className="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 focus:border-[var(--accent)] outline-none"
                 required
               >
-                <option value="">{t.selectServer || '-- Select Server / Region --'}</option>
+                <option value="">{t.selectServer}</option>
                 {availableServers.map((srv, idx) => (
                   <option key={idx} value={srv}>{srv}</option>
                 ))}
@@ -392,7 +382,7 @@ export default function BuyView({
                 type="text"
                 value={playerServer}
                 onChange={(e) => setPlayerServer(e.target.value)}
-                placeholder={t.serverPlaceholder || (isAr ? 'مثال: Europe أو Global' : 'e.g. Europe or Global')}
+                placeholder={t.serverPlaceholder}
                 className="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 font-mono focus:border-[var(--accent)] outline-none"
               />
             )}
@@ -400,33 +390,31 @@ export default function BuyView({
               <p className="text-[10px] text-[var(--text-muted)] mt-1">{t.availableServers} ({availableServers.length})</p>
             )}
             {availableServers.length > 0 && !playerServer && (
-              <div className="text-xs text-amber-400 mt-1">{t.serverRequired || 'Please select a server'}</div>
+              <div className="text-xs text-amber-400 mt-1">{t.serverRequired}</div>
             )}
           </div>
 
           {(needsCode && !showUidForm) && (
             <div className="text-sm p-3 rounded-xl bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 mt-3 mb-2">
-              {t.redeemCodeWillBeProvided || (isAr
-                ? 'ستحصل على كود شحن بعد الشراء. استخدمه داخل اللعبة.'
-                : 'You will receive a redeem code after purchase. Use it in-game.')}
+              {t.redeemCodeInGameNote}
             </div>
           )}
 
           {isBoth && showUidForm && (
             <div className="text-xs text-[var(--text-muted)] mb-2 mt-2">
-              {isAr ? 'اخترت الشحن عبر UID. سيتم إرسال النقاط إلى حسابك.' : 'You chose UID top-up. Points will be sent to the provided UID.'}
+              {t.uidTopUpChosen}
             </div>
           )}
 
           {!isUidComplete && needsUid && (
-            <div className="text-xs text-amber-400 mb-2 mt-2">* {isAr ? 'الرجاء إدخال UID صحيح' : 'Please enter a valid UID'}</div>
+            <div className="text-xs text-amber-400 mb-2 mt-2">* {t.validUidRequired}</div>
           )}
         </div>
         )}
 
         {!manualReady && (
           <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-            {t.rechargeNotConfigured || (isAr ? 'دفع ShamCash اليدوي غير جاهز. يمكنك الدفع من الرصيد أو التواصل مع الدعم.' : 'Manual ShamCash payment is not ready. Pay from balance or contact support.')}
+            {t.shamcashManualNotReady}
           </div>
         )}
 
@@ -453,7 +441,7 @@ export default function BuyView({
                       {m.name}
                       {m.id === 'ShamCash' && (
                         <span className="text-[10px] text-[var(--text-muted)] font-normal">
-                          {t.shamcashManualOnly || (isAr ? 'يدوي — موافقة الإدارة' : 'Manual — admin approval')}
+                          {t.shamcashManualOnly}
                         </span>
                       )}
                     </div>
@@ -482,7 +470,7 @@ export default function BuyView({
 
         {isShamCash && (
           <div className="text-center text-[10px] mt-4 text-[var(--text-muted)]">
-            {t.orderManualNote || (isAr ? 'لا يُكتمل الطلب تلقائياً. تُراجع كل دفعة ShamCash يدوياً من الإدارة.' : 'Orders are not completed automatically. Every ShamCash payment is reviewed manually.')}
+            {t.orderManualNote}
           </div>
         )}
         {!isShamCash && (

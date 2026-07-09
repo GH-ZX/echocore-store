@@ -1,25 +1,17 @@
-# Fresh start: run migrations + wipe data + deploy g2bulk + optional full sync
+# Fresh start: ensure schema, optional data wipe, deploy g2bulk, full sync
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot\..
 
-$migrations = @(
-  'supabase_game_regions_migration.sql',
-  'supabase_g2bulk_live_catalog_migration.sql',
-  'supabase_catalog_segments_migration.sql',
-  'supabase_g2bulk_check_migration.sql',
-  'supabase_fresh_start_migration.sql'
-)
+Write-Host 'Applying supabase_echocore_full.sql ...'
+supabase db query --linked -f supabase_echocore_full.sql
+if ($LASTEXITCODE -ne 0) { throw 'Schema apply failed' }
 
-foreach ($file in $migrations) {
-  if (-not (Test-Path $file)) {
-    Write-Warning "Skip missing: $file"
-    continue
-  }
-  Write-Host "Running $file ..."
-  supabase db query --linked -f $file
-  if ($LASTEXITCODE -ne 0) { throw "Failed: $file" }
-  Write-Host "OK: $file"
-}
+Write-Host @'
+
+To wipe catalog/orders (DESTRUCTIVE): open supabase_echocore_full.sql in SQL Editor,
+uncomment section A at the bottom, run only that block.
+
+'@ -ForegroundColor Yellow
 
 Write-Host 'Deploying g2bulk edge function...'
 supabase functions deploy g2bulk --project-ref uaiirtgzqtnrvcrlxstg

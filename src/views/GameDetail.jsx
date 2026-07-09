@@ -22,6 +22,7 @@ import {
 import { fetchLiveGameGroup, isLiveCatalogId } from '../lib/liveCatalog';
 import { sortOffersByPrice } from '../lib/offerDisplay';
 import { buildGameBreadcrumb } from '../lib/catalogNav';
+import { formatMessage } from '../lib/i18n';
 
 export default function GameDetail({
   games,
@@ -45,8 +46,6 @@ export default function GameDetail({
   const matchedGame = games.find((g) => (g.slug || g.id) === slug) || games.find((g) => g.id === slug);
   const storefrontGame = resolveStorefrontGame(games, matchedGame);
   const isAdmin = user?.role === 'admin';
-  const isAr = lang === 'ar';
-
   const regionVariants = useMemo(
     () => (storefrontGame ? getRegionVariantsWithOffers(games, storefrontGame.id, offers) : []),
     [games, storefrontGame, offers],
@@ -154,9 +153,9 @@ export default function GameDetail({
   const { breadcrumb, backLabel, backPath } = buildGameBreadcrumb(game, t, lang, navigate);
   const displayServers = isVoucher ? [] : (Array.isArray(activeVariant?.servers) ? activeVariant.servers : []);
   const heroBadges = isAccount
-    ? [{ label: t.accountBadge || (isAr ? 'استرداد' : 'Redeem'), className: 'border-sky-400/30 bg-sky-500/15 text-sky-200' }]
+    ? [{ label: t.accountBadge, className: 'border-sky-400/30 bg-sky-500/15 text-sky-200' }]
     : isVoucher
-      ? [{ label: t.giftCard || (isAr ? 'بطاقة هدايا' : 'Gift card'), className: 'border-violet-400/30 bg-violet-500/15 text-violet-200' }]
+      ? [{ label: t.giftCard, className: 'border-violet-400/30 bg-violet-500/15 text-violet-200' }]
       : [{ label: `${game.points_name || 'Top-up'}`, className: 'border-[var(--accent)]/30 bg-[var(--accent)]/10 text-[var(--accent)]' }];
 
   if (activeVariant?.region_label && !isVoucher) {
@@ -169,12 +168,12 @@ export default function GameDetail({
   return (
     <CatalogPageShell
       lang={lang}
-      backLabel={`${isAr ? 'عودة إلى' : 'Back to'} ${backLabel}`}
+      backLabel={`${t.backToPrefix} ${backLabel}`}
       onBack={() => navigate(backPath)}
       breadcrumb={breadcrumb}
       adminActions={isAdmin && (
         <AdminEditButton
-          label={t.editGame || (isAr ? 'تعديل اللعبة' : 'Edit game')}
+          label={t.editGame}
           onClick={() => setEditingGame(true)}
         />
       )}
@@ -184,18 +183,18 @@ export default function GameDetail({
         logoUrl={game.logo_url}
         title={gameName}
         subtitle={isAccount
-          ? (t.redeemSubtitle || t.redeemMeta || (isAr ? 'كود استرداد للمنصة — اشحن اشتراكك أو محفظتك' : 'Platform redeem code — recharge your subscription or wallet'))
+          ? t.redeemSubtitle
           : isVoucher
-            ? (t.giftCard || (isAr ? 'بطاقات هدايا وأكواد شحن' : 'Gift cards & voucher codes'))
-            : `${game.points_name || 'Top-up'} ${isAr ? 'شحن فوري' : 'instant top-up'}`}
+            ? t.giftCardsSubtitle
+            : `${game.points_name || 'Top-up'} ${t.instantTopUpSuffix}`}
         meta={isAccount || isVoucher
-          ? (t.voucherRedemption || (isAr ? 'استلام: كود فوري بعد الدفع' : 'Delivery: instant code after payment'))
-          : `${t.redemptionMethod || 'Redemption'}: ${
+          ? t.voucherRedemption
+          : `${t.redemptionMethod}: ${
             game.redemption_method === 'uid'
-              ? (t.redemptionUid || 'UID')
+              ? t.redemptionUid
               : game.redemption_method === 'redeem_code'
-                ? (t.redemptionCode || 'Redeem code')
-                : (t.redemptionBoth || 'UID or code')
+                ? t.redemptionCode
+                : t.redemptionBoth
           }${displayServers.length > 0 ? ` · ${displayServers.join(' • ')}` : ''}`}
         badges={heroBadges}
       />
@@ -205,18 +204,16 @@ export default function GameDetail({
           <Ticket className={`w-5 h-5 shrink-0 ${isAccount ? 'text-sky-300' : 'text-violet-300'}`} />
           <div className="text-sm text-[var(--text-sec)] space-y-2 min-w-0">
             <p className={`font-semibold ${isAccount ? 'text-sky-100' : 'text-violet-100'}`}>
-              {isAccount
-                ? (t.howRedeemWorks || (isAr ? 'كيف يعمل الاسترداد؟' : 'How redeem codes work'))
-                : (t.howVouchersWork || (isAr ? 'كيف تعمل بطاقات الهدايا؟' : 'How gift cards work'))}
+              {isAccount ? t.howRedeemWorks : t.howVouchersWork}
             </p>
             <ol className="list-decimal ps-5 space-y-1 text-xs leading-relaxed">
-              <li>{t.voucherStep1 || (isAr ? 'اختر الباقة وادفع' : 'Pick a pack and pay')}</li>
-              <li>{t.voucherStep2 || (isAr ? 'انسخ الكود من إيصال الطلب' : 'Copy the code from your order receipt')}</li>
-              <li>{t.voucherStep3 || (isAr ? 'فعّل الكود داخل اللعبة أو المنصة' : 'Redeem in-game or on the platform')}</li>
+              <li>{t.voucherStep1}</li>
+              <li>{t.voucherStep2}</li>
+              <li>{t.voucherStep3}</li>
             </ol>
             <p className="text-[10px] text-[var(--text-muted)] inline-flex items-center gap-1">
               <Zap className="w-3 h-3" />
-              {t.voucherStockNote || (isAr ? 'العروض غير المتوفرة تُخفى تلقائياً' : 'Out-of-stock packs are hidden automatically')}
+              {t.voucherStockNote}
             </p>
           </div>
         </div>
@@ -226,7 +223,7 @@ export default function GameDetail({
         <section className="catalog-region-picker mb-6 sm:mb-8">
           <div className="flex items-center gap-2 mb-3">
             <Globe className="w-4 h-4 text-[var(--accent)]" />
-            <h2 className="text-base sm:text-lg font-bold">{t.selectRegion || (isAr ? 'اختر المنطقة' : 'Select region')}</h2>
+            <h2 className="text-base sm:text-lg font-bold">{t.selectRegion}</h2>
           </div>
           <div className="flex flex-wrap gap-2">
             {regionVariants.map((variant) => {
@@ -248,9 +245,7 @@ export default function GameDetail({
             })}
           </div>
           <p className="text-xs text-[var(--text-muted)] mt-2">
-            {t.regionOffersNote || (isAr
-              ? 'الأسعار تختلف حسب المنطقة — اختر منطقة حسابك قبل الشراء.'
-              : 'Prices vary by region — pick your account region before buying.')}
+            {t.regionOffersNote}
           </p>
         </section>
       )}
@@ -258,9 +253,12 @@ export default function GameDetail({
       <section>
         <div className="flex items-end justify-between gap-3 mb-4 sm:mb-6">
           <div>
-            <h2 className="text-xl sm:text-2xl font-bold">{t.availableOffers || (isAr ? 'الباقات المتاحة' : 'Available packs')}</h2>
+            <h2 className="text-xl sm:text-2xl font-bold">{t.availableOffers}</h2>
             <p className="text-xs text-[var(--text-muted)] mt-1">
-              {gameOffers.length} {isAr ? 'عرض' : 'offer'}{gameOffers.length === 1 ? '' : 's'}
+              {formatMessage(
+                gameOffers.length === 1 ? t.offerCountOne : t.offerCountMany,
+                { count: gameOffers.length },
+              )}
             </p>
           </div>
         </div>

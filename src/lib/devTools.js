@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 
 const DEV_RPC_MSG =
-  'Developer tools are not configured. Run supabase_notifications_v2/v3 migrations in Supabase.';
+  'Developer tools are not configured. Run supabase_echocore_full.sql in Supabase.';
 
 function isMissingRpc(error) {
   return error?.message?.includes('function') && error?.message?.includes('does not exist');

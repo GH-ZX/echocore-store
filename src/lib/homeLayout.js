@@ -192,7 +192,7 @@ function defaultSectionConfig(type, id) {
       subtitle_en: 'YouTube, TikTok, and all our platforms',
       subtitle_ar: 'يوتيوب، تيك توك، وكل منصاتنا',
       button_text_en: 'All our links',
-      button_text_ar: 'كل روابطنا',
+      button_text_ar: 'روابطنا',
     };
   }
 

@@ -2,38 +2,12 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import EchoLogo from '../ui/EchoLogo';
 import SocialLinkIcon from '../social/SocialLinkIcon';
-import {
-  LINKTREE_PATH,
-  SOCIAL_LINKS,
-  getSocialLinkLabel,
-} from '../../lib/socialLinks';
+import { APP_VERSION } from '../../lib/buildInfo';
+import { followUsOnLabel, formatMessage } from '../../lib/i18n';
+import { LINKTREE_PATH, SOCIAL_LINKS } from '../../lib/socialLinks';
 
 export default function Footer({ lang = 'en', t = {} }) {
-  const isAr = lang === 'ar';
-
-  const content = {
-    desc: isAr
-      ? 'الوجهة الأولى للاعبي الألعاب. شحن فوري وآمن 100% لألعابك المفضلة.'
-      : 'The ultimate destination for PC gamers. Instant & 100% secure top-ups.',
-    shop: isAr ? 'التسوق' : 'Shop',
-    support: isAr ? 'الدعم' : 'Support',
-    follow: isAr ? 'تابعنا' : 'Follow Us',
-    links: {
-      games: isAr ? 'الألعاب' : 'Games',
-      sales: isAr ? 'عروض الخصم' : 'Sale Offers',
-      how: isAr ? 'كيف يعمل' : 'How it Works',
-      contact: isAr ? 'اتصل بنا' : 'Contact Us',
-      faq: isAr ? 'الأسئلة الشائعة' : 'FAQ',
-      privacy: isAr ? 'سياسة الخصوصية' : 'Privacy Policy',
-      terms: isAr ? 'شروط الخدمة' : 'Terms of Service',
-      socialHub: t.allSocialLinks || (isAr ? 'كل روابطنا' : 'All our links'),
-    },
-    copyright: isAr
-      ? '© 2026 ECHOCORE Store. جميع الحقوق محفوظة.'
-      : '© 2026 ECHOCORE Store. All rights reserved.',
-    tagline: isAr ? 'تسليم فوري • دفع آمن • دعم عربي وإنجليزي' : 'Instant delivery • Secure payments • Arabic & English support',
-    community: isAr ? 'انضم إلى مجتمع اللاعبين' : 'Join our community of gamers',
-  };
+  const copyright = formatMessage(t.footerCopyright, { version: APP_VERSION });
 
   return (
     <footer className="border-t border-[var(--border)]/30 bg-transparent pt-10 pb-8 text-sm backdrop-blur-[2px]">
@@ -50,42 +24,42 @@ export default function Footer({ lang = 'en', t = {} }) {
               </div>
             </Link>
             <p className="text-[var(--text-secondary)] leading-relaxed pr-2 text-[13px]">
-              {content.desc}
+              {t.footerDesc}
             </p>
             <p className="mt-3 text-xs text-[var(--text-muted)] leading-relaxed">
-              {content.tagline}
+              {t.footerTagline}
             </p>
           </div>
 
           <div>
-            <div className="font-semibold text-white mb-3 tracking-tight">{content.shop}</div>
+            <div className="font-semibold text-white mb-3 tracking-tight">{t.footerShop}</div>
             <ul className="space-y-[9px] text-[var(--text-secondary)]">
               <li>
-                <Link to="/games" className="hover:text-[var(--accent)] transition-colors">{content.links.games}</Link>
+                <Link to="/games" className="hover:text-[var(--accent)] transition-colors">{t.footerLinkGames}</Link>
               </li>
               <li>
-                <Link to="/sale" className="hover:text-[var(--accent)] transition-colors">{content.links.sales}</Link>
+                <Link to="/sale" className="hover:text-[var(--accent)] transition-colors">{t.footerLinkSales}</Link>
               </li>
             </ul>
           </div>
 
           <div>
-            <div className="font-semibold text-white mb-3 tracking-tight">{content.support}</div>
+            <div className="font-semibold text-white mb-3 tracking-tight">{t.footerSupport}</div>
             <ul className="space-y-[9px] text-[var(--text-secondary)]">
               <li>
-                <Link to="/how" className="hover:text-[var(--accent)] transition-colors">{content.links.how}</Link>
+                <Link to="/how" className="hover:text-[var(--accent)] transition-colors">{t.footerLinkHow}</Link>
               </li>
               <li>
-                <Link to="/contact" className="hover:text-[var(--accent)] transition-colors">{content.links.contact}</Link>
+                <Link to="/contact" className="hover:text-[var(--accent)] transition-colors">{t.footerLinkContact}</Link>
               </li>
               <li>
-                <Link to="/faq" className="hover:text-[var(--accent)] transition-colors">{content.links.faq}</Link>
+                <Link to="/faq" className="hover:text-[var(--accent)] transition-colors">{t.footerLinkFaq}</Link>
               </li>
             </ul>
           </div>
 
           <div>
-            <div className="font-semibold text-white mb-3 tracking-tight">{content.follow}</div>
+            <div className="font-semibold text-white mb-3 tracking-tight">{t.footerFollow}</div>
             <div className="flex flex-wrap gap-2 mb-3">
               {SOCIAL_LINKS.map((social) => (
                 <a
@@ -93,7 +67,7 @@ export default function Footer({ lang = 'en', t = {} }) {
                   href={social.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  aria-label={getSocialLinkLabel(social, lang)}
+                  aria-label={followUsOnLabel(lang, social.platform)}
                   title={`${social.platform} ${social.handle}`}
                   className="group flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border)]/40 bg-[var(--bg-surface)]/40 text-[var(--text-secondary)] backdrop-blur-sm transition-all hover:border-[var(--accent)]/60 hover:text-[var(--accent)] hover:bg-[var(--bg-surface)]/60 active:scale-95"
                 >
@@ -105,20 +79,20 @@ export default function Footer({ lang = 'en', t = {} }) {
               to={LINKTREE_PATH}
               className="inline-flex items-center gap-1.5 text-[var(--accent)] hover:text-[var(--accent)]/80 transition-colors text-xs font-semibold"
             >
-              {content.links.socialHub}
-              <span aria-hidden="true">{isAr ? '←' : '→'}</span>
+              {t.allSocialLinks}
+              <span aria-hidden="true">{lang === 'ar' ? t.navArrowBack : t.navArrowForward}</span>
             </Link>
-            <div className="text-[10px] text-[var(--text-muted)] mt-2">{content.community}</div>
+            <div className="text-[10px] text-[var(--text-muted)] mt-2">{t.footerCommunity}</div>
           </div>
         </div>
 
         <div className="mt-10 pt-6 border-t border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-y-3 text-xs text-[var(--text-muted)]">
-          <p>{content.copyright}</p>
+          <p>{copyright}</p>
           <div className="flex items-center gap-x-5">
-            <Link to="/privacy" className="hover:text-[var(--text-secondary)] transition-colors">{content.links.privacy}</Link>
-            <Link to="/terms" className="hover:text-[var(--text-secondary)] transition-colors">{content.links.terms}</Link>
+            <Link to="/privacy" className="hover:text-[var(--text-secondary)] transition-colors">{t.footerLinkPrivacy}</Link>
+            <Link to="/terms" className="hover:text-[var(--text-secondary)] transition-colors">{t.footerLinkTerms}</Link>
             <span className="hidden sm:inline">•</span>
-            <span>Secure • Instant • Trusted</span>
+            <span>{t.footerTrustLine}</span>
           </div>
         </div>
       </div>

@@ -1,9 +1,8 @@
 import SocialLinkIcon from './SocialLinkIcon';
-import { SOCIAL_LINKS, getSocialLinkLabel } from '../../lib/socialLinks';
+import { followUsOnLabel } from '../../lib/i18n';
+import { SOCIAL_LINKS } from '../../lib/socialLinks';
 
-export default function SocialLinkTree({ lang = 'en', compact = false }) {
-  const isAr = lang === 'ar';
-
+export default function SocialLinkTree({ lang = 'en', t = {}, compact = false }) {
   return (
     <div className={`social-link-tree ${compact ? 'social-link-tree--compact' : ''}`}>
       <div className="space-y-3">
@@ -13,7 +12,7 @@ export default function SocialLinkTree({ lang = 'en', compact = false }) {
             href={link.href}
             target="_blank"
             rel="noopener noreferrer"
-            aria-label={getSocialLinkLabel(link, lang)}
+            aria-label={followUsOnLabel(lang, link.platform)}
             className="social-link-tree__item group"
             style={{ '--social-accent': link.accent }}
           >
@@ -29,7 +28,7 @@ export default function SocialLinkTree({ lang = 'en', compact = false }) {
               </span>
             </span>
             <span className="social-link-tree__arrow text-xs opacity-60 group-hover:opacity-100 transition-opacity">
-              {isAr ? '←' : '→'}
+              {lang === 'ar' ? t.navArrowBack : t.navArrowForward}
             </span>
           </a>
         ))}

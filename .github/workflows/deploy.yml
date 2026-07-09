@@ -43,6 +43,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          # Production: VITE_SITE_DOMAIN=www.echocore412.com  VITE_BASE_PATH=/
           VITE_BASE_PATH: ${{ secrets.VITE_BASE_PATH }}
           VITE_SITE_DOMAIN: ${{ secrets.VITE_SITE_DOMAIN }}
         run: npm run build

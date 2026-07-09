@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import StoreBackground from './components/backgrounds/StoreBackground';
 import { getCarouselGames, getCarouselManageableGames, sortGamesByCarousel } from './lib/carouselUtils';
-import { Loader2, Globe } from 'lucide-react';
 import AppToast from './components/ui/AppToast';
 import {
   isPasswordRecoveryPending,
@@ -18,19 +17,12 @@ import {
   mergeCatalogRows,
 } from './lib/liveCatalog';
 import { syncCartWithOffers, pickCartSnapshot, cartsAreEquivalent, getCartLineKey } from './lib/cartUtils';
-import ProtectedRoute from './components/routing/ProtectedRoute';
 import ScrollToTop from './components/routing/ScrollToTop';
-import LegacyOfferRedirect from './components/routing/LegacyOfferRedirect';
+import AppRoutes from './components/routing/AppRoutes';
+import LangSwitchOverlay from './components/routing/LangSwitchOverlay';
 import { getGameOfferBuyPath, getGameOfferPath } from './lib/offerRoutes';
 import { resolveStorefrontGame } from './lib/gameRegions';
 import { fetchAllSupabaseRows } from './lib/supabaseQuery';
-import AllGamesView from './views/AllGamesView';
-import SearchView from './views/SearchView';
-import GiftCardsView from './views/GiftCardsView';
-import GamingAccountsView from './views/GamingAccountsView';
-import GameDetail from './views/GameDetail';
-import OfferDetail from './views/OfferDetail';
-import BuyView from './views/BuyView';
 import { fetchPaymentMethods } from './lib/storeSettings';
 import {
   filterGamesByPullSelection,
@@ -54,96 +46,19 @@ import {
   isMockFulfillmentEnabled,
 } from './lib/devTools';
 import { translations } from './data/translations';
-import { Routes, Route, useNavigate, Navigate, useLocation, useSearchParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import Header from './components/layout/Header';
-import HomeView from './views/home/HomeView';
 import Footer from './components/layout/Footer';
-
-const LoginView = lazy(() => import('./views/auth/LoginView'));
-const CartView = lazy(() => import('./views/CartView'));
-const CheckoutView = lazy(() => import('./views/CheckoutView'));
-const SaleOffersView = lazy(() => import('./views/SaleOffersView'));
-const FAQView = lazy(() => import('./views/FAQView'));
-const HowItWorksView = lazy(() => import('./views/HowItWorksView'));
-const ContactView = lazy(() => import('./views/ContactView'));
-const LinksView = lazy(() => import('./views/LinksView'));
-const RechargeView = lazy(() => import('./views/RechargeView'));
-const ProfileView = lazy(() => import('./views/profile/ProfileView'));
-const NotificationsView = lazy(() => import('./views/NotificationsView'));
 
 import AdminOfferEditModal from './components/admin/AdminOfferEditModal';
 import AdminGameEditModal from './components/admin/AdminGameEditModal';
-const AdminView = lazy(() => import('./views/admin/AdminView'));
 const AdminCarouselManager = lazy(() => import('./components/admin/AdminCarouselManager'));
 const CarouselAddPicker = lazy(() => import('./components/admin/CarouselAddPicker'));
-
-const SuccessView = lazy(() => import('./views/SuccessView'));
-const NotFoundView = lazy(() => import('./views/NotFoundView'));
-const PrivacyView = lazy(() => import('./views/PrivacyView'));
-const TermsView = lazy(() => import('./views/TermsView'));
-
-function PageLoader({ lang = 'ar' }) {
-  return (
-    <div className="flex items-center justify-center min-h-[40vh]">
-      <div className="text-[var(--text-sec)] animate-pulse">
-        {lang === 'ar' ? 'جاري التحميل...' : 'Loading...'}
-      </div>
-    </div>
-  );
-}
-
-
 
 const LANG_SWITCH_FADE_OUT_MS = 120;
 const LANG_SWITCH_LOADING_MS = 180;
 const LANG_SWITCH_FADE_IN_MS = 120;
-
-function LangSwitchOverlay({ lang, active }) {
-  const isAr = lang === 'ar';
-  return (
-    <AnimatePresence>
-      {active && (
-        <motion.div
-          key="lang-switch-overlay"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.22, ease: 'easeOut' }}
-          className="fixed inset-0 z-[250] flex flex-col items-center justify-center bg-[var(--bg-primary)]/96 backdrop-blur-md px-6"
-          aria-live="polite"
-          aria-busy="true"
-        >
-          <motion.div
-            initial={{ scale: 0.85, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.04, duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-            className="flex flex-col items-center text-center max-w-sm"
-          >
-            <div className="relative mb-6">
-              <div className="absolute inset-0 rounded-full bg-[var(--accent)]/20 blur-xl scale-150" />
-              <div className="relative w-16 h-16 rounded-2xl border border-[var(--accent)]/30 bg-[var(--bg-surface)] flex items-center justify-center">
-                <Globe className="w-8 h-8 text-[var(--accent)]" />
-              </div>
-            </div>
-            <Loader2 className="w-9 h-9 text-[var(--accent)] animate-spin mb-4" />
-            <p className="text-lg font-bold text-white mb-1">
-              {isAr ? 'جاري تبديل اللغة...' : 'Switching language...'}
-            </p>
-            <p className="text-sm text-[var(--text-sec)]">
-              {isAr ? 'يتم إعادة تحميل الصفحة' : 'Reloading the page'}
-            </p>
-            <div className="lang-switch-progress mt-8 h-1 w-48 rounded-full overflow-hidden bg-[var(--border)]">
-              <div className="lang-switch-progress-bar h-full rounded-full bg-[var(--accent)]" />
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-}
-
-// Extracted route page components (GameDetail, OfferDetail, SuccessView) have been moved to src/views/
 
 export default function App() {
   const navigate = useNavigate();
@@ -1427,9 +1342,9 @@ export default function App() {
       <StoreBackground />
       <div className="relative z-[1]">
       <a href="#main-content" className="skip-to-content">
-        {lang === 'ar' ? 'تخطي إلى المحتوى' : 'Skip to content'}
+        {t.skipToContent}
       </a>
-      <LangSwitchOverlay lang={overlayLang} active={langSwitching} />
+      <LangSwitchOverlay t={translations[overlayLang] || t} active={langSwitching} />
       <ScrollToTop />
       <Header
         t={t}
@@ -1466,429 +1381,76 @@ export default function App() {
         className={langSwitching ? 'pointer-events-none select-none' : ''}
       >
       <main id="main-content" className="container mx-auto px-3 sm:px-4 pb-20 sm:pb-24 max-w-7xl">
-        <Suspense fallback={<PageLoader lang={lang} />}>
-        <Routes>
-              <Route
-                path="/"
-                element={
-                  <HomeView
-                    t={t}
-                    lang={lang}
-                    games={games}
-                    offers={offers}
-                    loading={loadingGames}
-                    addToCart={addToCart}
-                    onSelectGame={openGame}
-                    onSelectOffer={openOffer}
-                    onBuyNow={openBuyOffer}
-                    onEditOffer={homeShowsAdminChrome ? setAdminEditOffer : undefined}
-                    onEditGame={homeShowsAdminChrome ? setAdminEditGame : undefined}
-                    onAddGame={homeShowsAdminChrome ? (options = {}) => setAdminEditGame({ id: null, show_in_carousel: !!options.showInCarousel }) : undefined}
-                    onAddOffer={homeShowsAdminChrome ? (options = {}) => setAdminEditOffer({ id: null, is_sale: !!options.isSale }) : undefined}
-                    onManageCarousel={homeShowsAdminChrome ? () => setAdminCarouselOpen(true) : undefined}
-                    onPickCarouselGame={homeShowsAdminChrome ? () => setAdminCarouselPickerOpen(true) : undefined}
-                    onMoveCarouselGame={homeShowsAdminChrome ? moveCarouselGame : undefined}
-                    isAdmin={homeShowsAdminChrome}
-                    isAdminUser={isAdmin}
-                    homePreviewAsUser={homePreviewAsUser}
-                    onToggleHomePreview={handleToggleHomePreview}
-                    homeLayout={homeLayout}
-                    reviews={reviews}
-                    user={user}
-                    onReviewSubmitted={refreshReviews}
-                  />
-                }
-              />
-
-          {/* All Games page */}
-          <Route
-            path="/games"
-            element={
-              <AllGamesView
-                games={games}
-                offers={offers}
-                t={t}
-                lang={lang}
-                loading={loadingGames}
-                onSelectGame={openGame}
-                onEditGame={isAdmin ? setAdminEditGame : undefined}
-                isAdmin={isAdmin}
-              />
-            }
-          />
-
-          <Route
-            path="/gift-cards"
-            element={(
-              <GiftCardsView
-                games={games}
-                offers={offers}
-                t={t}
-                lang={lang}
-                loading={loadingGames}
-                onSelectGame={openGame}
-                onEditGame={isAdmin ? setAdminEditGame : undefined}
-                isAdmin={isAdmin}
-              />
-            )}
-          />
-
-          <Route
-            path="/accounts"
-            element={(
-              <GamingAccountsView
-                games={games}
-                offers={offers}
-                t={t}
-                lang={lang}
-                loading={loadingGames}
-                onSelectGame={openGame}
-                onEditGame={isAdmin ? setAdminEditGame : undefined}
-                isAdmin={isAdmin}
-              />
-            )}
-          />
-
-          <Route
-            path="/search"
-            element={(
-              <SearchView
-                games={games}
-                offers={offers}
-                t={t}
-                lang={lang}
-                loading={loadingGames}
-                onSelectGame={openGame}
-                onSelectOffer={openOffer}
-                onBuyNow={openBuyOffer}
-              />
-            )}
-          />
-
-          {/* Sale Offers page */}
-          <Route
-            path="/sale"
-            element={
-              <SaleOffersView
-                games={games}
-                offers={offers}
-                t={t}
-                lang={lang}
-                onSelectOffer={openOffer}
-                onBuyNow={openBuyOffer}
-                onEditOffer={isAdmin ? setAdminEditOffer : undefined}
-                isAdmin={isAdmin}
-                addToCart={addToCart}
-              />
-            }
-          />
-
-          {/* FAQ page */}
-          <Route
-            path="/faq"
-            element={
-              <FAQView t={t} lang={lang} />
-            }
-          />
-
-          <Route
-            path="/links"
-            element={
-              <Suspense fallback={null}>
-                <LinksView t={t} lang={lang} />
-              </Suspense>
-            }
-          />
-
-          {/* How it Works page */}
-          <Route
-            path="/how"
-            element={
-              <HowItWorksView t={t} lang={lang} />
-            }
-          />
-
-          {/* Contact Us page */}
-          <Route
-            path="/contact"
-            element={
-              <ContactView t={t} lang={lang} user={user} />
-            }
-          />
-
-          {/* Offer buy — nested under game for clean URLs */}
-          <Route
-            path="/game/:gameSlug/:offerSlug/buy"
-            element={
-              <ProtectedRoute user={user} loadingAuth={loadingAuth} lang={lang}>
-                <BuyView
-                  t={t}
-                  lang={lang}
-                  navigate={navigate}
-                  user={user}
-                  games={games}
-                  offers={offers}
-                  loadingCatalog={loadingGames}
-                  currentBalance={user?.balance || 0}
-                  onPurchase={submitPurchase}
-                  paymentConfig={paymentConfig}
-                  onNotify={showToast}
-                />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Offer detail — /game/mobile-legends/86-diamonds-6d2dea31 */}
-          <Route
-            path="/game/:gameSlug/:offerSlug"
-            element={
-              <OfferDetail
-                games={games}
-                offers={offers}
-                t={t}
-                lang={lang}
-                navigate={navigate}
-                addToCart={addToCart}
-                user={user}
-                updateProduct={updateProduct}
-                updateGame={updateGame}
-                deleteGame={deleteGame}
-                loadingCatalog={loadingGames}
-                onBuyNow={openBuyOffer}
-              />
-            }
-          />
-
-          {/* Dynamic Game page */}
-          <Route
-            path="/game/:slug"
-            element={
-              <GameDetail
-                games={games}
-                offers={offers}
-                t={t}
-                lang={lang}
-                navigate={navigate}
-                addToCart={addToCart}
-                user={user}
-                updateProduct={updateProduct}
-                updateGame={updateGame}
-                deleteGame={deleteGame}
-                loadingGames={loadingGames}
-                catalogMode={paymentConfig.g2bulkCatalogMode || 'sync'}
-                onLiveCatalogUpdate={handleLiveCatalogUpdate}
-                onSelectOffer={openOffer}
-                onBuyNow={openBuyOffer}
-              />
-            }
-          />
-
-          {/* Legacy UUID routes → canonical game/offer paths */}
-          <Route
-            path="/offer/:id"
-            element={(
-              <LegacyOfferRedirect
-                offers={offers}
-                games={games}
-                loading={loadingGames}
-                lang={lang}
-              />
-            )}
-          />
-
-          <Route
-            path="/login"
-            element={
-              <LoginView
-                t={t}
-                lang={lang}
-                handleAuthLogin={handleAuthLogin}
-                handleAuthSignup={handleAuthSignup}
-                onLoginSuccess={handleLoginSuccess}
-                resolveUserAfterAuth={resolveUserAfterAuth}
-              />
-            }
-          />
-
-          <Route
-            path="/cart"
-            element={
-              <ProtectedRoute user={user} loadingAuth={loadingAuth} lang={lang}>
-                <CartView
-                  t={t}
-                  lang={lang}
-                  cart={cart}
-                  getCartTotal={getCartTotal}
-                  onRemoveItem={removeCartItem}
-                  onCheckout={() => navigate('/checkout')}
-                  priceUpdated={cartPriceUpdated}
-                />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/checkout"
-            element={
-              <ProtectedRoute user={user} loadingAuth={loadingAuth} lang={lang}>
-                <CheckoutView
-                  t={t}
-                  lang={lang}
-                  cart={cart}
-                  submitOrder={submitOrder}
-                  onComplete={handleCheckoutComplete}
-                  currentBalance={user?.balance || 0}
-                  paymentConfig={paymentConfig}
-                  onNotify={showToast}
-                />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Post-Payment Success Page */}
-          <Route
-            path="/success"
-            element={
-              <SuccessView 
-                navigate={navigate} 
-                games={games} 
-                t={t} 
-                lang={lang} 
-              />
-            }
-          />
-
-          <Route
-            path="/notifications"
-            element={
-              <ProtectedRoute user={user} loadingAuth={loadingAuth} lang={lang}>
-                <NotificationsView
-                  t={t}
-                  lang={lang}
-                  user={user}
-                  notifications={notifications}
-                  unreadCount={unreadCount}
-                  loading={notificationsLoading}
-                  onRefresh={handleRefreshInbox}
-                  onMarkRead={handleNotificationMarkRead}
-                  onMarkAllRead={handleNotificationsMarkAllRead}
-                  onClearAll={handleNotificationsClearAll}
-                  onNavigate={handleNotificationNavigate}
-                />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* User Profile */}
-          <Route
-            path="/profile"
-            element={
-              loadingAuth ? (
-                <PageLoader lang={lang} />
-              ) : user ? (
-                <ProfileView
-                  t={t}
-                  lang={lang}
-                  user={user}
-                  navigate={navigate}
-                  onLogout={handleLogout}
-                  onRecharge={() => navigate('/recharge')}
-                  onUpdateProfile={updateUserProfile}
-                />
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            }
-          />
-
-          {/* Recharge Balance Page */}
-          <Route
-            path="/recharge"
-            element={
-              <ProtectedRoute user={user} loadingAuth={loadingAuth} lang={lang}>
-                <RechargeView
-                  t={t}
-                  lang={lang}
-                  navigate={navigate}
-                  user={user}
-                  currentBalance={user?.balance || 0}
-                  paymentConfig={paymentConfig}
-                  onNotify={showToast}
-                />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route path="/privacy" element={<PrivacyView lang={lang} />} />
-          <Route path="/terms" element={<TermsView lang={lang} />} />
-
-          <Route
-            path="/buy/:offerId"
-            element={(
-              <LegacyOfferRedirect
-                offers={offers}
-                games={games}
-                loading={loadingGames}
-                lang={lang}
-                target="buy"
-              />
-            )}
-          />
-
-          <Route
-            path="/dashboard/*"
-            element={
-              loadingAuth ? (
-                <div className="flex items-center justify-center min-h-[50vh]">
-                  <div className="text-[var(--text-sec)] animate-pulse">Loading...</div>
-                </div>
-              ) : user?.role === 'admin' ? (
-                <AdminView
-                  t={t}
-                  lang={lang}
-                  games={games}
-                  offers={offers}
-                  orders={orders}
-                  loadingOrders={loadingOrders}
-                  createProduct={createProduct}
-                  updateProduct={updateProduct}
-                  deleteProduct={deleteProduct}
-                  deleteGame={deleteGame}
-                  updateGame={updateGame}
-                  refreshProducts={fetchGames}
-                  refreshOffers={fetchOffers}
-                  refreshOrders={fetchOrders}
-                  onPaymentSettingsSaved={refreshPaymentConfig}
-                  onCatalogSynced={refreshCatalog}
-                  onThemeSaved={refreshSiteTheme}
-                  onHomeLayoutSaved={refreshHomeLayout}
-                  reviews={reviews}
-                  onReviewsChanged={refreshReviews}
-                  onNotify={showToast}
-                  onRechargeApproved={handleRechargeApproved}
-                  onApproveOrder={handleApproveOrder}
-                  onRejectOrder={handleRejectOrder}
-                  onDevBalanceCredited={handleDevBalanceCredited}
-                  onPreviewHomepage={handlePreviewHomepage}
-                />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            }
-          />
-
-          {/* Legacy product route fallback */}
-          <Route
-            path="/product"
-            element={<Navigate to="/" replace />}
-          />
-
-          <Route
-            path="*"
-            element={<NotFoundView t={t} lang={lang} navigate={navigate} />}
-          />
-        </Routes>
-        </Suspense>
+        <AppRoutes
+          t={t}
+          lang={lang}
+          navigate={navigate}
+          user={user}
+          loadingAuth={loadingAuth}
+          games={games}
+          offers={offers}
+          orders={orders}
+          loadingGames={loadingGames}
+          loadingOrders={loadingOrders}
+          cart={cart}
+          cartPriceUpdated={cartPriceUpdated}
+          getCartTotal={getCartTotal}
+          removeCartItem={removeCartItem}
+          addToCart={addToCart}
+          openGame={openGame}
+          openOffer={openOffer}
+          openBuyOffer={openBuyOffer}
+          homeShowsAdminChrome={homeShowsAdminChrome}
+          isAdmin={isAdmin}
+          homePreviewAsUser={homePreviewAsUser}
+          handleToggleHomePreview={handleToggleHomePreview}
+          homeLayout={homeLayout}
+          reviews={reviews}
+          refreshReviews={refreshReviews}
+          paymentConfig={paymentConfig}
+          submitPurchase={submitPurchase}
+          submitOrder={submitOrder}
+          handleCheckoutComplete={handleCheckoutComplete}
+          showToast={showToast}
+          handleAuthLogin={handleAuthLogin}
+          handleAuthSignup={handleAuthSignup}
+          handleLoginSuccess={handleLoginSuccess}
+          resolveUserAfterAuth={resolveUserAfterAuth}
+          updateProduct={updateProduct}
+          updateGame={updateGame}
+          deleteGame={deleteGame}
+          handleLiveCatalogUpdate={handleLiveCatalogUpdate}
+          notifications={notifications}
+          unreadCount={unreadCount}
+          notificationsLoading={notificationsLoading}
+          handleRefreshInbox={handleRefreshInbox}
+          handleNotificationMarkRead={handleNotificationMarkRead}
+          handleNotificationsMarkAllRead={handleNotificationsMarkAllRead}
+          handleNotificationsClearAll={handleNotificationsClearAll}
+          handleNotificationNavigate={handleNotificationNavigate}
+          handleLogout={handleLogout}
+          updateUserProfile={updateUserProfile}
+          createProduct={createProduct}
+          deleteProduct={deleteProduct}
+          saveGame={saveGame}
+          fetchGames={fetchGames}
+          fetchOffers={fetchOffers}
+          fetchOrders={fetchOrders}
+          refreshPaymentConfig={refreshPaymentConfig}
+          refreshCatalog={refreshCatalog}
+          refreshSiteTheme={refreshSiteTheme}
+          refreshHomeLayout={refreshHomeLayout}
+          handleRechargeApproved={handleRechargeApproved}
+          handleApproveOrder={handleApproveOrder}
+          handleRejectOrder={handleRejectOrder}
+          handleDevBalanceCredited={handleDevBalanceCredited}
+          handlePreviewHomepage={handlePreviewHomepage}
+          setAdminEditOffer={setAdminEditOffer}
+          setAdminEditGame={setAdminEditGame}
+          setAdminCarouselOpen={setAdminCarouselOpen}
+          setAdminCarouselPickerOpen={setAdminCarouselPickerOpen}
+          moveCarouselGame={moveCarouselGame}
+        />
       </main>
 
 

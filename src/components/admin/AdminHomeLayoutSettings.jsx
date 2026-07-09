@@ -34,6 +34,7 @@ import {
 } from '../../lib/catalogUtils';
 import { offerBelongsToStorefront } from '../../lib/gameRegions';
 import { isDisplayableReview } from '../../lib/customerReviews';
+import { formatMessage } from '../../lib/i18n';
 import {
   DEFAULT_HOME_LAYOUT,
   HOME_SECTION_TYPES,
@@ -59,19 +60,19 @@ function sectionsEqual(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-function SectionStatusBadges({ status, isAr, t = {} }) {
+function SectionStatusBadges({ status, t = {} }) {
   if (!status.hidden && !status.empty) return null;
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 mt-1">
       {status.hidden && (
         <span className="home-section-badge home-section-badge--hidden">
-          {t.homeSectionBadgeHidden || (isAr ? 'مخفي' : 'Hidden')}
+          {t.homeSectionBadgeHidden}
         </span>
       )}
       {status.empty && (
         <span className="home-section-badge home-section-badge--empty">
-          {t.homeSectionBadgeEmpty || (isAr ? 'فارغ' : 'Empty')}
+          {t.homeSectionBadgeEmpty}
         </span>
       )}
     </div>
@@ -83,7 +84,7 @@ function SectionEditor({
   games,
   offers,
   reviews = [],
-  isAr,
+  lang,
   t = {},
   saving = false,
   onSave,
@@ -101,7 +102,7 @@ function SectionEditor({
       <div className="grid sm:grid-cols-2 gap-3">
         <div>
           <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-            {isAr ? 'العنوان (إنجليزي)' : 'Title (English)'}
+            {t.homeFieldTitleEnglish}
           </label>
           <input
             type="text"
@@ -112,7 +113,7 @@ function SectionEditor({
         </div>
         <div>
           <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-            {isAr ? 'العنوان (عربي)' : 'Title (Arabic)'}
+            {t.homeFieldTitleArabic}
           </label>
           <input
             type="text"
@@ -129,7 +130,7 @@ function SectionEditor({
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-                {isAr ? 'الوصف (إنجليزي)' : 'Subtitle (English)'}
+                {t.homeFieldSubtitleEnglish}
               </label>
               <input
                 type="text"
@@ -140,7 +141,7 @@ function SectionEditor({
             </div>
             <div>
               <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-                {isAr ? 'الوصف (عربي)' : 'Subtitle (Arabic)'}
+                {t.homeFieldSubtitleArabic}
               </label>
               <input
                 type="text"
@@ -154,7 +155,7 @@ function SectionEditor({
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-                {isAr ? 'نص الزر (إنجليزي)' : 'Button text (English)'}
+                {t.homeFieldButtonTextEnglish}
               </label>
               <input
                 type="text"
@@ -165,7 +166,7 @@ function SectionEditor({
             </div>
             <div>
               <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-                {isAr ? 'نص الزر (عربي)' : 'Button text (Arabic)'}
+                {t.homeFieldButtonTextArabic}
               </label>
               <input
                 type="text"
@@ -182,7 +183,7 @@ function SectionEditor({
       {(section.type === 'sale_offers' || section.type === 'suggested_offers' || section.type === 'gift_cards' || section.type === 'gaming_accounts') && (
         <div>
           <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-            {t.homeSectionCardLimit || (isAr ? 'عدد البطاقات' : 'Card limit')}
+            {t.homeSectionCardLimit}
           </label>
           <input
             type="number"
@@ -201,11 +202,11 @@ function SectionEditor({
       {section.type === 'game_picks' && (
         <div>
           <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-            {isAr ? 'اختر الألعاب' : 'Pick games'}
+            {t.homePickGames}
           </label>
           <div className="max-h-40 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-2 space-y-1">
             {games.length === 0 ? (
-              <p className="text-xs text-[var(--text-muted)] p-2">{isAr ? 'لا توجد ألعاب' : 'No games yet'}</p>
+              <p className="text-xs text-[var(--text-muted)] p-2">{t.homeNoGames}</p>
             ) : (
               games.map((game) => {
                 const checked = (draft.game_ids || []).includes(game.id);
@@ -234,11 +235,11 @@ function SectionEditor({
       {section.type === 'offer_picks' && (
         <div>
           <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-            {isAr ? 'اختر العروض' : 'Pick offers'}
+            {t.homePickOffers}
           </label>
           <div className="max-h-40 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-2 space-y-1">
             {offers.length === 0 ? (
-              <p className="text-xs text-[var(--text-muted)] p-2">{isAr ? 'لا توجد عروض' : 'No offers yet'}</p>
+              <p className="text-xs text-[var(--text-muted)] p-2">{t.homeNoOffers}</p>
             ) : (
               offers.map((offer) => {
                 const checked = (draft.offer_ids || []).includes(offer.id);
@@ -339,7 +340,7 @@ function SectionEditor({
 
       {meta && (
         <p className="text-[11px] text-[var(--text-muted)]">
-          {isAr ? meta.descriptionAr : meta.descriptionEn}
+          {lang === 'ar' ? meta.descriptionAr : meta.descriptionEn}
         </p>
       )}
 
@@ -351,11 +352,11 @@ function SectionEditor({
           className="btn btn-primary action-chip gap-2 !border-0 text-sm disabled:opacity-50"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          {t.saveHomeSection || (isAr ? 'حفظ القسم' : 'Save section')}
+          {t.saveHomeSection}
         </button>
         {isDirty && (
           <span className="text-xs text-[var(--warning)]">
-            {t.homeSectionUnsaved || (isAr ? 'تغييرات غير محفوظة' : 'Unsaved changes')}
+            {t.homeSectionUnsaved}
           </span>
         )}
       </div>
@@ -363,43 +364,27 @@ function SectionEditor({
   );
 }
 
-function getSectionContentHint(type, counts, isAr) {
+function getSectionContentHint(type, counts, t) {
   switch (type) {
     case 'carousel':
-      return isAr
-        ? `${counts.carouselCount} لعبة في السلايدر`
-        : `${counts.carouselCount} carousel game${counts.carouselCount === 1 ? '' : 's'}`;
+      return formatMessage(t.homeHintCarousel, { count: counts.carouselCount });
     case 'games':
-      return isAr
-        ? `${counts.gamesCount} لعبة جاهزة`
-        : `${counts.gamesCount} live game${counts.gamesCount === 1 ? '' : 's'}`;
+      return formatMessage(t.homeHintGames, { count: counts.gamesCount });
     case 'gift_cards':
-      return isAr
-        ? `${counts.giftCardCount} بطاقة هدايا`
-        : `${counts.giftCardCount} gift card${counts.giftCardCount === 1 ? '' : 's'}`;
+      return formatMessage(t.homeHintGiftCards, { count: counts.giftCardCount });
     case 'gaming_accounts':
-      return isAr
-        ? `${counts.gamingAccountCount} حساب/اشتراك`
-        : `${counts.gamingAccountCount} account${counts.gamingAccountCount === 1 ? '' : 's'}`;
+      return formatMessage(t.homeHintGamingAccounts, { count: counts.gamingAccountCount });
     case 'sale_offers':
-      return isAr
-        ? `${counts.saleOfferCount} عرض خصم`
-        : `${counts.saleOfferCount} sale offer${counts.saleOfferCount === 1 ? '' : 's'}`;
+      return formatMessage(t.homeHintSaleOffers, { count: counts.saleOfferCount });
     case 'suggested_offers':
     case 'offer_picks':
-      return isAr
-        ? `${counts.offerCount} عرض متاح`
-        : `${counts.offerCount} offer${counts.offerCount === 1 ? '' : 's'} available`;
+      return formatMessage(t.homeHintOffersAvailable, { count: counts.offerCount });
     case 'game_picks':
-      return isAr
-        ? `${counts.gamesCount} لعبة للاختيار`
-        : `Pick from ${counts.gamesCount} game${counts.gamesCount === 1 ? '' : 's'}`;
+      return formatMessage(t.homeHintGamePicks, { count: counts.gamesCount });
     case 'customer_reviews':
-      return isAr
-        ? `${counts.approvedReviewCount} مراجعة معتمدة`
-        : `${counts.approvedReviewCount} approved review${counts.approvedReviewCount === 1 ? '' : 's'}`;
+      return formatMessage(t.homeHintReviews, { count: counts.approvedReviewCount });
     case 'social_links':
-      return isAr ? 'صفحة روابط التواصل' : 'Linktree-style social page';
+      return t.homeHintSocialLinks;
     default:
       return '';
   }
@@ -414,7 +399,6 @@ export default function AdminHomeLayoutSettings({
   onSaved,
   onPreviewHomepage,
 }) {
-  const isAr = lang === 'ar';
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingSectionId, setSavingSectionId] = useState(null);
@@ -522,7 +506,7 @@ export default function AdminHomeLayoutSettings({
     const meta = HOME_SECTION_TYPES[type];
     if (!meta) return;
     if (meta.singleton && sections.some((section) => section.type === type)) {
-      setError(isAr ? 'هذا القسم موجود بالفعل في الصفحة الرئيسية' : 'This section is already on the home page');
+      setError(t.homeSectionAlreadyExists);
       return;
     }
 
@@ -531,7 +515,7 @@ export default function AdminHomeLayoutSettings({
     setSections((prev) => [...prev, created]);
     setExpandedId(created.id);
     setError('');
-    setSuccess(isAr ? 'تمت الإضافة — احفظ التخطيط لتطبيقه للجميع' : 'Section added — save layout to publish for everyone');
+    setSuccess(t.homeSectionAdded);
     setTimeout(() => setSuccess(''), 4000);
   };
 
@@ -543,12 +527,9 @@ export default function AdminHomeLayoutSettings({
       const nextSections = sections.map((section) => (
         section.id === sectionId ? { ...section, ...draftSection, id: sectionId, type: section.type } : section
       ));
-      await persistLayout(
-        nextSections,
-        t.homeSectionSaved || (isAr ? 'تم حفظ القسم' : 'Section saved'),
-      );
+      await persistLayout(nextSections, t.homeSectionSaved);
     } catch (err) {
-      setError(err.message || (isAr ? 'فشل حفظ القسم' : 'Failed to save section'));
+      setError(err.message || t.homeSectionSaveFailed);
     } finally {
       setSavingSectionId(null);
     }
@@ -565,12 +546,9 @@ export default function AdminHomeLayoutSettings({
     setError('');
     setSuccess('');
     try {
-      await persistLayout(
-        sections,
-        t.homeLayoutSaved || (isAr ? 'تم حفظ تخطيط الصفحة الرئيسية' : 'Home layout saved for all users'),
-      );
+      await persistLayout(sections, t.homeLayoutSaved);
     } catch (err) {
-      setError(err.message || (isAr ? 'فشل الحفظ' : 'Save failed'));
+      setError(err.message || t.saveFailed);
     } finally {
       setSaving(false);
     }
@@ -591,12 +569,10 @@ export default function AdminHomeLayoutSettings({
           <div>
             <h2 className="text-xl font-black flex items-center gap-2">
               <LayoutGrid className="w-5 h-5 text-[var(--accent)]" />
-              {t.homeLayoutSettings || (isAr ? 'تخطيط الصفحة الرئيسية' : 'Home Page Layout')}
+              {t.homeLayoutSettings}
             </h2>
             <p className="text-sm text-[var(--text-sec)] mt-1 max-w-2xl">
-              {t.homeLayoutHelp || (isAr
-                ? 'رتّب الأقسام، عدّل العناوين، واحفظ كل قسم أو التخطيط كاملاً.'
-                : 'Reorder sections, edit titles, and save each section or the full layout.')}
+              {t.homeLayoutHelp}
             </p>
           </div>
           {onPreviewHomepage && (
@@ -606,7 +582,7 @@ export default function AdminHomeLayoutSettings({
               className="btn btn-secondary inline-flex items-center gap-2 text-sm py-2.5 px-4"
             >
               <Eye className="w-4 h-4" strokeWidth={2} />
-              {t.homePreviewAsUser || (isAr ? 'معاينة كزائر' : 'Preview as customer')}
+              {t.homePreviewAsUser}
             </button>
           )}
         </div>
@@ -614,16 +590,14 @@ export default function AdminHomeLayoutSettings({
         {layoutDirty && (
           <div className="mb-4 flex items-start gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-200 text-sm">
             <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
-            {t.homeLayoutUnsaved || (isAr
-              ? 'لديك تغييرات على الترتيب أو الظهور لم تُحفظ بعد. اضغط "حفظ التخطيط للجميع".'
-              : 'You have unsaved order or visibility changes. Click "Save Layout for Everyone".')}
+            {t.homeLayoutUnsaved}
           </div>
         )}
 
         <div className="space-y-3 mb-6">
           {sections.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[var(--border)] p-6 text-center text-[var(--text-muted)] text-sm">
-              {isAr ? 'لا توجد أقسام. أضف قسماً جديداً.' : 'No sections yet. Add one below.'}
+              {t.homeNoSections}
             </div>
           ) : (
             sections.map((section, index) => {
@@ -652,12 +626,12 @@ export default function AdminHomeLayoutSettings({
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-sm sm:text-base truncate">
-                        {isAr ? (section.title_ar || meta?.labelAr) : (section.title_en || meta?.labelEn)}
+                        {lang === 'ar' ? (section.title_ar || meta?.labelAr) : (section.title_en || meta?.labelEn)}
                       </div>
                       <div className="text-[11px] text-[var(--text-muted)] truncate">
-                        {isAr ? meta?.labelAr : meta?.labelEn}
+                        {lang === 'ar' ? meta?.labelAr : meta?.labelEn}
                       </div>
-                      <SectionStatusBadges status={status} isAr={isAr} t={t} />
+                      <SectionStatusBadges status={status} t={t} />
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button
@@ -665,8 +639,8 @@ export default function AdminHomeLayoutSettings({
                         onClick={() => moveSection(index, -1)}
                         disabled={index === 0}
                         className="p-2 rounded-lg border border-[var(--border)] hover:border-[var(--accent)]/40 disabled:opacity-40"
-                        aria-label={t.homeSectionMoveUp || (isAr ? 'تحريك لأعلى' : 'Move up')}
-                        title={t.homeSectionMoveUp || (isAr ? 'تحريك لأعلى' : 'Move up')}
+                        aria-label={t.homeSectionMoveUp}
+                        title={t.homeSectionMoveUp}
                       >
                         <ChevronUp className="w-4 h-4" />
                       </button>
@@ -675,8 +649,8 @@ export default function AdminHomeLayoutSettings({
                         onClick={() => moveSection(index, 1)}
                         disabled={index === sections.length - 1}
                         className="p-2 rounded-lg border border-[var(--border)] hover:border-[var(--accent)]/40 disabled:opacity-40"
-                        aria-label={t.homeSectionMoveDown || (isAr ? 'تحريك لأسفل' : 'Move down')}
-                        title={t.homeSectionMoveDown || (isAr ? 'تحريك لأسفل' : 'Move down')}
+                        aria-label={t.homeSectionMoveDown}
+                        title={t.homeSectionMoveDown}
                       >
                         <ChevronDown className="w-4 h-4" />
                       </button>
@@ -689,20 +663,20 @@ export default function AdminHomeLayoutSettings({
                             : 'border-[var(--border)] text-[var(--text-muted)]'
                         }`}
                       >
-                        {section.enabled ? (isAr ? 'ظاهر' : 'Visible') : (isAr ? 'مخفي' : 'Hidden')}
+                        {section.enabled ? t.homeSectionVisible : t.homeSectionHiddenToggle}
                       </button>
                       <button
                         type="button"
                         onClick={() => setExpandedId(expanded ? null : section.id)}
                         className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-[var(--border)] hover:border-[var(--accent)]/35"
                       >
-                        {expanded ? (isAr ? 'إغلاق' : 'Close') : (isAr ? 'تعديل' : 'Edit')}
+                        {expanded ? t.homeSectionClose : t.homeSectionEdit}
                       </button>
                       <button
                         type="button"
                         onClick={() => removeSection(section.id)}
                         className="p-2 rounded-lg border border-red-500/25 text-red-400 hover:bg-red-500/10"
-                        aria-label="Remove section"
+                        aria-label={t.homeRemoveSection}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -716,7 +690,7 @@ export default function AdminHomeLayoutSettings({
                         games={pickableGames}
                         offers={storefrontOffers}
                         reviews={reviews}
-                        isAr={isAr}
+                        lang={lang}
                         t={t}
                         saving={savingSectionId === section.id}
                         onSave={(draft) => handleSaveSection(section.id, draft)}
@@ -731,18 +705,16 @@ export default function AdminHomeLayoutSettings({
 
         <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-4 sm:p-5">
           <div className="text-sm font-semibold mb-1">
-            {t.addHomeSection || (isAr ? 'إضافة قسم جديد' : 'Add a new section')}
+            {t.addHomeSection}
           </div>
           <p className="text-xs text-[var(--text-muted)] mb-4 max-w-2xl">
-            {t.addHomeSectionHelp || (isAr
-              ? 'اختر نوع القسم المناسب. الأقسام الفريدة (مثل السلايدر والألعاب) يمكن إضافتها مرة واحدة فقط.'
-              : 'Pick the section that fits your storefront. One-time sections (carousel, games grid) can only be added once.')}
+            {t.addHomeSectionHelp}
           </p>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {Object.entries(HOME_SECTION_TYPES).map(([type, meta]) => {
               const Icon = SECTION_TYPE_ICONS[type] || LayoutGrid;
               const alreadyAdded = meta.singleton && sections.some((section) => section.type === type);
-              const hint = getSectionContentHint(type, statusContext, isAr);
+              const hint = getSectionContentHint(type, statusContext, t);
               const disabled = alreadyAdded;
 
               return (
@@ -760,10 +732,10 @@ export default function AdminHomeLayoutSettings({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="font-semibold text-sm">
-                        {isAr ? meta.labelAr : meta.labelEn}
+                        {lang === 'ar' ? meta.labelAr : meta.labelEn}
                       </div>
                       <p className="text-[11px] text-[var(--text-muted)] mt-1 leading-snug">
-                        {isAr ? meta.descriptionAr : meta.descriptionEn}
+                        {lang === 'ar' ? meta.descriptionAr : meta.descriptionEn}
                       </p>
                       {hint && (
                         <p className="text-[10px] text-[var(--accent)]/80 mt-2 font-medium">
@@ -772,12 +744,12 @@ export default function AdminHomeLayoutSettings({
                       )}
                       {meta.singleton && (
                         <span className="inline-block mt-2 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
-                          {isAr ? 'قسم واحد فقط' : 'One per page'}
+                          {t.homeOnePerPage}
                         </span>
                       )}
                       {alreadyAdded && (
                         <span className="home-section-badge home-section-badge--added ml-0 mt-2">
-                          {isAr ? 'مضاف بالفعل' : 'Already added'}
+                          {t.homeAlreadyAdded}
                         </span>
                       )}
                     </div>
@@ -789,7 +761,7 @@ export default function AdminHomeLayoutSettings({
                     className="mt-3 w-full action-chip gap-2 justify-center disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Plus className="w-4 h-4" />
-                    {t.addSection || (isAr ? 'إضافة للصفحة' : 'Add to page')}
+                    {t.addSection}
                   </button>
                 </div>
               );
@@ -800,15 +772,15 @@ export default function AdminHomeLayoutSettings({
         <div className="flex flex-wrap gap-2 mt-6 pt-4 border-t border-[var(--border)]">
           <button type="button" onClick={handleSave} disabled={saving || !layoutDirty} className="btn btn-primary action-chip gap-2 !border-0 disabled:opacity-50">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {t.saveHomeLayout || (isAr ? 'حفظ التخطيط للجميع' : 'Save Layout for Everyone')}
+            {t.saveHomeLayout}
           </button>
           <button type="button" onClick={handleReset} className="action-chip gap-2">
             <RefreshCw className="w-4 h-4" />
-            {t.resetHomeLayout || (isAr ? 'إعادة الافتراضي' : 'Reset to Default')}
+            {t.resetHomeLayout}
           </button>
           <button type="button" onClick={load} className="action-chip gap-2">
             <RefreshCw className="w-4 h-4" />
-            {t.refresh || (isAr ? 'تحديث' : 'Refresh')}
+            {t.refresh}
           </button>
         </div>
 

@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
-// Custom domain: set VITE_BASE_PATH=/ and VITE_SITE_DOMAIN=www.yourdomain.com in deploy secrets
+// Production: VITE_BASE_PATH=/ and VITE_SITE_DOMAIN=www.echocore412.com (GitHub Actions secrets)
 export default defineConfig(({ command, mode }) => {
   const useProductionBase = command === 'build' || (command === 'serve' && mode === 'production');
   const productionBase = process.env.VITE_BASE_PATH

@@ -6,7 +6,7 @@
 
 ## EchoCore setup (do once)
 
-1. Run `supabase_g2bulk_migration.sql` in Supabase SQL Editor.
+1. Run `supabase_echocore_full.sql` in Supabase SQL Editor (includes G2Bulk schema).
 2. Deploy edge function:
    ```bash
    supabase secrets set G2BULK_API_KEY=your_key_here
@@ -696,7 +696,7 @@ When ready to implement, likely touch:
 |------|---------|
 | `src/lib/g2bulkApi.js` | Typed client wrapper (server/proxy only) |
 | `supabase/functions/g2bulk-*/` | Edge functions for purchase, webhook, validate |
-| `supabase_g2bulk_migration.sql` | Order columns + settings |
+| `supabase_echocore_full.sql` §07–§13 | G2Bulk schema + settings |
 | `src/components/admin/AdminG2BulkSettings.jsx` | Key + markup config |
 | `BuyView.jsx` | Player validation via proxy |
 

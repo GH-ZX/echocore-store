@@ -24,6 +24,7 @@ import {
 import { pickStableOffers } from '../../lib/customerReviews';
 import { brandUserText } from '../../lib/branding';
 import { DEFAULT_HOME_LAYOUT, getSectionLabel, normalizeHomeLayout } from '../../lib/homeLayout';
+import { formatMessage } from '../../lib/i18n';
 
 const HOME_GAMES_PREVIEW = 9;
 const HOME_GAMES_CLICKABLE = 6;
@@ -200,7 +201,6 @@ export default function HomeView({
       ? totalCount > teaserFromIndex
       : !!addOptions.showMoreLink && totalCount > (previewLimit || items.length);
     const displayItems = previewLimit ? items.slice(0, previewLimit) : items;
-    const isAr = lang === 'ar';
 
     if (!hasItems && !showAddCard && !loading) {
       return null;
@@ -244,7 +244,7 @@ export default function HomeView({
                 {showAddCard && !showMoreLink && (
                   <AdminAddCard
                     variant="game"
-                    ariaLabel={t.addGame || (isAr ? 'إضافة لعبة' : 'Add game')}
+                    ariaLabel={t.addGame}
                     onClick={() => onAddGame(addOptions)}
                   />
                 )}
@@ -256,7 +256,7 @@ export default function HomeView({
                     to="/games"
                     className="home-games-preview-overlay-btn btn btn-secondary inline-flex items-center gap-2"
                   >
-                    {t.showMoreGames || (isAr ? `عرض كل الألعاب (${totalCount})` : `Show more games (${totalCount})`)}
+                    {formatMessage(t.showMoreGames, { count: totalCount })}
                     <ChevronDown className="w-4 h-4" />
                   </Link>
                 </div>
@@ -265,7 +265,7 @@ export default function HomeView({
             {showMoreLink && !useTeaserPreview && (
               <div className="flex justify-center mt-6">
                 <Link to="/games" className="btn btn-secondary inline-flex items-center gap-2">
-                  {t.showMoreGames || (isAr ? `عرض كل الألعاب (${totalCount})` : `Show more games (${totalCount})`)}
+                  {formatMessage(t.showMoreGames, { count: totalCount })}
                   <ChevronDown className="w-4 h-4" />
                 </Link>
               </div>
@@ -318,11 +318,7 @@ export default function HomeView({
             <AdminAddCard
               variant="offer"
               className="w-full min-w-0"
-              ariaLabel={
-                isSaleSection
-                  ? (t.addSaleOffer || (lang === 'ar' ? 'إضافة عرض خصم' : 'Add sale offer'))
-                  : (t.addOffer || (lang === 'ar' ? 'إضافة عرض' : 'Add offer'))
-              }
+              ariaLabel={isSaleSection ? t.addSaleOffer : t.addOffer}
               onClick={() => onAddOffer({ isSale: isSaleSection })}
             />
           )}
@@ -528,24 +524,14 @@ export default function HomeView({
     }
   };
 
-  const isAr = lang === 'ar';
-
   const previewFab = isAdminUser && typeof document !== 'undefined'
     ? createPortal(
       <button
         type="button"
         className={`home-preview-fab ${homePreviewAsUser ? 'home-preview-fab--active' : ''}`}
         onClick={() => onToggleHomePreview?.(!homePreviewAsUser)}
-        title={
-          homePreviewAsUser
-            ? (t.homePreviewExit || (isAr ? 'العودة لوضع المسؤول' : 'Exit preview'))
-            : (t.homePreviewAsUser || (isAr ? 'معاينة كزائر' : 'Preview as customer'))
-        }
-        aria-label={
-          homePreviewAsUser
-            ? (t.homePreviewExit || (isAr ? 'العودة لوضع المسؤول' : 'Exit preview'))
-            : (t.homePreviewAsUser || (isAr ? 'معاينة كزائر' : 'Preview as customer'))
-        }
+        title={homePreviewAsUser ? t.homePreviewExit : t.homePreviewAsUser}
+        aria-label={homePreviewAsUser ? t.homePreviewExit : t.homePreviewAsUser}
         aria-pressed={homePreviewAsUser}
       >
         {homePreviewAsUser

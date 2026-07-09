@@ -6,14 +6,14 @@ import { LINKTREE_PATH, SOCIAL_LINKS } from '../../lib/socialLinks';
 export default function SocialLinksHomeSection({ section, lang = 'en', t = {} }) {
   const isAr = lang === 'ar';
   const title = isAr
-    ? (section.title_ar || t.socialLinksTitle || 'روابط التواصل')
-    : (section.title_en || t.socialLinksTitle || 'Our Social Links');
+    ? (section.title_ar || t.socialLinksTitle)
+    : (section.title_en || t.socialLinksTitle);
   const buttonText = isAr
-    ? (section.button_text_ar || t.socialLinksButton || 'كل روابطنا')
-    : (section.button_text_en || t.socialLinksButton || 'All our links');
+    ? (section.button_text_ar || t.socialLinksButton)
+    : (section.button_text_en || t.socialLinksButton);
   const subtitle = isAr
-    ? (section.subtitle_ar || t.socialLinksHomeHint || 'يوتيوب، تيك توك، وكل منصاتنا')
-    : (section.subtitle_en || t.socialLinksHomeHint || 'YouTube, TikTok, and all our platforms');
+    ? (section.subtitle_ar || t.socialLinksHomeHint)
+    : (section.subtitle_en || t.socialLinksHomeHint);
 
   const featured = SOCIAL_LINKS.filter((link) => link.id === 'youtube' || link.id === 'tiktok');
 

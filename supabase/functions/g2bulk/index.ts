@@ -568,7 +568,7 @@ Deno.serve(async (req) => {
       return jsonResponse({
         success: false,
         message: error.message.includes('g2bulk_auto_sync')
-          ? 'Run supabase_g2bulk_auto_sync_migration.sql in Supabase SQL Editor first.'
+          ? 'Run supabase_echocore_full.sql in Supabase SQL Editor first.'
           : error.message,
       }, 400);
     }

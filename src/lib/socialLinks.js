@@ -44,22 +44,3 @@ export const SOCIAL_LINKS = [
     accent: '#1877F2',
   },
 ];
-
-export function getSocialLinkLabel(link, lang = 'en') {
-  const isAr = lang === 'ar';
-  if (!link) return '';
-  if (isAr) {
-    return `تابعنا على ${link.platform}`;
-  }
-  return `Follow us on ${link.platform}`;
-}
-
-export function getSocialLinkTreeTitle(lang = 'en') {
-  return lang === 'ar' ? 'روابط التواصل' : 'Our Social Links';
-}
-
-export function getSocialLinkTreeSubtitle(lang = 'en') {
-  return lang === 'ar'
-    ? 'تابعنا على يوتيوب، تيك توك، وكل منصاتنا'
-    : 'Follow us on YouTube, TikTok, and all our platforms';
-}

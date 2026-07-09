@@ -222,7 +222,7 @@ sequenceDiagram
 Classification logic lives in:
 
 - `src/lib/catalogSegments.js` (frontend)
-- `supabase_catalog_segments_migration.sql` (DB backfill)
+- `supabase_echocore_full.sql` §15 (catalog_segment backfill)
 
 **Rule of thumb:** Platform/subscription brands → `gaming_account`. In-game currency/voucher titles → `gift_card`. UID top-ups → `topup`.
 
@@ -493,28 +493,13 @@ flowchart TD
 
 ## 13. SQL migrations
 
-### Fresh-start bundle (run in order)
+### Database setup (single file)
 
 | File | Purpose |
 |------|---------|
-| `supabase_game_regions_migration.sql` | `parent_game_id`, `region_label` columns |
-| `supabase_g2bulk_live_catalog_migration.sql` | Live catalog mode, sync state, carousel |
-| `supabase_catalog_segments_migration.sql` | `catalog_segment` column + backfill |
-| `supabase_g2bulk_check_migration.sql` | `g2bulk_last_check_at`, `g2bulk_check_summary` |
-| `supabase_fresh_start_migration.sql` | Wipe data + reset settings |
+| `supabase_echocore_full.sql` | **Only SQL file** — schema, RLS, RPCs, G2Bulk, notifications, ShamCash (~2,800 lines) |
 
-### Other migrations (pre-existing)
-
-| File | Purpose |
-|------|---------|
-| `supabase_complete_schema.sql` | Base schema |
-| `supabase_g2bulk_migration.sql` | Initial G2Bulk integration |
-| `supabase_g2bulk_catalog_migration.sql` | Catalog fields on games/offers |
-| `supabase_g2bulk_auto_sync_migration.sql` | Auto-sync schedule columns |
-| `supabase_security_migration.sql` | RLS policies |
-| `supabase_*_notifications_*.sql` | Notifications system |
-| `supabase_order_manual_shamcash_migration.sql` | ShamCash orders |
-| `supabase_recharge_manual_migration.sql` | Manual recharge |
+Sections §01–§15 cover everything that was previously split across migrations. Optional §A/§B at the bottom (commented) wipe test data — dev/staging only.
 
 ### Fresh start — what is wiped
 

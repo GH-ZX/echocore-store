@@ -1,24 +1,16 @@
-# Run pending Supabase SQL migrations against the linked project.
+# Apply full ECHOCORE schema to the linked Supabase project.
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot\..
 
-$migrations = @(
-  'supabase_game_regions_migration.sql',
-  'supabase_g2bulk_live_catalog_migration.sql',
-  'supabase_catalog_segments_migration.sql'
-)
-
-foreach ($file in $migrations) {
-  if (-not (Test-Path $file)) {
-    Write-Warning "Skip missing: $file"
-    continue
-  }
-  Write-Host "Running $file ..."
-  supabase db query --linked -f $file
-  if ($LASTEXITCODE -ne 0) {
-    throw "Failed: $file (exit $LASTEXITCODE)"
-  }
-  Write-Host "OK: $file"
+$file = 'supabase_echocore_full.sql'
+if (-not (Test-Path $file)) {
+  throw "Missing $file — run from repo root."
 }
 
-Write-Host 'All migrations completed.'
+Write-Host "Running $file ..."
+supabase db query --linked -f $file
+if ($LASTEXITCODE -ne 0) {
+  throw "Failed: $file (exit $LASTEXITCODE)"
+}
+
+Write-Host 'Schema setup complete.'

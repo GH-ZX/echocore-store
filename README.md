@@ -1,200 +1,94 @@
 # ECHOCORE Store — Real Digital Gaming Store
 
-متجر ألعاب وبطاقات رقمية 
+**Live:** https://www.echocore412.com  
+**Version:** 0.5.0
 
-للتجربة:  https://gh-zx.github.io/echocore-store/
-## ✅ Now a Real Project
+Bilingual (Arabic / English) game top-up and digital cards storefront. React + Supabase + GitHub Pages.
 
-- Full Supabase database (products, orders, auth)
-- Real authentication (no more fake logins)
-- Universal theme system (change in one place)
-- Universal `ProductCard` component powered by database
-- Orders are saved in the database
-- Admin panel fully manages live DB products
+النسخة العربية: [README.ar.md](./README.ar.md)
 
-**See full setup instructions:** [SUPABASE_SETUP.md](./SUPABASE_SETUP.md)
+---
 
-Quick start after cloning:
+## Features
 
-```bash
-npm install
-cp .env.example .env     # fill your Supabase keys
-npm run dev
-```
+- Supabase database (games, offers, orders, auth, balance)
+- Admin dashboard (`/dashboard`) — catalog, payments, theme, home layout, G2Bulk
+- ShamCash manual recharge + checkout (admin approval)
+- Centralized i18n (`translations.js` / `pageContent.js`)
+- Custom domain on GitHub Pages
 
-Then run the SQL in Supabase → SQL Editor using [supabase_complete_schema.sql](./supabase_complete_schema.sql).
+**Full database setup:** [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) · [عربي](./SUPABASE_SETUP.ar.md)
 
-### For User Balance + Recharge feature:
-The unified SQL file already sets up the balance column, transactions table, and secure RPC helpers.
-Recharge page at /recharge supports simulated Binance Pay / ShamCash / Cards (see SQL file + RechargeView.jsx for real API implementation notes).
+---
 
-
-
-## ✨ الميزات
-
-- 🎮 **كاروسيل ألعاب متقدم** — عرض ديناميكي للألعاب الشهيرة (Valorant, League of Legends, إلخ)
-- 🛒 **سلة تسوق كاملة** — إدارة المنتجات وعملية الدفع السلسة
-- 👥 **نظام تسجيل دخول** — مستخدمين عاديين وإداريين
-- 🎨 **واجهة عصرية** — مصممة بـ Tailwind CSS مع تأثيرات بصرية جذابة
-- 🌍 **دعم متعدد اللغات** — عربي وإنجليزي
-- ⚡ **بيئة تطوير سريعة** — Vite مع Hot Module Replacement (HMR)
-- 📱 **متجاوب** — يعمل على الهاتف والويب والتابلت
-
-## 📋 المتطلبات
-
-- **Node.js** (إصدار 18 أو أحدث)
-- **npm** (يأتي مع Node.js)
-
-## 🚀 التثبيت والتشغيل
-
-### 1. استنسخ المستودع
+## Quick start
 
 ```bash
 git clone https://github.com/GH-ZX/echocore-store.git
 cd echocore-store
-```
-
-### 2. ثبّت الحزم
-
-```bash
 npm install
-cp .env.example .env   # أضف مفاتيح Supabase
-```
-
-### 3. شغّل بيئة التطوير
-
-```bash
+cp .env.example .env   # Supabase keys
 npm run dev
 ```
 
-افتح المتصفح على: **http://localhost:5173**
+Open http://localhost:5173
 
-## 📦 البناء والنشر
+### Supabase (one SQL file)
 
-الموقع منشور على **GitHub Pages**: https://gh-zx.github.io/echocore-store/
+In Supabase **SQL Editor**, run:
 
-عند الدفع إلى فرع `main`، يعمل workflow في `.github/workflows/deploy.yml` تلقائياً (`npm run build` ثم نشر مجلد `dist/`).
+👉 [supabase_echocore_full.sql](./supabase_echocore_full.sql)
 
-### بناء للإنتاج
-
-```bash
-npm run build
-```
-
-### معاينة مجسّدة
-
-```bash
-npm run preview
-```
-
-## 🏗️ بنية المشروع
-
-```
-src/
-├── App.jsx                 # Shell, auth, routes, cart, orders
-├── main.jsx                # Entry point
-├── index.css               # Global styles + theme tokens
-├── assets/                 # Game logos and cover art
-├── components/             # Layout, UI, admin widgets
-├── views/                  # Page-level route components
-├── lib/                    # Supabase, cart, payments, theme helpers
-└── data/
-    └── translations.js     # App copy (Arabic / English)
-```
-
-## 🎮 المنتجات المدعومة
-
-يدعم التطبيق حالياً الألعاب التالية:
-
-- **Valorant** — لعبة أكشن تنافسية
-- **League of Legends** — لعبة MOBA الشهيرة
-- **Fortnite** — لعبة الساحة البقاء
-- **Minecraft** — لعبة البناء والاستكشاف
-- **Apex Legends** — لعبة Battle Royale
-- **Call of Duty** — سلسلة الألعاب العسكرية
-- Xbox Game Pass والمزيد...
-
-## 🔧 أوامر مفيدة
-
-| الأمر | الوصف |
-|------|-------|
-| `npm run dev` | تشغيل بيئة التطوير |
-| `npm run build` | بناء للإنتاج |
-| `npm run preview` | معاينة نسخة الإنتاج محلياً |
-| `npm run lint` | تشغيل ESLint للتحقق من الكود |
-
-## 🎨 التكنولوجيات المستخدمة
-
-- **React 19** — مكتبة JavaScript لبناء الواجهات
-- **Vite 8** — بيئة تطوير سريعة وحديثة
-- **Tailwind CSS 4** — إطار عمل CSS حديث
-- **Lucide React** — أيقونات جميلة وخفيفة الوزن
-- **Embla Carousel** — كاروسيل احترافي وخفيف الأداء
-
-## 📸 إضافة شعارات والصور
-
-ضع ملفات الشعارات والصور في `src/assets/` بأسماء موحدة:
-
-```
-src/assets/
-├── {game-name}-logo.png      # شعار اللعبة (يظهر في الأزرار)
-├── {game-name}.png           # صورة الغلاف الكبيرة
-└── placeholder-*.png         # صور احتياطية
-```
-
-**مثال:**
-- `valorant-logo.png` — شعار Valorant الصغير
-- `valorant.png` — صورة غلاف Valorant الكبيرة
-
-## 📝 إضافة ألعاب وعروض جديدة
-
-المنتجات تُدار من **لوحة الإدارة** (`/dashboard`) بعد تسجيل الدخول كمسؤول — الألعاب والعروض تُخزَّن في Supabase (`games`, `offers`).
-
-1. شغّل المخطط SQL من [supabase_complete_schema.sql](./supabase_complete_schema.sql)
-2. عيّن `role = admin` لحسابك في جدول `profiles`
-3. افتح `/dashboard` → أضف لعبة ثم عروضها
-
-## 🔐 أدوار المستخدمين
-
-### مستخدم عادي
-- استعراض الألعاب
-- الشراء والدفع
-- إدارة السلة
-
-### المسؤول (Admin)
-- إضافة/حذف المنتجات
-- إدارة المتجر
-
-**مسؤول:** أنشئ حساباً عادياً ثم غيّر `role` إلى `admin` في جدول `profiles` بلوحة Supabase.
-
-## 📄 الملفات المهمة
-
-- [RUNNING.md](RUNNING.md) — تعليمات التشغيل التفصيلية
-- [.gitignore](.gitignore) — إعدادات استبعاد Git
-- [package.json](package.json) — الحزم والاعتمادات
-- [tailwind.config.js](tailwind.config.js) — إعدادات Tailwind
-
-## 🤝 المساهمة
-
-نرحب بالمساهمات! يمكنك:
-
-1. Fork المستودع
-2. إنشاء فرع جديد (`git checkout -b feature/AmazingFeature`)
-3. Commit التغييرات (`git commit -m 'Add AmazingFeature'`)
-4. Push للفرع (`git push origin feature/AmazingFeature`)
-5. فتح Pull Request
-
-## 📜 الترخيص
-
-هذا المشروع مرخص تحت [MIT License](LICENSE).
-
-## 📧 التواصل
-
-للأسئلة والاقتراحات، يمكنك التواصل معنا عبر:
-- GitHub Issues
-- البريد الإلكتروني: [أضف بريدك هنا]
+Then set your `profiles.role` to `admin`.
 
 ---
 
-مصنوع بـ ❤️ بواسطة ECHOCORE Team | © 2026
+## Scripts
 
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Development server |
+| `npm run build` | Production build + GitHub Pages SPA helpers |
+| `npm run lint` | ESLint |
+| `npm run preview` | Preview production build |
+
+---
+
+## Deploy
+
+Push to `main` → GitHub Actions runs lint, build, deploy to Pages.
+
+**Required secrets:** `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_SITE_DOMAIN` (`www.echocore412.com`), `VITE_BASE_PATH` (`/`).
+
+Details: [RUNNING.md](./RUNNING.md) · [PROJECT_MAP.md](./PROJECT_MAP.md)
+
+---
+
+## Project layout
+
+```
+src/
+├── App.jsx                 # State, handlers, shell
+├── components/routing/     # AppRoutes, loaders, guards
+├── views/                  # Page components
+├── data/                   # translations, pageContent
+└── lib/                    # Supabase, cart, payments, theme
+supabase_echocore_full.sql  # Complete DB setup (run this)
+```
+
+---
+
+## Docs
+
+| File | Language |
+|------|----------|
+| [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) | EN |
+| [SUPABASE_SETUP.ar.md](./SUPABASE_SETUP.ar.md) | AR |
+| [PROJECT_MAP.md](./PROJECT_MAP.md) | EN |
+| [PROJECT_MAP.ar.md](./PROJECT_MAP.ar.md) | AR |
+| [RUNNING.md](./RUNNING.md) | AR |
+| [CREDITS.md](./CREDITS.md) | EN |
+
+---
+
+© 2026 ECHOCORE Store · Developer: [Ahmed Ghawi](https://github.com/GH-ZX)

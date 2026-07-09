@@ -34,7 +34,6 @@ export default function OfferDetail({
   const { offer, game, storefrontGame } = resolveOfferRoute(offers, games, { gameSlug, offerSlug });
   const displayGame = storefrontGame || game;
   const isAdmin = user?.role === 'admin';
-  const isAr = lang === 'ar';
   const [editingOffer, setEditingOffer] = useState(false);
   const [editingGame, setEditingGame] = useState(false);
 
@@ -43,7 +42,7 @@ export default function OfferDetail({
       <div className="max-w-4xl mx-auto py-16 sm:py-20">
         <div className="flex flex-col items-center justify-center gap-3">
           <Loader2 className="w-9 h-9 text-[var(--accent)] animate-spin" />
-          <p className="text-[var(--text-sec)]">{t.loadingOffer || (isAr ? 'جاري تحميل العرض...' : 'Loading offer...')}</p>
+          <p className="text-[var(--text-sec)]">{t.loadingOffer}</p>
         </div>
       </div>
     );
@@ -61,7 +60,7 @@ export default function OfferDetail({
   const gameName = displayGame ? getGameDisplayName(displayGame, lang) : '';
   const offerName = getOfferDisplayName(offer, lang);
   const description = brandUserText(
-    (isAr ? offer.description_ar : offer.description_en) || t.instantDeliveryNote,
+    (lang === 'ar' ? offer.description_ar : offer.description_en) || t.instantDeliveryNote,
   );
   const steps = getRedemptionSteps(game, t, lang);
   const heroImage = offer.sale_image_url || offer.image_url || displayGame?.image_url;
@@ -73,15 +72,15 @@ export default function OfferDetail({
     <CatalogPageShell
       lang={lang}
       backLabel={displayGame
-        ? `${isAr ? 'عودة إلى' : 'Back to'} ${gameName}`
-        : (t.backToHome || (isAr ? 'العودة للرئيسية' : 'Back to home'))}
+        ? `${t.backToPrefix} ${gameName}`
+        : t.backToHome}
       onBack={() => (displayGame ? navigate(`/game/${displayGame.slug || displayGame.id}`) : navigate('/'))}
       breadcrumb={catalogTrail?.breadcrumb || [{ label: offerName }]}
       adminActions={isAdmin && (
         <>
-          <AdminEditButton label={t.editOffer || 'Edit offer'} onClick={() => setEditingOffer(true)} />
+          <AdminEditButton label={t.editOffer} onClick={() => setEditingOffer(true)} />
           {game && (
-            <AdminEditButton label={t.editGame || 'Edit game'} onClick={() => setEditingGame(true)} />
+            <AdminEditButton label={t.editGame} onClick={() => setEditingGame(true)} />
           )}
         </>
       )}
@@ -93,7 +92,7 @@ export default function OfferDetail({
         title={offerName}
         subtitle={gameName}
         meta={offer.region || game?.region_label || null}
-        badges={offer.is_sale ? [{ label: t.sale || 'SALE', className: 'border-red-400/30 bg-red-500/15 text-red-200' }] : []}
+        badges={offer.is_sale ? [{ label: t.sale, className: 'border-red-400/30 bg-red-500/15 text-red-200' }] : []}
       />
 
       <div className="catalog-detail-layout grid lg:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] gap-6 lg:gap-8 items-start">
@@ -110,9 +109,9 @@ export default function OfferDetail({
         <div className="space-y-5 sm:space-y-6 min-w-0 order-2 lg:order-1">
           <section className="card p-5 sm:p-6">
             <div className="flex items-center justify-between gap-2 mb-4">
-              <h2 className="font-bold text-lg sm:text-xl">{t.description || (isAr ? 'الوصف' : 'Description')}</h2>
+              <h2 className="font-bold text-lg sm:text-xl">{t.description}</h2>
               {isAdmin && (
-                <AdminEditButton label={t.edit || 'Edit'} onClick={() => setEditingOffer(true)} />
+                <AdminEditButton label={t.edit} onClick={() => setEditingOffer(true)} />
               )}
             </div>
             <p className="text-[var(--text-sec)] leading-relaxed text-sm sm:text-base">
@@ -121,7 +120,7 @@ export default function OfferDetail({
           </section>
 
           <section className="card p-5 sm:p-6">
-            <h2 className="font-bold text-lg sm:text-xl mb-4">{t.howToApply || (isAr ? 'كيفية الاسترداد' : 'How to redeem')}</h2>
+            <h2 className="font-bold text-lg sm:text-xl mb-4">{t.howToApply}</h2>
             <ol className="space-y-3">
               {steps.map((step, index) => (
                 <li key={step} className="flex gap-3 text-sm text-[var(--text-sec)]">
@@ -142,7 +141,7 @@ export default function OfferDetail({
               className="btn btn-secondary w-full sm:w-auto inline-flex items-center justify-center gap-2 touch-manipulation"
             >
               <List className="w-4 h-4" />
-              {t.viewAllPacks || (isAr ? 'عرض كل باقات اللعبة' : 'View all game packs')}
+              {t.viewAllPacks}
             </button>
           )}
         </div>
@@ -160,7 +159,7 @@ export default function OfferDetail({
             onClick={() => onBuyNow?.(offer)}
             className="btn btn-primary px-5 py-3 font-bold shrink-0 touch-manipulation"
           >
-            {t.buyNow || (isAr ? 'اشترِ' : 'Buy')}
+            {t.buyNow}
           </button>
         </div>
       </div>

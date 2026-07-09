@@ -1,14 +1,9 @@
 import { Link } from 'react-router-dom';
 import EchoLogo from '../components/ui/EchoLogo';
 import SocialLinkTree from '../components/social/SocialLinkTree';
-import {
-  getSocialLinkTreeSubtitle,
-  getSocialLinkTreeTitle,
-} from '../lib/socialLinks';
+import { DEVELOPER_PAGE_PATH } from '../lib/buildInfo';
 
 export default function LinksView({ t = {}, lang = 'en' }) {
-  const isAr = lang === 'ar';
-
   return (
     <div className="max-w-md mx-auto px-4 py-10 sm:py-14 animate-fade-in">
       <div className="text-center mb-8">
@@ -24,18 +19,24 @@ export default function LinksView({ t = {}, lang = 'en' }) {
           </div>
         </Link>
         <h1 className="text-2xl sm:text-3xl font-black mb-2">
-          {t.socialLinksTitle || getSocialLinkTreeTitle(lang)}
+          {t.socialLinksTitle}
         </h1>
         <p className="text-sm text-[var(--text-sec)] leading-relaxed">
-          {t.socialLinksSubtitle || getSocialLinkTreeSubtitle(lang)}
+          {t.socialLinksSubtitle}
         </p>
       </div>
 
-      <SocialLinkTree lang={lang} />
+      <SocialLinkTree lang={lang} t={t} />
 
-      <div className="mt-8 text-center">
+      <div className="mt-8 flex flex-col items-center gap-4">
+        <Link
+          to={DEVELOPER_PAGE_PATH}
+          className="inline-flex items-center gap-2 rounded-full border border-[var(--border)]/60 bg-[var(--bg-surface)]/35 px-4 py-2 text-xs font-medium text-[var(--text-muted)] hover:border-[var(--accent)]/35 hover:text-[var(--accent)] transition-colors"
+        >
+          {t.developerPageButton}
+        </Link>
         <Link to="/" className="text-sm text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors">
-          {isAr ? 'العودة للمتجر' : 'Back to store'}
+          {t.backToStore}
         </Link>
       </div>
     </div>

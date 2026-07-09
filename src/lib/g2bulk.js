@@ -74,7 +74,7 @@ export async function saveG2bulkSettings({
   if (error) {
     const msg = error.message || '';
     if (/g2bulk_auto_sync|g2bulk_catalog_mode|function.*does not exist/i.test(msg)) {
-      throw new Error('Run supabase_g2bulk_live_catalog_migration.sql in Supabase SQL Editor, then retry.');
+      throw new Error('Run supabase_echocore_full.sql in Supabase SQL Editor, then retry.');
     }
     throw error;
   }
