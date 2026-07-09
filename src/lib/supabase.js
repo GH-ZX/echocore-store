@@ -35,3 +35,37 @@ export const getUserProfile = async (userId) => {
   }
   return data
 }
+
+/** Build app user object from Supabase auth user + profiles row */
+export const resolveUserData = async (authUser, { createIfMissing = false } = {}) => {
+  if (!authUser?.id) return null
+
+  let profile = await getUserProfile(authUser.id)
+
+  if (!profile && createIfMissing) {
+    const { data: newProfile, error: insertError } = await supabase
+      .from('profiles')
+      .insert({
+        id: authUser.id,
+        role: 'user',
+        name: authUser.email?.split('@')[0] || 'User',
+        balance: 0,
+      })
+      .select()
+      .single()
+
+    if (insertError) {
+      console.error('Failed to create profile:', insertError)
+    } else {
+      profile = newProfile
+    }
+  }
+
+  return {
+    id: authUser.id,
+    email: authUser.email,
+    name: profile?.name || authUser.email?.split('@')[0] || 'User',
+    role: profile?.role || 'user',
+    balance: profile?.balance ?? 0,
+  }
+}

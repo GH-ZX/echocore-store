@@ -184,7 +184,7 @@ export function normalizeHomeLayout(value) {
     });
   });
 
-  if (normalized.length === 0) {
+  if (normalized.length === 0 || normalized.every((section) => !section.enabled)) {
     return DEFAULT_HOME_LAYOUT.map((section) => ({ ...section }));
   }
 

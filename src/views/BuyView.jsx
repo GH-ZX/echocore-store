@@ -117,8 +117,9 @@ export default function BuyView({
     try {
       const sim = await simulatePayment();
 
-      // Now actually create the order (no balance deduction)
-      const result = await onPurchase(offer, selectedMethod, playerInfo);
+      const result = await onPurchase(offer, selectedMethod, playerInfo, {
+        paymentReference: sim.reference,
+      });
 
       setSimRef(sim.reference);
 

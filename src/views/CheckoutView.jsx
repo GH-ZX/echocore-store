@@ -57,7 +57,7 @@ export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComp
     try {
       await new Promise((r) => setTimeout(r, 1200));
       const ref = `ECHOCORE-${Date.now().toString(36).toUpperCase()}`;
-      const result = await submitOrder(cart, selectedMethod);
+      const result = await submitOrder(cart, selectedMethod, { paymentReference: ref });
       setSimRef(ref);
       setTimeout(() => {
         setShowSimModal(false);

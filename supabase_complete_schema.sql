@@ -153,24 +153,52 @@ ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.store_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.customer_reviews ENABLE ROW LEVEL SECURITY;
 
+-- Helper: admin check without RLS recursion inside policies
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND role = 'admin'
+  );
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.is_admin() FROM public;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated, anon;
+
 -- Profiles Policies
 DROP POLICY IF EXISTS "Profiles readable" ON public.profiles;
-CREATE POLICY "Profiles readable" ON public.profiles 
-  FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Users read own profile" ON public.profiles;
+CREATE POLICY "Users read own profile" ON public.profiles
+  FOR SELECT USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Admins read all profiles" ON public.profiles;
+CREATE POLICY "Admins read all profiles" ON public.profiles
+  FOR SELECT TO authenticated
+  USING (public.is_admin());
 
 DROP POLICY IF EXISTS "Users insert own profile" ON public.profiles;
-CREATE POLICY "Users insert own profile" ON public.profiles 
-  FOR INSERT WITH CHECK ((SELECT auth.uid()) = id);
+CREATE POLICY "Users insert own profile" ON public.profiles
+  FOR INSERT WITH CHECK (
+    auth.uid() = id
+    AND role = 'user'
+    AND balance = 0
+  );
 
 DROP POLICY IF EXISTS "Users update own" ON public.profiles;
-CREATE POLICY "Users update own" ON public.profiles 
-  FOR UPDATE USING ((SELECT auth.uid()) = id);
+DROP POLICY IF EXISTS "Users update own name" ON public.profiles;
+CREATE POLICY "Users update own name" ON public.profiles
+  FOR UPDATE USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
 
 DROP POLICY IF EXISTS "Admins can update profiles" ON public.profiles;
 CREATE POLICY "Admins can update profiles" ON public.profiles 
   FOR UPDATE TO authenticated
-  USING ((SELECT role FROM public.profiles WHERE id = (SELECT auth.uid())) = 'admin')
-  WITH CHECK ((SELECT role FROM public.profiles WHERE id = (SELECT auth.uid())) = 'admin');
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
 -- Games Policies
 DROP POLICY IF EXISTS "Games public read" ON public.games;
@@ -180,8 +208,8 @@ CREATE POLICY "Games public read" ON public.games
 DROP POLICY IF EXISTS "Admins manage games" ON public.games;
 CREATE POLICY "Admins manage games" ON public.games
   FOR ALL TO authenticated
-  USING ((SELECT role FROM public.profiles WHERE id = (SELECT auth.uid())) = 'admin')
-  WITH CHECK ((SELECT role FROM public.profiles WHERE id = (SELECT auth.uid())) = 'admin');
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
 -- Offers Policies
 DROP POLICY IF EXISTS "Offers public read" ON public.offers;
@@ -191,22 +219,20 @@ CREATE POLICY "Offers public read" ON public.offers
 DROP POLICY IF EXISTS "Admins manage offers" ON public.offers;
 CREATE POLICY "Admins manage offers" ON public.offers
   FOR ALL TO authenticated
-  USING ((SELECT role FROM public.profiles WHERE id = (SELECT auth.uid())) = 'admin')
-  WITH CHECK ((SELECT role FROM public.profiles WHERE id = (SELECT auth.uid())) = 'admin');
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
 -- Orders Policies
 DROP POLICY IF EXISTS "Users own orders" ON public.orders;
 CREATE POLICY "Users own orders" ON public.orders 
   FOR SELECT USING ((SELECT auth.uid()) = user_id);
 
-DROP POLICY IF EXISTS "Users create orders" ON public.orders;
-CREATE POLICY "Users create orders" ON public.orders 
-  FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+-- Orders are created only via create_order_atomic RPC (SECURITY DEFINER)
 
 DROP POLICY IF EXISTS "Admins view all orders" ON public.orders;
 CREATE POLICY "Admins view all orders" ON public.orders 
   FOR SELECT TO authenticated
-  USING ((SELECT role FROM public.profiles WHERE id = (SELECT auth.uid())) = 'admin');
+  USING (public.is_admin());
 
 -- Order Items Policies
 DROP POLICY IF EXISTS "Users view own order items" ON public.order_items;
@@ -218,40 +244,31 @@ CREATE POLICY "Users view own order items" ON public.order_items
     )
   );
 
-DROP POLICY IF EXISTS "Users insert own order items" ON public.order_items;
-CREATE POLICY "Users insert own order items" ON public.order_items 
-  FOR INSERT WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.orders 
-      WHERE orders.id = order_items.order_id AND orders.user_id = (SELECT auth.uid())
-    )
-  );
+-- Order items are created only via create_order_atomic RPC (SECURITY DEFINER)
 
 DROP POLICY IF EXISTS "Admins view all order items" ON public.order_items;
 CREATE POLICY "Admins view all order items" ON public.order_items 
   FOR SELECT TO authenticated
-  USING ((SELECT role FROM public.profiles WHERE id = (SELECT auth.uid())) = 'admin');
+  USING (public.is_admin());
 
 -- Transactions Policies
 DROP POLICY IF EXISTS "Users view own transactions" ON public.transactions;
 CREATE POLICY "Users view own transactions" ON public.transactions 
   FOR SELECT USING ((SELECT auth.uid()) = user_id);
 
-DROP POLICY IF EXISTS "Users insert own transactions" ON public.transactions;
-CREATE POLICY "Users insert own transactions" ON public.transactions 
-  FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+-- Transactions are created only via secure RPCs (SECURITY DEFINER)
 
 DROP POLICY IF EXISTS "Admins view all transactions" ON public.transactions;
 CREATE POLICY "Admins view all transactions" ON public.transactions 
   FOR SELECT TO authenticated
-  USING ((SELECT role FROM public.profiles WHERE id = (SELECT auth.uid())) = 'admin');
+  USING (public.is_admin());
 
 -- Store Settings Policies
 DROP POLICY IF EXISTS "Admins manage store settings" ON public.store_settings;
 CREATE POLICY "Admins manage store settings" ON public.store_settings
   FOR ALL TO authenticated
-  USING ((SELECT role FROM public.profiles WHERE id = (SELECT auth.uid())) = 'admin')
-  WITH CHECK ((SELECT role FROM public.profiles WHERE id = (SELECT auth.uid())) = 'admin');
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
 -- Customer Reviews Policies
 DROP POLICY IF EXISTS "Public read approved reviews" ON public.customer_reviews;
@@ -266,8 +283,8 @@ CREATE POLICY "Users submit pending reviews" ON public.customer_reviews
 DROP POLICY IF EXISTS "Admins manage reviews" ON public.customer_reviews;
 CREATE POLICY "Admins manage reviews" ON public.customer_reviews
   FOR ALL TO authenticated
-  USING ((SELECT role FROM public.profiles WHERE id = (SELECT auth.uid())) = 'admin')
-  WITH CHECK ((SELECT role FROM public.profiles WHERE id = (SELECT auth.uid())) = 'admin');
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
 
 -- =====================================================
@@ -294,6 +311,40 @@ CREATE TRIGGER on_auth_user_created
 REVOKE EXECUTE ON FUNCTION public.handle_new_user() FROM public;
 
 
+-- Prevent non-admins from changing role or balance on their own profile
+CREATE OR REPLACE FUNCTION public.protect_profile_sensitive_fields()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  caller_role text;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT role INTO caller_role FROM public.profiles WHERE id = auth.uid();
+
+  IF caller_role = 'admin' THEN
+    RETURN NEW;
+  END IF;
+
+  IF auth.uid() = OLD.id THEN
+    NEW.role := OLD.role;
+    NEW.balance := OLD.balance;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS protect_profile_sensitive_fields ON public.profiles;
+CREATE TRIGGER protect_profile_sensitive_fields
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.protect_profile_sensitive_fields();
+
+
 -- Secure credit balance function (intended for Webhooks/Server Edge Functions)
 CREATE OR REPLACE FUNCTION public.credit_user_balance(
   p_user_id uuid,
@@ -308,6 +359,10 @@ SET search_path = public AS $$
 DECLARE
   new_balance numeric;
 BEGIN
+  IF auth.uid() IS NULL OR auth.uid() IS DISTINCT FROM p_user_id THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
   IF p_amount <= 0 THEN
     RAISE EXCEPTION 'Amount must be positive';
   END IF;
@@ -316,6 +371,10 @@ BEGIN
     SET balance = COALESCE(balance, 0) + p_amount
     WHERE id = p_user_id
     RETURNING balance INTO new_balance;
+
+  IF new_balance IS NULL THEN
+    RAISE EXCEPTION 'Profile not found';
+  END IF;
 
   INSERT INTO public.transactions (user_id, type, amount, balance_after, payment_method, reference, status)
   VALUES (p_user_id, 'recharge', p_amount, new_balance, p_payment_method, p_reference, 'completed');
@@ -328,7 +387,7 @@ REVOKE EXECUTE ON FUNCTION public.credit_user_balance(uuid, numeric, text, text)
 GRANT EXECUTE ON FUNCTION public.credit_user_balance(uuid, numeric, text, text) TO authenticated;
 
 
--- Secure deduct balance function (to verify and deduct balance client-side)
+-- Secure deduct balance function
 CREATE OR REPLACE FUNCTION public.deduct_user_balance(
   p_user_id uuid,
   p_amount numeric,
@@ -340,15 +399,19 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public AS $$
 DECLARE
-  current numeric;
+  current_bal numeric;
   new_balance numeric;
 BEGIN
+  IF auth.uid() IS NULL OR auth.uid() IS DISTINCT FROM p_user_id THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
   IF p_amount <= 0 THEN
     RAISE EXCEPTION 'Deduct amount must be positive';
   END IF;
 
-  SELECT balance INTO current FROM public.profiles WHERE id = p_user_id;
-  IF current IS NULL OR current < p_amount THEN
+  SELECT balance INTO current_bal FROM public.profiles WHERE id = p_user_id;
+  IF current_bal IS NULL OR current_bal < p_amount THEN
     RAISE EXCEPTION 'Insufficient balance';
   END IF;
 
@@ -372,7 +435,8 @@ GRANT EXECUTE ON FUNCTION public.deduct_user_balance(uuid, numeric, text, text) 
 CREATE OR REPLACE FUNCTION public.get_payment_methods()
 RETURNS json
 LANGUAGE sql
-SECURITY INVOKER
+SECURITY DEFINER
+SET search_path = public
 STABLE AS $$
   SELECT json_build_object(
     'shamcash', COALESCE((SELECT shamcash_enabled FROM store_settings WHERE id = 1), false),
@@ -395,7 +459,8 @@ GRANT EXECUTE ON FUNCTION public.get_payment_methods() TO anon, authenticated;
 CREATE OR REPLACE FUNCTION public.get_site_theme()
 RETURNS jsonb
 LANGUAGE sql
-SECURITY INVOKER
+SECURITY DEFINER
+SET search_path = public
 STABLE AS $$
   SELECT COALESCE(
     (SELECT theme FROM public.store_settings WHERE id = 1),
@@ -410,7 +475,8 @@ GRANT EXECUTE ON FUNCTION public.get_site_theme() TO anon, authenticated;
 CREATE OR REPLACE FUNCTION public.get_home_layout()
 RETURNS jsonb
 LANGUAGE sql
-SECURITY INVOKER
+SECURITY DEFINER
+SET search_path = public
 STABLE AS $$
   SELECT COALESCE(
     (SELECT home_layout FROM public.store_settings WHERE id = 1),
@@ -465,7 +531,12 @@ DECLARE
   v_item jsonb;
   v_offer_price numeric;
   v_server_total numeric := 0;
+  v_order_status text;
 BEGIN
+  IF auth.uid() IS NULL OR auth.uid() IS DISTINCT FROM p_user_id THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
   -- 1. Verify each item's price against the offers table
   FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
   LOOP
@@ -491,8 +562,10 @@ BEGIN
     RAISE EXCEPTION 'Total mismatch: expected %, got %', v_server_total, p_total;
   END IF;
 
-  -- 2. If paying with balance, deduct atomically
+  -- 2. Balance payments complete immediately; external methods stay pending
   IF p_payment_method = 'balance' THEN
+    v_order_status := 'completed';
+
     UPDATE profiles
     SET balance = balance - p_total
     WHERE id = p_user_id AND balance >= p_total
@@ -505,12 +578,13 @@ BEGIN
     INSERT INTO transactions (user_id, type, amount, balance_after, payment_method, reference, status)
     VALUES (p_user_id, 'purchase', -p_total, v_new_balance, 'balance', NULL, 'completed');
   ELSE
+    v_order_status := 'pending_payment';
     SELECT balance INTO v_new_balance FROM profiles WHERE id = p_user_id;
   END IF;
 
   -- 3. Create order
   INSERT INTO orders (user_id, total, payment_method, status)
-  VALUES (p_user_id, p_total, p_payment_method, 'completed')
+  VALUES (p_user_id, p_total, p_payment_method, v_order_status)
   RETURNING id INTO v_order_id;
 
   -- 4. Insert order items
@@ -530,13 +604,71 @@ BEGIN
 
   RETURN jsonb_build_object(
     'orderId', v_order_id,
-    'newBalance', v_new_balance
+    'newBalance', v_new_balance,
+    'status', v_order_status
   );
 END;
 $$;
 
 REVOKE EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text) FROM public;
 GRANT EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text) TO authenticated;
+
+
+-- Confirm external payment after gateway verification (or simulated checkout in dev)
+CREATE OR REPLACE FUNCTION public.confirm_order_payment(
+  p_order_id uuid,
+  p_reference text DEFAULT null
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_order public.orders%ROWTYPE;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id;
+
+  IF v_order.id IS NULL THEN
+    RAISE EXCEPTION 'Order not found';
+  END IF;
+
+  IF v_order.user_id IS DISTINCT FROM auth.uid() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  IF v_order.status IS DISTINCT FROM 'pending_payment' THEN
+    RAISE EXCEPTION 'Order is not awaiting payment confirmation';
+  END IF;
+
+  UPDATE public.orders
+    SET status = 'completed'
+    WHERE id = p_order_id;
+
+  INSERT INTO public.transactions (user_id, type, amount, balance_after, payment_method, reference, status)
+  SELECT
+    v_order.user_id,
+    'purchase',
+    -v_order.total,
+    p.balance,
+    v_order.payment_method,
+    p_reference,
+    'completed'
+  FROM public.profiles p
+  WHERE p.id = v_order.user_id;
+
+  RETURN jsonb_build_object(
+    'orderId', p_order_id,
+    'status', 'completed'
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.confirm_order_payment(uuid, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.confirm_order_payment(uuid, text) TO authenticated;
 
 
 -- =====================================================

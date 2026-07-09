@@ -1,17 +1,15 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { flushSync } from 'react-dom';
-import AdminEditButton from './components/admin/AdminEditButton';
-import BorderGlow from './components/ui/BorderGlow';
 import StoreBackground from './components/backgrounds/StoreBackground';
 import { getCarouselGames, sortGamesByCarousel } from './lib/carouselUtils';
 import { CheckCircle, Loader2, Globe } from 'lucide-react';
-import { supabase, getUserProfile } from './lib/supabase';
+import { supabase, resolveUserData } from './lib/supabase';
+import { createOrderAtomic, confirmOrderPayment, creditUserBalance } from './lib/orders';
 import { fetchPaymentMethods } from './lib/storeSettings';
 import { applyTheme, fetchSiteTheme, normalizeThemeOverrides } from './lib/theme';
 import { DEFAULT_HOME_LAYOUT, fetchHomeLayout, normalizeHomeLayout } from './lib/homeLayout';
 import { fetchApprovedReviews } from './lib/customerReviews';
 import { translations } from './data/translations';
-import { Routes, Route, useNavigate, useParams, Navigate, useLocation, useSearchParams } from 'react-router-dom';
+import { Routes, Route, useNavigate, Navigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import Header from './components/layout/Header';
 import HomeView from './views/home/HomeView';
@@ -102,22 +100,13 @@ function LangSwitchOverlay({ lang, active }) {
 // Extracted route page components (GameDetail, OfferDetail, SuccessView) have been moved to src/views/
 
 export default function App() {
-  const reactNavigate = useNavigate();
-  const navigate = (path, options) => {
-    console.log(`[Diagnostic] Clicked to navigate to: ${path} at ${new Date().toLocaleTimeString()}`);
-    console.time(`Time to render page ${path}`);
-    flushSync(() => {
-      reactNavigate(path, options);
-    });
-  };
+  const navigate = useNavigate();
   const location = useLocation();
-
-  useEffect(() => {
-    console.log(`[Diagnostic] Router Location updated to: ${location.pathname} at ${new Date().toLocaleTimeString()}`);
-    console.timeEnd(`Time to render page ${location.pathname}`);
-  }, [location.pathname]);
   const hasShownLoginToast = useRef(false);
+  const lastSyncedUserIdRef = useRef(null);
   const cartIconRef = useRef(null);
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   const [lang, setLang] = useState(() => {
     const saved = localStorage.getItem('echocore-lang');
@@ -186,8 +175,8 @@ export default function App() {
   // ============================================
   // LOAD PRODUCTS FROM SUPABASE (REAL DB)
   // ============================================
-  const fetchGames = async () => {
-    setLoadingGames(true);
+  const fetchGames = async ({ background = false } = {}) => {
+    if (!background) setLoadingGames(true);
     try {
       const { data, error } = await supabase
         .from('games')
@@ -274,8 +263,7 @@ export default function App() {
   };
 
   const refreshDataAfterAuth = (role) => {
-    fetchGames();
-    fetchOffers();
+    // Catalog is public — already loaded on mount; refetching on login caused loading flashes and auth deadlocks.
     if (role === 'admin') fetchOrders();
   };
 
@@ -283,39 +271,21 @@ export default function App() {
   // REAL AUTH WITH SUPABASE
   // ============================================
   const handleAuthLogin = async (email, password) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw new Error(t.authError || 'Invalid credentials');
-
-    // Explicitly fetch fresh session after sign in to avoid timing issues with listeners
-    const { data: { session } } = await supabase.auth.getSession();
-    const authUser = session?.user;
-    if (!authUser) throw new Error('Login succeeded but failed to retrieve user session');
-
-    const profile = await getUserProfile(authUser.id);
-
-    // If no profile exists (e.g. trigger didn't run), create one
-    let finalProfile = profile;
-    if (!profile) {
-      const { data: newProfile } = await supabase
-        .from('profiles')
-        .insert({
-          id: authUser.id,
-          role: 'user',
-          name: authUser.email.split('@')[0],
-          balance: 0
-        })
-        .select()
-        .single();
-      finalProfile = newProfile;
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      throw new Error(t.authError || 'Invalid credentials');
     }
 
-    const userData = {
-      id: authUser.id,
-      email: authUser.email,
-      name: finalProfile?.name || authUser.email.split('@')[0],
-      role: finalProfile?.role || 'user',
-      balance: finalProfile?.balance || 0,
-    };
+    const authUser = data?.user;
+    if (!authUser) {
+      throw new Error('Login succeeded but failed to retrieve user session');
+    }
+
+    const userData = await resolveUserData(authUser, { createIfMissing: true });
+    if (!userData) {
+      throw new Error('Failed to load user profile');
+    }
+
     return userData;
   };
 
@@ -340,14 +310,7 @@ export default function App() {
       // If Supabase gave us a session immediately (email confirmation disabled in project settings),
       // log the user in right away
       if (data.session) {
-        const profile = await getUserProfile(data.user.id);
-        const userData = {
-          id: data.user.id,
-          email: data.user.email,
-          name: profile?.name || data.user.email.split('@')[0],
-          role: profile?.role || 'user',
-          balance: profile?.balance || 0,
-        };
+        const userData = await resolveUserData(data.user, { createIfMissing: true });
         return { success: true, autoLogin: true, userData };
       }
     }
@@ -361,7 +324,7 @@ export default function App() {
   // Uses atomic RPC (create_order_atomic) for server-side
   // balance deduction and price verification.
   // ============================================
-  const submitOrder = async (currentCart, paymentMethod) => {
+  const submitOrder = async (currentCart, paymentMethod, { paymentReference } = {}) => {
     if (!user?.id) throw new Error('Not logged in');
 
     const total = currentCart.reduce((sum, item) => sum + parseFloat(item.price), 0);
@@ -373,89 +336,30 @@ export default function App() {
       quantity: 1
     }));
 
-    // Try atomic RPC first (S2+S3 fix: server-side balance + price verification)
-    try {
-      const { data, error } = await supabase.rpc('create_order_atomic', {
-        p_user_id: user.id,
-        p_total: total,
-        p_payment_method: paymentMethod,
-        p_items: items,
-      });
+    const data = await createOrderAtomic({
+      userId: user.id,
+      total,
+      paymentMethod,
+      items,
+    });
 
-      if (error) throw error;
-
-      // Sync local balance from server response
-      if (paymentMethod === 'balance' && data?.newBalance != null) {
-        setUser(prev => prev ? { ...prev, balance: data.newBalance } : prev);
-      }
-
-      return { orderId: data.orderId };
-    } catch (rpcErr) {
-      // If RPC doesn't exist yet, fall back to client-side flow
-      // (User needs to run atomic_order_rpc.sql in Supabase SQL Editor)
-      if (rpcErr?.message?.includes('function') && rpcErr?.message?.includes('does not exist')) {
-        console.warn('create_order_atomic RPC not found — falling back to client-side order. Run atomic_order_rpc.sql.');
-      } else {
-        // RPC exists but failed (e.g. insufficient balance) — propagate the error
-        throw rpcErr;
-      }
+    if (paymentMethod === 'balance' && data?.newBalance != null) {
+      setUser(prev => prev ? { ...prev, balance: data.newBalance } : prev);
     }
 
-    // Fallback: client-side order creation (legacy path)
-    if (paymentMethod === 'balance') {
-      const currentBal = user.balance || 0;
-      if (currentBal < total) {
-        throw new Error(t.insufficientBalance || 'Insufficient balance');
+    if (data.status === 'pending_payment') {
+      if (!paymentReference) {
+        return {
+          orderId: data.orderId,
+          status: 'pending_payment',
+          needsConfirmation: true,
+        };
       }
-
-      const newBal = (currentBal - total);
-      const { error: balErr } = await supabase
-        .from('profiles')
-        .update({ balance: newBal })
-        .eq('id', user.id);
-      if (balErr) throw new Error('Failed to deduct balance');
-
-      await supabase.from('transactions').insert({
-        user_id: user.id,
-        type: 'purchase',
-        amount: -total,
-        balance_after: newBal,
-        payment_method: 'balance',
-        reference: null,
-        status: 'completed'
-      });
-
-      setUser(prev => prev ? { ...prev, balance: newBal } : prev);
+      await confirmOrderPayment(data.orderId, paymentReference);
+      return { orderId: data.orderId, status: 'completed' };
     }
 
-    const { data: order, error: orderErr } = await supabase
-      .from('orders')
-      .insert({
-        user_id: user.id,
-        total: total,
-        payment_method: paymentMethod,
-        status: 'completed'
-      })
-      .select()
-      .single();
-
-    if (orderErr) {
-      console.error(orderErr);
-      throw new Error('Failed to create order');
-    }
-
-    const orderItems = currentCart.map((item) => ({
-      order_id: order.id,
-      offer_id: item.id,
-      name_snapshot: lang === 'ar' ? item.name_ar : item.name_en,
-      price: parseFloat(item.price),
-      quantity: 1
-    }));
-
-    const { error: itemsErr } = await supabase.from('order_items').insert(orderItems);
-    if (itemsErr) console.error('Order items error:', itemsErr);
-
-    return { orderId: order.id };
+    return { orderId: data.orderId, status: data.status || 'completed' };
   };
 
   // ============================================
@@ -466,38 +370,11 @@ export default function App() {
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) throw new Error('Invalid amount');
 
-    const currentBal = user.balance || 0;
-    const newBal = currentBal + amt;
+    const newBal = await creditUserBalance(user.id, amt, method, reference);
 
-    // Update profile balance
-    const { error: upErr } = await supabase
-      .from('profiles')
-      .update({ balance: newBal })
-      .eq('id', user.id);
-    if (upErr) {
-      console.error(upErr);
-      throw new Error('Failed to credit balance');
-    }
-
-    // Insert transaction record (positive for recharge)
-    const { error: txErr } = await supabase.from('transactions').insert({
-      user_id: user.id,
-      type: 'recharge',
-      amount: amt,
-      balance_after: newBal,
-      payment_method: method,
-      reference: reference || null,
-      status: 'completed'
-    });
-    if (txErr) console.error('Transaction insert error:', txErr);
-
-    // Update local user state
-    const updatedUser = { ...user, balance: newBal };
-    setUser(updatedUser);
-
+    setUser(prev => prev ? { ...prev, balance: newBal } : prev);
     showNotification(`${t.rechargeSuccess || 'Balance recharged!'} +$${amt.toFixed(2)}`);
 
-    // Return new balance so RechargeView can react
     return { newBalance: newBal, reference };
   };
 
@@ -505,7 +382,7 @@ export default function App() {
   // INSTANT PURCHASE (Buy Now) — with player UID info
   // Uses atomic RPC for server-side balance + price verification.
   // ============================================
-  const submitPurchase = async (offer, paymentMethod, playerInfo = {}) => {
+  const submitPurchase = async (offer, paymentMethod, playerInfo = {}, { paymentReference } = {}) => {
     if (!user?.id) throw new Error('Not logged in');
     if (!offer) throw new Error('No offer');
 
@@ -521,78 +398,30 @@ export default function App() {
       player_server: player_server || null
     }];
 
-    // Try atomic RPC first (S2+S3 fix)
-    try {
-      const { data, error } = await supabase.rpc('create_order_atomic', {
-        p_user_id: user.id,
-        p_total: amount,
-        p_payment_method: paymentMethod,
-        p_items: items,
-      });
+    const data = await createOrderAtomic({
+      userId: user.id,
+      total: amount,
+      paymentMethod,
+      items,
+    });
 
-      if (error) throw error;
+    if (paymentMethod === 'balance' && data?.newBalance != null) {
+      setUser(prev => prev ? { ...prev, balance: data.newBalance } : prev);
+    }
 
-      if (paymentMethod === 'balance' && data?.newBalance != null) {
-        setUser(prev => prev ? { ...prev, balance: data.newBalance } : prev);
+    if (data.status === 'pending_payment') {
+      if (!paymentReference) {
+        return {
+          orderId: data.orderId,
+          status: 'pending_payment',
+          needsConfirmation: true,
+        };
       }
-
-      return { orderId: data.orderId };
-    } catch (rpcErr) {
-      if (rpcErr?.message?.includes('function') && rpcErr?.message?.includes('does not exist')) {
-        console.warn('create_order_atomic RPC not found — falling back to client-side order. Run atomic_order_rpc.sql.');
-      } else {
-        throw rpcErr;
-      }
+      await confirmOrderPayment(data.orderId, paymentReference);
+      return { orderId: data.orderId, status: 'completed' };
     }
 
-    // Fallback: client-side (legacy)
-    if (paymentMethod === 'balance') {
-      const currentBal = user.balance || 0;
-      if (currentBal < amount) throw new Error(t.insufficientBalance || 'Insufficient balance');
-
-      const newBal = currentBal - amount;
-      const { error: balErr } = await supabase
-        .from('profiles')
-        .update({ balance: newBal })
-        .eq('id', user.id);
-      if (balErr) throw new Error('Failed to deduct balance');
-
-      await supabase.from('transactions').insert({
-        user_id: user.id,
-        type: 'purchase',
-        amount: -amount,
-        balance_after: newBal,
-        payment_method: 'balance',
-        reference: null,
-        status: 'completed'
-      });
-
-      setUser(prev => prev ? { ...prev, balance: newBal } : prev);
-    }
-
-    const { data: order, error: orderErr } = await supabase
-      .from('orders')
-      .insert({
-        user_id: user.id,
-        total: amount,
-        payment_method: paymentMethod,
-        status: 'completed'
-      })
-      .select()
-      .single();
-
-    if (orderErr) {
-      console.error(orderErr);
-      throw new Error('Failed to create order');
-    }
-
-    const { error: itemErr } = await supabase.from('order_items').insert(items.map(i => ({
-      order_id: order.id,
-      ...i
-    })));
-    if (itemErr) console.error('Item insert error:', itemErr);
-
-    return { orderId: order.id };
+    return { orderId: data.orderId, status: data.status || 'completed' };
   };
 
   // ============================================
@@ -815,86 +644,80 @@ export default function App() {
   // AUTH STATE LISTENER (real Supabase)
   // ============================================
   useEffect(() => {
+    // Defer async Supabase calls out of onAuthStateChange to avoid auth deadlocks.
+    // See: https://supabase.com/docs/guides/troubleshooting/why-is-my-supabase-api-call-not-returning-PGzXw0
+    const scheduleUserSync = (session, { createIfMissing = false, force = false } = {}) => {
+      if (!session?.user) return;
+      if (!force && lastSyncedUserIdRef.current === session.user.id) return;
+
+      setTimeout(async () => {
+        try {
+          const userData = await resolveUserData(session.user, { createIfMissing });
+          if (!userData) return;
+          lastSyncedUserIdRef.current = userData.id;
+          setUser(userData);
+          if (userData.role === 'admin') fetchOrders();
+        } catch (err) {
+          console.error('Failed to sync user session:', err);
+        }
+      }, 0);
+    };
+
     // IMPORTANT: Handle Supabase email confirmation / signup redirect tokens
     // They come as #access_token=...&type=signup in the URL hash
     const handleAuthHash = async () => {
       const hash = window.location.hash;
-      if (hash.includes('access_token')) {
-        // Let Supabase client parse the tokens from hash into a session
-        const { data: { session } } = await supabase.auth.getSession();
+      if (!hash.includes('access_token')) return;
 
-        if (session?.user) {
-          const profile = await getUserProfile(session.user.id);
-          const userData = {
-            id: session.user.id,
-            email: session.user.email,
-            name: profile?.name || session.user.email.split('@')[0],
-            role: profile?.role || 'user',
-            balance: profile?.balance || 0
-          };
-          setUser(userData);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
 
-          // For confirmation links we can safely navigate to home (respects router basename)
-          navigate('/', { replace: true });
+      const userData = await resolveUserData(session.user, { createIfMissing: true });
+      if (!userData) return;
 
-          // Only show the welcome toast once (for magic links / email confirm)
-          if (!hasShownLoginToast.current) {
-            hasShownLoginToast.current = true;
-            showNotification(t.loginSuccess || 'Welcome back!');
-          }
+      lastSyncedUserIdRef.current = userData.id;
+      setUser(userData);
+      navigateRef.current('/', { replace: true });
 
-          refreshDataAfterAuth(userData.role);
-        }
+      if (!hasShownLoginToast.current) {
+        hasShownLoginToast.current = true;
+        const loginLang = localStorage.getItem('echocore-lang') === 'en' ? 'en' : 'ar';
+        showNotification(translations[loginLang].loginSuccess || 'Welcome back!');
       }
+
+      refreshDataAfterAuth(userData.role);
     };
 
-    // Run hash handling first (special redirect case)
     handleAuthHash();
 
     // Initial session check — completely silent (no toast, no forced navigation to home)
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
-        const profile = await getUserProfile(session.user.id);
-        const userData = {
-          id: session.user.id,
-          email: session.user.email,
-          name: profile?.name || session.user.email.split('@')[0],
-          role: profile?.role || 'user',
-          balance: profile?.balance || 0
-        };
-        setUser(userData);
-        if (userData.role === 'admin') fetchOrders();
+        const userData = await resolveUserData(session.user);
+        if (userData) {
+          lastSyncedUserIdRef.current = userData.id;
+          setUser(userData);
+          if (userData.role === 'admin') fetchOrders();
+        }
       }
       setLoadingAuth(false);
     });
 
-    // Listen for auth changes.
-    // We ONLY sync the user here.
-    // We do NOT navigate or show "تم تسجيل الدخول بنجاح" because
-    // Supabase can emit SIGNED_IN / INITIAL_SESSION when you switch tabs/windows.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        const profile = await getUserProfile(session.user.id);
-        const userData = {
-          id: session.user.id,
-          email: session.user.email,
-          name: profile?.name || session.user.email.split('@')[0],
-          role: profile?.role || 'user',
-          balance: profile?.balance || 0
-        };
-        setUser(userData);
-        if (userData.role === 'admin') fetchOrders();
-
-        // IMPORTANT: removed navigate + showNotification from here
-        // to prevent resetting to homepage + toast on tab focus/return.
-      } else if (event === 'SIGNED_OUT') {
+    // Listen for auth changes — sync user only; no navigate/toast on tab focus.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        lastSyncedUserIdRef.current = null;
         setUser(null);
         hasShownLoginToast.current = false;
+        return;
       }
+      if (!session?.user) return;
+      scheduleUserSync(session, { force: event === 'USER_UPDATED' });
     });
 
     return () => subscription.unsubscribe();
-  }, [t]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const refreshPaymentConfig = async () => {
     const config = await fetchPaymentMethods();
@@ -1016,6 +839,7 @@ export default function App() {
 
   // Called by LoginView after successful Supabase auth
   const handleLoginSuccess = (userData) => {
+    lastSyncedUserIdRef.current = userData.id;
     setUser(userData);
     navigate('/');
     // Only show login toast once per actual login action
@@ -1028,6 +852,7 @@ export default function App() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    lastSyncedUserIdRef.current = null;
     setUser(null);
     navigate('/');
   };

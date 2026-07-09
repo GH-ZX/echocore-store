@@ -30,6 +30,21 @@ This unified script will:
 5. Provision the `"product-images"` storage bucket automatically and set up admin upload policies.
 6. Seed default settings, starter customer reviews, and a sample game (Mobile Legends) with packages.
 
+### Security migration (required for existing projects)
+
+If you already ran an older version of the schema, also run:
+
+👉 [supabase_security_migration.sql](./supabase_security_migration.sql) in the Supabase **SQL Editor**.
+
+This migration:
+- Restricts profile reads to the signed-in user (and admins)
+- Blocks client-side balance/role changes on profiles
+- Adds caller verification to balance/order RPCs
+- Creates external orders as `pending_payment` until confirmed
+- Removes unsafe direct INSERT policies on orders/transactions
+
+Checkout and recharge **will not work** until this migration (or the updated full schema) is applied.
+
 ### Storage & Image Assets Setup (Recommended)
 1. In your Supabase dashboard, navigate to **Storage > Buckets**.
 2. Verify that the `"product-images"` bucket was created and ensure it is set to **Public** so product images can load for site visitors.
