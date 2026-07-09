@@ -63,9 +63,9 @@ export default function HomeGameCard({
     >
       <div
         onClick={handleOpen}
-        className={`home-game-card group flex flex-col transition-all duration-300 ${
+        className={`storefront-card home-game-card group flex flex-col transition-all duration-300 ${
           teaser
-            ? 'home-game-card--teaser pointer-events-none select-none'
+            ? 'storefront-card--teaser home-game-card--teaser pointer-events-none select-none'
             : 'cursor-pointer active:scale-[0.99]'
         }`}
         aria-hidden={teaser || undefined}
@@ -115,7 +115,7 @@ export default function HomeGameCard({
           </div>
         </div>
 
-        <div className="flex flex-col flex-1 p-3 sm:p-3.5 gap-1.5 min-w-0">
+        <div className="storefront-card__body flex flex-col flex-1 p-3 sm:p-3.5 gap-1.5 min-w-0">
           <p className="text-[11px] sm:text-xs text-[var(--text-muted)] truncate font-medium inline-flex items-center gap-1">
             {isAccount ? <KeyRound className="w-3 h-3 flex-shrink-0" /> : isVoucher ? <Ticket className="w-3 h-3 flex-shrink-0" /> : <Gamepad2 className="w-3 h-3 flex-shrink-0" />}
             {categoryLabel}

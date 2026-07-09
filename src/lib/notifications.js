@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { getAdminDashboardPath } from './adminRoutes';
 
 const RPC_SETUP_MSG =
   'Notifications are not configured. Run supabase_notifications_migration.sql in the Supabase SQL Editor.';
@@ -116,7 +117,7 @@ export function formatNotification(item, t = {}, lang = 'ar') {
 
 export function getNotificationDestination(item, formatted, userRole) {
   if (userRole === 'admin' && formatted.adminTab) {
-    return { path: '/dashboard', state: { adminTab: formatted.adminTab } };
+    return { path: getAdminDashboardPath(formatted.adminTab) };
   }
 
   const metadata = item?.metadata || {};

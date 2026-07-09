@@ -6,7 +6,6 @@ import { resolveCarouselLogo } from '../../lib/carouselUtils';
 export default function AdminCarouselManager({
   games = [],
   catalogGames = games,
-  offers = [],
   lang = 'en',
   t = {},
   onClose,
@@ -82,7 +81,7 @@ export default function AdminCarouselManager({
   const gameName = (g) => (lang === 'ar' ? g.name_ar : g.name_en) || g.name_en;
 
   const renderRow = (game, index, { inCarousel }) => {
-    const thumbSrc = resolveCarouselLogo(game, catalogGames, offers);
+    const thumbSrc = resolveCarouselLogo(game, catalogGames);
     return (
     <div
       key={game.id}

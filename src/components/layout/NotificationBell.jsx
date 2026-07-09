@@ -1,10 +1,12 @@
 import { useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Bell, CheckCheck, Loader2, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   formatNotification,
   getNotificationDestination,
 } from '../../lib/notifications';
+import { useHeaderDropdownPosition } from '../../hooks/useHeaderDropdownPosition';
 
 function relativeTime(dateStr, lang) {
   if (!dateStr) return '';
@@ -41,15 +43,23 @@ export default function NotificationBell({
   onNavigate = () => {},
   onViewAllInbox = () => {},
 }) {
-  const ref = useRef(null);
+  const triggerRef = useRef(null);
+  const panelRef = useRef(null);
+  const { coords, updatePosition } = useHeaderDropdownPosition(triggerRef, open, {
+    align: 'end',
+    gap: 8,
+    width: 352,
+  });
 
   useEffect(() => {
     if (!open) return undefined;
 
     const handlePointerDown = (event) => {
-      if (ref.current && !ref.current.contains(event.target)) {
-        onClose();
-      }
+      if (
+        triggerRef.current?.contains(event.target)
+        || panelRef.current?.contains(event.target)
+      ) return;
+      onClose();
     };
     document.addEventListener('mousedown', handlePointerDown);
     return () => document.removeEventListener('mousedown', handlePointerDown);
@@ -75,34 +85,25 @@ export default function NotificationBell({
     await onMarkAllRead();
   };
 
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={onToggle}
-        className={`header-btn header-btn-icon relative ${open ? 'header-btn--accent' : ''}`}
-        aria-label={t.notifications || 'Notifications'}
-        aria-expanded={open}
-        aria-haspopup="menu"
-      >
-        <Bell strokeWidth={2} />
-        {unreadCount > 0 && (
-          <span className="header-notif-badge" aria-hidden="true">
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </span>
-        )}
-      </button>
-
+  const dropdownPanel = typeof document !== 'undefined'
+    ? createPortal(
       <AnimatePresence>
         {open && (
           <motion.div
+            ref={panelRef}
             key="notif-dropdown"
             role="menu"
-            initial={{ opacity: 0, y: 6, scale: 0.97 }}
+            initial={{ opacity: 0, y: 8, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 4, scale: 0.96 }}
-            transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
-            className="header-notif-dropdown"
+            exit={{ opacity: 0, y: 6, scale: 0.97 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            className="header-notif-dropdown header-glass-dropdown glass-surface"
+            style={{
+              position: 'fixed',
+              top: coords.top,
+              left: coords.left,
+              width: coords.width,
+            }}
           >
             <div className="header-notif-head">
               <div>
@@ -197,7 +198,33 @@ export default function NotificationBell({
             </div>
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body,
+    )
+    : null;
+
+  return (
+    <div className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => {
+          updatePosition();
+          onToggle();
+        }}
+        className={`header-btn header-btn-icon relative ${open ? 'header-btn--accent' : ''}`}
+        aria-label={t.notifications || 'Notifications'}
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
+        <Bell strokeWidth={2} />
+        {unreadCount > 0 && (
+          <span className="header-notif-badge" aria-hidden="true">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+      </button>
+      {dropdownPanel}
     </div>
   );
 }

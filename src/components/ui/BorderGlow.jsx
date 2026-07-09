@@ -118,6 +118,11 @@ const BorderGlow = ({
   const { accent, hover, dark, bgSurface } = readThemeColors();
   void themeVer; // used to force re-read on theme change
 
+  const isLightMode = typeof document !== 'undefined'
+    && document.documentElement.getAttribute('data-color-mode') === 'light';
+  const resolvedFillOpacity = isLightMode ? Math.min(fillOpacity, 0.18) : fillOpacity;
+  const resolvedGlowIntensity = isLightMode ? glowIntensity * 0.55 : glowIntensity;
+
   const glowColor = glowColorProp || hexToHslStr(accent);
   const colors = colorsProp || [accent, hover, dark];
   const backgroundColor = bgProp || bgSurface;
@@ -205,9 +210,9 @@ const BorderGlow = ({
     });
   }, [animated]);
 
-  const glowVars = buildGlowVars(glowColor, glowIntensity);
+  const glowVars = buildGlowVars(glowColor, resolvedGlowIntensity);
 
-  const hasFill = fillOpacity > 0;
+  const hasFill = resolvedFillOpacity > 0;
 
   return (
     <div
@@ -220,7 +225,7 @@ const BorderGlow = ({
         '--border-radius': `${borderRadius}px`,
         '--glow-padding': `${glowRadius}px`,
         '--cone-spread': coneSpread,
-        '--fill-opacity': fillOpacity,
+        '--fill-opacity': resolvedFillOpacity,
         ...glowVars,
         ...buildGradientVars(colors),
       }}

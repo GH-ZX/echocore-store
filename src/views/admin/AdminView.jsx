@@ -1,9 +1,12 @@
-import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Trash2, Upload, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Zap, FlaskConical } from 'lucide-react';
+import { getAdminDashboardPath, isValidAdminTabSegment, resolveAdminTabFromPath } from '../../lib/adminRoutes';
+import { Trash2, Upload, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Zap, FlaskConical, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uploadImage } from '../../lib/uploadImage';
 import { getCatalogOfferStats } from '../../lib/catalogUtils';
+import AdminExistingGamesList from '../../components/admin/AdminExistingGamesList';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
 
 const ImageFocusPicker = lazy(() => import('../../components/admin/ImageFocusPicker'));
 const GameImageSearch = lazy(() => import('../../components/admin/GameImageSearch'));
@@ -23,6 +26,31 @@ function AdminTabLoader() {
   );
 }
 
+const ADMIN_SIDEBAR_KEY = 'echocore-admin-sidebar-collapsed';
+
+function readSidebarCollapsed() {
+  try {
+    return localStorage.getItem(ADMIN_SIDEBAR_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function buildAdminNavItems(t) {
+  return [
+    { id: 'overview', label: t.overview, shortLabel: t.tabOverviewShort, icon: BarChart3 },
+    { id: 'home', label: t.homeLayoutTab, shortLabel: t.tabHomeShort, icon: LayoutGrid },
+    { id: 'products', label: t.gamesAndOffers, shortLabel: t.tabGamesShort, icon: Package },
+    { id: 'orders', label: t.ordersTab, shortLabel: t.tabOrdersShort, icon: ShoppingCart },
+    { id: 'payments', label: t.paymentsTab, shortLabel: t.tabPaymentsShort, icon: Wallet },
+    { id: 'g2bulk', label: t.g2bulkTab || 'G2Bulk', shortLabel: 'G2B', icon: Zap },
+    { id: 'recharges', label: t.rechargesTab, shortLabel: t.tabRechargesShort, icon: CircleDollarSign },
+    { id: 'theme', label: t.themeTab, shortLabel: t.tabThemeShort, icon: Palette },
+    { id: 'reviews', label: t.reviewsTab, shortLabel: t.tabReviewsShort, icon: MessageSquare },
+    { id: 'devtools', label: t.devToolsTab || 'Dev', shortLabel: 'DEV', icon: FlaskConical },
+  ];
+}
+
 export default function AdminView({ 
   t, 
   lang, 
@@ -33,6 +61,7 @@ export default function AdminView({
   createProduct, 
   updateProduct,
   deleteProduct,
+  deleteGame: deleteGameProp,
   updateGame,
   refreshProducts,
   refreshOffers,
@@ -54,15 +83,27 @@ export default function AdminView({
   const notifySuccess = (message) => onNotify?.(message, 'success');
   const location = useLocation();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState(() => location.state?.adminTab || 'overview');
-  const tabButtonRefs = useRef({});
+  const activeTab = useMemo(() => resolveAdminTabFromPath(location.pathname), [location.pathname]);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
+  const adminNavItems = useMemo(() => buildAdminNavItems(t), [t]);
+
+  const setAdminTab = (tabId) => {
+    navigate(getAdminDashboardPath(tabId));
+  };
 
   useEffect(() => {
-    const tab = location.state?.adminTab;
-    if (!tab) return;
-    setActiveTab(tab);
-    navigate(location.pathname, { replace: true, state: null });
-  }, [location.state?.adminTab, location.pathname, navigate]);
+    const legacyTab = location.state?.adminTab;
+    if (!legacyTab) return;
+    navigate(getAdminDashboardPath(legacyTab), { replace: true, state: null });
+  }, [location.state?.adminTab, navigate]);
+
+  useEffect(() => {
+    const parts = location.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+    if (parts[0] !== 'dashboard' || parts.length < 2) return;
+    if (!isValidAdminTabSegment(parts[1])) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [location.pathname, navigate]);
   const [newProduct, setNewProduct] = useState({
     game_id: '',
     name_en: '',
@@ -77,6 +118,8 @@ export default function AdminView({
   });
   const [uploading, setUploading] = useState(false);
   const [saleCoverFile, setSaleCoverFile] = useState(null);
+  const [confirmAction, setConfirmAction] = useState(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
   // Editing state
   const [editingId, setEditingId] = useState(null);
@@ -204,12 +247,12 @@ export default function AdminView({
     : offers;
 
   useEffect(() => {
-    tabButtonRefs.current[activeTab]?.scrollIntoView({
-      inline: 'center',
-      block: 'nearest',
-      behavior: 'smooth',
-    });
-  }, [activeTab]);
+    try {
+      localStorage.setItem(ADMIN_SIDEBAR_KEY, sidebarCollapsed ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     if (gameCoverFile) {
@@ -325,16 +368,54 @@ export default function AdminView({
     }
   };
 
-  const deleteGame = async (gameId) => {
-    if (!confirm(t.deleteGameConfirm)) return;
-    const { error } = await supabase.from('games').delete().eq('id', gameId);
-    if (error) {
-      console.error('Delete game error:', error);
-      notifyError(`${t.failedToDeleteGame}: ${error.message}`);
-      return;
+  const requestDeleteGame = (gameId) => {
+    setConfirmAction({
+      title: t.deleteGame || t.delete,
+      message: t.deleteGameConfirm,
+      onConfirm: async () => {
+        try {
+          if (deleteGameProp) {
+            await deleteGameProp(gameId);
+          } else {
+            const { error } = await supabase.from('games').delete().eq('id', gameId);
+            if (error) throw error;
+            if (refreshProducts) await refreshProducts();
+            if (refreshOffers) await refreshOffers();
+          }
+          if (editingGameId === gameId) cancelEditGame();
+          setConfirmAction(null);
+        } catch (err) {
+          console.error('Delete game error:', err);
+          notifyError(`${t.failedToDeleteGame}: ${err.message || err}`);
+        }
+      },
+    });
+  };
+
+  const requestDeleteOffer = (offerId) => {
+    setConfirmAction({
+      title: t.delete || 'Delete',
+      message: t.deleteOfferConfirm,
+      onConfirm: async () => {
+        try {
+          await deleteProduct(offerId);
+          setConfirmAction(null);
+        } catch (err) {
+          console.error('Delete offer error:', err);
+          notifyError(`${t.failedToDelete}: ${err.message || err}`);
+        }
+      },
+    });
+  };
+
+  const handleConfirmAction = async () => {
+    if (!confirmAction?.onConfirm) return;
+    setConfirmLoading(true);
+    try {
+      await confirmAction.onConfirm();
+    } finally {
+      setConfirmLoading(false);
     }
-    if (refreshProducts) await refreshProducts();
-    if (refreshOffers) await refreshOffers();
   };
 
   const startEditGame = (game) => {
@@ -472,56 +553,66 @@ export default function AdminView({
   const recentOrders = [...orders].slice(0, 5);
 
   return (
-    <div className="admin-shell max-w-7xl mx-auto mt-4 sm:mt-6 animate-fade-in">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-5 sm:mb-6">
-        <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-black">{t.adminDashboard}</h1>
-          <p className="text-sm sm:text-base text-[var(--text-sec)]">{t.manageYourStore}</p>
-        </div>
-        <div className="flex gap-2 self-start sm:self-auto flex-shrink-0">
-          {refreshProducts && (
-            <button onClick={refreshProducts} className="btn btn-secondary flex items-center gap-2 text-sm px-3 sm:px-4" title={t.refresh}>
-              <RefreshCw className="w-4 h-4" />
-              <span className="hidden sm:inline">{t.refresh}</span>
-            </button>
+    <div className={`admin-shell admin-layout mt-4 sm:mt-6 animate-fade-in${sidebarCollapsed ? ' admin-layout--collapsed' : ''}`} dir="ltr">
+      <aside
+        className={`admin-sidebar${sidebarCollapsed ? ' admin-sidebar--collapsed' : ''}`}
+        aria-label={isAr ? 'قائمة لوحة التحكم' : 'Admin navigation'}
+      >
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed((value) => !value)}
+          className="admin-sidebar__toggle"
+          aria-expanded={!sidebarCollapsed}
+          title={sidebarCollapsed
+            ? (isAr ? 'توسيع القائمة' : 'Expand sidebar')
+            : (isAr ? 'طي القائمة' : 'Collapse sidebar')}
+        >
+          {sidebarCollapsed
+            ? <PanelLeftOpen className="w-4 h-4" />
+            : <PanelLeftClose className="w-4 h-4" />}
+          {!sidebarCollapsed && (
+            <span className="admin-sidebar__toggle-label">
+              {isAr ? 'طي' : 'Collapse'}
+            </span>
           )}
-        </div>
-      </div>
+        </button>
 
-      {/* Tabs — horizontal scroll on small screens */}
-      <div className="admin-tabs-scroll -mx-1 px-1 mb-5 sm:mb-6">
-        <div className="flex border-b border-[var(--border)] min-w-max sm:min-w-0">
-          {[
-            { id: 'overview', label: t.overview, shortLabel: t.tabOverviewShort, icon: BarChart3 },
-            { id: 'products', label: t.gamesAndOffers, shortLabel: t.tabGamesShort, icon: Package },
-            { id: 'orders', label: t.ordersTab, shortLabel: t.tabOrdersShort, icon: ShoppingCart },
-            { id: 'payments', label: t.paymentsTab, shortLabel: t.tabPaymentsShort, icon: Wallet },
-            { id: 'g2bulk', label: t.g2bulkTab || 'G2Bulk', shortLabel: 'G2B', icon: Zap },
-            { id: 'recharges', label: t.rechargesTab, shortLabel: t.tabRechargesShort, icon: CircleDollarSign },
-            { id: 'theme', label: t.themeTab, shortLabel: t.tabThemeShort, icon: Palette },
-            { id: 'home', label: t.homeLayoutTab, shortLabel: t.tabHomeShort, icon: LayoutGrid },
-            { id: 'reviews', label: t.reviewsTab, shortLabel: t.tabReviewsShort, icon: MessageSquare },
-            { id: 'devtools', label: t.devToolsTab || 'Dev', shortLabel: 'DEV', icon: FlaskConical },
-          ].map(tab => {
+        <nav className="admin-sidebar__nav">
+          {adminNavItems.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
-                ref={(el) => { tabButtonRefs.current[tab.id] = el; }}
-                onClick={() => setActiveTab(tab.id)}
-                className={`admin-tab-btn flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2.5 sm:py-3 text-sm sm:text-base font-bold border-b-2 transition-all flex-shrink-0 whitespace-nowrap ${isActive
-                  ? 'border-[var(--dash-tab-active)] text-[var(--dash-tab-active)]'
-                  : 'border-transparent text-[var(--text-sec)] hover:text-[var(--text-primary)]'}`}
+                type="button"
+                onClick={() => setAdminTab(tab.id)}
+                className={`admin-nav-btn${isActive ? ' admin-nav-btn--active' : ''}`}
+                title={sidebarCollapsed ? tab.label : undefined}
+                aria-current={isActive ? 'page' : undefined}
               >
-                <Icon className="w-4 h-4 flex-shrink-0" />
-                <span className="sm:hidden">{tab.shortLabel}</span>
-                <span className="hidden sm:inline">{tab.label}</span>
+                <Icon className="admin-nav-btn__icon" aria-hidden="true" />
+                <span className="admin-nav-btn__label">{tab.label}</span>
               </button>
             );
           })}
+        </nav>
+      </aside>
+
+      <div className="admin-main">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-5 sm:mb-6">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-black">{t.adminDashboard}</h1>
+            <p className="text-sm sm:text-base text-[var(--text-sec)]">{t.manageYourStore}</p>
+          </div>
+          <div className="flex gap-2 self-start sm:self-auto flex-shrink-0">
+            {refreshProducts && (
+              <button onClick={refreshProducts} className="btn btn-secondary flex items-center gap-2 text-sm px-3 sm:px-4" title={t.refresh}>
+                <RefreshCw className="w-4 h-4" />
+                <span className="hidden sm:inline">{t.refresh}</span>
+              </button>
+            )}
+          </div>
         </div>
-      </div>
 
       {/* OVERVIEW TAB */}
       {activeTab === 'overview' && (
@@ -617,7 +708,7 @@ export default function AdminView({
                 <h3 className="font-bold text-lg sm:text-xl">{t.recentOrders}</h3>
                 <p className="text-xs text-[var(--text-muted)]">{t.last5Orders}</p>
               </div>
-              <button onClick={() => setActiveTab('orders')} className="text-sm text-[var(--accent)] hover:underline self-start sm:self-auto flex-shrink-0">View All →</button>
+              <button onClick={() => setAdminTab('orders')} className="text-sm text-[var(--accent)] hover:underline self-start sm:self-auto flex-shrink-0">View All →</button>
             </div>
 
             {loadingOrders ? (
@@ -632,7 +723,7 @@ export default function AdminView({
                     <div 
                       key={order.id} 
                       onClick={() => {
-                        setActiveTab('orders');
+                        setAdminTab('orders');
                         setExpandedOrderId(order.id);
                       }}
                       className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between p-3 sm:p-4 bg-[var(--bg-primary)] rounded-xl border border-[var(--border)] hover:border-[var(--accent)]/30 cursor-pointer"
@@ -661,7 +752,7 @@ export default function AdminView({
           {/* GAMES MANAGEMENT (like offers sector) */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Add / Edit Game Form */}
-            <div className="lg:col-span-1 card p-4 sm:p-6 h-fit">
+            <div className="lg:col-span-1 card p-4 sm:p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Plus className="w-5 h-5 text-[var(--accent)]" />
                 <h3 className="text-lg sm:text-xl font-bold">{editingGameId ? t.editGame : t.addNewGame}</h3>
@@ -842,44 +933,26 @@ export default function AdminView({
               <p className="text-xs text-[var(--text-muted)] mt-3">{t.englishNameOnlyHelp || 'English name only. Logo appears at bottom of home carousel. Cover used for game cards. Edit existing games from the list below.'}</p>
             </div>
 
-            {/* GAMES LIST */}
             <div className="lg:col-span-2 card p-4 sm:p-6">
-              <h4 className="font-bold mb-4">{t.existingGames} <span className="text-xs font-normal text-[var(--text-muted)]">({t.clickEditToUpdate})</span></h4>
-              {games.length === 0 ? (
-                <div className="text-[var(--text-sec)]">{t.noGamesYet}</div>
-              ) : (
-                <div className="space-y-2">
-                  {games.map(g => (
-                    <div key={g.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between p-3 bg-[var(--bg-primary)] rounded-xl hover:bg-[var(--bg-elevated)]">
-                      <div className="flex items-start gap-2 min-w-0 flex-1">
-                        {g.logo_url && <img src={g.logo_url} alt="" className="h-6 w-6 object-contain rounded flex-shrink-0" onError={e=>e.target.style.display='none'} />}
-                        <div className="min-w-0">
-                          <div className="text-sm break-words">
-                            {lang === 'ar' ? g.name_ar : g.name_en} ({g.points_name}) — {g.redemption_method || 'both'}
-                            {g.region_label && <span className="text-[var(--accent)]"> • {g.region_label}</span>}
-                            {g.parent_game_id && <span className="text-[var(--text-muted)] text-xs"> (variant)</span>}
-                          </div>
-                          {Array.isArray(g.servers) && g.servers.length > 0 && (
-                            <div className="text-[10px] mt-1 text-[var(--accent)]/80 break-words">{g.servers.join(' • ')}</div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 self-end sm:self-auto flex-shrink-0">
-                        <button onClick={() => startEditGame(g)} className="p-1 text-[var(--accent)] hover:text-white" title={t.edit}>
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => deleteGame(g.id)} className="p-1 text-red-400 hover:text-red-500" title={t.delete}>
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <AdminExistingGamesList
+                games={games}
+                offers={offers}
+                lang={lang}
+                t={t}
+                editingGameId={editingGameId}
+                onEdit={startEditGame}
+                onDelete={requestDeleteGame}
+              />
             </div>
           </div>
 
-          <div className="border-t border-[var(--border)] my-4"></div>
+          <div className="admin-products-divider" role="separator" aria-label={lang === 'ar' ? 'قسم العروض' : 'Offers section'}>
+            <span className="admin-products-divider__line" aria-hidden="true" />
+            <span className="admin-products-divider__label">
+              {t.offersSectionDivider || (lang === 'ar' ? 'العروض والباقات' : 'Offers & packs')}
+            </span>
+            <span className="admin-products-divider__line" aria-hidden="true" />
+          </div>
 
           {/* OFFERS / PRODUCTS SECTION */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1027,7 +1100,6 @@ export default function AdminView({
                     <option key={g.id} value={g.id}>{lang === 'ar' ? g.name_ar : g.name_en}</option>
                   ))}
                 </select>
-                <button onClick={() => setActiveTab('overview')} className="text-xs text-[var(--accent)] hover:underline text-left sm:text-right whitespace-nowrap">{t.backToOverview || 'Back to Overview'}</button>
               </div>
             </div>
 
@@ -1073,9 +1145,7 @@ export default function AdminView({
                           <Edit className="w-4 h-4" />
                         </button>
                         <button 
-                          onClick={() => {
-                            if (confirm(t.deleteOfferConfirm)) deleteProduct(offer.id);
-                          }} 
+                          onClick={() => requestDeleteOffer(offer.id)}
                           className="p-2 text-red-400 hover:bg-red-500/10 rounded-xl"
                           title="Delete"
                         >
@@ -1334,9 +1404,21 @@ export default function AdminView({
         </Suspense>
       )}
 
-      <div className="text-xs text-center text-[var(--text-muted)] mt-8">
-        {t.allDataLive}
+        <div className="text-xs text-center text-[var(--text-muted)] mt-8">
+          {t.allDataLive}
+        </div>
       </div>
+
+      <ConfirmDialog
+        open={!!confirmAction}
+        title={confirmAction?.title}
+        message={confirmAction?.message}
+        confirmLabel={t.confirm || t.delete || 'Confirm'}
+        cancelLabel={t.cancel || 'Cancel'}
+        loading={confirmLoading}
+        onConfirm={handleConfirmAction}
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
   );
 }

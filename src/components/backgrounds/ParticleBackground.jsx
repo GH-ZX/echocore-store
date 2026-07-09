@@ -22,6 +22,13 @@ export default function ParticleBackground() {
     let particles = [];
     let accent = '#22d3ee';
     let isVisible = !document.hidden;
+    let motionSpeed = 1;
+    let sizeScale = 1;
+
+    const readMotion = () => {
+      motionSpeed = readCssNum('--particles-speed', 1);
+      sizeScale = readCssNum('--particles-size', 1);
+    };
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -31,11 +38,14 @@ export default function ParticleBackground() {
       canvas.style.height = `${window.innerHeight}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      const count = Math.min(60, Math.floor((window.innerWidth * window.innerHeight) / 22000));
+      const density = readCssNum('--particles-density', 1);
+      const baseCount = Math.floor((window.innerWidth * window.innerHeight) / 22000);
+      const count = Math.min(120, Math.max(12, Math.floor(baseCount * density)));
+
       particles = Array.from({ length: count }, () => ({
         x: Math.random() * window.innerWidth,
         y: Math.random() * window.innerHeight,
-        r: 0.6 + Math.random() * 1.8,
+        r: (0.6 + Math.random() * 1.8) * sizeScale,
         vx: (Math.random() - 0.5) * 0.35,
         vy: (Math.random() - 0.5) * 0.35,
         pulse: Math.random() * Math.PI * 2,
@@ -56,9 +66,9 @@ export default function ParticleBackground() {
       ctx.clearRect(0, 0, w, h);
 
       particles.forEach((p) => {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.pulse += 0.02;
+        p.x += p.vx * motionSpeed;
+        p.y += p.vy * motionSpeed;
+        p.pulse += 0.02 * motionSpeed;
 
         if (p.x < -8) p.x = w + 8;
         if (p.x > w + 8) p.x = -8;
@@ -76,11 +86,16 @@ export default function ParticleBackground() {
       ctx.globalAlpha = 1;
     };
 
-    const onTheme = () => readAccent();
+    const onTheme = () => {
+      readAccent();
+      readMotion();
+      resize();
+    };
     const onVisibility = () => {
       isVisible = !document.hidden;
     };
 
+    readMotion();
     resize();
     readAccent();
     draw();

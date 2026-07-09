@@ -32,6 +32,7 @@ export default function GameDetail({
   user,
   updateProduct,
   updateGame,
+  deleteGame,
   loadingGames = false,
   catalogMode = 'sync',
   onLiveCatalogUpdate,
@@ -293,6 +294,10 @@ export default function GameDetail({
           t={t}
           onClose={() => setEditingGame(false)}
           onSave={updateGame}
+          onDelete={deleteGame ? async (gameId) => {
+            await deleteGame(gameId);
+            navigate('/');
+          } : undefined}
         />
       )}
       {isAdmin && editingOffer && (

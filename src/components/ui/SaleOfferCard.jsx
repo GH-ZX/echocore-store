@@ -38,7 +38,7 @@ export default function SaleOfferCard({
     >
     <div
       onClick={() => onSelectOffer?.(offer)}
-      className="group flex flex-col cursor-pointer transition-all duration-300 active:scale-[0.99]"
+      className="storefront-card sale-offer-card group flex flex-col cursor-pointer transition-all duration-300 active:scale-[0.99]"
     >
       {/* Image */}
       <div className="relative aspect-[16/10] sm:aspect-[4/3] overflow-hidden bg-[var(--bg-elevated)] flex-shrink-0">
@@ -79,7 +79,7 @@ export default function SaleOfferCard({
       </div>
 
       {/* Content */}
-      <div className="flex flex-col flex-1 p-3 sm:p-3.5 gap-1.5 min-w-0">
+      <div className="storefront-card__body flex flex-col flex-1 p-3 sm:p-3.5 gap-1.5 min-w-0">
         <p className="text-[11px] sm:text-xs text-[var(--text-muted)] truncate font-medium">
           {gameName}
         </p>

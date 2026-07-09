@@ -347,25 +347,24 @@ export default function ProductCarousel({
           }}
         />
 
-        <div className="relative flex overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory" dir="ltr">
+        <div className="relative flex overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory py-1" dir="ltr">
           {slides.map((item, index) => {
             const isActive = index === activeSlide;
             const logoSrc = getLogo(item);
             const logoPresetSrc = logoSrc ? presetImageUrl(logoSrc, 'carouselLogo') : null;
-            const slideLabel = lang === 'ar' ? item.name_ar : item.name_en;
+            const slideLabel = brandUserText(lang === 'ar' ? item.name_ar : item.name_en);
+            const initial = slideLabel.trim().charAt(0).toUpperCase() || '?';
             return (
               <React.Fragment key={item.id}>
                 <div className="relative flex-shrink-0 flex flex-col items-center">
                   <button
                     type="button"
                     onClick={() => embla?.scrollTo(index)}
-                    className="group relative flex flex-col items-center gap-1 px-4 py-3 sm:px-5 sm:py-4 min-w-[80px] sm:min-w-[96px] transition-all duration-300 snap-start hover:bg-white/[0.03] overflow-hidden"
-                    style={{
-                      background: isActive ? 'rgba(255,255,255,0.04)' : 'transparent',
-                      boxShadow: isActive ? `0 4px 12px ${ac(0.1)}` : 'none',
-                      transition: 'background 0.3s ease, box-shadow 0.3s ease',
-                    }}
+                    className={`carousel-thumb group relative flex flex-col items-center gap-1.5 px-3 py-2.5 sm:px-4 sm:py-3 min-w-[76px] sm:min-w-[92px] max-w-[110px] transition-all duration-300 snap-start hover:bg-white/[0.04] overflow-hidden touch-manipulation ${
+                      isActive ? 'carousel-thumb--active' : ''
+                    }`}
                     aria-label={lang === 'ar' ? `انتقل الى ${item.name_ar}` : `Switch to ${item.name_en}`}
+                    aria-current={isActive ? 'true' : undefined}
                   >
                     {isActive && (
                       <div
@@ -377,41 +376,45 @@ export default function ProductCarousel({
                       />
                     )}
                     <div
-                      className="h-8 sm:h-10 flex items-center justify-center px-1.5 transition-all duration-300 group-hover:brightness-110 group-hover:scale-[1.02]"
+                      className={`carousel-thumb__icon h-9 w-9 sm:h-10 sm:w-10 rounded-xl flex items-center justify-center overflow-hidden transition-all duration-300 ${
+                        isActive ? 'scale-105' : 'opacity-40 group-hover:opacity-70'
+                      }`}
                       style={{
-                        opacity: isActive ? 1 : 0.32,
-                        transform: isActive ? 'scale(1.08)' : 'scale(1)',
+                        background: isActive ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
+                        boxShadow: isActive ? `0 0 12px ${ac(0.15)}` : 'none',
                       }}
                     >
                       {logoPresetSrc ? (
                         <img
                           src={logoPresetSrc}
                           alt=""
-                          width={70}
+                          width={40}
                           height={40}
                           loading="lazy"
                           decoding="async"
-                          className="block h-8 sm:h-10 w-auto max-w-[70px] object-contain transition-all duration-300"
-                          style={{
-                            filter: isActive
-                              ? `drop-shadow(0 1px 2px rgba(0,0,0,0.5)) drop-shadow(0 0 2px ${logoAcSolid})`
-                              : 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))',
-                          }}
+                          className="h-full w-full object-contain p-1"
                           onError={(e) => {
                             e.currentTarget.style.display = 'none';
                             const fallback = e.currentTarget.nextElementSibling;
-                            if (fallback) fallback.style.display = 'block';
+                            if (fallback) fallback.style.display = 'flex';
                           }}
                         />
                       ) : null}
                       <span
-                        className={`carousel-slide-logo-fallback text-[10px] sm:text-[11px] font-bold text-white/90 text-center leading-tight line-clamp-2 max-w-[72px] ${
-                          logoPresetSrc ? 'hidden' : 'block'
+                        className={`carousel-thumb__initial h-full w-full items-center justify-center text-sm font-black text-white/90 ${
+                          logoPresetSrc ? 'hidden' : 'flex'
                         }`}
                       >
-                        {slideLabel}
+                        {initial}
                       </span>
                     </div>
+                    <span
+                      className={`carousel-thumb__label text-[10px] sm:text-[11px] font-semibold text-center leading-tight line-clamp-2 w-full px-0.5 transition-colors duration-300 ${
+                        isActive ? 'text-white' : 'text-white/45 group-hover:text-white/70'
+                      }`}
+                    >
+                      {slideLabel}
+                    </span>
                   </button>
                   {isAdmin && (
                     <div className="flex items-center gap-0.5 pb-1">

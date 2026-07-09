@@ -1,5 +1,5 @@
 import { Renderer, Program, Mesh, Color, Triangle } from 'ogl';
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 
 import './Aurora.css';
 
@@ -153,9 +153,14 @@ function cssBool(varName, fallback) {
   return fallback;
 }
 
-function prefersReducedMotion() {
-  if (typeof window === 'undefined') return false;
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function readAuroraSettings(props = {}) {
+  return {
+    enabled: props.enabled ?? cssBool('--aurora-enabled', true),
+    responsive: props.responsive ?? cssBool('--aurora-responsive', true),
+    amplitude: props.amplitude ?? cssNum('--aurora-amplitude', 0.52),
+    blend: props.blend ?? cssNum('--aurora-blend', 0.36),
+    speed: props.speed ?? cssNum('--aurora-speed', 0.32),
+  };
 }
 
 export default function Aurora({
@@ -165,12 +170,28 @@ export default function Aurora({
   blend: propBlend,
   speed: propSpeed,
 }) {
-  // Read settings from CSS vars (set by theme system), fallback to props or defaults
-  const enabled = (propEnabled ?? cssBool('--aurora-enabled', true)) && !prefersReducedMotion();
-  const responsive = propResponsive ?? cssBool('--aurora-responsive', true);
-  const amplitude = propAmplitude ?? cssNum('--aurora-amplitude', 0.52);
-  const blend = propBlend ?? cssNum('--aurora-blend', 0.36);
-  const speed = propSpeed ?? cssNum('--aurora-speed', 0.32);
+  const [settings, setSettings] = useState(() => readAuroraSettings({
+    enabled: propEnabled,
+    responsive: propResponsive,
+    amplitude: propAmplitude,
+    blend: propBlend,
+    speed: propSpeed,
+  }));
+
+  useEffect(() => {
+    const sync = () => setSettings(readAuroraSettings({
+      enabled: propEnabled,
+      responsive: propResponsive,
+      amplitude: propAmplitude,
+      blend: propBlend,
+      speed: propSpeed,
+    }));
+    sync();
+    window.addEventListener('themechange', sync);
+    return () => window.removeEventListener('themechange', sync);
+  }, [propEnabled, propResponsive, propAmplitude, propBlend, propSpeed]);
+
+  const { enabled, responsive, amplitude, blend, speed } = settings;
 
   const ctnDom = useRef(null);
   const programRef = useRef(null);

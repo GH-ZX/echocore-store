@@ -68,6 +68,7 @@ const SaleOffersView = lazy(() => import('./views/SaleOffersView'));
 const FAQView = lazy(() => import('./views/FAQView'));
 const HowItWorksView = lazy(() => import('./views/HowItWorksView'));
 const ContactView = lazy(() => import('./views/ContactView'));
+const LinksView = lazy(() => import('./views/LinksView'));
 const RechargeView = lazy(() => import('./views/RechargeView'));
 const ProfileView = lazy(() => import('./views/profile/ProfileView'));
 const NotificationsView = lazy(() => import('./views/NotificationsView'));
@@ -203,6 +204,7 @@ export default function App() {
   const isAdmin = user?.role === 'admin';
   const [homePreviewAsUser, setHomePreviewAsUser] = useState(false);
   const homeShowsAdminChrome = isAdmin && !homePreviewAsUser;
+  const hasSaleOffers = offers.some((offer) => offer.is_sale);
 
   const showToast = useCallback((message, type = 'success') => {
     if (!message) return;
@@ -725,9 +727,25 @@ export default function App() {
     if (error) {
       console.error(error);
       showToast(t.failedToDelete || 'Delete failed. Are you admin?', 'error');
-      return;
+      throw new Error(error.message || t.failedToDelete || 'Failed to delete.');
     }
     setOffers(prev => prev.filter(p => p.id !== productId));
+  };
+
+  const deleteGame = async (gameId) => {
+    const { error } = await supabase
+      .from('games')
+      .delete()
+      .eq('id', gameId);
+
+    if (error) {
+      console.error('Delete game error:', error);
+      showToast(`${t.failedToDeleteGame || 'Failed to delete game'}: ${error.message}`, 'error');
+      throw new Error(error.message || t.failedToDeleteGame || 'Failed to delete game.');
+    }
+
+    setGames(prev => prev.filter(g => g.id !== gameId));
+    setOffers(prev => prev.filter(o => o.game_id !== gameId));
   };
 
   const updateProduct = async (productData) => {
@@ -899,7 +917,7 @@ export default function App() {
   const goToAddStoreGames = () => {
     setAdminCarouselPickerOpen(false);
     setAdminCarouselOpen(false);
-    navigate('/admin', { state: { adminTab: 'g2bulk' } });
+    navigate('/dashboard/g2bulk');
   };
 
   const moveCarouselGame = async (gameId, direction) => {
@@ -1260,7 +1278,7 @@ export default function App() {
 
   // Load orders when the admin dashboard becomes visible (as admin)
   useEffect(() => {
-    if (location.pathname === '/dashboard' && user?.role === 'admin') {
+    if (location.pathname.startsWith('/dashboard') && user?.role === 'admin') {
       fetchOrders();
     }
   }, [location.pathname, user?.role]);
@@ -1383,14 +1401,9 @@ export default function App() {
     navigate('/');
   };
 
-  const updateUserName = async (newName) => {
+  const updateUserProfile = async (patch = {}) => {
     if (!user?.id) throw new Error('Not logged in');
-    const { error } = await supabase
-      .from('profiles')
-      .update({ name: newName })
-      .eq('id', user.id);
-    if (error) throw new Error(error.message || 'Failed to update name');
-    setUser((prev) => (prev ? { ...prev, name: newName } : prev));
+    setUser((prev) => (prev ? { ...prev, ...patch } : prev));
   };
 
   const handleCheckoutComplete = async (orderResult) => {
@@ -1441,6 +1454,7 @@ export default function App() {
         onNotificationsClearAll={handleNotificationsClearAll}
         onNotificationNavigate={handleNotificationNavigate}
         onOpenNotificationsInbox={() => navigate('/notifications')}
+        hasSaleOffers={hasSaleOffers}
       />
 
       <motion.div
@@ -1578,6 +1592,15 @@ export default function App() {
             }
           />
 
+          <Route
+            path="/links"
+            element={
+              <Suspense fallback={null}>
+                <LinksView t={t} lang={lang} />
+              </Suspense>
+            }
+          />
+
           {/* How it Works page */}
           <Route
             path="/how"
@@ -1630,6 +1653,7 @@ export default function App() {
                 user={user}
                 updateProduct={updateProduct}
                 updateGame={updateGame}
+                deleteGame={deleteGame}
                 loadingCatalog={loadingGames}
                 onBuyNow={openBuyOffer}
               />
@@ -1650,6 +1674,7 @@ export default function App() {
                 user={user}
                 updateProduct={updateProduct}
                 updateGame={updateGame}
+                deleteGame={deleteGame}
                 loadingGames={loadingGames}
                 catalogMode={paymentConfig.g2bulkCatalogMode || 'sync'}
                 onLiveCatalogUpdate={handleLiveCatalogUpdate}
@@ -1769,7 +1794,7 @@ export default function App() {
                   navigate={navigate}
                   onLogout={handleLogout}
                   onRecharge={() => navigate('/recharge')}
-                  onUpdateName={updateUserName}
+                  onUpdateProfile={updateUserProfile}
                 />
               ) : (
                 <Navigate to="/login" replace />
@@ -1812,7 +1837,7 @@ export default function App() {
           />
 
           <Route
-            path="/dashboard"
+            path="/dashboard/*"
             element={
               loadingAuth ? (
                 <div className="flex items-center justify-center min-h-[50vh]">
@@ -1829,6 +1854,7 @@ export default function App() {
                   createProduct={createProduct}
                   updateProduct={updateProduct}
                   deleteProduct={deleteProduct}
+                  deleteGame={deleteGame}
                   updateGame={updateGame}
                   refreshProducts={fetchGames}
                   refreshOffers={fetchOffers}
@@ -1927,6 +1953,7 @@ export default function App() {
           t={t}
           onClose={() => setAdminEditGame(null)}
           onSave={saveGame}
+          onDelete={deleteGame}
         />
       )}
 
@@ -1934,7 +1961,6 @@ export default function App() {
         <Suspense fallback={null}>
           <CarouselAddPicker
             games={games}
-            offers={offers}
             lang={lang}
             t={t}
             onClose={() => setAdminCarouselPickerOpen(false)}
@@ -1949,7 +1975,6 @@ export default function App() {
           <AdminCarouselManager
             games={getCarouselManageableGames(games)}
             catalogGames={games}
-            offers={offers}
             lang={lang}
             t={t}
             onClose={() => setAdminCarouselOpen(false)}

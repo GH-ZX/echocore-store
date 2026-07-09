@@ -1,10 +1,11 @@
 import { useEffect, useState, useMemo } from 'react';
-import { X } from 'lucide-react';
+import { Trash2, X } from 'lucide-react';
 import { uploadImage } from '../../lib/uploadImage';
+import ConfirmDialog from '../ui/ConfirmDialog';
 import ImageFocusPicker from './ImageFocusPicker';
 import GameImageSearch from './GameImageSearch';
 
-export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose, onSave }) {
+export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose, onSave, onDelete }) {
   const [form, setForm] = useState({
     name_en: '',
     slug: '',
@@ -22,6 +23,8 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
   const [coverFile, setCoverFile] = useState(null);
   const [coverPreviewUrl, setCoverPreviewUrl] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [error, setError] = useState('');
 
   const isNew = !game?.id;
@@ -113,6 +116,22 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
       setError(err.message || t.failedToSaveGame || 'Failed to save game.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!game?.id || !onDelete) return;
+    setError('');
+    setDeleting(true);
+    try {
+      await onDelete(game.id);
+      setShowDeleteConfirm(false);
+      onClose();
+    } catch (err) {
+      setError(err.message || t.failedToDeleteGame || 'Failed to delete game.');
+      setShowDeleteConfirm(false);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -268,16 +287,40 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
             <div className="rounded border border-red-500/60 bg-red-500/10 p-2 text-xs text-red-400">{error}</div>
           )}
 
-          <div className="flex gap-2 pt-1">
-            <button type="submit" disabled={saving} className="btn btn-primary flex-1 py-3 disabled:opacity-60">
-              {saving ? (t.uploading || 'Saving...') : (isNew ? (t.addGame || 'Add Game') : (t.updateGameBtn || 'Update Game'))}
-            </button>
-            <button type="button" onClick={onClose} className="btn btn-secondary px-5">
-              {t.cancel || 'Cancel'}
-            </button>
+          <div className="flex flex-col gap-2 pt-1">
+            <div className="flex gap-2">
+              <button type="submit" disabled={saving || deleting} className="btn btn-primary flex-1 py-3 disabled:opacity-60">
+                {saving ? (t.uploading || 'Saving...') : (isNew ? (t.addGame || 'Add Game') : (t.updateGameBtn || 'Update Game'))}
+              </button>
+              <button type="button" onClick={onClose} disabled={saving || deleting} className="btn btn-secondary px-5 disabled:opacity-60">
+                {t.cancel || 'Cancel'}
+              </button>
+            </div>
+            {!isNew && onDelete && (
+              <button
+                type="button"
+                disabled={saving || deleting}
+                onClick={() => setShowDeleteConfirm(true)}
+                className="btn w-full py-2.5 text-red-400 border border-red-500/30 hover:bg-red-500/10 disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                {t.deleteGame || t.delete || 'Delete Game'}
+              </button>
+            )}
           </div>
         </form>
       </div>
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title={t.deleteGame || t.delete || 'Delete Game'}
+        message={t.deleteGameConfirm || 'Delete this game? This will also delete all its offers.'}
+        confirmLabel={t.confirm || t.delete || 'Confirm'}
+        cancelLabel={t.cancel || 'Cancel'}
+        loading={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   );
 }

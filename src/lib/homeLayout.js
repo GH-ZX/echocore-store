@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { countDisplayableReviews } from './customerReviews';
 
 export const HOME_SECTION_TYPES = {
   carousel: {
@@ -63,6 +64,13 @@ export const HOME_SECTION_TYPES = {
     descriptionEn: 'Rotating customer testimonials with optional submit form',
     descriptionAr: 'آراء العملاء المتحركة مع نموذج إرسال اختياري',
     singleton: false,
+  },
+  social_links: {
+    labelEn: 'Social Links Hub',
+    labelAr: 'روابط التواصل',
+    descriptionEn: 'Button linking to your Linktree-style social page',
+    descriptionAr: 'زر يوجّه لصفحة روابط التواصل (يوتيوب، تيك توك، وغيرها)',
+    singleton: true,
   },
 };
 
@@ -161,12 +169,19 @@ function defaultSectionConfig(type, id) {
   if (type === 'gaming_accounts') {
     return { ...base, title_en: 'Gaming Accounts', title_ar: 'حسابات الألعاب', limit: 6 };
   }
-  if (type === 'game_picks' || type === 'offer_picks') {
+  if (type === 'game_picks') {
     return {
       ...base,
-      title_en: type === 'game_picks' ? 'Featured Games' : 'Featured Offers',
-      title_ar: type === 'game_picks' ? 'ألعاب مميزة' : 'عروض مميزة',
+      title_en: 'Featured Games',
+      title_ar: 'ألعاب مميزة',
       game_ids: [],
+    };
+  }
+  if (type === 'offer_picks') {
+    return {
+      ...base,
+      title_en: 'Featured Offers',
+      title_ar: 'عروض مميزة',
       offer_ids: [],
     };
   }
@@ -182,6 +197,17 @@ function defaultSectionConfig(type, id) {
       interval_seconds: 6,
       show_submit_form: true,
       review_ids: [],
+    };
+  }
+  if (type === 'social_links') {
+    return {
+      ...base,
+      title_en: 'Follow Us',
+      title_ar: 'تابعنا',
+      subtitle_en: 'YouTube, TikTok, and all our platforms',
+      subtitle_ar: 'يوتيوب، تيك توك، وكل منصاتنا',
+      button_text_en: 'All our links',
+      button_text_ar: 'كل روابطنا',
     };
   }
 
@@ -232,6 +258,10 @@ export function normalizeHomeLayout(value) {
         ? Math.max(3, Math.min(30, Number(raw.interval_seconds)))
         : (defaults.interval_seconds ?? 6),
       show_submit_form: raw.show_submit_form !== false,
+      subtitle_en: raw.subtitle_en || defaults.subtitle_en || '',
+      subtitle_ar: raw.subtitle_ar || defaults.subtitle_ar || '',
+      button_text_en: raw.button_text_en || defaults.button_text_en || '',
+      button_text_ar: raw.button_text_ar || defaults.button_text_ar || '',
     });
   });
 
@@ -239,7 +269,64 @@ export function normalizeHomeLayout(value) {
     return DEFAULT_HOME_LAYOUT.map((section) => ({ ...section }));
   }
 
-  return ensureGamesAfterCarousel(normalized);
+  return normalized;
+}
+
+/** Whether a section is hidden or would render empty on the live home page. */
+export function evaluateHomeSectionStatus(section, context = {}) {
+  if (!section) return { hidden: true, empty: true };
+
+  if (!section.enabled) {
+    return { hidden: true, empty: false };
+  }
+
+  const {
+    carouselCount = 0,
+    gamesCount = 0,
+    giftCardCount = 0,
+    gamingAccountCount = 0,
+    saleOfferCount = 0,
+    offerCount = 0,
+    approvedReviewCount = 0,
+    games = [],
+    offers = [],
+    reviews = [],
+  } = context;
+
+  switch (section.type) {
+    case 'carousel':
+      return { hidden: false, empty: carouselCount === 0 };
+    case 'games':
+      return { hidden: false, empty: gamesCount === 0 };
+    case 'gift_cards':
+      return { hidden: false, empty: giftCardCount === 0 };
+    case 'gaming_accounts':
+      return { hidden: false, empty: gamingAccountCount === 0 };
+    case 'sale_offers':
+      return { hidden: false, empty: saleOfferCount === 0 };
+    case 'suggested_offers':
+      return { hidden: false, empty: offerCount === 0 };
+    case 'game_picks': {
+      const valid = (section.game_ids || []).filter((id) => (
+        games.some((game) => game.id === id && !game.parent_game_id)
+      ));
+      return { hidden: false, empty: valid.length === 0 };
+    }
+    case 'offer_picks': {
+      const valid = (section.offer_ids || []).filter((id) => (
+        offers.some((offer) => offer.id === id && offer.active !== false)
+      ));
+      return { hidden: false, empty: valid.length === 0 };
+    }
+    case 'customer_reviews': {
+      const displayCount = countDisplayableReviews(reviews, section);
+      return { hidden: false, empty: displayCount === 0 };
+    }
+    case 'social_links':
+      return { hidden: false, empty: false };
+    default:
+      return { hidden: false, empty: false };
+  }
 }
 
 export function createHomeSection(type) {

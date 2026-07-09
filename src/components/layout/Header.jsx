@@ -11,6 +11,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import EchoLogo from '../ui/EchoLogo';
 import SiteNav, { MobileNavLinks } from './SiteNav';
 import NotificationBell from './NotificationBell';
+import ProfileAvatar from '../profile/ProfileAvatar';
+import { useHeaderDropdownPosition } from '../../hooks/useHeaderDropdownPosition';
 
 const iconBtn = (extra = '') => `header-btn header-btn-icon ${extra}`.trim();
 
@@ -52,6 +54,7 @@ export default function Header({
   onNotificationsClearAll = () => {},
   onNotificationNavigate = () => {},
   onOpenNotificationsInbox = () => {},
+  hasSaleOffers = true,
 }) {
   const location = useLocation();
   const isMobile = useIsMobile();
@@ -63,7 +66,13 @@ export default function Header({
   const mobileSearchRef = useRef(null);
   const inputRef = useRef(null);
   const mobileSearchInputRef = useRef(null);
-  const profileRef = useRef(null);
+  const profileTriggerRef = useRef(null);
+  const profilePanelRef = useRef(null);
+  const { coords: profileCoords, updatePosition: updateProfilePosition } = useHeaderDropdownPosition(
+    profileTriggerRef,
+    profileOpen,
+    { align: 'end', width: 280 },
+  );
   const menuRef = useRef(null);
   const isAdmin = user?.role === 'admin';
   const { wallet: g2bulkWallet, loading: g2bulkLoading } = useAdminG2bulkWallet(isAdmin);
@@ -103,7 +112,10 @@ export default function Header({
       if (!inSearch) {
         setIsSearchOpen(false);
       }
-      if (profileRef.current && !profileRef.current.contains(event.target)) {
+      if (
+        !profileTriggerRef.current?.contains(event.target)
+        && !profilePanelRef.current?.contains(event.target)
+      ) {
         setProfileOpen(false);
       }
     };
@@ -260,13 +272,6 @@ export default function Header({
     />
   ) : null;
 
-  const getInitials = (name, email) => {
-    const source = (name || email || '?').trim();
-    const parts = source.split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-    return source.slice(0, 2).toUpperCase();
-  };
-
   const cartButton = (extraClass = '') => (
     <button
       ref={cartRef}
@@ -282,19 +287,146 @@ export default function Header({
     </button>
   );
 
+  const profileDropdownPanel = user && typeof document !== 'undefined'
+    ? createPortal(
+      <AnimatePresence>
+        {profileOpen && (
+        <motion.div
+          ref={profilePanelRef}
+          key="profile-dropdown"
+          role="menu"
+          initial={{ opacity: 0, y: 8, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 6, scale: 0.97 }}
+          transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+          className="header-profile-dropdown header-glass-dropdown glass-surface"
+          style={{
+            position: 'fixed',
+            top: profileCoords.top,
+            left: profileCoords.left,
+            width: profileCoords.width,
+          }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => handleNav('/profile')}
+            className="header-profile-dd-head"
+          >
+            <ProfileAvatar
+              name={user.name}
+              email={user.email}
+              avatarUrl={user.avatar_url}
+              size="sm"
+              className="header-avatar header-avatar--lg"
+            />
+            <div className="header-profile-dd-head-text">
+              <span className="header-profile-dd-head-name">{user.name}</span>
+              <span className="header-profile-dd-head-email">{user.email}</span>
+            </div>
+            <ChevronRight className="header-profile-dd-head-arrow" strokeWidth={2} aria-hidden="true" />
+          </button>
+
+          <div className="header-profile-dd-body">
+            {isAdmin ? (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => handleNav('/dashboard')}
+                className="header-profile-dd-balance"
+              >
+                <span className="header-profile-dd-balance-icon" aria-hidden="true">
+                  <Zap strokeWidth={2} />
+                </span>
+                <span className="header-profile-dd-balance-copy">
+                  <span className="header-profile-dd-balance-label">
+                    {lang === 'ar' ? 'رصيد G2Bulk' : 'G2Bulk wallet'}
+                  </span>
+                  <span className="header-profile-dd-balance-hint">
+                    {lang === 'ar' ? 'عرض في لوحة التحكم' : 'View in dashboard'}
+                  </span>
+                </span>
+                <G2bulkWalletCard
+                  compact
+                  lang={lang}
+                  balance={g2bulkWallet?.balance ?? 0}
+                  loading={g2bulkLoading}
+                />
+              </button>
+            ) : (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { onRecharge(); setProfileOpen(false); }}
+                className="header-profile-dd-balance"
+              >
+                <span className="header-profile-dd-balance-icon" aria-hidden="true">
+                  <Wallet strokeWidth={2} />
+                </span>
+                <span className="header-profile-dd-balance-copy">
+                  <span className="header-profile-dd-balance-label">
+                    {t.recharge || 'Balance'}
+                  </span>
+                  <span className="header-profile-dd-balance-hint">
+                    {lang === 'ar' ? 'شحن الرصيد' : 'Top up wallet'}
+                  </span>
+                </span>
+                <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
+              </button>
+            )}
+
+            {user?.role === 'admin' && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => handleNav('/dashboard')}
+                className="header-profile-dd-item header-profile-dd-item--accent"
+              >
+                <ShieldCheck className="w-4 h-4" strokeWidth={2} />
+                {t.adminDash}
+              </button>
+            )}
+          </div>
+
+          <div className="header-profile-dd-footer">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { closeAll(); onLogout(); }}
+              className="header-profile-dd-item header-profile-dd-item--danger"
+            >
+              <LogOut className="w-4 h-4" strokeWidth={2} />
+              {t.logout || 'Sign Out'}
+            </button>
+          </div>
+        </motion.div>
+        )}
+      </AnimatePresence>,
+      document.body,
+    )
+    : null;
+
   const profileDropdown = user ? (
-    <div ref={profileRef} className="relative">
+    <div className="relative">
       <button
+        ref={profileTriggerRef}
         type="button"
-        onClick={() => setProfileOpen((prev) => !prev)}
+        onClick={() => {
+          updateProfilePosition();
+          setProfileOpen((prev) => !prev);
+        }}
         className={`header-btn header-profile-trigger ${profileOpen ? 'header-btn--accent' : ''}`}
         aria-label={lang === 'ar' ? 'قائمة الحساب' : 'Account menu'}
         aria-expanded={profileOpen}
         aria-haspopup="menu"
       >
-        <div className="header-avatar" aria-hidden="true">
-          {getInitials(user.name, user.email)}
-        </div>
+        <ProfileAvatar
+          name={user.name}
+          email={user.email}
+          avatarUrl={user.avatar_url}
+          size="sm"
+          className="header-avatar"
+        />
         <span className="header-profile-name hidden lg:inline">
           {user.name}
         </span>
@@ -304,109 +436,7 @@ export default function Header({
           aria-hidden="true"
         />
       </button>
-
-      <AnimatePresence>
-        {profileOpen && (
-          <motion.div
-            key="profile-dropdown"
-            role="menu"
-            initial={{ opacity: 0, y: 8, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 6, scale: 0.97 }}
-            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-            className="header-profile-dropdown"
-          >
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => handleNav('/profile')}
-              className="header-profile-dd-head"
-            >
-              <div className="header-avatar header-avatar--lg" aria-hidden="true">
-                {getInitials(user.name, user.email)}
-              </div>
-              <div className="header-profile-dd-head-text">
-                <span className="header-profile-dd-head-name">{user.name}</span>
-                <span className="header-profile-dd-head-email">{user.email}</span>
-              </div>
-              <ChevronRight className="header-profile-dd-head-arrow" strokeWidth={2} aria-hidden="true" />
-            </button>
-
-            <div className="header-profile-dd-body">
-              {isAdmin ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => handleNav('/dashboard')}
-                  className="header-profile-dd-balance"
-                >
-                  <span className="header-profile-dd-balance-icon" aria-hidden="true">
-                    <Zap strokeWidth={2} />
-                  </span>
-                  <span className="header-profile-dd-balance-copy">
-                    <span className="header-profile-dd-balance-label">
-                      {lang === 'ar' ? 'رصيد G2Bulk' : 'G2Bulk wallet'}
-                    </span>
-                    <span className="header-profile-dd-balance-hint">
-                      {lang === 'ar' ? 'عرض في لوحة التحكم' : 'View in dashboard'}
-                    </span>
-                  </span>
-                  <G2bulkWalletCard
-                    compact
-                    lang={lang}
-                    balance={g2bulkWallet?.balance ?? 0}
-                    loading={g2bulkLoading}
-                  />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => { onRecharge(); setProfileOpen(false); }}
-                  className="header-profile-dd-balance"
-                >
-                  <span className="header-profile-dd-balance-icon" aria-hidden="true">
-                    <Wallet strokeWidth={2} />
-                  </span>
-                  <span className="header-profile-dd-balance-copy">
-                    <span className="header-profile-dd-balance-label">
-                      {t.recharge || 'Balance'}
-                    </span>
-                    <span className="header-profile-dd-balance-hint">
-                      {lang === 'ar' ? 'شحن الرصيد' : 'Top up wallet'}
-                    </span>
-                  </span>
-                  <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
-                </button>
-              )}
-
-              {user?.role === 'admin' && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => handleNav('/dashboard')}
-                  className="header-profile-dd-item header-profile-dd-item--accent"
-                >
-                  <ShieldCheck className="w-4 h-4" strokeWidth={2} />
-                  {t.adminDash}
-                </button>
-              )}
-            </div>
-
-            <div className="header-profile-dd-footer">
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => { closeAll(); onLogout(); }}
-                className="header-profile-dd-item header-profile-dd-item--danger"
-              >
-                <LogOut className="w-4 h-4" strokeWidth={2} />
-                {t.logout || 'Sign Out'}
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {profileDropdownPanel}
     </div>
   ) : null;
 
@@ -478,6 +508,7 @@ export default function Header({
           lang={lang}
           navigate={navigate}
           className="header-site-nav"
+          hasSaleOffers={hasSaleOffers}
         />
 
         {/* Desktop utilities */}
@@ -544,6 +575,7 @@ export default function Header({
                       lang={lang}
                       location={location}
                       onNavigate={handleNav}
+                      hasSaleOffers={hasSaleOffers}
                     />
                   </nav>
 
@@ -606,9 +638,13 @@ export default function Header({
                           onClick={() => handleNav('/profile')}
                           className="header-mobile-profile-card"
                         >
-                          <div className="header-avatar header-avatar--md flex-shrink-0">
-                            {getInitials(user.name, user.email)}
-                          </div>
+                          <ProfileAvatar
+                            name={user.name}
+                            email={user.email}
+                            avatarUrl={user.avatar_url}
+                            size="sm"
+                            className="header-avatar header-avatar--md flex-shrink-0"
+                          />
                           <div className="min-w-0 flex-1 text-left">
                             <div className="text-sm font-bold text-[var(--text-primary)] truncate">{user.name}</div>
                             <div className="text-[11px] text-[var(--text-muted)] truncate">{user.email}</div>

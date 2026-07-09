@@ -17,10 +17,10 @@
   background-image:
     linear-gradient(color-mix(in srgb, var(--accent) 22%, transparent) 1px, transparent 1px),
     linear-gradient(90deg, color-mix(in srgb, var(--accent) 22%, transparent) 1px, transparent 1px);
-  background-size: 42px 42px;
-  transform: perspective(600px) rotateX(58deg) scale(1.35);
+  background-size: calc(42px / var(--hexgrid-density, 1)) calc(42px / var(--hexgrid-density, 1));
+  transform: perspective(600px) rotateX(calc(58deg * var(--hexgrid-tilt, 1))) scale(1.35);
   transform-origin: 50% 100%;
-  animation: hexGridDrift 48s linear infinite;
+  animation: hexGridDrift calc(48s / var(--hexgrid-speed, 1)) linear infinite;
   mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.25) 55%, transparent 100%);
 }
 
@@ -34,7 +34,7 @@
 
 @keyframes hexGridDrift {
   from { background-position: 0 0, 0 0; }
-  to   { background-position: 0 84px, 84px 0; }
+  to   { background-position: 0 calc(84px / var(--hexgrid-density, 1)), calc(84px / var(--hexgrid-density, 1)) 0; }
 }
 
 /* ── Particle field ── */
@@ -59,43 +59,43 @@
 .store-bg-nebula-orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(72px);
+  filter: blur(calc(72px * var(--nebula-blur, 1)));
   opacity: 0.75;
-  animation: nebulaFloat 28s ease-in-out infinite alternate;
+  animation: nebulaFloat calc(28s / var(--nebula-speed, 1)) ease-in-out infinite alternate;
 }
 
 .store-bg-nebula-orb--1 {
-  width: 55vw;
-  height: 55vw;
-  max-width: 520px;
-  max-height: 520px;
+  width: calc(55vw * var(--nebula-size, 1));
+  height: calc(55vw * var(--nebula-size, 1));
+  max-width: calc(520px * var(--nebula-size, 1));
+  max-height: calc(520px * var(--nebula-size, 1));
   top: -12%;
   left: -8%;
   background: color-mix(in srgb, var(--accent) 42%, transparent);
 }
 
 .store-bg-nebula-orb--2 {
-  width: 45vw;
-  height: 45vw;
-  max-width: 440px;
-  max-height: 440px;
+  width: calc(45vw * var(--nebula-size, 1));
+  height: calc(45vw * var(--nebula-size, 1));
+  max-width: calc(440px * var(--nebula-size, 1));
+  max-height: calc(440px * var(--nebula-size, 1));
   top: 28%;
   right: -10%;
   background: color-mix(in srgb, var(--accent-hover, var(--accent)) 28%, #3b82f6 12%);
   animation-delay: -8s;
-  animation-duration: 34s;
+  animation-duration: calc(34s / var(--nebula-speed, 1));
 }
 
 .store-bg-nebula-orb--3 {
-  width: 38vw;
-  height: 38vw;
-  max-width: 360px;
-  max-height: 360px;
+  width: calc(38vw * var(--nebula-size, 1));
+  height: calc(38vw * var(--nebula-size, 1));
+  max-width: calc(360px * var(--nebula-size, 1));
+  max-height: calc(360px * var(--nebula-size, 1));
   bottom: -8%;
   left: 32%;
   background: color-mix(in srgb, var(--accent) 22%, var(--bg-primary));
   animation-delay: -14s;
-  animation-duration: 38s;
+  animation-duration: calc(38s / var(--nebula-speed, 1));
 }
 
 .store-bg-nebula-vignette {
@@ -128,9 +128,9 @@
   background-image: repeating-linear-gradient(
     to bottom,
     transparent 0,
-    transparent 3px,
-    color-mix(in srgb, var(--accent) 22%, rgba(255, 255, 255, 0.04)) 3px,
-    color-mix(in srgb, var(--accent) 22%, rgba(255, 255, 255, 0.04)) 4px
+    transparent calc(3px / var(--scanlines-density, 1)),
+    color-mix(in srgb, var(--accent) 22%, rgba(255, 255, 255, 0.04)) calc(3px / var(--scanlines-density, 1)),
+    color-mix(in srgb, var(--accent) 22%, rgba(255, 255, 255, 0.04)) calc(4px / var(--scanlines-density, 1))
   );
   opacity: 0.85;
 }
@@ -139,7 +139,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  height: 120px;
+  height: calc(120px * var(--scanlines-beam, 1));
   background: linear-gradient(
     to bottom,
     transparent 0%,
@@ -148,16 +148,16 @@
     color-mix(in srgb, var(--accent) 35%, transparent) 58%,
     transparent 100%
   );
-  opacity: 0.55;
-  animation: scanlineBeam 5.5s linear infinite;
+  opacity: calc(0.55 * var(--scanlines-beam, 1));
+  animation: scanlineBeam calc(5.5s / var(--scanlines-speed, 1)) linear infinite;
   mix-blend-mode: screen;
   pointer-events: none;
 }
 
 .store-bg-scanlines-beam--slow {
-  height: 80px;
-  opacity: 0.28;
-  animation-duration: 11s;
+  height: calc(80px * var(--scanlines-beam, 1));
+  opacity: calc(0.28 * var(--scanlines-beam, 1));
+  animation-duration: calc(11s / var(--scanlines-speed, 1));
   animation-delay: -3s;
 }
 
@@ -208,8 +208,8 @@
   inset: -10%;
   background-image:
     radial-gradient(circle, color-mix(in srgb, var(--accent) 55%, transparent) 1px, transparent 1px);
-  background-size: 28px 28px;
-  opacity: 0.35;
+  background-size: calc(28px / var(--circuit-density, 1)) calc(28px / var(--circuit-density, 1));
+  opacity: calc(0.35 * var(--circuit-glow-strength, 1));
   mask-image: radial-gradient(ellipse at 50% 40%, black 25%, transparent 78%);
 }
 
@@ -219,17 +219,17 @@
   background-image:
     linear-gradient(90deg, transparent 49.5%, color-mix(in srgb, var(--accent) 28%, transparent) 50%, transparent 50.5%),
     linear-gradient(transparent 49.5%, color-mix(in srgb, var(--accent) 28%, transparent) 50%, transparent 50.5%);
-  background-size: 56px 56px;
+  background-size: calc(56px / var(--circuit-density, 1)) calc(56px / var(--circuit-density, 1));
   opacity: 0.22;
-  animation: circuitDrift 24s linear infinite;
+  animation: circuitDrift calc(24s / var(--circuit-speed, 1)) linear infinite;
   mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.35) 100%);
 }
 
 .store-bg-circuit-traces--alt {
-  background-size: 84px 84px;
+  background-size: calc(84px / var(--circuit-density, 1)) calc(84px / var(--circuit-density, 1));
   opacity: 0.14;
   animation-direction: reverse;
-  animation-duration: 36s;
+  animation-duration: calc(36s / var(--circuit-speed, 1));
 }
 
 .store-bg-circuit-pulse {
@@ -240,14 +240,15 @@
   border-radius: 50%;
   background: var(--accent);
   box-shadow:
-    0 0 8px var(--accent),
-    0 0 22px color-mix(in srgb, var(--accent) 65%, transparent);
-  animation: circuitPulse 3.2s ease-in-out infinite;
+    0 0 calc(8px * var(--circuit-glow-strength, 1)) var(--accent),
+    0 0 calc(22px * var(--circuit-glow-strength, 1)) color-mix(in srgb, var(--accent) 65%, transparent);
+  animation: circuitPulse calc(3.2s / var(--circuit-pulse-speed, 1)) ease-in-out infinite;
 }
 
 .store-bg-circuit-glow {
   position: absolute;
   inset: 0;
+  opacity: var(--circuit-glow-strength, 1);
   background:
     radial-gradient(ellipse at 50% 100%, color-mix(in srgb, var(--accent) 18%, transparent) 0%, transparent 55%),
     radial-gradient(ellipse at 80% 20%, color-mix(in srgb, var(--accent-hover, var(--accent)) 12%, transparent) 0%, transparent 45%);
@@ -263,12 +264,329 @@
   50%      { transform: scale(1.35); opacity: 1; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .store-bg-hex-grid,
-  .store-bg-nebula-orb,
-  .store-bg-scanlines-beam,
-  .store-bg-circuit-traces,
-  .store-bg-circuit-pulse {
-    animation: none;
+/* ── 3D horizon grid ── */
+.store-bg-grid3d {
+  opacity: var(--bg-effect-opacity, 0.55);
+}
+
+.store-bg-grid3d-scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  perspective: calc(420px * var(--grid3d-depth, 1));
+  perspective-origin: 50% 28%;
+}
+
+.store-bg-grid3d-sky {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 18%, color-mix(in srgb, var(--accent) 16%, transparent) 0%, transparent 52%),
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-primary) 35%, var(--accent) 4%) 0%, var(--bg-primary) 72%);
+}
+
+.store-bg-grid3d-floor {
+  position: absolute;
+  left: -70%;
+  right: -70%;
+  top: 34%;
+  height: 220%;
+  transform-origin: 50% 0%;
+  transform: rotateX(74deg);
+}
+
+.store-bg-grid3d-floor-grid {
+  width: 100%;
+  height: 100%;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--accent) 52%, transparent) 2px, transparent 2px),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 52%, transparent) 2px, transparent 2px);
+  background-size: 72px 72px;
+  animation: grid3dScroll calc(18s / var(--grid3d-speed, 1)) linear infinite;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.35) 55%, transparent 100%);
+}
+
+.store-bg-grid3d-horizon {
+  position: absolute;
+  left: -10%;
+  right: -10%;
+  top: 33.5%;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent) 35%, transparent) 15%,
+    var(--accent) 50%,
+    color-mix(in srgb, var(--accent) 35%, transparent) 85%,
+    transparent 100%
+  );
+  box-shadow:
+    0 0 24px color-mix(in srgb, var(--accent) 70%, transparent),
+    0 0 64px color-mix(in srgb, var(--accent) 35%, transparent);
+  opacity: 0.75;
+}
+
+.store-bg-grid3d-pillar {
+  position: absolute;
+  top: 18%;
+  width: 2px;
+  height: 22%;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent) 55%, transparent) 40%,
+    var(--accent) 100%
+  );
+  opacity: 0.45;
+  filter: blur(0.3px);
+}
+
+.store-bg-grid3d-pillar--left {
+  left: 22%;
+  transform: rotate(-8deg);
+}
+
+.store-bg-grid3d-pillar--right {
+  right: 20%;
+  transform: rotate(8deg);
+}
+
+.store-bg-grid3d-vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 35%, transparent 28%, color-mix(in srgb, var(--bg-primary) 62%, transparent) 100%),
+    linear-gradient(to bottom, transparent 0%, color-mix(in srgb, var(--bg-primary) 48%, transparent) 100%);
+}
+
+@keyframes grid3dScroll {
+  from { background-position: 0 0, 0 0; }
+  to   { background-position: 0 72px, 72px 0; }
+}
+
+[data-glows-enabled='false'] .store-bg-grid3d-horizon,
+[data-glows-enabled='false'] .store-bg-grid3d-canyon-horizon,
+[data-glows-enabled='false'] .store-bg-grid3d-tunnel-vanish,
+[data-glows-enabled='false'] .store-bg-grid3d-rings-glow {
+  box-shadow: none;
+  opacity: 0.45;
+}
+
+/* ── 3D warp tunnel ── */
+.store-bg-grid3d-tunnel {
+  opacity: var(--bg-effect-opacity, 0.55);
+}
+
+.store-bg-grid3d-tunnel-scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  perspective: calc(520px * var(--grid3d-depth, 1));
+  perspective-origin: 50% 50%;
+}
+
+.store-bg-grid3d-tunnel-vanish {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18%;
+  height: 18%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent) 0%, color-mix(in srgb, var(--accent) 35%, transparent) 42%, transparent 72%);
+  box-shadow:
+    0 0 48px color-mix(in srgb, var(--accent) 75%, transparent),
+    0 0 120px color-mix(in srgb, var(--accent) 35%, transparent);
+  opacity: 0.7;
+}
+
+.store-bg-grid3d-tunnel-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 88%;
+  height: 88%;
+  margin: -44% 0 0 -44%;
+  border: 2px solid color-mix(in srgb, var(--accent) 48%, transparent);
+  border-radius: 4px;
+  box-shadow:
+    inset 0 0 24px color-mix(in srgb, var(--accent) 18%, transparent),
+    0 0 16px color-mix(in srgb, var(--accent) 22%, transparent);
+  animation: grid3dTunnelRing calc(5.5s / var(--grid3d-speed, 1)) linear infinite;
+  animation-delay: calc(var(--ring-index) * -0.55s / var(--grid3d-speed, 1));
+  opacity: 0;
+}
+
+@keyframes grid3dTunnelRing {
+  0% {
+    transform: scale(2.4) rotate(0deg);
+    opacity: 0;
   }
+  12% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(0.04) rotate(8deg);
+    opacity: 0;
+  }
+}
+
+/* ── 3D grid canyon ── */
+.store-bg-grid3d-canyon {
+  opacity: var(--bg-effect-opacity, 0.55);
+}
+
+.store-bg-grid3d-canyon-scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  perspective: calc(480px * var(--grid3d-depth, 1));
+  perspective-origin: 50% 32%;
+}
+
+.store-bg-grid3d-canyon-sky {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 12%, color-mix(in srgb, var(--accent) 14%, transparent) 0%, transparent 48%),
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-primary) 30%, var(--accent) 5%) 0%, var(--bg-primary) 68%);
+}
+
+.store-bg-grid3d-canyon-wall {
+  position: absolute;
+  top: 8%;
+  width: 38%;
+  height: 92%;
+  transform-origin: bottom center;
+  overflow: hidden;
+  opacity: 0.55;
+}
+
+.store-bg-grid3d-canyon-wall--left {
+  left: -4%;
+  transform: rotateY(42deg);
+}
+
+.store-bg-grid3d-canyon-wall--right {
+  right: -4%;
+  transform: rotateY(-42deg);
+}
+
+.store-bg-grid3d-canyon-wall::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--accent) 38%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 38%, transparent) 1px, transparent 1px);
+  background-size: 48px 48px;
+  animation: grid3dCanyonWall calc(22s / var(--grid3d-speed, 1)) linear infinite;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9) 0%, transparent 88%);
+}
+
+.store-bg-grid3d-canyon-floor {
+  position: absolute;
+  left: -55%;
+  right: -55%;
+  top: 38%;
+  height: 200%;
+  transform-origin: 50% 0%;
+  transform: rotateX(78deg);
+}
+
+.store-bg-grid3d-canyon-floor-grid {
+  width: 100%;
+  height: 100%;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--accent) 50%, transparent) 2px, transparent 2px),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 50%, transparent) 2px, transparent 2px);
+  background-size: 64px 64px;
+  animation: grid3dScroll calc(16s / var(--grid3d-speed, 1)) linear infinite;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.3) 60%, transparent 100%);
+}
+
+.store-bg-grid3d-canyon-horizon {
+  position: absolute;
+  left: -8%;
+  right: -8%;
+  top: 37.5%;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent) 30%, transparent) 20%,
+    var(--accent) 50%,
+    color-mix(in srgb, var(--accent) 30%, transparent) 80%,
+    transparent 100%
+  );
+  box-shadow:
+    0 0 20px color-mix(in srgb, var(--accent) 65%, transparent),
+    0 0 56px color-mix(in srgb, var(--accent) 30%, transparent);
+  opacity: 0.7;
+}
+
+@keyframes grid3dCanyonWall {
+  from { background-position: 0 0, 0 0; }
+  to   { background-position: 0 48px, 48px 0; }
+}
+
+/* ── 3D orbital rings ── */
+.store-bg-grid3d-rings {
+  opacity: var(--bg-effect-opacity, 0.55);
+}
+
+.store-bg-grid3d-rings-scene {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  perspective: calc(600px * var(--grid3d-depth, 1));
+}
+
+.store-bg-grid3d-rings-glow {
+  position: absolute;
+  width: 28%;
+  height: 28%;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 55%, transparent) 0%, transparent 70%);
+  box-shadow:
+    0 0 64px color-mix(in srgb, var(--accent) 50%, transparent),
+    0 0 140px color-mix(in srgb, var(--accent) 22%, transparent);
+  opacity: 0.75;
+}
+
+.store-bg-grid3d-rings-orbit {
+  position: absolute;
+  width: calc(38% + var(--orbit-index) * 9%);
+  height: calc(22% + var(--orbit-index) * 5%);
+  border: 2px solid color-mix(in srgb, var(--accent) calc(42% + var(--orbit-index) * 4%), transparent);
+  border-radius: 50%;
+  transform: rotateX(calc(62deg + var(--orbit-index) * 6deg)) rotateZ(calc(var(--orbit-index) * 18deg));
+  animation: grid3dRingsSpin calc((14s + var(--orbit-index) * 2s) / var(--grid3d-speed, 1)) linear infinite;
+  opacity: calc(0.35 + var(--orbit-index) * 0.06);
+  box-shadow:
+    0 0 calc(12px + var(--orbit-index) * 2px) color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.store-bg-grid3d-rings-orbit:nth-child(odd) {
+  animation-direction: reverse;
+}
+
+@keyframes grid3dRingsSpin {
+  from { transform: rotateX(calc(62deg + var(--orbit-index) * 6deg)) rotateZ(calc(var(--orbit-index) * 18deg)) rotateY(0deg); }
+  to   { transform: rotateX(calc(62deg + var(--orbit-index) * 6deg)) rotateZ(calc(var(--orbit-index) * 18deg)) rotateY(360deg); }
+}
+
+[data-bg-motion='false'] .store-bg-hex-grid,
+[data-bg-motion='false'] .store-bg-nebula-orb,
+[data-bg-motion='false'] .store-bg-scanlines-beam,
+[data-bg-motion='false'] .store-bg-circuit-traces,
+[data-bg-motion='false'] .store-bg-circuit-pulse,
+[data-bg-motion='false'] .store-bg-grid3d-floor-grid,
+[data-bg-motion='false'] .store-bg-grid3d-canyon-floor-grid,
+[data-bg-motion='false'] .store-bg-grid3d-canyon-wall::before,
+[data-bg-motion='false'] .store-bg-grid3d-tunnel-ring,
+[data-bg-motion='false'] .store-bg-grid3d-rings-orbit {
+  animation: none;
 }

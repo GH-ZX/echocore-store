@@ -79,7 +79,8 @@ export async function fetchApprovedReviews() {
     return [...FALLBACK_CUSTOMER_REVIEWS];
   }
   const rows = Array.isArray(data) ? data : [];
-  return rows.length > 0 ? rows : [...FALLBACK_CUSTOMER_REVIEWS];
+  const source = rows.length > 0 ? rows : [...FALLBACK_CUSTOMER_REVIEWS];
+  return source.map((review) => ({ ...review, status: review.status || 'approved' }));
 }
 
 export async function fetchAllReviews() {
@@ -172,15 +173,31 @@ export function getReviewText(review) {
   return review.content?.trim() || '';
 }
 
+export function isDisplayableReview(review) {
+  if (!review) return false;
+  const status = review.status || 'approved';
+  return status === 'approved';
+}
+
 export function pickReviewsForSection(reviews, section) {
   const limit = Math.max(1, Math.min(20, Number(section.limit) || 8));
   const ids = Array.isArray(section.review_ids) ? section.review_ids : [];
+  const approved = (reviews || []).filter(isDisplayableReview);
 
   let picked = ids.length
-    ? ids.map((id) => reviews.find((r) => r.id === id)).filter(Boolean)
-    : [...reviews];
+    ? ids.map((id) => approved.find((r) => r.id === id)).filter(Boolean)
+    : approved;
+
+  // Saved picks can go stale after deletes — fall back to all approved reviews.
+  if (ids.length > 0 && picked.length === 0) {
+    picked = approved;
+  }
 
   return picked.slice(0, limit);
+}
+
+export function countDisplayableReviews(reviews, section) {
+  return pickReviewsForSection(reviews, section).length;
 }
 
 export function pickStableOffers(offers, limit = 8, seed = 'offers') {

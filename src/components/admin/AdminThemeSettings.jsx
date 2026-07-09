@@ -1,24 +1,32 @@
 import { useState, useEffect, useRef } from 'react';
-import { Palette, Loader2, CheckCircle, AlertCircle, RefreshCw, Save, RotateCcw, Sparkles, Sparkle, ImageIcon } from 'lucide-react';
+import { Palette, Loader2, CheckCircle, AlertCircle, RefreshCw, Save, RotateCcw, Sparkles, Sparkle, ImageIcon, Check, Sun, Moon } from 'lucide-react';
 import { fetchStoreSettings, saveStoreSettings } from '../../lib/storeSettings';
 import { uploadImage } from '../../lib/uploadImage';
 import EchoLogo from '../ui/EchoLogo';
 
 import {
-  DEFAULT_THEME,
-  THEME_PRESETS,
+  getPresetsForMode,
+  getDefaultPresetForMode,
+  isLightColorMode,
   THEME_FIELD_GROUPS,
   EDITABLE_THEME_FIELDS,
   BACKGROUND_TYPES,
+  isGrid3DBackground,
   applyTheme,
   buildFullTheme,
   normalizeThemeOverrides,
   detectPresetId,
+  getPresetPreviewColors,
   pickAppearanceOverrides,
   parseLogoGlow,
   formatLogoGlow,
   glowToHex,
   parseHueDegrees,
+  parseLogoPosition,
+  getEffectiveLogoCoreColor,
+  isLogoCoreColorDefault,
+  getEffectiveLogoBgColor,
+  isLogoBgColorDefault,
 } from '../../lib/theme';
 
 function SliderField({ label, value, min, max, step, onChange }) {
@@ -66,6 +74,168 @@ function ToggleField({ label, value, onChange }) {
   );
 }
 
+function AppearanceSettings({ form, t, lang, onChange, onColorModeChange }) {
+  const isAr = lang === 'ar';
+  const colorMode = form['color-mode'] ?? 'dark';
+  const glowsEnabled = form['glows-enabled'] ?? 'true';
+  const surfacesOpacityEnabled = form['surfaces-opacity-enabled'] ?? 'false';
+  const surfacesOpacity = form['surfaces-opacity'] ?? '0.88';
+  const surfacesStyle = form['surfaces-style'] ?? (surfacesOpacityEnabled === 'true' ? 'transparent' : 'solid');
+  const surfacesGlassBlur = form['surfaces-glass-blur'] ?? '24';
+  const surfacesActive = surfacesStyle !== 'solid' || surfacesOpacityEnabled === 'true';
+
+  const setSurfacesEnabled = (enabled) => {
+    if (enabled) {
+      onChange('surfaces-opacity-enabled', 'true');
+      if ((form['surfaces-style'] ?? 'solid') === 'solid') {
+        onChange('surfaces-style', 'transparent');
+      }
+    } else {
+      onChange('surfaces-opacity-enabled', 'false');
+      onChange('surfaces-style', 'solid');
+    }
+  };
+
+  return (
+    <div className="mb-6 pb-6 border-b border-[var(--border)]">
+      <h3 className="text-lg font-black flex items-center gap-2 mb-1">
+        <Sparkles className="w-4.5 h-4.5 text-[var(--accent)]" />
+        {t.appearanceSettings}
+      </h3>
+      <p className="text-xs text-[var(--text-muted)] mb-4">
+        {t.appearanceSettingsHelp}
+      </p>
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div>
+          <label className="text-xs text-[var(--text-muted)] block mb-2">
+            {t.colorMode}
+          </label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => onColorModeChange('dark')}
+              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all ${
+                colorMode === 'dark'
+                  ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10'
+                  : 'border-[var(--border)] text-[var(--text-sec)] hover:border-[var(--accent)]/35'
+              }`}
+            >
+              <Moon className="w-4 h-4" />
+              {t.colorModeDark}
+            </button>
+            <button
+              type="button"
+              onClick={() => onColorModeChange('light')}
+              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all ${
+                colorMode === 'light'
+                  ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10'
+                  : 'border-[var(--border)] text-[var(--text-sec)] hover:border-[var(--accent)]/35'
+              }`}
+            >
+              <Sun className="w-4 h-4" />
+              {t.colorModeLight}
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <ToggleField
+            label={t.glowsEnabled}
+            value={glowsEnabled}
+            onChange={(v) => onChange('glows-enabled', v)}
+          />
+          <p className="text-[10px] text-[var(--text-muted)] mt-1">
+            {t.glowsEnabledHelp}
+          </p>
+        </div>
+
+        <div className="sm:col-span-2">
+          <ToggleField
+            label={t.surfacesOpacityEnabled}
+            value={surfacesActive ? 'true' : 'false'}
+            onChange={(v) => setSurfacesEnabled(v === 'true')}
+          />
+          <p className="text-[10px] text-[var(--text-muted)] mt-1">
+            {t.surfacesOpacityEnabledHelp}
+          </p>
+          {surfacesActive && (
+            <div className="mt-3 space-y-3">
+              <div>
+                <label className="text-xs text-[var(--text-muted)] block mb-2">
+                  {t.surfacesStyle}
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange('surfaces-opacity-enabled', 'true');
+                      onChange('surfaces-style', 'transparent');
+                    }}
+                    className={`px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
+                      surfacesStyle === 'transparent'
+                        ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10'
+                        : 'border-[var(--border)] text-[var(--text-sec)] hover:border-[var(--accent)]/35'
+                    }`}
+                  >
+                    {t.surfacesStyleTransparent}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange('surfaces-opacity-enabled', 'true');
+                      onChange('surfaces-style', 'frosted');
+                    }}
+                    className={`px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
+                      surfacesStyle === 'frosted'
+                        ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10'
+                        : 'border-[var(--border)] text-[var(--text-sec)] hover:border-[var(--accent)]/35'
+                    }`}
+                  >
+                    {t.surfacesStyleFrosted}
+                  </button>
+                </div>
+              </div>
+              {surfacesStyle === 'frosted' ? (
+                <>
+                  <SliderField
+                    label={t.surfacesGlassBlur}
+                    value={surfacesGlassBlur}
+                    min="12"
+                    max="32"
+                    step="1"
+                    onChange={(v) => onChange('surfaces-glass-blur', v)}
+                  />
+                  <SliderField
+                    label={t.surfacesGlassFill}
+                    value={surfacesOpacity}
+                    min="0.35"
+                    max="1"
+                    step="0.01"
+                    onChange={(v) => onChange('surfaces-opacity', v)}
+                  />
+                </>
+              ) : (
+                <SliderField
+                  label={t.surfacesOpacity}
+                  value={surfacesOpacity}
+                  min="0.35"
+                  max="1"
+                  step="0.01"
+                  onChange={(v) => onChange('surfaces-opacity', v)}
+                />
+              )}
+              <p className="text-[10px] text-[var(--text-muted)]">
+                {surfacesStyle === 'frosted' ? t.surfacesStyleFrostedHelp : t.surfacesStyleTransparentHelp}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BackgroundSettings({ form, t, lang, onChange }) {
   const isAr = lang === 'ar';
   const bgType = form['background-type'] ?? 'aurora';
@@ -76,6 +246,28 @@ function BackgroundSettings({ form, t, lang, onChange }) {
   const auroraBlend = form['aurora-blend'] ?? '0.36';
   const auroraIntensity = form['aurora-intensity'] ?? '1';
   const effectOpacity = form['bg-effect-opacity'] ?? '0.4';
+  const circuitSpeed = form['circuit-speed'] ?? '1';
+  const circuitPulseSpeed = form['circuit-pulse-speed'] ?? '1';
+  const circuitDensity = form['circuit-density'] ?? '1';
+  const circuitPulses = form['circuit-pulses'] ?? '5';
+  const circuitGlowStrength = form['circuit-glow-strength'] ?? '1';
+  const grid3dSpeed = form['grid3d-speed'] ?? '1';
+  const grid3dDepth = form['grid3d-depth'] ?? '1';
+  const hexgridSpeed = form['hexgrid-speed'] ?? '1';
+  const hexgridDensity = form['hexgrid-density'] ?? '1';
+  const hexgridTilt = form['hexgrid-tilt'] ?? '1';
+  const particlesSpeed = form['particles-speed'] ?? '1';
+  const particlesDensity = form['particles-density'] ?? '1';
+  const particlesSize = form['particles-size'] ?? '1';
+  const nebulaSpeed = form['nebula-speed'] ?? '1';
+  const nebulaSize = form['nebula-size'] ?? '1';
+  const nebulaBlur = form['nebula-blur'] ?? '1';
+  const scanlinesSpeed = form['scanlines-speed'] ?? '1';
+  const scanlinesDensity = form['scanlines-density'] ?? '1';
+  const scanlinesBeam = form['scanlines-beam'] ?? '1';
+  const starfieldSpeed = form['starfield-speed'] ?? '1';
+  const starfieldDensity = form['starfield-density'] ?? '1';
+  const starfieldTwinkle = form['starfield-twinkle'] ?? '1';
 
   return (
     <div className="mt-8 pt-6 border-t border-[var(--border)]">
@@ -167,13 +359,241 @@ function BackgroundSettings({ form, t, lang, onChange }) {
           />
         </div>
       )}
+
+      {bgType === 'circuit' && (
+        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4 mt-4">
+          <SliderField
+            label={t.circuitTraceSpeed}
+            value={circuitSpeed}
+            min="0.3"
+            max="2.5"
+            step="0.1"
+            onChange={(v) => onChange('circuit-speed', v)}
+          />
+
+          <SliderField
+            label={t.circuitPulseSpeed}
+            value={circuitPulseSpeed}
+            min="0.3"
+            max="2.5"
+            step="0.1"
+            onChange={(v) => onChange('circuit-pulse-speed', v)}
+          />
+
+          <SliderField
+            label={t.circuitDensity}
+            value={circuitDensity}
+            min="0.5"
+            max="2"
+            step="0.1"
+            onChange={(v) => onChange('circuit-density', v)}
+          />
+
+          <SliderField
+            label={t.circuitPulseCount}
+            value={circuitPulses}
+            min="1"
+            max="12"
+            step="1"
+            onChange={(v) => onChange('circuit-pulses', v)}
+          />
+
+          <SliderField
+            label={t.circuitGlowStrength}
+            value={circuitGlowStrength}
+            min="0.2"
+            max="2"
+            step="0.1"
+            onChange={(v) => onChange('circuit-glow-strength', v)}
+          />
+        </div>
+      )}
+
+      {isGrid3DBackground(bgType) && (
+        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4 mt-4">
+          <SliderField
+            label={t.grid3dSpeed}
+            value={grid3dSpeed}
+            min="0.3"
+            max="2.5"
+            step="0.1"
+            onChange={(v) => onChange('grid3d-speed', v)}
+          />
+
+          <SliderField
+            label={t.grid3dDepth}
+            value={grid3dDepth}
+            min="0.6"
+            max="1.8"
+            step="0.05"
+            onChange={(v) => onChange('grid3d-depth', v)}
+          />
+        </div>
+      )}
+
+      {bgType === 'hexgrid' && (
+        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4 mt-4">
+          <SliderField
+            label={t.hexgridSpeed}
+            value={hexgridSpeed}
+            min="0.3"
+            max="2.5"
+            step="0.1"
+            onChange={(v) => onChange('hexgrid-speed', v)}
+          />
+
+          <SliderField
+            label={t.hexgridDensity}
+            value={hexgridDensity}
+            min="0.5"
+            max="2"
+            step="0.1"
+            onChange={(v) => onChange('hexgrid-density', v)}
+          />
+
+          <SliderField
+            label={t.hexgridTilt}
+            value={hexgridTilt}
+            min="0.7"
+            max="1.4"
+            step="0.05"
+            onChange={(v) => onChange('hexgrid-tilt', v)}
+          />
+        </div>
+      )}
+
+      {bgType === 'particles' && (
+        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4 mt-4">
+          <SliderField
+            label={t.particlesSpeed}
+            value={particlesSpeed}
+            min="0.3"
+            max="2.5"
+            step="0.1"
+            onChange={(v) => onChange('particles-speed', v)}
+          />
+
+          <SliderField
+            label={t.particlesDensity}
+            value={particlesDensity}
+            min="0.4"
+            max="2"
+            step="0.1"
+            onChange={(v) => onChange('particles-density', v)}
+          />
+
+          <SliderField
+            label={t.particlesSize}
+            value={particlesSize}
+            min="0.5"
+            max="2"
+            step="0.1"
+            onChange={(v) => onChange('particles-size', v)}
+          />
+        </div>
+      )}
+
+      {bgType === 'nebula' && (
+        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4 mt-4">
+          <SliderField
+            label={t.nebulaSpeed}
+            value={nebulaSpeed}
+            min="0.3"
+            max="2.5"
+            step="0.1"
+            onChange={(v) => onChange('nebula-speed', v)}
+          />
+
+          <SliderField
+            label={t.nebulaSize}
+            value={nebulaSize}
+            min="0.6"
+            max="1.6"
+            step="0.05"
+            onChange={(v) => onChange('nebula-size', v)}
+          />
+
+          <SliderField
+            label={t.nebulaBlur}
+            value={nebulaBlur}
+            min="0.5"
+            max="2"
+            step="0.1"
+            onChange={(v) => onChange('nebula-blur', v)}
+          />
+        </div>
+      )}
+
+      {bgType === 'scanlines' && (
+        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4 mt-4">
+          <SliderField
+            label={t.scanlinesSpeed}
+            value={scanlinesSpeed}
+            min="0.3"
+            max="2.5"
+            step="0.1"
+            onChange={(v) => onChange('scanlines-speed', v)}
+          />
+
+          <SliderField
+            label={t.scanlinesDensity}
+            value={scanlinesDensity}
+            min="0.5"
+            max="2"
+            step="0.1"
+            onChange={(v) => onChange('scanlines-density', v)}
+          />
+
+          <SliderField
+            label={t.scanlinesBeam}
+            value={scanlinesBeam}
+            min="0.3"
+            max="2"
+            step="0.1"
+            onChange={(v) => onChange('scanlines-beam', v)}
+          />
+        </div>
+      )}
+
+      {bgType === 'starfield' && (
+        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4 mt-4">
+          <SliderField
+            label={t.starfieldSpeed}
+            value={starfieldSpeed}
+            min="0.3"
+            max="2.5"
+            step="0.1"
+            onChange={(v) => onChange('starfield-speed', v)}
+          />
+
+          <SliderField
+            label={t.starfieldDensity}
+            value={starfieldDensity}
+            min="0.4"
+            max="2"
+            step="0.1"
+            onChange={(v) => onChange('starfield-density', v)}
+          />
+
+          <SliderField
+            label={t.starfieldTwinkle}
+            value={starfieldTwinkle}
+            min="0.3"
+            max="2.5"
+            step="0.1"
+            onChange={(v) => onChange('starfield-twinkle', v)}
+          />
+        </div>
+      )}
     </div>
   );
 }
 
-function LogoSettings({ form, displayTheme, t, onChange, onClearLogo }) {
+function LogoSettings({ form, displayTheme, t, onChange, onCoreColorChange, onBgColorChange, onClearLogo }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [liveCoreHex, setLiveCoreHex] = useState(null);
+  const [liveBgHex, setLiveBgHex] = useState(null);
 
   const logoUrl = form['logo-url'] || '';
   const logoAuto = (form['logo-filter-auto'] ?? displayTheme['logo-filter-auto'] ?? 'true') !== 'false';
@@ -182,8 +602,19 @@ function LogoSettings({ form, displayTheme, t, onChange, onClearLogo }) {
   const glowHex = glowToHex(form['logo-glow'] ?? displayTheme['logo-glow']);
   const saturate = parseFloat(form['logo-saturate'] ?? displayTheme['logo-saturate'] ?? '1.04');
   const brightness = parseFloat(form['logo-brightness'] ?? displayTheme['logo-brightness'] ?? '1.02');
-  const zoom = parseFloat(form['logo-zoom'] ?? displayTheme['logo-zoom'] ?? '1.7');
+  const zoom = parseFloat(form['logo-zoom'] ?? displayTheme['logo-zoom'] ?? '1');
+  const posX = parseLogoPosition(form['logo-pos-x'] ?? displayTheme['logo-pos-x'], 50);
+  const posY = parseLogoPosition(form['logo-pos-y'] ?? displayTheme['logo-pos-y'], 50);
   const previewSrc = logoUrl.trim() || undefined;
+  const logoCoreDefault = isLogoCoreColorDefault(form) && !liveCoreHex;
+  const logoCorePicker = liveCoreHex || getEffectiveLogoCoreColor(form, displayTheme.accent);
+  const logoBgEnabled = (form['logo-bg-enabled'] ?? displayTheme['logo-bg-enabled'] ?? 'true') !== 'false';
+  const logoBgDefault = isLogoBgColorDefault(form) && !liveBgHex;
+  const logoBgPicker = liveBgHex || getEffectiveLogoBgColor(form, displayTheme);
+  const previewOverrides = { ...form };
+  if (liveCoreHex) previewOverrides['logo-core-color'] = liveCoreHex;
+  if (liveBgHex) previewOverrides['logo-bg-color'] = liveBgHex;
+  const previewTheme = buildFullTheme(previewOverrides);
 
   const setManual = (key, value) => {
     onChange(key, value);
@@ -217,35 +648,146 @@ function LogoSettings({ form, displayTheme, t, onChange, onClearLogo }) {
       </p>
 
       <div className="grid lg:grid-cols-[auto_1fr] gap-5 items-start">
-        <div
-          className="flex items-center justify-center w-24 h-24 rounded-2xl border border-[var(--border)] overflow-hidden mx-auto lg:mx-0"
-          style={{
-            background: `radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--accent) 14%, var(--bg-surface)), var(--bg-surface))`,
-          }}
-        >
-          <EchoLogo className="w-16 h-16" alt="ECHOCORE" src={previewSrc} />
+        <div className="flex flex-col items-center gap-2 mx-auto lg:mx-0 w-full max-w-[11rem]">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+            {t.livePreview}
+          </span>
+          <div
+            className="flex items-center justify-center w-28 h-28 rounded-2xl border overflow-hidden transition-colors duration-150"
+            style={{
+              background: logoBgEnabled
+                ? `radial-gradient(circle at 50% 45%, color-mix(in srgb, ${previewTheme.accent} 14%, ${previewTheme['logo-bg']}), ${previewTheme['logo-bg']})`
+                : previewTheme['bg-surface'],
+              borderColor: logoBgEnabled ? previewTheme['logo-border'] : previewTheme.border,
+              ['--logo-hue-rotate']: previewTheme['logo-hue-rotate'],
+              ['--logo-glow']: previewTheme['logo-glow'],
+              ['--logo-saturate']: previewTheme['logo-saturate'],
+              ['--logo-brightness']: previewTheme['logo-brightness'],
+              ['--logo-zoom']: previewTheme['logo-zoom'],
+              ['--logo-translate-x']: previewTheme['logo-translate-x'],
+              ['--logo-translate-y']: previewTheme['logo-translate-y'],
+            }}
+          >
+            <EchoLogo className="w-full h-full" alt="ECHOCORE" src={previewSrc} />
+          </div>
+          <ToggleField
+            label={t.logoBgEnabled}
+            value={logoBgEnabled ? 'true' : 'false'}
+            onChange={(v) => onChange('logo-bg-enabled', v)}
+          />
+          {logoBgEnabled && (
+            <div className="w-full pt-1">
+              <label className="text-xs font-semibold text-[var(--text-sec)] mb-1.5 block">
+                {t.logoBgColor}
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={logoBgPicker}
+                  onInput={(e) => {
+                    setLiveBgHex(e.target.value);
+                    onBgColorChange(e.target.value);
+                  }}
+                  onChange={(e) => {
+                    setLiveBgHex(e.target.value);
+                    onBgColorChange(e.target.value);
+                  }}
+                  className="w-11 h-11 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] cursor-pointer p-1"
+                  aria-label={t.logoBgColor}
+                />
+                <div className="min-w-0 flex-1">
+                  <span className="text-xs font-mono text-[var(--accent)] block truncate">
+                    {logoBgPicker}
+                  </span>
+                  <span className="text-[10px] text-[var(--text-muted)] block">
+                    {logoBgDefault ? t.logoBgColorDefault : t.logoBgColorCustom}
+                  </span>
+                </div>
+              </div>
+              {!logoBgDefault && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLiveBgHex(null);
+                    onBgColorChange('');
+                  }}
+                  className="action-chip text-xs gap-1.5 !h-8 !min-h-8 mt-2 w-full justify-center"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  {t.logoBgColorReset}
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="space-y-4 min-w-0">
           <div>
-            <label className="text-xs font-semibold text-[var(--text-sec)] mb-1.5 block">
-              {t.logoFile}
-            </label>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <input
-                type="file"
-                accept="image/png,image/webp,image/jpeg,image/svg+xml"
-                disabled={uploading}
-                onChange={(e) => handleLogoUpload(e.target.files?.[0] || null)}
-                className="input flex-1 text-sm file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-[var(--accent)] file:text-[#040812]"
-              />
-              <input
-                type="url"
-                placeholder={t.logoUrlPlaceholder}
-                value={logoUrl}
-                onChange={(e) => onChange('logo-url', e.target.value)}
-                className="input flex-1 text-sm font-mono"
-              />
+            <div className="flex flex-col lg:flex-row lg:items-end gap-4">
+              <div className="flex-1 min-w-0">
+                <label className="text-xs font-semibold text-[var(--text-sec)] mb-1.5 block">
+                  {t.logoFile}
+                </label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="file"
+                    accept="image/png,image/webp,image/jpeg,image/svg+xml"
+                    disabled={uploading}
+                    onChange={(e) => handleLogoUpload(e.target.files?.[0] || null)}
+                    className="input flex-1 text-sm file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-[var(--accent)] file:text-[#040812]"
+                  />
+                  <input
+                    type="url"
+                    placeholder={t.logoUrlPlaceholder}
+                    value={logoUrl}
+                    onChange={(e) => onChange('logo-url', e.target.value)}
+                    className="input flex-1 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex-shrink-0 lg:w-44">
+                <label className="text-xs font-semibold text-[var(--text-sec)] mb-1.5 block">
+                  {t.logoCoreColor}
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={logoCorePicker}
+                    onInput={(e) => {
+                      setLiveCoreHex(e.target.value);
+                      onCoreColorChange(e.target.value);
+                    }}
+                    onChange={(e) => {
+                      setLiveCoreHex(e.target.value);
+                      onCoreColorChange(e.target.value);
+                    }}
+                    className="w-11 h-11 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] cursor-pointer p-1"
+                    aria-label={t.logoCoreColor}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <span className="text-xs font-mono text-[var(--accent)] block truncate">
+                      {logoCorePicker}
+                    </span>
+                    <span className="text-[10px] text-[var(--text-muted)] block">
+                      {logoCoreDefault ? t.logoCoreColorDefault : t.logoCoreColorCustom}
+                    </span>
+                  </div>
+                </div>
+                {!logoCoreDefault && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLiveCoreHex(null);
+                      onCoreColorChange('');
+                    }}
+                    className="action-chip text-xs gap-1.5 !h-8 !min-h-8 mt-2"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    {t.logoCoreColorReset}
+                  </button>
+                )}
+              </div>
             </div>
             {uploading && (
               <p className="text-xs text-[var(--accent)] mt-1.5 flex items-center gap-1.5">
@@ -276,12 +818,34 @@ function LogoSettings({ form, displayTheme, t, onChange, onClearLogo }) {
 
           <SliderField
             label={t.logoZoom}
-            value={Number.isFinite(zoom) ? zoom.toFixed(2) : '1.7'}
+            value={Number.isFinite(zoom) ? zoom.toFixed(2) : '1'}
             min="1"
-            max="2.5"
+            max="3"
             step="0.05"
             onChange={(v) => onChange('logo-zoom', v)}
           />
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <SliderField
+              label={t.logoPositionX}
+              value={String(posX)}
+              min="0"
+              max="100"
+              step="1"
+              onChange={(v) => onChange('logo-pos-x', v)}
+            />
+            <SliderField
+              label={t.logoPositionY}
+              value={String(posY)}
+              min="0"
+              max="100"
+              step="1"
+              onChange={(v) => onChange('logo-pos-y', v)}
+            />
+          </div>
+          <p className="text-[10px] text-[var(--text-muted)] -mt-2">
+            {t.logoPositionHelp}
+          </p>
 
           <ToggleField
             label={t.logoAutoTint}
@@ -385,6 +949,43 @@ function ColorField({ field, value, onChange, t, lang }) {
         />
       </div>
     </div>
+  );
+}
+
+function ThemePresetCard({ preset, active, isAr, mode, onSelect }) {
+  const colors = getPresetPreviewColors(preset, mode);
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`theme-preset-card group text-left ${active ? 'theme-preset-card--active' : ''}`}
+      aria-pressed={active}
+    >
+      <div
+        className="theme-preset-card__swatch"
+        style={{
+          background: `linear-gradient(145deg, ${colors.bgPrimary} 0%, ${colors.bgSurface} 55%, ${colors.bgPrimary} 100%)`,
+        }}
+      >
+        <span
+          className="theme-preset-card__accent"
+          style={{ background: `linear-gradient(90deg, ${colors.accent}, ${colors.accentHover})` }}
+        />
+        <span className="theme-preset-card__dot" style={{ background: colors.accent }} />
+        <span className="theme-preset-card__text" style={{ color: colors.textPrimary }}>
+          Aa
+        </span>
+        {active && (
+          <span className="theme-preset-card__check">
+            <Check className="w-3 h-3" strokeWidth={3} />
+          </span>
+        )}
+      </div>
+      <span className="theme-preset-card__label">
+        {isAr ? preset.labelAr : preset.labelEn}
+      </span>
+    </button>
   );
 }
 
@@ -540,21 +1141,30 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
     setForm((prev) => {
       const next = { ...prev, [key]: value };
       setPresetId('custom');
-      applyTheme(next);
+      applyTheme(next, { replace: true });
       return next;
     });
   };
 
-  const applyPreset = (preset) => {
+  const colorMode = form['color-mode'] ?? 'dark';
+  const activePresets = getPresetsForMode(colorMode);
+
+  const applyPreset = (preset, mode = colorMode) => {
     setForm((prev) => {
       const next = {
         ...pickAppearanceOverrides(prev),
+        'color-mode': mode,
         ...preset.overrides,
       };
       setPresetId(preset.id);
-      applyTheme(next);
+      applyTheme(next, { replace: true });
       return next;
     });
+  };
+
+  const handleColorModeChange = (mode) => {
+    const defaultPreset = getDefaultPresetForMode(mode);
+    applyPreset(defaultPreset, mode);
   };
 
   const handleReset = () => {
@@ -563,12 +1173,41 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
     applyTheme({}, { replace: true });
   };
 
+  const handleLogoCoreColorChange = (hex) => {
+    setForm((prev) => {
+      const next = { ...prev, 'logo-filter-auto': 'true' };
+      if (hex?.trim()) {
+        next['logo-core-color'] = hex.trim();
+      } else {
+        delete next['logo-core-color'];
+      }
+      setPresetId('custom');
+      applyTheme(next, { replace: true });
+      return next;
+    });
+  };
+
+  const handleLogoBgColorChange = (hex) => {
+    setForm((prev) => {
+      const next = { ...prev };
+      if (hex?.trim()) {
+        next['logo-bg-color'] = hex.trim();
+        next['logo-bg-enabled'] = 'true';
+      } else {
+        delete next['logo-bg-color'];
+      }
+      setPresetId('custom');
+      applyTheme(next, { replace: true });
+      return next;
+    });
+  };
+
   const handleClearLogo = () => {
     setForm((prev) => {
       const next = { ...prev };
       delete next['logo-url'];
       setPresetId('custom');
-      applyTheme(next);
+      applyTheme(next, { replace: true });
       return next;
     });
   };
@@ -623,39 +1262,41 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
           </div>
         </div>
 
+        <AppearanceSettings
+          form={form}
+          t={t}
+          lang={lang}
+          onChange={handleFieldChange}
+          onColorModeChange={handleColorModeChange}
+        />
+
         <div className="mb-6">
-          <div className="text-xs text-[var(--text-muted)] mb-2 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5" />
-            {t.themePresets}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {Object.values(THEME_PRESETS).map((preset) => {
-              const active = presetId === preset.id;
-              const accent = preset.overrides.accent || DEFAULT_THEME.accent;
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => applyPreset(preset)}
-                  className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-all ${
-                    active
-                      ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10'
-                      : 'border-[var(--border)] text-[var(--text-sec)] hover:border-[var(--accent)]/35'
-                  }`}
-                >
-                  <span
-                    className="inline-block w-2.5 h-2.5 rounded-full mr-2 align-middle"
-                    style={{ background: accent }}
-                  />
-                  {isAr ? preset.labelAr : preset.labelEn}
-                </button>
-              );
-            })}
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div className="text-xs text-[var(--text-muted)] flex items-center gap-1.5">
+              {isLightColorMode(form) ? (
+                <Sun className="w-3.5 h-3.5" />
+              ) : (
+                <Moon className="w-3.5 h-3.5" />
+              )}
+              {isLightColorMode(form) ? t.lightThemePresets : t.darkThemePresets}
+            </div>
             {presetId === 'custom' && (
-              <span className="px-3 py-2 rounded-xl border border-dashed border-[var(--border)] text-xs text-[var(--text-muted)]">
+              <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full border border-dashed border-[var(--accent)]/40 text-[var(--accent)]">
                 {t.customTheme}
               </span>
             )}
+          </div>
+          <div className="theme-preset-grid">
+            {Object.values(activePresets).map((preset) => (
+              <ThemePresetCard
+                key={preset.id}
+                preset={preset}
+                active={presetId === preset.id}
+                isAr={isAr}
+                mode={colorMode}
+                onSelect={() => applyPreset(preset)}
+              />
+            ))}
           </div>
         </div>
 
@@ -664,6 +1305,8 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
           displayTheme={displayTheme}
           t={t}
           onChange={handleFieldChange}
+          onCoreColorChange={handleLogoCoreColorChange}
+          onBgColorChange={handleLogoBgColorChange}
           onClearLogo={handleClearLogo}
         />
 

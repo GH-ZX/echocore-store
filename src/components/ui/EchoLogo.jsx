@@ -15,7 +15,7 @@ export default function EchoLogo({ className = 'w-10 h-10', alt = 'ECHOCORE', sr
   const resolvedSrc = src || themeLogoUrl || echoCoreLogo;
 
   return (
-    <span className={`echo-logo-frame inline-flex items-center justify-center overflow-hidden flex-shrink-0 ${className}`}>
+    <span className={`echo-logo-frame overflow-hidden flex-shrink-0 ${className}`}>
       <img
         src={resolvedSrc}
         alt={alt}
@@ -24,7 +24,7 @@ export default function EchoLogo({ className = 'w-10 h-10', alt = 'ECHOCORE', sr
         loading="eager"
         decoding="async"
         fetchPriority="high"
-        className="echo-logo h-full w-full max-w-none object-contain"
+        className="echo-logo"
         draggable={false}
         onError={(e) => {
           if (e.currentTarget.src !== echoCoreLogo) {

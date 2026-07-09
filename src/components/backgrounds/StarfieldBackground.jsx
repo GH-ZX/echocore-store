@@ -33,6 +33,13 @@ export default function StarfieldBackground() {
     let stars = [];
     let accent = readAccentRgb();
     let isVisible = !document.hidden;
+    let motionSpeed = 1;
+    let twinkleScale = 1;
+
+    const readMotion = () => {
+      motionSpeed = readCssNum('--starfield-speed', 1);
+      twinkleScale = readCssNum('--starfield-twinkle', 1);
+    };
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -42,8 +49,10 @@ export default function StarfieldBackground() {
       canvas.style.height = `${window.innerHeight}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
+      const density = readCssNum('--starfield-density', 1);
       const area = window.innerWidth * window.innerHeight;
-      const count = Math.min(220, Math.floor(area / 9000) + 40);
+      const baseCount = Math.floor(area / 9000) + 40;
+      const count = Math.min(320, Math.max(30, Math.floor(baseCount * density)));
 
       stars = Array.from({ length: count }, () => {
         const depth = 0.25 + Math.random() * 0.75;
@@ -54,7 +63,7 @@ export default function StarfieldBackground() {
           r: (0.4 + Math.random() * 1.6) * depth,
           vy: (0.15 + Math.random() * 0.55) * depth,
           twinkle: Math.random() * Math.PI * 2,
-          twinkleSpeed: 0.015 + Math.random() * 0.03,
+          twinkleSpeed: (0.015 + Math.random() * 0.03) * twinkleScale,
           tinted: Math.random() < 0.22,
         };
       });
@@ -70,7 +79,7 @@ export default function StarfieldBackground() {
       ctx.clearRect(0, 0, w, h);
 
       stars.forEach((star) => {
-        star.y += star.vy;
+        star.y += star.vy * motionSpeed;
         star.twinkle += star.twinkleSpeed;
         if (star.y > h + 4) {
           star.y = -4;
@@ -103,9 +112,14 @@ export default function StarfieldBackground() {
       });
     };
 
-    const onTheme = () => { accent = readAccentRgb(); };
+    const onTheme = () => {
+      accent = readAccentRgb();
+      readMotion();
+      resize();
+    };
     const onVisibility = () => { isVisible = !document.hidden; };
 
+    readMotion();
     resize();
     draw();
     window.addEventListener('resize', resize);

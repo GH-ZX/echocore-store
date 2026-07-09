@@ -29,11 +29,11 @@ function ReviewCard({ review, variant = 'active' }) {
       {isActive && <div className="reviews-card-glow" aria-hidden="true" />}
       <div className="reviews-card-body">
         <Quote className="reviews-quote-icon" aria-hidden="true" />
-        <blockquote className="reviews-card-text">{text}</blockquote>
+        <blockquote className="reviews-card-text" dir="auto">{text}</blockquote>
         <footer className="reviews-card-footer">
           <div className="reviews-avatar" aria-hidden="true">{initials}</div>
           <div className="min-w-0">
-            <cite className="reviews-author not-italic">{review.author_name}</cite>
+            <cite className="reviews-author not-italic" dir="auto">{review.author_name}</cite>
             <StarRating rating={review.rating || 5} size={isActive ? 'lg' : 'sm'} />
           </div>
         </footer>
@@ -50,7 +50,6 @@ export default function CustomerReviewsSection({
   user,
   onReviewSubmitted,
 }) {
-  const isAr = lang === 'ar';
   const items = useMemo(() => pickReviewsForSection(reviews, section), [reviews, section]);
   const intervalMs = (Number(section.interval_seconds) || 6) * 1000;
 
@@ -143,7 +142,6 @@ export default function CustomerReviewsSection({
   return (
     <section
       className="customer-reviews-section touch-manipulation"
-      dir={isAr ? 'rtl' : 'ltr'}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocusCapture={() => setPaused(true)}
@@ -160,7 +158,7 @@ export default function CustomerReviewsSection({
       </div>
 
       {items.length > 0 && (
-        <div className="reviews-embla relative max-w-5xl mx-auto px-1 sm:px-2">
+        <div className="reviews-embla relative max-w-5xl mx-auto px-1 sm:px-2" dir="ltr">
           {items.length > 1 && (
             <>
               <button
@@ -184,7 +182,13 @@ export default function CustomerReviewsSection({
 
           <div
             ref={emblaRef}
+            dir="ltr"
             className="reviews-embla__viewport overflow-hidden overscroll-x-contain [-webkit-overflow-scrolling:touch]"
+            onWheel={(e) => {
+              if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+                e.preventDefault();
+              }
+            }}
           >
             <div className="reviews-embla__container flex">
               {items.map((review, index) => (

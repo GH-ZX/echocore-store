@@ -39,6 +39,13 @@ export const NAV_ITEMS = [
   },
 ];
 
+export function buildNavItems(hasSaleOffers = true) {
+  return NAV_ITEMS.filter((item) => {
+    if (item.type === 'link' && item.path === '/sale') return hasSaleOffers;
+    return true;
+  });
+}
+
 export function getNavLabel(t, lang, item) {
   if (t?.[item.labelKey]) return t[item.labelKey];
   return lang === 'ar' ? item.fallbackAr : item.fallbackEn;
@@ -173,7 +180,7 @@ function NavCategoriesDropdown({ t, lang, navigate, item, isPathActive }) {
     ? createPortal(
       <div
         ref={panelRef}
-        className="site-nav-dropdown-portal site-nav-dropdown-portal--categories"
+        className="site-nav-dropdown-portal site-nav-dropdown-portal--categories glass-panel glass-surface"
         role="menu"
         style={{
           position: 'fixed',
@@ -280,7 +287,7 @@ function NavMoreDropdown({ t, lang, navigate, item, isPathActive, isGroupActive 
     ? createPortal(
       <div
         ref={panelRef}
-        className="site-nav-dropdown-portal"
+        className="site-nav-dropdown-portal glass-panel glass-surface"
         role="menu"
         style={{
           position: 'fixed',
@@ -338,8 +345,9 @@ function NavMoreDropdown({ t, lang, navigate, item, isPathActive, isGroupActive 
   );
 }
 
-export default function SiteNav({ t, lang, navigate, className = '' }) {
+export default function SiteNav({ t, lang, navigate, className = '', hasSaleOffers = true }) {
   const location = useLocation();
+  const navItems = buildNavItems(hasSaleOffers);
 
   const isPathActive = (path) => location.pathname === path;
 
@@ -349,7 +357,7 @@ export default function SiteNav({ t, lang, navigate, className = '' }) {
   return (
     <nav className={`site-nav-root ${className}`} dir="ltr" aria-label="Main">
       <ul className="site-nav-list">
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const Icon = item.icon;
 
           if (item.type === 'categories') {
@@ -404,8 +412,15 @@ export default function SiteNav({ t, lang, navigate, className = '' }) {
 }
 
 /** Mobile drawer navigation — flat list, no nested dropdown */
-export function MobileNavLinks({ t, lang, location, onNavigate, linkClassName = 'mobile-nav-link' }) {
-  const links = getFlatNavLinks();
+export function MobileNavLinks({
+  t,
+  lang,
+  location,
+  onNavigate,
+  linkClassName = 'mobile-nav-link',
+  hasSaleOffers = true,
+}) {
+  const links = getFlatNavLinks(buildNavItems(hasSaleOffers));
 
   return (
     <ul className="mobile-nav-list" role="list">

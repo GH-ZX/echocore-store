@@ -26,6 +26,7 @@ export default function OfferDetail({
   user,
   updateProduct,
   updateGame,
+  deleteGame,
   loadingCatalog = false,
   onBuyNow,
 }) {
@@ -181,6 +182,10 @@ export default function OfferDetail({
           t={t}
           onClose={() => setEditingGame(false)}
           onSave={updateGame}
+          onDelete={deleteGame ? async (gameId) => {
+            await deleteGame(gameId);
+            navigate('/');
+          } : undefined}
         />
       )}
     </CatalogPageShell>

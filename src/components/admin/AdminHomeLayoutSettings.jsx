@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   LayoutGrid,
   Loader2,
@@ -12,17 +12,89 @@ import {
   ChevronUp,
   ChevronDown,
   GripVertical,
+  Images,
+  Percent,
+  Gamepad2,
+  Gift,
+  UserCircle,
+  Star,
+  Tags,
+  Sparkles,
+  MessageSquare,
+  Info,
+  Share2,
 } from 'lucide-react';
 import { fetchStoreSettings, saveStoreSettings } from '../../lib/storeSettings';
+import { getCarouselGames } from '../../lib/carouselUtils';
+import {
+  countActiveOffers,
+  getGiftCardGames,
+  getGamingAccountGames,
+  getVisibleTopupGames,
+} from '../../lib/catalogUtils';
+import { offerBelongsToStorefront } from '../../lib/gameRegions';
+import { isDisplayableReview } from '../../lib/customerReviews';
 import {
   DEFAULT_HOME_LAYOUT,
   HOME_SECTION_TYPES,
   createHomeSection,
+  evaluateHomeSectionStatus,
   normalizeHomeLayout,
 } from '../../lib/homeLayout';
 
-function SectionEditor({ section, games, offers, reviews = [], isAr, t = {}, onChange }) {
+const SECTION_TYPE_ICONS = {
+  carousel: Images,
+  sale_offers: Percent,
+  games: Gamepad2,
+  gift_cards: Gift,
+  gaming_accounts: UserCircle,
+  game_picks: Star,
+  offer_picks: Tags,
+  suggested_offers: Sparkles,
+  customer_reviews: MessageSquare,
+  social_links: Share2,
+};
+
+function sectionsEqual(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function SectionStatusBadges({ status, isAr, t = {} }) {
+  if (!status.hidden && !status.empty) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+      {status.hidden && (
+        <span className="home-section-badge home-section-badge--hidden">
+          {t.homeSectionBadgeHidden || (isAr ? 'مخفي' : 'Hidden')}
+        </span>
+      )}
+      {status.empty && (
+        <span className="home-section-badge home-section-badge--empty">
+          {t.homeSectionBadgeEmpty || (isAr ? 'فارغ' : 'Empty')}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function SectionEditor({
+  section,
+  games,
+  offers,
+  reviews = [],
+  isAr,
+  t = {},
+  saving = false,
+  onSave,
+}) {
   const meta = HOME_SECTION_TYPES[section.type];
+  const [draft, setDraft] = useState(section);
+  const isDirty = !sectionsEqual(draft, section);
+
+  useEffect(() => {
+    setDraft(section);
+  }, [section]);
 
   return (
     <div className="mt-3 space-y-3 border-t border-[var(--border)] pt-3">
@@ -33,8 +105,8 @@ function SectionEditor({ section, games, offers, reviews = [], isAr, t = {}, onC
           </label>
           <input
             type="text"
-            value={section.title_en || ''}
-            onChange={(e) => onChange({ ...section, title_en: e.target.value })}
+            value={draft.title_en || ''}
+            onChange={(e) => setDraft((prev) => ({ ...prev, title_en: e.target.value }))}
             className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
           />
         </div>
@@ -44,13 +116,68 @@ function SectionEditor({ section, games, offers, reviews = [], isAr, t = {}, onC
           </label>
           <input
             type="text"
-            value={section.title_ar || ''}
-            onChange={(e) => onChange({ ...section, title_ar: e.target.value })}
+            value={draft.title_ar || ''}
+            onChange={(e) => setDraft((prev) => ({ ...prev, title_ar: e.target.value }))}
             className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
             dir="rtl"
           />
         </div>
       </div>
+
+      {section.type === 'social_links' && (
+        <>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-[var(--text-muted)] block mb-1.5">
+                {isAr ? 'الوصف (إنجليزي)' : 'Subtitle (English)'}
+              </label>
+              <input
+                type="text"
+                value={draft.subtitle_en || ''}
+                onChange={(e) => setDraft((prev) => ({ ...prev, subtitle_en: e.target.value }))}
+                className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-[var(--text-muted)] block mb-1.5">
+                {isAr ? 'الوصف (عربي)' : 'Subtitle (Arabic)'}
+              </label>
+              <input
+                type="text"
+                value={draft.subtitle_ar || ''}
+                onChange={(e) => setDraft((prev) => ({ ...prev, subtitle_ar: e.target.value }))}
+                className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
+                dir="rtl"
+              />
+            </div>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-[var(--text-muted)] block mb-1.5">
+                {isAr ? 'نص الزر (إنجليزي)' : 'Button text (English)'}
+              </label>
+              <input
+                type="text"
+                value={draft.button_text_en || ''}
+                onChange={(e) => setDraft((prev) => ({ ...prev, button_text_en: e.target.value }))}
+                className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-[var(--text-muted)] block mb-1.5">
+                {isAr ? 'نص الزر (عربي)' : 'Button text (Arabic)'}
+              </label>
+              <input
+                type="text"
+                value={draft.button_text_ar || ''}
+                onChange={(e) => setDraft((prev) => ({ ...prev, button_text_ar: e.target.value }))}
+                className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
+                dir="rtl"
+              />
+            </div>
+          </div>
+        </>
+      )}
 
       {(section.type === 'sale_offers' || section.type === 'suggested_offers' || section.type === 'gift_cards' || section.type === 'gaming_accounts') && (
         <div>
@@ -61,11 +188,11 @@ function SectionEditor({ section, games, offers, reviews = [], isAr, t = {}, onC
             type="number"
             min={1}
             max={(section.type === 'gift_cards' || section.type === 'gaming_accounts') ? 12 : 10}
-            value={section.limit ?? ((section.type === 'gift_cards' || section.type === 'gaming_accounts') ? 6 : 8)}
-            onChange={(e) => onChange({
-              ...section,
+            value={draft.limit ?? ((section.type === 'gift_cards' || section.type === 'gaming_accounts') ? 6 : 8)}
+            onChange={(e) => setDraft((prev) => ({
+              ...prev,
               limit: Number(e.target.value) || ((section.type === 'gift_cards' || section.type === 'gaming_accounts') ? 6 : 8),
-            })}
+            }))}
             className="w-28 bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
           />
         </div>
@@ -81,17 +208,17 @@ function SectionEditor({ section, games, offers, reviews = [], isAr, t = {}, onC
               <p className="text-xs text-[var(--text-muted)] p-2">{isAr ? 'لا توجد ألعاب' : 'No games yet'}</p>
             ) : (
               games.map((game) => {
-                const checked = (section.game_ids || []).includes(game.id);
+                const checked = (draft.game_ids || []).includes(game.id);
                 return (
                   <label key={game.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-surface)] cursor-pointer text-sm">
                     <input
                       type="checkbox"
                       checked={checked}
                       onChange={(e) => {
-                        const ids = new Set(section.game_ids || []);
+                        const ids = new Set(draft.game_ids || []);
                         if (e.target.checked) ids.add(game.id);
                         else ids.delete(game.id);
-                        onChange({ ...section, game_ids: [...ids] });
+                        setDraft((prev) => ({ ...prev, game_ids: [...ids] }));
                       }}
                       className="accent-[var(--accent)]"
                     />
@@ -114,17 +241,17 @@ function SectionEditor({ section, games, offers, reviews = [], isAr, t = {}, onC
               <p className="text-xs text-[var(--text-muted)] p-2">{isAr ? 'لا توجد عروض' : 'No offers yet'}</p>
             ) : (
               offers.map((offer) => {
-                const checked = (section.offer_ids || []).includes(offer.id);
+                const checked = (draft.offer_ids || []).includes(offer.id);
                 return (
                   <label key={offer.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-surface)] cursor-pointer text-sm">
                     <input
                       type="checkbox"
                       checked={checked}
                       onChange={(e) => {
-                        const ids = new Set(section.offer_ids || []);
+                        const ids = new Set(draft.offer_ids || []);
                         if (e.target.checked) ids.add(offer.id);
                         else ids.delete(offer.id);
-                        onChange({ ...section, offer_ids: [...ids] });
+                        setDraft((prev) => ({ ...prev, offer_ids: [...ids] }));
                       }}
                       className="accent-[var(--accent)]"
                     />
@@ -148,8 +275,8 @@ function SectionEditor({ section, games, offers, reviews = [], isAr, t = {}, onC
                 type="number"
                 min={1}
                 max={20}
-                value={section.limit ?? 8}
-                onChange={(e) => onChange({ ...section, limit: Number(e.target.value) || 8 })}
+                value={draft.limit ?? 8}
+                onChange={(e) => setDraft((prev) => ({ ...prev, limit: Number(e.target.value) || 8 }))}
                 className="w-28 bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
               />
             </div>
@@ -161,8 +288,8 @@ function SectionEditor({ section, games, offers, reviews = [], isAr, t = {}, onC
                 type="number"
                 min={3}
                 max={30}
-                value={section.interval_seconds ?? 6}
-                onChange={(e) => onChange({ ...section, interval_seconds: Number(e.target.value) || 6 })}
+                value={draft.interval_seconds ?? 6}
+                onChange={(e) => setDraft((prev) => ({ ...prev, interval_seconds: Number(e.target.value) || 6 }))}
                 className="w-28 bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
               />
             </div>
@@ -170,8 +297,8 @@ function SectionEditor({ section, games, offers, reviews = [], isAr, t = {}, onC
           <label className="flex items-center gap-2 text-sm py-1">
             <input
               type="checkbox"
-              checked={section.show_submit_form !== false}
-              onChange={(e) => onChange({ ...section, show_submit_form: e.target.checked })}
+              checked={draft.show_submit_form !== false}
+              onChange={(e) => setDraft((prev) => ({ ...prev, show_submit_form: e.target.checked }))}
               className="accent-[var(--accent)]"
             />
             <span>{t.reviewsShowSubmitForm}</span>
@@ -181,21 +308,21 @@ function SectionEditor({ section, games, offers, reviews = [], isAr, t = {}, onC
               {t.reviewsPickOptional}
             </label>
             <div className="max-h-40 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-2 space-y-1">
-              {reviews.filter((r) => r.status === 'approved').length === 0 ? (
+              {reviews.filter(isDisplayableReview).length === 0 ? (
                 <p className="text-xs text-[var(--text-muted)] p-2">{t.reviewsEmptyApproved}</p>
               ) : (
-                reviews.filter((r) => r.status === 'approved').map((review) => {
-                  const checked = (section.review_ids || []).includes(review.id);
+                reviews.filter(isDisplayableReview).map((review) => {
+                  const checked = (draft.review_ids || []).includes(review.id);
                   return (
                     <label key={review.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-surface)] cursor-pointer text-sm">
                       <input
                         type="checkbox"
                         checked={checked}
                         onChange={(e) => {
-                          const ids = new Set(section.review_ids || []);
+                          const ids = new Set(draft.review_ids || []);
                           if (e.target.checked) ids.add(review.id);
                           else ids.delete(review.id);
-                          onChange({ ...section, review_ids: [...ids] });
+                          setDraft((prev) => ({ ...prev, review_ids: [...ids] }));
                         }}
                         className="accent-[var(--accent)]"
                       />
@@ -215,8 +342,67 @@ function SectionEditor({ section, games, offers, reviews = [], isAr, t = {}, onC
           {isAr ? meta.descriptionAr : meta.descriptionEn}
         </p>
       )}
+
+      <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[var(--border)]">
+        <button
+          type="button"
+          onClick={() => onSave?.(draft)}
+          disabled={saving || !isDirty}
+          className="btn btn-primary action-chip gap-2 !border-0 text-sm disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          {t.saveHomeSection || (isAr ? 'حفظ القسم' : 'Save section')}
+        </button>
+        {isDirty && (
+          <span className="text-xs text-[var(--warning)]">
+            {t.homeSectionUnsaved || (isAr ? 'تغييرات غير محفوظة' : 'Unsaved changes')}
+          </span>
+        )}
+      </div>
     </div>
   );
+}
+
+function getSectionContentHint(type, counts, isAr) {
+  switch (type) {
+    case 'carousel':
+      return isAr
+        ? `${counts.carouselCount} لعبة في السلايدر`
+        : `${counts.carouselCount} carousel game${counts.carouselCount === 1 ? '' : 's'}`;
+    case 'games':
+      return isAr
+        ? `${counts.gamesCount} لعبة جاهزة`
+        : `${counts.gamesCount} live game${counts.gamesCount === 1 ? '' : 's'}`;
+    case 'gift_cards':
+      return isAr
+        ? `${counts.giftCardCount} بطاقة هدايا`
+        : `${counts.giftCardCount} gift card${counts.giftCardCount === 1 ? '' : 's'}`;
+    case 'gaming_accounts':
+      return isAr
+        ? `${counts.gamingAccountCount} حساب/اشتراك`
+        : `${counts.gamingAccountCount} account${counts.gamingAccountCount === 1 ? '' : 's'}`;
+    case 'sale_offers':
+      return isAr
+        ? `${counts.saleOfferCount} عرض خصم`
+        : `${counts.saleOfferCount} sale offer${counts.saleOfferCount === 1 ? '' : 's'}`;
+    case 'suggested_offers':
+    case 'offer_picks':
+      return isAr
+        ? `${counts.offerCount} عرض متاح`
+        : `${counts.offerCount} offer${counts.offerCount === 1 ? '' : 's'} available`;
+    case 'game_picks':
+      return isAr
+        ? `${counts.gamesCount} لعبة للاختيار`
+        : `Pick from ${counts.gamesCount} game${counts.gamesCount === 1 ? '' : 's'}`;
+    case 'customer_reviews':
+      return isAr
+        ? `${counts.approvedReviewCount} مراجعة معتمدة`
+        : `${counts.approvedReviewCount} approved review${counts.approvedReviewCount === 1 ? '' : 's'}`;
+    case 'social_links':
+      return isAr ? 'صفحة روابط التواصل' : 'Linktree-style social page';
+    default:
+      return '';
+  }
 }
 
 export default function AdminHomeLayoutSettings({
@@ -231,18 +417,70 @@ export default function AdminHomeLayoutSettings({
   const isAr = lang === 'ar';
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingSectionId, setSavingSectionId] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [sections, setSections] = useState(DEFAULT_HOME_LAYOUT);
+  const [savedSections, setSavedSections] = useState(DEFAULT_HOME_LAYOUT);
   const [expandedId, setExpandedId] = useState(null);
-  const [addType, setAddType] = useState('game_picks');
+
+  const topupGames = useMemo(
+    () => getVisibleTopupGames(games, offers, { isAdmin: true }),
+    [games, offers],
+  );
+
+  const storefrontOffers = useMemo(
+    () => offers.filter((offer) => offerBelongsToStorefront(offer, games) && offer.active !== false),
+    [offers, games],
+  );
+
+  const statusContext = useMemo(() => ({
+    carouselCount: getCarouselGames(topupGames).length,
+    gamesCount: topupGames.length,
+    giftCardCount: getGiftCardGames(games)
+      .filter((game) => countActiveOffers(game.id, offers) > 0 || game.catalog_source === 'live')
+      .length,
+    gamingAccountCount: getGamingAccountGames(games)
+      .filter((game) => countActiveOffers(game.id, offers) > 0 || game.catalog_source === 'live')
+      .length,
+    saleOfferCount: storefrontOffers.filter((offer) => offer.is_sale).length,
+    offerCount: storefrontOffers.length,
+    approvedReviewCount: reviews.filter(isDisplayableReview).length,
+    games,
+    offers: storefrontOffers,
+    reviews,
+  }), [topupGames, games, offers, storefrontOffers, reviews]);
+
+  const layoutDirty = useMemo(
+    () => !sectionsEqual(sections, savedSections),
+    [sections, savedSections],
+  );
+
+  const pickableGames = useMemo(
+    () => topupGames.filter((game) => !game.parent_game_id),
+    [topupGames],
+  );
+
+  const persistLayout = useCallback(async (nextSections, successMessage) => {
+    const layout = normalizeHomeLayout(nextSections);
+    const current = await fetchStoreSettings();
+    await saveStoreSettings({ ...current, home_layout: layout });
+    setSections([...layout]);
+    setSavedSections([...layout]);
+    onSaved?.(layout);
+    setSuccess(successMessage);
+    setTimeout(() => setSuccess(''), 3000);
+    return layout;
+  }, [onSaved]);
 
   const load = async () => {
     setLoading(true);
     setError('');
     try {
       const data = await fetchStoreSettings();
-      setSections(normalizeHomeLayout(data.home_layout));
+      const layout = normalizeHomeLayout(data.home_layout);
+      setSections(layout);
+      setSavedSections(layout);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -280,26 +518,45 @@ export default function AdminHomeLayoutSettings({
     )));
   };
 
-  const updateSection = (id, nextSection) => {
-    setSections((prev) => prev.map((section) => (section.id === id ? nextSection : section)));
-  };
-
-  const handleAddSection = () => {
-    const meta = HOME_SECTION_TYPES[addType];
-    if (meta?.singleton && sections.some((section) => section.type === addType)) {
-      setError(isAr ? 'هذا القسم موجود بالفعل' : 'This section type already exists on the home page');
+  const handleAddSection = (type) => {
+    const meta = HOME_SECTION_TYPES[type];
+    if (!meta) return;
+    if (meta.singleton && sections.some((section) => section.type === type)) {
+      setError(isAr ? 'هذا القسم موجود بالفعل في الصفحة الرئيسية' : 'This section is already on the home page');
       return;
     }
 
-    const created = createHomeSection(addType);
+    const created = createHomeSection(type);
     if (!created) return;
     setSections((prev) => [...prev, created]);
     setExpandedId(created.id);
     setError('');
+    setSuccess(isAr ? 'تمت الإضافة — احفظ التخطيط لتطبيقه للجميع' : 'Section added — save layout to publish for everyone');
+    setTimeout(() => setSuccess(''), 4000);
+  };
+
+  const handleSaveSection = async (sectionId, draftSection) => {
+    setSavingSectionId(sectionId);
+    setError('');
+    setSuccess('');
+    try {
+      const nextSections = sections.map((section) => (
+        section.id === sectionId ? { ...section, ...draftSection, id: sectionId, type: section.type } : section
+      ));
+      await persistLayout(
+        nextSections,
+        t.homeSectionSaved || (isAr ? 'تم حفظ القسم' : 'Section saved'),
+      );
+    } catch (err) {
+      setError(err.message || (isAr ? 'فشل حفظ القسم' : 'Failed to save section'));
+    } finally {
+      setSavingSectionId(null);
+    }
   };
 
   const handleReset = () => {
-    setSections(DEFAULT_HOME_LAYOUT.map((section) => ({ ...section })));
+    const defaults = DEFAULT_HOME_LAYOUT.map((section) => ({ ...section }));
+    setSections(defaults);
     setExpandedId(null);
   };
 
@@ -308,13 +565,10 @@ export default function AdminHomeLayoutSettings({
     setError('');
     setSuccess('');
     try {
-      const current = await fetchStoreSettings();
-      const layout = normalizeHomeLayout(sections);
-      await saveStoreSettings({ ...current, home_layout: layout });
-      setSections([...layout]);
-      setSuccess(t.homeLayoutSaved || (isAr ? 'تم حفظ تخطيط الصفحة الرئيسية' : 'Home layout saved for all users'));
-      onSaved?.(layout);
-      setTimeout(() => setSuccess(''), 3000);
+      await persistLayout(
+        sections,
+        t.homeLayoutSaved || (isAr ? 'تم حفظ تخطيط الصفحة الرئيسية' : 'Home layout saved for all users'),
+      );
     } catch (err) {
       setError(err.message || (isAr ? 'فشل الحفظ' : 'Save failed'));
     } finally {
@@ -341,8 +595,8 @@ export default function AdminHomeLayoutSettings({
             </h2>
             <p className="text-sm text-[var(--text-sec)] mt-1 max-w-2xl">
               {t.homeLayoutHelp || (isAr
-                ? 'أضف أو احذف أو رتّب أقسام البطاقات في الصفحة الرئيسية كما تريد.'
-                : 'Add, remove, and reorder card sections on the home page.')}
+                ? 'رتّب الأقسام، عدّل العناوين، واحفظ كل قسم أو التخطيط كاملاً.'
+                : 'Reorder sections, edit titles, and save each section or the full layout.')}
             </p>
           </div>
           {onPreviewHomepage && (
@@ -357,6 +611,15 @@ export default function AdminHomeLayoutSettings({
           )}
         </div>
 
+        {layoutDirty && (
+          <div className="mb-4 flex items-start gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-200 text-sm">
+            <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            {t.homeLayoutUnsaved || (isAr
+              ? 'لديك تغييرات على الترتيب أو الظهور لم تُحفظ بعد. اضغط "حفظ التخطيط للجميع".'
+              : 'You have unsaved order or visibility changes. Click "Save Layout for Everyone".')}
+          </div>
+        )}
+
         <div className="space-y-3 mb-6">
           {sections.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[var(--border)] p-6 text-center text-[var(--text-muted)] text-sm">
@@ -366,13 +629,15 @@ export default function AdminHomeLayoutSettings({
             sections.map((section, index) => {
               const meta = HOME_SECTION_TYPES[section.type];
               const expanded = expandedId === section.id;
+              const status = evaluateHomeSectionStatus(section, statusContext);
+              const TypeIcon = SECTION_TYPE_ICONS[section.type] || LayoutGrid;
               return (
                 <div
                   key={section.id}
                   className={`rounded-xl border transition-all ${
                     section.enabled
                       ? 'border-[var(--border)] bg-[var(--bg-primary)]'
-                      : 'border-[var(--border)]/70 bg-[var(--bg-primary)]/60 opacity-75'
+                      : 'border-[var(--border)]/70 bg-[var(--bg-primary)]/60 opacity-80'
                   }`}
                 >
                   <div className="flex items-center gap-2 p-3 sm:p-4">
@@ -382,18 +647,17 @@ export default function AdminHomeLayoutSettings({
                         {index + 1}
                       </span>
                     </div>
+                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--bg-surface)] border border-[var(--border)]">
+                      <TypeIcon className="w-4 h-4 text-[var(--accent)]" />
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-sm sm:text-base truncate">
                         {isAr ? (section.title_ar || meta?.labelAr) : (section.title_en || meta?.labelEn)}
                       </div>
-                      <div className="text-[11px] text-[var(--text-muted)]">
+                      <div className="text-[11px] text-[var(--text-muted)] truncate">
                         {isAr ? meta?.labelAr : meta?.labelEn}
-                        {!section.enabled && (
-                          <span className="ml-2 text-[var(--warning)]">
-                            {isAr ? '• مخفي' : '• Hidden'}
-                          </span>
-                        )}
                       </div>
+                      <SectionStatusBadges status={status} isAr={isAr} t={t} />
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button
@@ -449,12 +713,13 @@ export default function AdminHomeLayoutSettings({
                     <div className="px-4 pb-4">
                       <SectionEditor
                         section={section}
-                        games={games}
-                        offers={offers}
+                        games={pickableGames}
+                        offers={storefrontOffers}
                         reviews={reviews}
                         isAr={isAr}
                         t={t}
-                        onChange={(next) => updateSection(section.id, next)}
+                        saving={savingSectionId === section.id}
+                        onSave={(draft) => handleSaveSection(section.id, draft)}
                       />
                     </div>
                   )}
@@ -464,31 +729,76 @@ export default function AdminHomeLayoutSettings({
           )}
         </div>
 
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-4">
-          <div className="text-sm font-semibold mb-3">
-            {t.addHomeSection || (isAr ? 'إضافة قسم بطاقات' : 'Add card section')}
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-4 sm:p-5">
+          <div className="text-sm font-semibold mb-1">
+            {t.addHomeSection || (isAr ? 'إضافة قسم جديد' : 'Add a new section')}
           </div>
-          <div className="flex flex-wrap gap-2">
-            <select
-              value={addType}
-              onChange={(e) => setAddType(e.target.value)}
-              className="bg-[var(--bg-surface)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none min-w-[220px]"
-            >
-              {Object.entries(HOME_SECTION_TYPES).map(([type, meta]) => (
-                <option key={type} value={type}>
-                  {isAr ? meta.labelAr : meta.labelEn}
-                </option>
-              ))}
-            </select>
-            <button type="button" onClick={handleAddSection} className="action-chip gap-2">
-              <Plus className="w-4 h-4" />
-              {t.addSection || (isAr ? 'إضافة' : 'Add')}
-            </button>
+          <p className="text-xs text-[var(--text-muted)] mb-4 max-w-2xl">
+            {t.addHomeSectionHelp || (isAr
+              ? 'اختر نوع القسم المناسب. الأقسام الفريدة (مثل السلايدر والألعاب) يمكن إضافتها مرة واحدة فقط.'
+              : 'Pick the section that fits your storefront. One-time sections (carousel, games grid) can only be added once.')}
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {Object.entries(HOME_SECTION_TYPES).map(([type, meta]) => {
+              const Icon = SECTION_TYPE_ICONS[type] || LayoutGrid;
+              const alreadyAdded = meta.singleton && sections.some((section) => section.type === type);
+              const hint = getSectionContentHint(type, statusContext, isAr);
+              const disabled = alreadyAdded;
+
+              return (
+                <div
+                  key={type}
+                  className={`rounded-xl border p-4 transition-all ${
+                    disabled
+                      ? 'border-[var(--border)]/60 bg-[var(--bg-surface)]/40 opacity-60'
+                      : 'border-[var(--border)] bg-[var(--bg-surface)] hover:border-[var(--accent)]/35'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[var(--bg-primary)] border border-[var(--border)]">
+                      <Icon className="w-5 h-5 text-[var(--accent)]" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-sm">
+                        {isAr ? meta.labelAr : meta.labelEn}
+                      </div>
+                      <p className="text-[11px] text-[var(--text-muted)] mt-1 leading-snug">
+                        {isAr ? meta.descriptionAr : meta.descriptionEn}
+                      </p>
+                      {hint && (
+                        <p className="text-[10px] text-[var(--accent)]/80 mt-2 font-medium">
+                          {hint}
+                        </p>
+                      )}
+                      {meta.singleton && (
+                        <span className="inline-block mt-2 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+                          {isAr ? 'قسم واحد فقط' : 'One per page'}
+                        </span>
+                      )}
+                      {alreadyAdded && (
+                        <span className="home-section-badge home-section-badge--added ml-0 mt-2">
+                          {isAr ? 'مضاف بالفعل' : 'Already added'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleAddSection(type)}
+                    disabled={disabled}
+                    className="mt-3 w-full action-chip gap-2 justify-center disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Plus className="w-4 h-4" />
+                    {t.addSection || (isAr ? 'إضافة للصفحة' : 'Add to page')}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
 
         <div className="flex flex-wrap gap-2 mt-6 pt-4 border-t border-[var(--border)]">
-          <button type="button" onClick={handleSave} disabled={saving} className="btn btn-primary action-chip gap-2 !border-0">
+          <button type="button" onClick={handleSave} disabled={saving || !layoutDirty} className="btn btn-primary action-chip gap-2 !border-0 disabled:opacity-50">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             {t.saveHomeLayout || (isAr ? 'حفظ التخطيط للجميع' : 'Save Layout for Everyone')}
           </button>

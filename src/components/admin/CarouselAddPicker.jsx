@@ -1,11 +1,9 @@
 import { useMemo, useState } from 'react';
 import { X, Search, Plus, ExternalLink } from 'lucide-react';
 import { getCarouselPickableGames, resolveCarouselLogo } from '../../lib/carouselUtils';
-import { normalizeGameSearchText } from '../../lib/carouselLogoMatch';
 
 export default function CarouselAddPicker({
   games = [],
-  offers = [],
   lang = 'ar',
   t = {},
   onClose,
@@ -18,13 +16,11 @@ export default function CarouselAddPicker({
   const pickableGames = useMemo(() => getCarouselPickableGames(games), [games]);
 
   const filteredGames = useMemo(() => {
-    const q = normalizeGameSearchText(query);
+    const q = query.trim().toLowerCase();
     if (!q) return pickableGames;
     return pickableGames.filter((game) => {
-      const haystack = normalizeGameSearchText(
-        [game.name_en, game.name_ar, game.slug, game.points_name].filter(Boolean).join(' '),
-      );
-      return haystack.includes(q);
+      const name = String(game.name_en || game.name_ar || '').toLowerCase();
+      return name.includes(q);
     });
   }, [pickableGames, query]);
 
@@ -83,7 +79,7 @@ export default function CarouselAddPicker({
             </p>
           ) : (
             filteredGames.map((game) => {
-              const thumbSrc = resolveCarouselLogo(game, games, offers) || game.image_url;
+              const thumbSrc = resolveCarouselLogo(game, games);
               return (
               <div
                 key={game.id}

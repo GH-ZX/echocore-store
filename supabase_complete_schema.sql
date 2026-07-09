@@ -28,6 +28,13 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   id uuid PRIMARY KEY REFERENCES auth.users ON DELETE CASCADE,
   role text NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
   name text,
+  avatar_url text,
+  bio text,
+  phone text,
+  country text,
+  favorite_game text,
+  discord_username text,
+  default_player_uid text,
   balance numeric(10,2) NOT NULL DEFAULT 0,
   created_at timestamptz DEFAULT now()
 );
@@ -758,6 +765,37 @@ CREATE POLICY "Admins can delete from product-images"
       SELECT 1 FROM public.profiles 
       WHERE profiles.id = auth.uid() AND profiles.role = 'admin'
     )
+  );
+
+-- 5. Users manage own avatar files in avatars/ folder
+DROP POLICY IF EXISTS "Users upload own avatar" ON storage.objects;
+CREATE POLICY "Users upload own avatar"
+  ON storage.objects FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    bucket_id = 'product-images'
+    AND (storage.foldername(name))[1] = 'avatars'
+    AND name LIKE ('avatars/' || auth.uid()::text || '-%')
+  );
+
+DROP POLICY IF EXISTS "Users update own avatar" ON storage.objects;
+CREATE POLICY "Users update own avatar"
+  ON storage.objects FOR UPDATE
+  TO authenticated
+  USING (
+    bucket_id = 'product-images'
+    AND (storage.foldername(name))[1] = 'avatars'
+    AND name LIKE ('avatars/' || auth.uid()::text || '-%')
+  );
+
+DROP POLICY IF EXISTS "Users delete own avatar" ON storage.objects;
+CREATE POLICY "Users delete own avatar"
+  ON storage.objects FOR DELETE
+  TO authenticated
+  USING (
+    bucket_id = 'product-images'
+    AND (storage.foldername(name))[1] = 'avatars'
+    AND name LIKE ('avatars/' || auth.uid()::text || '-%')
   );
 
 

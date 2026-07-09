@@ -6,6 +6,7 @@ import ProductCarousel from './ProductCarousel';
 import SaleOfferCard from '../../components/ui/SaleOfferCard';
 import HomeGameCard from '../../components/ui/HomeGameCard';
 import CustomerReviewsSection from './CustomerReviewsSection';
+import SocialLinksHomeSection from '../../components/home/SocialLinksHomeSection';
 import AdminAddCard from '../../components/admin/AdminAddCard';
 import { getCarouselGames, resolveCarouselLogo } from '../../lib/carouselUtils';
 import {
@@ -162,7 +163,7 @@ export default function HomeView({
       name_en: g.name_en,
       name_ar: g.name_ar,
       image_url: g.image_url,
-      logo_url: resolveCarouselLogo(g, games, offers),
+      logo_url: resolveCarouselLogo(g, games),
       description_en: descriptions.description_en,
       description_ar: descriptions.description_ar,
       carousel_focus_x: g.carousel_focus_x ?? 50,
@@ -511,6 +512,16 @@ export default function HomeView({
         if (picked.length === 0 && !(isAdmin && onAddGame)) return null;
         return renderGamesGrid(picked, section, {});
       }
+
+      case 'social_links':
+        return (
+          <SocialLinksHomeSection
+            key={section.id}
+            section={section}
+            lang={lang}
+            t={t}
+          />
+        );
 
       default:
         return null;

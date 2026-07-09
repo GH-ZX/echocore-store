@@ -72,5 +72,12 @@ export const resolveUserData = async (authUser, { createIfMissing = false } = {}
     name: profile.name || authUser.email?.split('@')[0] || 'User',
     role: profile.role || 'user',
     balance: profile.balance ?? 0,
+    avatar_url: profile.avatar_url || '',
+    bio: profile.bio || '',
+    phone: profile.phone || '',
+    country: profile.country || '',
+    favorite_game: profile.favorite_game || '',
+    discord_username: profile.discord_username || '',
+    default_player_uid: profile.default_player_uid || '',
   }
 }
