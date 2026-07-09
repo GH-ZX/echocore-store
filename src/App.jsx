@@ -29,8 +29,10 @@ import {
   fetchUnreadCount,
   markNotificationRead,
   markAllNotificationsRead,
+  clearAllNotifications,
   subscribeToNotifications,
 } from './lib/notifications';
+import { adminMockFulfillOrder, isMockFulfillmentEnabled } from './lib/devTools';
 import { translations } from './data/translations';
 import { Routes, Route, useNavigate, Navigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -229,6 +231,20 @@ export default function App() {
       console.error('Failed to mark all notifications read:', err);
     }
   }, []);
+
+  const handleNotificationsClearAll = useCallback(async () => {
+    try {
+      await clearAllNotifications();
+      setNotifications([]);
+      setUnreadCount(0);
+    } catch (err) {
+      console.error('Failed to clear notifications:', err);
+      showToast(
+        lang === 'ar' ? 'تعذر مسح الإشعارات' : 'Could not clear notifications',
+        'error',
+      );
+    }
+  }, [lang, showToast]);
 
   const handleNotificationNavigate = useCallback((dest) => {
     if (dest?.state) {
@@ -512,6 +528,12 @@ export default function App() {
     }
   };
 
+  const handleDevBalanceCredited = (result) => {
+    if (result?.userId === user?.id && result?.newBalance != null) {
+      setUser((prev) => (prev ? { ...prev, balance: result.newBalance } : prev));
+    }
+  };
+
   // ============================================
   // INSTANT PURCHASE (Buy Now) — with player UID info
   // Uses atomic RPC for server-side balance + price verification.
@@ -560,6 +582,12 @@ export default function App() {
 
   const tryFulfillOrder = async (orderId) => {
     try {
+      if (isMockFulfillmentEnabled()) {
+        if (user?.role === 'admin') {
+          await adminMockFulfillOrder(orderId);
+        }
+        return;
+      }
       await fulfillOrderG2bulk(orderId);
     } catch (e) {
       console.error('G2Bulk fulfillment:', e);
@@ -1171,6 +1199,7 @@ export default function App() {
         onNotificationsClose={handleNotificationsClose}
         onNotificationMarkRead={handleNotificationMarkRead}
         onNotificationsMarkAllRead={handleNotificationsMarkAllRead}
+        onNotificationsClearAll={handleNotificationsClearAll}
         onNotificationNavigate={handleNotificationNavigate}
       />
 
@@ -1502,6 +1531,7 @@ export default function App() {
                   onRechargeApproved={handleRechargeApproved}
                   onApproveOrder={handleApproveOrder}
                   onRejectOrder={handleRejectOrder}
+                  onDevBalanceCredited={handleDevBalanceCredited}
                 />
               ) : (
                 <Navigate to="/" replace />

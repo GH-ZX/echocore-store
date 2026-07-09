@@ -51,6 +51,7 @@ export default function Header({
   onNotificationsClose = () => {},
   onNotificationMarkRead = () => {},
   onNotificationsMarkAllRead = () => {},
+  onNotificationsClearAll = () => {},
   onNotificationNavigate = () => {},
 }) {
   const location = useLocation();
@@ -146,6 +147,7 @@ export default function Header({
       onClose={onNotificationsClose}
       onMarkRead={onNotificationMarkRead}
       onMarkAllRead={onNotificationsMarkAllRead}
+      onClearAll={onNotificationsClearAll}
       onNavigate={handleBellNavigate}
     />
   ) : null;

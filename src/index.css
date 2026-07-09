@@ -1634,7 +1634,13 @@ html, body {
   border-bottom: 1px solid var(--border);
 }
 
-.header-notif-mark-all {
+.header-notif-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.header-notif-action-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1645,12 +1651,18 @@ html, body {
   background: transparent;
   color: var(--text-sec);
   cursor: pointer;
-  transition: background-color 0.12s ease, color 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
-.header-notif-mark-all:hover {
+.header-notif-action-btn:hover {
   background: color-mix(in srgb, var(--accent) 10%, var(--bg-surface));
   color: var(--accent);
+}
+
+.header-notif-action-btn--danger:hover {
+  background: color-mix(in srgb, #ef4444 12%, var(--bg-surface));
+  color: #f87171;
+  border-color: color-mix(in srgb, #ef4444 35%, var(--border));
 }
 
 .header-notif-list {

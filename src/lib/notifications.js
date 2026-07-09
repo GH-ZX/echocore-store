@@ -27,7 +27,19 @@ export function formatNotification(item, t = {}, lang = 'ar') {
   const reference = m.reference || '';
   const newBalance = formatMoney(m.newBalance);
 
+  const currentBalance = formatMoney(m.currentBalance);
+
   const templates = {
+    recharge_payment_sent: {
+      title: t.notifRechargeQueuedTitle,
+      body: applyTemplate(t.notifRechargeQueuedBody, { amount, balance: currentBalance, reference }),
+      tone: 'info',
+    },
+    order_payment_sent: {
+      title: t.notifOrderQueuedTitle,
+      body: applyTemplate(t.notifOrderQueuedBody, { amount, balance: currentBalance, reference }),
+      tone: 'info',
+    },
     admin_recharge_payment_sent: {
       title: t.notifAdminRechargeTitle,
       body: applyTemplate(t.notifAdminRechargeBody, { amount, user: userName, reference }),
@@ -71,6 +83,26 @@ export function formatNotification(item, t = {}, lang = 'ar') {
       body: applyTemplate(t.notifPurchaseCompletedBody, { amount, balance: newBalance }),
       tone: 'success',
     },
+    delivery_ready: {
+      title: t.notifDeliveryReadyTitle,
+      body: applyTemplate(t.notifDeliveryReadyBody, { amount }),
+      tone: 'success',
+    },
+    topup_delivered: {
+      title: t.notifTopupDeliveredTitle,
+      body: applyTemplate(t.notifTopupDeliveredBody, { amount }),
+      tone: 'success',
+    },
+    order_fulfilled: {
+      title: t.notifOrderFulfilledTitle,
+      body: applyTemplate(t.notifOrderFulfilledBody, { amount }),
+      tone: 'success',
+    },
+    fulfillment_failed: {
+      title: t.notifFulfillmentFailedTitle,
+      body: applyTemplate(t.notifFulfillmentFailedBody, { amount }),
+      tone: 'danger',
+    },
   };
 
   const fallback = {
@@ -86,8 +118,34 @@ export function getNotificationDestination(item, formatted, userRole) {
   if (userRole === 'admin' && formatted.adminTab) {
     return { path: '/dashboard', state: { adminTab: formatted.adminTab } };
   }
+
+  const metadata = item?.metadata || {};
+  const orderId = metadata.orderId;
+
+  if (item?.type === 'recharge_payment_sent' || item?.type === 'recharge_rejected') {
+    return { path: '/recharge' };
+  }
+  if (item?.type === 'recharge_approved') {
+    return { path: '/profile' };
+  }
+  if (orderId && (
+    item?.type === 'purchase_completed'
+    || item?.type === 'order_completed'
+    || item?.type === 'delivery_ready'
+    || item?.type === 'topup_delivered'
+    || item?.type === 'order_fulfilled'
+    || item?.type === 'fulfillment_failed'
+  )) {
+    return { path: `/success?orderId=${orderId}` };
+  }
+  if (item?.type === 'order_payment_sent' || item?.type === 'order_rejected') {
+    return { path: '/profile' };
+  }
   if (item?.link) {
     return { path: item.link };
+  }
+  if (orderId) {
+    return { path: `/success?orderId=${orderId}` };
   }
   return { path: '/profile' };
 }
@@ -123,6 +181,15 @@ export async function markNotificationRead(notificationId) {
 
 export async function markAllNotificationsRead() {
   const { data, error } = await supabase.rpc('mark_all_notifications_read');
+  if (error) {
+    if (isMissingRpc(error)) throw new Error(RPC_SETUP_MSG);
+    throw error;
+  }
+  return typeof data === 'number' ? data : 0;
+}
+
+export async function clearAllNotifications() {
+  const { data, error } = await supabase.rpc('clear_all_notifications');
   if (error) {
     if (isMissingRpc(error)) throw new Error(RPC_SETUP_MSG);
     throw error;

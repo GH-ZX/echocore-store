@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Trash2, Upload, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Zap } from 'lucide-react';
+import { Trash2, Upload, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Zap, FlaskConical } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uploadImage } from '../../lib/uploadImage';
 
@@ -12,6 +12,7 @@ const AdminHomeLayoutSettings = lazy(() => import('../../components/admin/AdminH
 const AdminReviewsManager = lazy(() => import('../../components/admin/AdminReviewsManager'));
 const AdminRechargeManager = lazy(() => import('../../components/admin/AdminRechargeManager'));
 const AdminG2BulkSettings = lazy(() => import('../../components/admin/AdminG2BulkSettings'));
+const AdminDevTools = lazy(() => import('../../components/admin/AdminDevTools'));
 
 function AdminTabLoader() {
   return (
@@ -45,6 +46,7 @@ export default function AdminView({
   onRechargeApproved,
   onApproveOrder,
   onRejectOrder,
+  onDevBalanceCredited,
 }) {
   const notifyError = (message) => onNotify?.(message, 'error');
   const notifySuccess = (message) => onNotify?.(message, 'success');
@@ -513,6 +515,7 @@ export default function AdminView({
             { id: 'theme', label: t.themeTab, shortLabel: t.tabThemeShort, icon: Palette },
             { id: 'home', label: t.homeLayoutTab, shortLabel: t.tabHomeShort, icon: LayoutGrid },
             { id: 'reviews', label: t.reviewsTab, shortLabel: t.tabReviewsShort, icon: MessageSquare },
+            { id: 'devtools', label: t.devToolsTab || 'Dev', shortLabel: 'DEV', icon: FlaskConical },
           ].map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -1353,6 +1356,18 @@ export default function AdminView({
           <AdminReviewsManager
             t={t}
             onChanged={onReviewsChanged}
+          />
+        </Suspense>
+      )}
+
+      {activeTab === 'devtools' && (
+        <Suspense fallback={<AdminTabLoader />}>
+          <AdminDevTools
+            t={t}
+            lang={lang}
+            orders={orders}
+            onBalanceCredited={onDevBalanceCredited}
+            onNotify={onNotify}
           />
         </Suspense>
       )}

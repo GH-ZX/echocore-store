@@ -1,5 +1,5 @@
 import { useRef, useEffect } from 'react';
-import { Bell, CheckCheck, Loader2 } from 'lucide-react';
+import { Bell, CheckCheck, Loader2, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   formatNotification,
@@ -22,7 +22,7 @@ const toneClasses = {
   warning: 'border-amber-500/25 bg-amber-500/8',
   success: 'border-emerald-500/25 bg-emerald-500/8',
   danger: 'border-red-500/25 bg-red-500/8',
-  info: 'border-[var(--border)] bg-[var(--bg-surface)]',
+  info: 'border-sky-500/20 bg-sky-500/6',
 };
 
 export default function NotificationBell({
@@ -37,6 +37,7 @@ export default function NotificationBell({
   onClose = () => {},
   onMarkRead = () => {},
   onMarkAllRead = () => {},
+  onClearAll = () => {},
   onNavigate = () => {},
 }) {
   const ref = useRef(null);
@@ -61,6 +62,16 @@ export default function NotificationBell({
     }
     onClose();
     onNavigate(dest);
+  };
+
+  const handleClearAll = async (event) => {
+    event.stopPropagation();
+    await onClearAll();
+  };
+
+  const handleMarkAllRead = async (event) => {
+    event.stopPropagation();
+    await onMarkAllRead();
   };
 
   return (
@@ -103,16 +114,28 @@ export default function NotificationBell({
                   </div>
                 )}
               </div>
-              {unreadCount > 0 && (
-                <button
-                  type="button"
-                  onClick={onMarkAllRead}
-                  className="header-notif-mark-all"
-                  title={t.markAllRead || (lang === 'ar' ? 'تعليم الكل كمقروء' : 'Mark all read')}
-                >
-                  <CheckCheck className="w-3.5 h-3.5" strokeWidth={2} />
-                </button>
-              )}
+              <div className="header-notif-actions">
+                {unreadCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleMarkAllRead}
+                    className="header-notif-action-btn"
+                    title={t.markAllRead || (lang === 'ar' ? 'تعليم الكل كمقروء' : 'Mark all read')}
+                  >
+                    <CheckCheck className="w-3.5 h-3.5" strokeWidth={2} />
+                  </button>
+                )}
+                {notifications.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearAll}
+                    className="header-notif-action-btn header-notif-action-btn--danger"
+                    title={t.clearNotifications || (lang === 'ar' ? 'مسح الإشعارات' : 'Clear all')}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" strokeWidth={2} />
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="header-notif-list">
@@ -144,7 +167,7 @@ export default function NotificationBell({
                           <div className="text-xs font-bold text-[var(--text-primary)] leading-snug">
                             {formatted.title}
                           </div>
-                          <div className="text-[11px] text-[var(--text-sec)] mt-0.5 leading-snug line-clamp-2">
+                          <div className="text-[11px] text-[var(--text-sec)] mt-0.5 leading-snug line-clamp-3">
                             {formatted.body}
                           </div>
                         </div>
