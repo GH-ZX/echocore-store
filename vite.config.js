@@ -1,17 +1,15 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Default: GitHub project Pages at /echocore-store/
-// Custom GoDaddy domain: set VITE_BASE_PATH=/ and VITE_SITE_DOMAIN=www.yourdomain.com in deploy secrets
-const GH_PAGES_BASE = process.env.VITE_BASE_PATH
-  || (process.env.VITE_SITE_DOMAIN ? '/' : '/echocore-store/');
-
 // https://vite.dev/config/
+// Custom domain: set VITE_BASE_PATH=/ and VITE_SITE_DOMAIN=www.yourdomain.com in deploy secrets
 export default defineConfig(({ command, mode }) => {
   const useProductionBase = command === 'build' || (command === 'serve' && mode === 'production');
+  const productionBase = process.env.VITE_BASE_PATH
+    || (process.env.VITE_SITE_DOMAIN ? '/' : '/echocore-store/');
 
   return {
-    base: useProductionBase ? GH_PAGES_BASE : '/',
+    base: useProductionBase ? productionBase : '/',
     plugins: [react()],
     build: {
       sourcemap: false,
