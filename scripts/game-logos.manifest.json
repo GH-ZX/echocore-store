@@ -1,0 +1,60 @@
+{
+  "bucket": "product-images",
+  "logos": [
+    {
+      "source": "src/assets/valorant-logo.png",
+      "storageName": "valorant-logo.png",
+      "match": {
+        "slugs": ["valorant"],
+        "slugPrefixes": ["valorant-", "valorant--"],
+        "slugIncludes": ["valorant"],
+        "nameIncludes": ["valorant"]
+      }
+    },
+    {
+      "source": "src/assets/league-of-legends-logo.png",
+      "storageName": "league-of-legends-logo.png",
+      "extraStorageNames": ["lol-logo.png"],
+      "match": {
+        "slugs": ["league-of-legends"],
+        "slugPrefixes": ["league-of-legends"],
+        "nameIncludes": ["league of legends"]
+      }
+    },
+    {
+      "source": "src/assets/xbox-logo.png",
+      "storageName": "xbox-logo.png",
+      "match": {
+        "slugIncludes": ["xbox"],
+        "nameIncludes": ["xbox"]
+      }
+    },
+    {
+      "source": "src/assets/valorant.png",
+      "storageName": "valorant-cover.png",
+      "kind": "cover",
+      "match": {
+        "slugs": ["valorant"],
+        "slugPrefixes": ["valorant-", "valorant--"]
+      }
+    },
+    {
+      "source": "src/assets/league-of-legends.png",
+      "storageName": "league-of-legends-cover.png",
+      "kind": "cover",
+      "match": {
+        "slugs": ["league-of-legends"],
+        "slugPrefixes": ["league-of-legends"]
+      }
+    },
+    {
+      "source": "src/assets/xboxpass.png",
+      "storageName": "xbox-game-pass-cover.png",
+      "kind": "cover",
+      "match": {
+        "slugIncludes": ["xbox-game-pass", "game-pass"],
+        "nameIncludes": ["xbox game pass", "game pass"]
+      }
+    }
+  ]
+}

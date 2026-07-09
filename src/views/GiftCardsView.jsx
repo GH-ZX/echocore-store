@@ -1,6 +1,16 @@
 import { Ticket } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import HomeGameCard from '../components/ui/HomeGameCard';
+import CatalogCategoryHeader from '../components/catalog/CatalogCategoryHeader';
+import CatalogPageShell from '../components/catalog/CatalogPageShell';
 import { countActiveOffers, getGiftCardGames } from '../lib/catalogUtils';
+import {
+  CATALOG_NAV_ITEMS,
+  getCatalogNavDesc,
+  getCatalogNavLabel,
+} from '../lib/catalogNav';
+
+const NAV_ITEM = CATALOG_NAV_ITEMS[1];
 
 export default function GiftCardsView({
   games = [],
@@ -12,7 +22,9 @@ export default function GiftCardsView({
   isAdmin = false,
   loading = false,
 }) {
+  const navigate = useNavigate();
   const isAr = lang === 'ar';
+  const categoryLabel = getCatalogNavLabel(t, lang, NAV_ITEM);
   const voucherGames = getGiftCardGames(games)
     .map((game) => ({
       ...game,
@@ -21,25 +33,23 @@ export default function GiftCardsView({
     .filter((game) => game.offerCount > 0 || game.catalog_source === 'live' || isAdmin);
 
   return (
-    <div className="max-w-7xl mx-auto">
-      <div className="mb-8 md:mb-10">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 text-violet-200 text-xs font-bold mb-4">
-          <Ticket className="w-3.5 h-3.5" strokeWidth={2.5} />
-          {isAr ? t.instantCodes || 'أكواد فورية' : t.instantCodes || 'Instant codes'}
-        </div>
-        <h1 className="games-page-title section-heading text-3xl md:text-4xl font-black mb-2">
-          {isAr ? t.giftCards || 'بطاقات الهدايا' : t.giftCards || 'Gift cards & vouchers'}
-        </h1>
-        <p className="games-page-subtitle section-subheading text-left mx-0 max-w-[56ch]">
-          {isAr
-            ? t.giftCardsDesc || 'اشترِ أكواد شحن جاهزة — تُسلَّم فوراً في إيصال الطلب بعد الدفع.'
-            : t.giftCardsDesc || 'Buy ready-to-use redeem codes — delivered instantly on your order receipt after payment.'}
-        </p>
-      </div>
+    <CatalogPageShell
+      wide
+      lang={lang}
+      backLabel={t.backToHome || (isAr ? 'العودة للرئيسية' : 'Back to home')}
+      onBack={() => navigate('/')}
+      breadcrumb={[{ label: categoryLabel }]}
+    >
+      <CatalogCategoryHeader
+        title={categoryLabel}
+        subtitle={getCatalogNavDesc(t, lang, NAV_ITEM) || (isAr
+          ? t.giftCardsDesc || 'اشترِ أكواد شحن جاهزة — تُسلَّم فوراً في إيصال الطلب بعد الدفع.'
+          : t.giftCardsDesc || 'Buy ready-to-use redeem codes — delivered instantly on your order receipt after payment.')}
+      />
 
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {Array.from({ length: 6 }).map((_, index) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+          {Array.from({ length: 8 }).map((_, index) => (
             <div key={index} className="card h-52 animate-pulse bg-[var(--bg-surface)]" />
           ))}
         </div>
@@ -53,7 +63,7 @@ export default function GiftCardsView({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
           {voucherGames.map((game) => (
             <HomeGameCard
               key={game.id}
@@ -69,8 +79,6 @@ export default function GiftCardsView({
           ))}
         </div>
       )}
-
-
-    </div>
+    </CatalogPageShell>
   );
 }

@@ -1,0 +1,87 @@
+import { ShoppingCart, Zap, Globe, Server, Package } from 'lucide-react';
+import { formatPrice, getOfferDiscount } from '../../lib/offerDisplay';
+
+export default function OfferPurchasePanel({
+  offer,
+  game,
+  t = {},
+  lang = 'ar',
+  onBuyNow,
+  onAddToCart,
+  className = '',
+}) {
+  const isAr = lang === 'ar';
+  const discount = getOfferDiscount(offer);
+  const servers = Array.isArray(game?.servers) ? game.servers : [];
+
+  return (
+    <aside className={`catalog-purchase-panel card p-5 sm:p-6 h-fit ${className}`}>
+      <div className="space-y-5">
+        <div>
+          <div className="text-xs uppercase tracking-wider text-[var(--text-muted)] mb-1">{t.price || 'Price'}</div>
+          {offer.is_sale && offer.original_price && (
+            <div className="text-sm line-through text-[var(--text-muted)]">${formatPrice(offer.original_price)}</div>
+          )}
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <div className="text-4xl sm:text-5xl font-black text-[var(--accent)]">${formatPrice(offer.price)}</div>
+            {offer.is_sale && (
+              <span className="text-[10px] px-2 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/25 font-bold">
+                {discount ? `-${discount}%` : (t.sale || 'SALE')}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {offer.amount && (
+          <div className="catalog-purchase-panel__meta">
+            <div className="flex items-center gap-2 text-sm text-[var(--text-sec)]">
+              <Package className="w-4 h-4 text-[var(--accent)] shrink-0" />
+              <span>{t.youReceive || 'You receive'}: <strong className="text-[var(--text-primary)]">{offer.amount} {game?.points_name || ''}</strong></span>
+            </div>
+          </div>
+        )}
+
+        {(offer.region || game?.region_label) && (
+          <div className="catalog-purchase-panel__meta">
+            <div className="flex items-center gap-2 text-sm text-[var(--text-sec)]">
+              <Globe className="w-4 h-4 text-[var(--accent)] shrink-0" />
+              <span>{t.region || 'Region'}: <strong>{offer.region || game.region_label}</strong></span>
+            </div>
+          </div>
+        )}
+
+        {servers.length > 0 && (
+          <div className="catalog-purchase-panel__meta">
+            <div className="flex items-start gap-2 text-sm text-[var(--text-sec)]">
+              <Server className="w-4 h-4 text-[var(--accent)] shrink-0 mt-0.5" />
+              <span>{t.availableServers || 'Servers'}: <strong>{servers.join(', ')}</strong></span>
+            </div>
+          </div>
+        )}
+
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/8 px-3 py-2.5 text-xs text-emerald-200/90 flex items-start gap-2">
+          <Zap className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{t.instantDeliveryNote}</span>
+        </div>
+
+        <div className="hidden lg:flex flex-col gap-2.5 pt-1">
+          <button
+            type="button"
+            onClick={() => onBuyNow?.(offer)}
+            className="btn btn-primary w-full py-3.5 sm:py-4 text-base font-black touch-manipulation"
+          >
+            {t.buyNow || (isAr ? 'اشترِ الآن' : 'Buy now')}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => onAddToCart?.(offer, e)}
+            className="btn btn-secondary w-full py-3 text-sm inline-flex items-center justify-center gap-2 touch-manipulation"
+          >
+            <ShoppingCart className="w-4 h-4" />
+            {t.addToCart || (isAr ? 'أضف للسلة' : 'Add to cart')}
+          </button>
+        </div>
+      </div>
+    </aside>
+  );
+}

@@ -1,6 +1,16 @@
 import { UserCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import HomeGameCard from '../components/ui/HomeGameCard';
+import CatalogCategoryHeader from '../components/catalog/CatalogCategoryHeader';
+import CatalogPageShell from '../components/catalog/CatalogPageShell';
 import { countActiveOffers, getGamingAccountGames } from '../lib/catalogUtils';
+import {
+  CATALOG_NAV_ITEMS,
+  getCatalogNavDesc,
+  getCatalogNavLabel,
+} from '../lib/catalogNav';
+
+const NAV_ITEM = CATALOG_NAV_ITEMS[2];
 
 export default function GamingAccountsView({
   games = [],
@@ -12,7 +22,9 @@ export default function GamingAccountsView({
   isAdmin = false,
   loading = false,
 }) {
+  const navigate = useNavigate();
   const isAr = lang === 'ar';
+  const categoryLabel = getCatalogNavLabel(t, lang, NAV_ITEM);
   const accountGames = getGamingAccountGames(games)
     .map((game) => ({
       ...game,
@@ -21,25 +33,23 @@ export default function GamingAccountsView({
     .filter((game) => game.offerCount > 0 || game.catalog_source === 'live' || isAdmin);
 
   return (
-    <div className="max-w-7xl mx-auto">
-      <div className="mb-8 md:mb-10">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-sky-500/30 bg-sky-500/10 text-sky-200 text-xs font-bold mb-4">
-          <UserCircle className="w-3.5 h-3.5" strokeWidth={2.5} />
-          {isAr ? t.instantCodes || 'أكواد فورية' : t.instantCodes || 'Instant codes'}
-        </div>
-        <h1 className="games-page-title section-heading text-3xl md:text-4xl font-black mb-2">
-          {isAr ? t.gamingAccounts || 'حسابات واشتراكات الألعاب' : t.gamingAccounts || 'Gaming accounts & subscriptions'}
-        </h1>
-        <p className="games-page-subtitle section-subheading text-left mx-0 max-w-[56ch]">
-          {isAr
-            ? t.gamingAccountsDesc || 'Xbox و PlayStation واشتراكات المنصات — أكواد تُسلَّم فوراً بعد الدفع.'
-            : t.gamingAccountsDesc || 'Xbox, PlayStation, and platform subscriptions — codes delivered instantly after payment.'}
-        </p>
-      </div>
+    <CatalogPageShell
+      wide
+      lang={lang}
+      backLabel={t.backToHome || (isAr ? 'العودة للرئيسية' : 'Back to home')}
+      onBack={() => navigate('/')}
+      breadcrumb={[{ label: categoryLabel }]}
+    >
+      <CatalogCategoryHeader
+        title={categoryLabel}
+        subtitle={getCatalogNavDesc(t, lang, NAV_ITEM) || (isAr
+          ? t.gamingAccountsDesc || 'Xbox و PlayStation واشتراكات المنصات — أكواد تُسلَّم فوراً بعد الدفع.'
+          : t.gamingAccountsDesc || 'Xbox, PlayStation, and platform subscriptions — codes delivered instantly after payment.')}
+      />
 
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {Array.from({ length: 6 }).map((_, index) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+          {Array.from({ length: 8 }).map((_, index) => (
             <div key={index} className="card h-52 animate-pulse bg-[var(--bg-surface)]" />
           ))}
         </div>
@@ -53,7 +63,7 @@ export default function GamingAccountsView({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
           {accountGames.map((game) => (
             <HomeGameCard
               key={game.id}
@@ -69,6 +79,6 @@ export default function GamingAccountsView({
           ))}
         </div>
       )}
-    </div>
+    </CatalogPageShell>
   );
 }

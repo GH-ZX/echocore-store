@@ -1934,6 +1934,7 @@ export default function App() {
         <Suspense fallback={null}>
           <CarouselAddPicker
             games={games}
+            offers={offers}
             lang={lang}
             t={t}
             onClose={() => setAdminCarouselPickerOpen(false)}
@@ -1947,6 +1948,8 @@ export default function App() {
         <Suspense fallback={null}>
           <AdminCarouselManager
             games={getCarouselManageableGames(games)}
+            catalogGames={games}
+            offers={offers}
             lang={lang}
             t={t}
             onClose={() => setAdminCarouselOpen(false)}

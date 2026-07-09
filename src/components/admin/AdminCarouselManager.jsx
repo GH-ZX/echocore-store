@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { X, ChevronUp, ChevronDown, Eye, EyeOff, Plus, GripVertical, ExternalLink } from 'lucide-react';
 import AdminEditButton from './AdminEditButton';
+import { resolveCarouselLogo } from '../../lib/carouselUtils';
 
 export default function AdminCarouselManager({
   games = [],
+  catalogGames = games,
+  offers = [],
   lang = 'en',
   t = {},
   onClose,
@@ -78,14 +81,16 @@ export default function AdminCarouselManager({
 
   const gameName = (g) => (lang === 'ar' ? g.name_ar : g.name_en) || g.name_en;
 
-  const renderRow = (game, index, { inCarousel }) => (
+  const renderRow = (game, index, { inCarousel }) => {
+    const thumbSrc = resolveCarouselLogo(game, catalogGames, offers);
+    return (
     <div
       key={game.id}
       className="flex items-center gap-2 sm:gap-3 p-3 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]"
     >
       <GripVertical className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0 hidden sm:block" />
-      {game.logo_url ? (
-        <img src={game.logo_url} alt="" className="w-8 h-8 object-contain flex-shrink-0" />
+      {thumbSrc ? (
+        <img src={thumbSrc} alt="" className="w-8 h-8 object-contain flex-shrink-0" />
       ) : (
         <div className="w-8 h-8 rounded bg-[var(--bg-elevated)] flex-shrink-0" />
       )}
@@ -141,7 +146,8 @@ export default function AdminCarouselManager({
         </button>
       )}
     </div>
-  );
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">

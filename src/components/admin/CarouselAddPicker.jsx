@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import { X, Search, Plus, ExternalLink } from 'lucide-react';
-import { getCarouselPickableGames } from '../../lib/carouselUtils';
+import { getCarouselPickableGames, resolveCarouselLogo } from '../../lib/carouselUtils';
+import { normalizeGameSearchText } from '../../lib/carouselLogoMatch';
 
 export default function CarouselAddPicker({
   games = [],
+  offers = [],
   lang = 'ar',
   t = {},
   onClose,
@@ -16,11 +18,13 @@ export default function CarouselAddPicker({
   const pickableGames = useMemo(() => getCarouselPickableGames(games), [games]);
 
   const filteredGames = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = normalizeGameSearchText(query);
     if (!q) return pickableGames;
     return pickableGames.filter((game) => {
-      const name = String(game.name_en || game.name_ar || '').toLowerCase();
-      return name.includes(q);
+      const haystack = normalizeGameSearchText(
+        [game.name_en, game.name_ar, game.slug, game.points_name].filter(Boolean).join(' '),
+      );
+      return haystack.includes(q);
     });
   }, [pickableGames, query]);
 
@@ -78,14 +82,16 @@ export default function CarouselAddPicker({
                 : (isAr ? 'لا توجد نتائج مطابقة.' : 'No matching games.')}
             </p>
           ) : (
-            filteredGames.map((game) => (
+            filteredGames.map((game) => {
+              const thumbSrc = resolveCarouselLogo(game, games, offers) || game.image_url;
+              return (
               <div
                 key={game.id}
                 className="flex items-center gap-3 p-3 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]"
               >
-                {game.logo_url || game.image_url ? (
+                {thumbSrc ? (
                   <img
-                    src={game.logo_url || game.image_url}
+                    src={thumbSrc}
                     alt=""
                     className="w-9 h-9 object-contain rounded shrink-0"
                   />
@@ -104,7 +110,8 @@ export default function CarouselAddPicker({
                   {t.add || (isAr ? 'إضافة' : 'Add')}
                 </button>
               </div>
-            ))
+            );
+            })
           )}
         </div>
 

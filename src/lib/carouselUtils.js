@@ -1,4 +1,5 @@
 import { isStorefrontGame } from './gameRegions';
+export { resolveCarouselLogo, findCatalogLogoByName, normalizeGameSearchText } from './carouselLogoMatch';
 
 export function sortGamesByCarousel(games = []) {
   return [...games].sort((a, b) => {

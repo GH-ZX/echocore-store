@@ -1,12 +1,20 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { Loader2, List } from 'lucide-react';
 import AdminEditButton from '../components/admin/AdminEditButton';
-import { brandUserText } from '../lib/branding';
 import AdminGameEditModal from '../components/admin/AdminGameEditModal';
 import AdminOfferEditModal from '../components/admin/AdminOfferEditModal';
+import CatalogHero from '../components/catalog/CatalogHero';
+import CatalogPageShell from '../components/catalog/CatalogPageShell';
+import OfferPurchasePanel from '../components/catalog/OfferPurchasePanel';
+import { brandUserText } from '../lib/branding';
+import {
+  getGameDisplayName,
+  getOfferDisplayName,
+  getRedemptionSteps,
+} from '../lib/offerDisplay';
 import { resolveOfferRoute } from '../lib/offerRoutes';
-import { presetImageUrl } from '../lib/imageUtils';
+import { buildGameBreadcrumb } from '../lib/catalogNav';
 
 export default function OfferDetail({
   games,
@@ -25,6 +33,7 @@ export default function OfferDetail({
   const { offer, game, storefrontGame } = resolveOfferRoute(offers, games, { gameSlug, offerSlug });
   const displayGame = storefrontGame || game;
   const isAdmin = user?.role === 'admin';
+  const isAr = lang === 'ar';
   const [editingOffer, setEditingOffer] = useState(false);
   const [editingGame, setEditingGame] = useState(false);
 
@@ -33,7 +42,7 @@ export default function OfferDetail({
       <div className="max-w-4xl mx-auto py-16 sm:py-20">
         <div className="flex flex-col items-center justify-center gap-3">
           <Loader2 className="w-9 h-9 text-[var(--accent)] animate-spin" />
-          <p className="text-[var(--text-sec)]">{t.loadingOffer || (lang === 'ar' ? 'جاري تحميل العرض...' : 'Loading offer...')}</p>
+          <p className="text-[var(--text-sec)]">{t.loadingOffer || (isAr ? 'جاري تحميل العرض...' : 'Loading offer...')}</p>
         </div>
       </div>
     );
@@ -48,161 +57,110 @@ export default function OfferDetail({
     );
   }
 
+  const gameName = displayGame ? getGameDisplayName(displayGame, lang) : '';
+  const offerName = getOfferDisplayName(offer, lang);
+  const description = brandUserText(
+    (isAr ? offer.description_ar : offer.description_en) || t.instantDeliveryNote,
+  );
+  const steps = getRedemptionSteps(game, t, lang);
+  const heroImage = offer.sale_image_url || offer.image_url || displayGame?.image_url;
+  const catalogTrail = displayGame
+    ? buildGameBreadcrumb(displayGame, t, lang, navigate, { offerName })
+    : null;
+
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-4 sm:mb-6 flex flex-wrap items-center justify-between gap-2">
-        <button
-          onClick={() => (displayGame ? navigate(`/game/${displayGame.slug || displayGame.id}`) : navigate('/'))}
-          className="btn btn-secondary text-sm sm:text-base"
-        >
-          ← Back to {displayGame ? brandUserText(lang === 'ar' ? displayGame.name_ar : displayGame.name_en) : 'Game'}
-        </button>
-        {isAdmin && (
-          <div className="flex flex-wrap items-center gap-2">
-            <AdminEditButton label={t.editOffer || 'Edit Offer'} onClick={() => setEditingOffer(true)} />
-            {game && (
-              <AdminEditButton label={t.editGame || 'Edit Game'} onClick={() => setEditingGame(true)} />
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="card overflow-hidden mb-8">
-        <div className="relative h-64 md:h-80">
-          {(offer.sale_image_url || offer.image_url) ? (
-            <img
-              src={presetImageUrl(offer.sale_image_url || offer.image_url, 'heroCover')}
-              alt={lang === 'ar' ? offer.name_ar : offer.name_en}
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-          ) : game?.image_url && (
-            <img
-              src={presetImageUrl(game.image_url, 'heroCover')}
-              alt=""
-              className="absolute inset-0 w-full h-full object-cover"
-            />
+    <CatalogPageShell
+      lang={lang}
+      backLabel={displayGame
+        ? `${isAr ? 'عودة إلى' : 'Back to'} ${gameName}`
+        : (t.backToHome || (isAr ? 'العودة للرئيسية' : 'Back to home'))}
+      onBack={() => (displayGame ? navigate(`/game/${displayGame.slug || displayGame.id}`) : navigate('/'))}
+      breadcrumb={catalogTrail?.breadcrumb || [{ label: offerName }]}
+      adminActions={isAdmin && (
+        <>
+          <AdminEditButton label={t.editOffer || 'Edit offer'} onClick={() => setEditingOffer(true)} />
+          {game && (
+            <AdminEditButton label={t.editGame || 'Edit game'} onClick={() => setEditingGame(true)} />
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/85 to-transparent" />
-          <div className="absolute bottom-0 p-8 w-full">
-            <div className="text-sm opacity-75 mb-1">
-              {game ? brandUserText(lang === 'ar' ? game.name_ar : game.name_en) : ''}
-            </div>
-            <h1 className="text-4xl font-black">
-              {brandUserText(lang === 'ar' ? offer.name_ar : offer.name_en)}
-            </h1>
-          </div>
-        </div>
-      </div>
+        </>
+      )}
+    >
+      <CatalogHero
+        compact
+        imageUrl={heroImage}
+        logoUrl={displayGame?.logo_url}
+        title={offerName}
+        subtitle={gameName}
+        meta={offer.region || game?.region_label || null}
+        badges={offer.is_sale ? [{ label: t.sale || 'SALE', className: 'border-red-400/30 bg-red-500/15 text-red-200' }] : []}
+      />
 
-      <div className="grid md:grid-cols-3 gap-8">
-        {/* Details */}
-        <div className="md:col-span-1 card p-6 h-fit">
-          <div>
-            <div className="text-[var(--text-sec)] text-sm">{t.price}</div>
-            {offer.is_sale && offer.original_price ? (
-              <>
-                <div className="text-sm line-through text-[var(--text-sec)]">${parseFloat(offer.original_price).toFixed(2)}</div>
-                <div className="text-4xl sm:text-5xl font-black text-[var(--accent)]">${parseFloat(offer.price).toFixed(2)}</div>
-              </>
-            ) : (
-              <div className="text-4xl sm:text-5xl font-black text-[var(--accent)]">${parseFloat(offer.price).toFixed(2)}</div>
-            )}
-            {offer.is_sale && <div className="text-[10px] mt-1 px-2 py-0.5 bg-red-500/10 text-red-400 rounded inline-block">{t.sale}</div>}
-          </div>
+      <div className="catalog-detail-layout grid lg:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] gap-6 lg:gap-8 items-start">
+        <OfferPurchasePanel
+          offer={offer}
+          game={game}
+          t={t}
+          lang={lang}
+          onBuyNow={onBuyNow}
+          onAddToCart={addToCart}
+          className="order-1 lg:order-2 lg:sticky lg:top-24"
+        />
 
-          {offer.amount && (
-            <div className="mt-6">
-              <div className="text-[var(--text-sec)] text-sm">{t.youReceive}</div>
-              <div className="text-2xl font-bold">{offer.amount} {game?.points_name || ''}</div>
+        <div className="space-y-5 sm:space-y-6 min-w-0 order-2 lg:order-1">
+          <section className="card p-5 sm:p-6">
+            <div className="flex items-center justify-between gap-2 mb-4">
+              <h2 className="font-bold text-lg sm:text-xl">{t.description || (isAr ? 'الوصف' : 'Description')}</h2>
+              {isAdmin && (
+                <AdminEditButton label={t.edit || 'Edit'} onClick={() => setEditingOffer(true)} />
+              )}
             </div>
-          )}
+            <p className="text-[var(--text-sec)] leading-relaxed text-sm sm:text-base">
+              {description}
+            </p>
+          </section>
 
-          {offer.region && (
-            <div className="mt-6">
-              <div className="text-[var(--text-sec)] text-sm">{t.region}</div>
-              <div className="font-medium">{offer.region}</div>
-            </div>
-          )}
-          {Array.isArray(game?.servers) && game.servers.length > 0 && (
-            <div className="mt-4">
-              <div className="text-[var(--text-sec)] text-sm">{t.availableServers || 'Available Servers'}</div>
-              <div className="text-sm">{game.servers.join(', ')}</div>
-            </div>
-          )}
+          <section className="card p-5 sm:p-6">
+            <h2 className="font-bold text-lg sm:text-xl mb-4">{t.howToApply || (isAr ? 'كيفية الاسترداد' : 'How to redeem')}</h2>
+            <ol className="space-y-3">
+              {steps.map((step, index) => (
+                <li key={step} className="flex gap-3 text-sm text-[var(--text-sec)]">
+                  <span className="catalog-step-num shrink-0">{index + 1}</span>
+                  <span className="pt-0.5">{step}</span>
+                </li>
+              ))}
+            </ol>
+            <p className="text-xs text-[var(--text-muted)] mt-4 pt-4 border-t border-[var(--border)]">
+              {t.instantDeliveryNote}
+            </p>
+          </section>
 
-          <div className="flex flex-col gap-3 mt-6 sm:mt-8">
+          {displayGame && (
             <button
               type="button"
-              onClick={() => onBuyNow?.(offer)}
-              className="btn btn-primary w-full py-3.5 sm:py-4 text-base sm:text-lg font-black"
+              onClick={() => navigate(`/game/${displayGame.slug || displayGame.id}`)}
+              className="btn btn-secondary w-full sm:w-auto inline-flex items-center justify-center gap-2 touch-manipulation"
             >
-              {t.buyNow}
+              <List className="w-4 h-4" />
+              {t.viewAllPacks || (isAr ? 'عرض كل باقات اللعبة' : 'View all game packs')}
             </button>
-            <button
-              onClick={(e) => addToCart(offer, e)}
-              className="btn btn-secondary w-full py-3 text-sm"
-            >
-              {t.addToCart}
-            </button>
-          </div>
+          )}
         </div>
 
-        {/* Description + How to Apply */}
-        <div className="md:col-span-2 space-y-8">
-          <div className="card p-6">
-            <div className="flex items-center justify-between gap-2 mb-4">
-              <h3 className="font-bold text-xl">{t.description}</h3>
-              {isAdmin && (
-                <AdminEditButton
-                  label={t.edit || 'Edit'}
-                  onClick={() => setEditingOffer(true)}
-                />
-              )}
-            </div>
-            <p className="text-[var(--text-sec)] leading-relaxed">
-              {brandUserText(lang === 'ar' ? offer.description_ar : offer.description_en || t.instantDeliveryNote)}
-            </p>
-          </div>
+      </div>
 
-          <div className="card p-6">
-            <h3 className="font-bold text-xl mb-4">{t.howToApply}</h3>
-            <div className="space-y-3 text-[var(--text-sec)]">
-              {game?.slug === 'valorant' && (
-                <>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">1.</span> Go to the Valorant store in-game.</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">2.</span> Click on the store currency (VP) purchase option.</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">3.</span> Choose the matching amount and region.</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">4.</span> Use the redeem code or UID we send you after purchase.</div>
-                </>
-              )}
-              {game?.slug === 'league-of-legends' && (
-                <>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">1.</span> Log into your Riot account on the official website.</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">2.</span> Go to the RP purchase page.</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">3.</span> Select the amount and enter the code we provide.</div>
-                </>
-              )}
-              {game?.slug === 'pubg-mobile' && (
-                <>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">1.</span> Open PUBG Mobile and go to the Store.</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">2.</span> Tap on UC purchase.</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">3.</span> Use the redeem code or link the UID we send.</div>
-                </>
-              )}
-              {game?.slug === 'mobile-legends' && (
-                <>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">1.</span> Open Mobile Legends: Bang Bang.</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">2.</span> Tap your profile icon (top left).</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">3.</span> Go to "Redeem" or provide your User ID + Server ID.</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">4.</span> Enter the code or use the top-up link we send after purchase.</div>
-                </>
-              )}
-              {!['valorant', 'league-of-legends', 'pubg-mobile', 'mobile-legends'].includes(game?.slug) && (
-                <div>{t.useCode || (lang === 'ar' ? 'استخدم الكود أو الـ UID الذي نرسله لك بعد الشراء في المتجر داخل اللعبة.' : 'Use the code or UID we send you after purchase in the in-game store.')}</div>
-              )}
-              <div className="pt-2 text-sm text-[var(--text-muted)]">{t.instantDeliveryNote}</div>
-            </div>
+      <div className="catalog-mobile-buybar lg:hidden fixed inset-x-0 bottom-0 z-40 border-t border-[var(--border)] bg-[var(--bg-surface)]/95 backdrop-blur-md px-4 py-3 safe-area-pb">
+        <div className="max-w-6xl mx-auto flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide truncate">{offerName}</div>
+            <div className="text-xl font-black text-[var(--accent)]">${Number.parseFloat(offer.price).toFixed(2)}</div>
           </div>
+          <button
+            type="button"
+            onClick={() => onBuyNow?.(offer)}
+            className="btn btn-primary px-5 py-3 font-bold shrink-0 touch-manipulation"
+          >
+            {t.buyNow || (isAr ? 'اشترِ' : 'Buy')}
+          </button>
         </div>
       </div>
 
@@ -225,6 +183,6 @@ export default function OfferDetail({
           onSave={updateGame}
         />
       )}
-    </div>
+    </CatalogPageShell>
   );
 }

@@ -33,7 +33,6 @@ export default function ProductCarousel({
   const gameSlides = products.filter((p) => p.category === 'games');
   const slides = gameSlides.length ? gameSlides : products;
 
-  const placeholderLogo = new URL('../../assets/placeholder-logo.png', import.meta.url).href;
   const placeholderCover = new URL('../../assets/placeholder-cover.svg', import.meta.url).href;
 
   const [emblaRef, embla] = useEmblaCarousel({
@@ -113,16 +112,17 @@ export default function ProductCarousel({
         item.image_url || item.image || placeholderCover,
         'colorSample',
       );
-      const logoSrc = presetImageUrl(
-        item.logo_url || item.logo || placeholderLogo,
-        'colorSample',
-      );
+      const logoSrc = item.logo_url || item.logo;
       extractAverageColor(coverSrc, setAccent);
-      extractAverageColor(logoSrc, setLogoAccent);
+      if (logoSrc) {
+        extractAverageColor(presetImageUrl(logoSrc, 'colorSample'), setLogoAccent);
+      } else {
+        setLogoAccent(DEFAULT_ACCENT);
+      }
     }, 120);
 
     return () => window.clearTimeout(timer);
-  }, [activeSlide, slides, extractAverageColor, placeholderCover, placeholderLogo]);
+  }, [activeSlide, slides, extractAverageColor, placeholderCover]);
 
   const getCoverUrl = useCallback(
     (item) => presetImageUrl(item.image_url || item.image || placeholderCover, 'carouselCover'),
@@ -130,8 +130,8 @@ export default function ProductCarousel({
   );
 
   const getLogo = useCallback(
-    (item) => item.logo_url || item.logo || placeholderLogo,
-    [placeholderLogo],
+    (item) => item.logo_url || item.logo || null,
+    [],
   );
 
   const ac = (a) => `rgba(${accent.r},${accent.g},${accent.b},${a})`;
@@ -351,6 +351,8 @@ export default function ProductCarousel({
           {slides.map((item, index) => {
             const isActive = index === activeSlide;
             const logoSrc = getLogo(item);
+            const logoPresetSrc = logoSrc ? presetImageUrl(logoSrc, 'carouselLogo') : null;
+            const slideLabel = lang === 'ar' ? item.name_ar : item.name_en;
             return (
               <React.Fragment key={item.id}>
                 <div className="relative flex-shrink-0 flex flex-col items-center">
@@ -381,21 +383,34 @@ export default function ProductCarousel({
                         transform: isActive ? 'scale(1.08)' : 'scale(1)',
                       }}
                     >
-                      <img
-                        src={logoSrc}
-                        alt={item.name_en}
-                        width={70}
-                        height={40}
-                        loading="lazy"
-                        decoding="async"
-                        className="block h-8 sm:h-10 w-auto max-w-[70px] object-contain transition-all duration-300"
-                        style={{
-                          filter: isActive
-                            ? `drop-shadow(0 1px 2px rgba(0,0,0,0.5)) drop-shadow(0 0 2px ${logoAcSolid})`
-                            : 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))',
-                        }}
-                        onError={(e) => { e.currentTarget.src = placeholderLogo; }}
-                      />
+                      {logoPresetSrc ? (
+                        <img
+                          src={logoPresetSrc}
+                          alt=""
+                          width={70}
+                          height={40}
+                          loading="lazy"
+                          decoding="async"
+                          className="block h-8 sm:h-10 w-auto max-w-[70px] object-contain transition-all duration-300"
+                          style={{
+                            filter: isActive
+                              ? `drop-shadow(0 1px 2px rgba(0,0,0,0.5)) drop-shadow(0 0 2px ${logoAcSolid})`
+                              : 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))',
+                          }}
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            const fallback = e.currentTarget.nextElementSibling;
+                            if (fallback) fallback.style.display = 'block';
+                          }}
+                        />
+                      ) : null}
+                      <span
+                        className={`carousel-slide-logo-fallback text-[10px] sm:text-[11px] font-bold text-white/90 text-center leading-tight line-clamp-2 max-w-[72px] ${
+                          logoPresetSrc ? 'hidden' : 'block'
+                        }`}
+                      >
+                        {slideLabel}
+                      </span>
                     </div>
                   </button>
                   {isAdmin && (

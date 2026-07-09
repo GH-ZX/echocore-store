@@ -2652,3 +2652,169 @@ html, body {
 .carousel-progress-bar.paused {
   animation-play-state: paused;
 }
+
+/* ============================================
+   CATALOG — GAME & OFFER PAGES
+   ============================================ */
+
+.safe-area-pb {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+}
+
+.catalog-page {
+  animation: catalogFadeIn 0.35s ease-out;
+}
+
+@keyframes catalogFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.catalog-page__toolbar-main {
+  flex: 1 1 auto;
+}
+
+.catalog-page__back {
+  width: fit-content;
+  font-weight: 600;
+}
+
+.catalog-page__back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.catalog-page__breadcrumb button {
+  transition: color 0.15s ease;
+}
+
+.catalog-category-header__title {
+  color: var(--text-primary);
+}
+
+.catalog-category-header__subtitle {
+  color: var(--text-secondary);
+}
+
+.catalog-hero {
+  border-color: color-mix(in srgb, var(--accent) 12%, var(--border));
+  box-shadow: var(--shadow-card);
+}
+
+.catalog-hero:hover {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+}
+
+.catalog-hero--compact {
+  border-color: var(--border);
+}
+
+.catalog-hero__badge {
+  backdrop-filter: blur(8px);
+}
+
+.catalog-info-banner {
+  display: flex;
+  gap: 0.875rem;
+  align-items: flex-start;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
+}
+
+.catalog-info-banner--voucher {
+  border-color: color-mix(in srgb, #a78bfa 28%, var(--border));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #7c3aed 10%, var(--bg-surface)) 0%,
+    var(--bg-surface) 100%
+  );
+}
+
+.catalog-info-banner--redeem {
+  border-color: color-mix(in srgb, #38bdf8 28%, var(--border));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #0ea5e9 10%, var(--bg-surface)) 0%,
+    var(--bg-surface) 100%
+  );
+}
+
+.catalog-region-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.catalog-offer-grid {
+  align-items: stretch;
+}
+
+.catalog-offer-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.catalog-offer-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.catalog-offer-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  box-shadow: 0 16px 36px -12px rgba(0, 0, 0, 0.55), var(--shadow-glow);
+}
+
+.catalog-offer-card__body {
+  flex: 1;
+}
+
+.catalog-detail-layout {
+  position: relative;
+}
+
+.catalog-purchase-panel {
+  border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+}
+
+.catalog-purchase-panel__meta {
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.625rem;
+  background: color-mix(in srgb, var(--bg-elevated) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.catalog-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.625rem;
+  height: 1.625rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+}
+
+.catalog-mobile-buybar {
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.45);
+}
+
+@media (min-width: 1024px) {
+  .catalog-purchase-panel {
+    box-shadow: var(--shadow-card);
+  }
+}

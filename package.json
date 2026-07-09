@@ -7,7 +7,8 @@
     "dev": "cross-env NODE_NO_WARNINGS=1 vite",
     "build": "vite build && node scripts/gh-pages-spa.mjs",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "upload:game-logos": "node scripts/upload-game-logos.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

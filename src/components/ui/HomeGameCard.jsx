@@ -1,4 +1,4 @@
-import { Ticket, Gamepad2, UserCircle, Globe } from 'lucide-react';
+import { Ticket, Gamepad2, KeyRound, Globe } from 'lucide-react';
 import AdminEditButton from '../admin/AdminEditButton';
 import BorderGlow from './BorderGlow';
 import { presetImageUrl } from '../../lib/imageUtils';
@@ -28,7 +28,7 @@ export default function HomeGameCard({
 
   const gameName = brandUserText(isAr ? game.name_ar : game.name_en);
   const categoryLabel = isAccount
-    ? (isAr ? t.gamingAccount || 'حساب ألعاب' : t.gamingAccount || 'Gaming account')
+    ? (t.gamingAccount || (isAr ? 'استرداد' : 'Redeem'))
     : isVoucher
       ? (isAr ? t.giftCards || 'بطاقة هدايا' : t.giftCards || 'Gift card')
       : (isAr ? t.game || 'لعبة' : t.game || 'Game');
@@ -36,7 +36,7 @@ export default function HomeGameCard({
   const metaLabel = isAccount
     ? (packs != null
       ? `${packs} ${isAr ? (t.accountPacks || 'خطة') : (t.accountPacks || 'plans')}`
-      : (isAr ? 'اشتراك / حساب' : 'Subscription / account'))
+      : (t.redeemMeta || (isAr ? 'كود استرداد للمنصة' : 'Platform redeem code')))
     : isVoucher
       ? (packs != null
         ? `${packs} ${isAr ? (t.voucherPacks || 'باقة') : (t.voucherPacks || 'packs')}`
@@ -95,9 +95,9 @@ export default function HomeGameCard({
                       ? 'home-game-card-badge--voucher'
                       : 'home-game-card-badge--regions'
                 }`}>
-                  {isAccount ? <UserCircle className="w-3 h-3" /> : isVoucher ? <Ticket className="w-3 h-3" /> : <Globe className="w-3 h-3" />}
+                  {isAccount ? <KeyRound className="w-3 h-3" /> : isVoucher ? <Ticket className="w-3 h-3" /> : <Globe className="w-3 h-3" />}
                   {isAccount
-                    ? (t.accountBadge || (isAr ? 'حساب' : 'Account'))
+                    ? (t.accountBadge || (isAr ? 'استرداد' : 'Redeem'))
                     : isVoucher
                       ? (t.voucherBadge || (isAr ? 'كود' : 'Code'))
                       : `${regionCount} ${t.regionsBadge || (isAr ? 'مناطق' : 'regions')}`}
@@ -117,7 +117,7 @@ export default function HomeGameCard({
 
         <div className="flex flex-col flex-1 p-3 sm:p-3.5 gap-1.5 min-w-0">
           <p className="text-[11px] sm:text-xs text-[var(--text-muted)] truncate font-medium inline-flex items-center gap-1">
-            {isAccount ? <UserCircle className="w-3 h-3 flex-shrink-0" /> : isVoucher ? <Ticket className="w-3 h-3 flex-shrink-0" /> : <Gamepad2 className="w-3 h-3 flex-shrink-0" />}
+            {isAccount ? <KeyRound className="w-3 h-3 flex-shrink-0" /> : isVoucher ? <Ticket className="w-3 h-3 flex-shrink-0" /> : <Gamepad2 className="w-3 h-3 flex-shrink-0" />}
             {categoryLabel}
           </p>
           <h3 className="font-semibold text-sm sm:text-base leading-snug text-[var(--text-primary)] line-clamp-2 min-h-[2.5rem]">

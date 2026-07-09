@@ -7,7 +7,7 @@ import SaleOfferCard from '../../components/ui/SaleOfferCard';
 import HomeGameCard from '../../components/ui/HomeGameCard';
 import CustomerReviewsSection from './CustomerReviewsSection';
 import AdminAddCard from '../../components/admin/AdminAddCard';
-import { getCarouselGames } from '../../lib/carouselUtils';
+import { getCarouselGames, resolveCarouselLogo } from '../../lib/carouselUtils';
 import {
   getChildGameIds,
   getDisplayGameForOffer,
@@ -84,19 +84,6 @@ export default function HomeView({
   onReviewSubmitted,
 }) {
   const [sessionSeed] = useState(() => `home-${Date.now()}`);
-
-  const getLocalLogo = (slug) => {
-    if (!slug) return null;
-    const s = slug.toLowerCase();
-    try {
-      if (s.includes('valorant')) return new URL('../../assets/valorant-logo.png', import.meta.url).href;
-      if (s.includes('league') || s.includes('lol')) return new URL('../../assets/lol-logo.png', import.meta.url).href;
-      if (s.includes('xbox')) return new URL('../../assets/xbox-logo.png', import.meta.url).href;
-    } catch {
-      // Local asset unavailable for this slug.
-    }
-    return null;
-  };
 
   const layout = useMemo(() => normalizeHomeLayout(homeLayout), [homeLayout]);
 
@@ -175,7 +162,7 @@ export default function HomeView({
       name_en: g.name_en,
       name_ar: g.name_ar,
       image_url: g.image_url,
-      logo_url: g.logo_url || getLocalLogo(g.slug),
+      logo_url: resolveCarouselLogo(g, games, offers),
       description_en: descriptions.description_en,
       description_ar: descriptions.description_ar,
       carousel_focus_x: g.carousel_focus_x ?? 50,
