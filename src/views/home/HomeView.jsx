@@ -147,16 +147,7 @@ export default function HomeView({
     const showMoreLink = !!addOptions.showMoreLink && totalCount > (previewLimit || items.length);
 
     if (!hasItems && !showAddCard && !loading) {
-      return (
-        <div className="games-section">
-          {section && renderSectionHeading(section, 'games')}
-          <div className="text-center py-10 text-[var(--text-sec)]">
-            {searchQuery.trim()
-              ? (t.noResults || 'No games match your search.')
-              : (t.noGamesAvailable || 'No games available yet.')}
-          </div>
-        </div>
-      );
+      return null;
     }
 
     return (
@@ -209,7 +200,8 @@ export default function HomeView({
 
   const renderOfferCards = (items, section, addOptions = {}) => {
     const showAddCard = isAdmin && onAddOffer;
-    const hasItems = items.length > 0;
+    const visibleItems = items.filter((offer) => games.some((game) => game.id === offer.game_id));
+    const hasItems = visibleItems.length > 0;
 
     if (!hasItems && !showAddCard && !loading) return null;
 
@@ -226,9 +218,8 @@ export default function HomeView({
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 items-stretch">
-          {items.map((offer) => {
+          {visibleItems.map((offer) => {
             const game = games.find((g) => g.id === offer.game_id);
-            if (!game) return null;
 
             return (
               <SaleOfferCard
@@ -354,9 +345,11 @@ export default function HomeView({
 
   return (
     <div className="space-y-10 sm:space-y-14 md:space-y-16 animate-fade-in">
-      {layout.map((section) => (
-        <div key={section.id}>{renderSection(section)}</div>
-      ))}
+      {layout.map((section) => {
+        const content = renderSection(section);
+        if (!content) return null;
+        return <div key={section.id}>{content}</div>;
+      })}
     </div>
   );
 }
