@@ -4,13 +4,27 @@ import { getCarouselGames, sortGamesByCarousel } from './lib/carouselUtils';
 import { Loader2, Globe } from 'lucide-react';
 import AppToast from './components/ui/AppToast';
 import { supabase, resolveUserData } from './lib/supabase';
-import { createOrderAtomic, confirmOrderPayment, creditUserBalance } from './lib/orders';
+import { createOrderAtomic, confirmOrderPayment, rejectOrderPayment } from './lib/orders';
 import { syncCartWithOffers, pickCartSnapshot, cartsAreEquivalent, getCartLineKey } from './lib/cartUtils';
 import ProtectedRoute from './components/routing/ProtectedRoute';
+import ScrollToTop from './components/routing/ScrollToTop';
+import LegacyOfferRedirect from './components/routing/LegacyOfferRedirect';
+import { getGameOfferBuyPath, getGameOfferPath } from './lib/offerRoutes';
+import AllGamesView from './views/AllGamesView';
+import GameDetail from './views/GameDetail';
+import OfferDetail from './views/OfferDetail';
+import BuyView from './views/BuyView';
 import { fetchPaymentMethods } from './lib/storeSettings';
 import { applyTheme, fetchSiteTheme, normalizeThemeOverrides } from './lib/theme';
 import { DEFAULT_HOME_LAYOUT, fetchHomeLayout, normalizeHomeLayout } from './lib/homeLayout';
 import { fetchApprovedReviews } from './lib/customerReviews';
+import {
+  fetchNotifications,
+  fetchUnreadCount,
+  markNotificationRead,
+  markAllNotificationsRead,
+  subscribeToNotifications,
+} from './lib/notifications';
 import { translations } from './data/translations';
 import { Routes, Route, useNavigate, Navigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -21,13 +35,11 @@ import Footer from './components/layout/Footer';
 const LoginView = lazy(() => import('./views/auth/LoginView'));
 const CartView = lazy(() => import('./views/CartView'));
 const CheckoutView = lazy(() => import('./views/CheckoutView'));
-const AllGamesView = lazy(() => import('./views/AllGamesView'));
 const SaleOffersView = lazy(() => import('./views/SaleOffersView'));
 const FAQView = lazy(() => import('./views/FAQView'));
 const HowItWorksView = lazy(() => import('./views/HowItWorksView'));
 const ContactView = lazy(() => import('./views/ContactView'));
 const RechargeView = lazy(() => import('./views/RechargeView'));
-const BuyView = lazy(() => import('./views/BuyView'));
 const ProfileView = lazy(() => import('./views/profile/ProfileView'));
 
 import AdminOfferEditModal from './components/admin/AdminOfferEditModal';
@@ -35,8 +47,6 @@ import AdminGameEditModal from './components/admin/AdminGameEditModal';
 const AdminView = lazy(() => import('./views/admin/AdminView'));
 const AdminCarouselManager = lazy(() => import('./components/admin/AdminCarouselManager'));
 
-const GameDetail = lazy(() => import('./views/GameDetail'));
-const OfferDetail = lazy(() => import('./views/OfferDetail'));
 const SuccessView = lazy(() => import('./views/SuccessView'));
 const NotFoundView = lazy(() => import('./views/NotFoundView'));
 const PrivacyView = lazy(() => import('./views/PrivacyView'));
@@ -140,6 +150,10 @@ export default function App() {
   const [homeLayout, setHomeLayout] = useState(DEFAULT_HOME_LAYOUT);
   const [reviews, setReviews] = useState([]);
   const [notification, setNotification] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const toastTimerRef = useRef(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [flyingItems, setFlyingItems] = useState([]);
@@ -165,6 +179,70 @@ export default function App() {
 
   const showNotification = useCallback((msg) => showToast(msg, 'success'), [showToast]);
 
+  const refreshNotifications = useCallback(async (userId = user?.id) => {
+    if (!userId) return;
+    setNotificationsLoading(true);
+    try {
+      const [items, count] = await Promise.all([
+        fetchNotifications(30),
+        fetchUnreadCount(),
+      ]);
+      setNotifications(items);
+      setUnreadCount(count);
+    } catch (err) {
+      console.error('Failed to load notifications:', err);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  }, [user?.id]);
+
+  const handleNotificationMarkRead = useCallback(async (notificationId) => {
+    try {
+      await markNotificationRead(notificationId);
+      setNotifications((prev) => prev.map((item) => (
+        item.id === notificationId
+          ? { ...item, read_at: item.read_at || new Date().toISOString() }
+          : item
+      )));
+      setUnreadCount((count) => Math.max(0, count - 1));
+    } catch (err) {
+      console.error('Failed to mark notification read:', err);
+    }
+  }, []);
+
+  const handleNotificationsMarkAllRead = useCallback(async () => {
+    try {
+      await markAllNotificationsRead();
+      const now = new Date().toISOString();
+      setNotifications((prev) => prev.map((item) => (
+        item.read_at ? item : { ...item, read_at: now }
+      )));
+      setUnreadCount(0);
+    } catch (err) {
+      console.error('Failed to mark all notifications read:', err);
+    }
+  }, []);
+
+  const handleNotificationNavigate = useCallback((dest) => {
+    if (dest?.state) {
+      navigate(dest.path, { state: dest.state });
+      return;
+    }
+    navigate(dest?.path || '/profile');
+  }, [navigate]);
+
+  const handleNotificationsClose = useCallback(() => {
+    setNotificationsOpen(false);
+  }, []);
+
+  const handleNotificationsToggle = useCallback(() => {
+    setNotificationsOpen((open) => {
+      const next = !open;
+      if (next) refreshNotifications();
+      return next;
+    });
+  }, [refreshNotifications]);
+
   useEffect(() => () => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
   }, []);
@@ -175,6 +253,18 @@ export default function App() {
     if (!game) return;
     navigate(`/game/${game.slug || game.id}`);
   };
+
+  const openOffer = useCallback((offer) => {
+    if (!offer) return;
+    const game = games.find((g) => g.id === offer.game_id);
+    navigate(getGameOfferPath(offer, game));
+  }, [games, navigate]);
+
+  const openBuyOffer = useCallback((offer) => {
+    if (!offer) return;
+    const game = games.find((g) => g.id === offer.game_id);
+    navigate(getGameOfferBuyPath(offer, game));
+  }, [games, navigate]);
 
   const toggleLanguage = async () => {
     if (langSwitching) return;
@@ -355,7 +445,7 @@ export default function App() {
   // Uses atomic RPC (create_order_atomic) for server-side
   // balance deduction and price verification.
   // ============================================
-  const submitOrder = async (currentCart, paymentMethod, { paymentReference } = {}) => {
+  const submitOrder = async (currentCart, paymentMethod) => {
     if (!user?.id) throw new Error('Not logged in');
 
     const { items: syncedCart, removedCount } = syncCartWithOffers(currentCart, offers);
@@ -388,42 +478,28 @@ export default function App() {
       setUser(prev => prev ? { ...prev, balance: data.newBalance } : prev);
     }
 
-    if (data.status === 'pending_payment') {
-      if (!paymentReference) {
-        return {
-          orderId: data.orderId,
-          status: 'pending_payment',
-          needsConfirmation: true,
-        };
-      }
-      await confirmOrderPayment(data.orderId, paymentReference);
-      return { orderId: data.orderId, status: 'completed' };
+    if (data.status === 'pending_payment' || data.status === 'payment_sent') {
+      return {
+        orderId: data.orderId,
+        status: data.status,
+        reference: data.reference || null,
+      };
     }
 
     return { orderId: data.orderId, status: data.status || 'completed' };
   };
 
-  // ============================================
-  // BALANCE RECHARGE (simulated APIs — see comments)
-  // ============================================
-  const handleRecharge = async (amount, method, reference = null) => {
-    if (!user?.id) throw new Error('Not logged in');
-    const amt = parseFloat(amount);
-    if (!amt || amt <= 0) throw new Error('Invalid amount');
-
-    const newBal = await creditUserBalance(user.id, amt, method, reference);
-
-    setUser(prev => prev ? { ...prev, balance: newBal } : prev);
-    showNotification(`${t.rechargeSuccess || 'Balance recharged!'} +$${amt.toFixed(2)}`);
-
-    return { newBalance: newBal, reference };
+  const handleRechargeApproved = (result) => {
+    if (result?.userId === user?.id && result?.newBalance != null) {
+      setUser((prev) => (prev ? { ...prev, balance: result.newBalance } : prev));
+    }
   };
 
   // ============================================
   // INSTANT PURCHASE (Buy Now) — with player UID info
   // Uses atomic RPC for server-side balance + price verification.
   // ============================================
-  const submitPurchase = async (offer, paymentMethod, playerInfo = {}, { paymentReference } = {}) => {
+  const submitPurchase = async (offer, paymentMethod, playerInfo = {}) => {
     if (!user?.id) throw new Error('Not logged in');
     if (!offer) throw new Error('No offer');
 
@@ -450,19 +526,27 @@ export default function App() {
       setUser(prev => prev ? { ...prev, balance: data.newBalance } : prev);
     }
 
-    if (data.status === 'pending_payment') {
-      if (!paymentReference) {
-        return {
-          orderId: data.orderId,
-          status: 'pending_payment',
-          needsConfirmation: true,
-        };
-      }
-      await confirmOrderPayment(data.orderId, paymentReference);
-      return { orderId: data.orderId, status: 'completed' };
+    if (data.status === 'pending_payment' || data.status === 'payment_sent') {
+      return {
+        orderId: data.orderId,
+        status: data.status,
+        reference: data.reference || null,
+      };
     }
 
     return { orderId: data.orderId, status: data.status || 'completed' };
+  };
+
+  const handleApproveOrder = async (orderId) => {
+    const result = await confirmOrderPayment(orderId);
+    await fetchOrders();
+    return result;
+  };
+
+  const handleRejectOrder = async (orderId) => {
+    const result = await rejectOrderPayment(orderId);
+    await fetchOrders();
+    return result;
   };
 
   // ============================================
@@ -749,6 +833,9 @@ export default function App() {
       if (event === 'SIGNED_OUT') {
         lastSyncedUserIdRef.current = null;
         setUser(null);
+        setNotifications([]);
+        setUnreadCount(0);
+        setNotificationsOpen(false);
         hasShownLoginToast.current = false;
         return;
       }
@@ -824,6 +911,32 @@ export default function App() {
       fetchOrders();
     }
   }, [location.pathname, user?.role]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return undefined;
+    }
+
+    refreshNotifications(user.id);
+
+    const unsubscribe = subscribeToNotifications(user.id, (newItem) => {
+      setNotifications((prev) => [newItem, ...prev].slice(0, 30));
+      setUnreadCount((count) => count + 1);
+    });
+
+    const pollId = setInterval(() => {
+      fetchUnreadCount()
+        .then((count) => setUnreadCount(count))
+        .catch(() => {});
+    }, 60000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(pollId);
+    };
+  }, [user?.id, refreshNotifications]);
 
   // Keep cart prices in sync when offers load or admin prices change
   useEffect(() => {
@@ -944,6 +1057,7 @@ export default function App() {
         {lang === 'ar' ? 'تخطي إلى المحتوى' : 'Skip to content'}
       </a>
       <LangSwitchOverlay lang={overlayLang} active={langSwitching} />
+      <ScrollToTop />
       <Header
         t={t}
         lang={lang}
@@ -957,6 +1071,15 @@ export default function App() {
         onSearchChange={setSearchQuery}
         onRecharge={() => navigate('/recharge')}
         cartRef={cartIconRef}
+        notifications={notifications}
+        unreadCount={unreadCount}
+        notificationsLoading={notificationsLoading}
+        notificationsOpen={notificationsOpen}
+        onNotificationsToggle={handleNotificationsToggle}
+        onNotificationsClose={handleNotificationsClose}
+        onNotificationMarkRead={handleNotificationMarkRead}
+        onNotificationsMarkAllRead={handleNotificationsMarkAllRead}
+        onNotificationNavigate={handleNotificationNavigate}
       />
 
       <motion.div
@@ -982,8 +1105,8 @@ export default function App() {
                     loading={loadingGames}
                     addToCart={addToCart}
                     onSelectGame={openGame}
-                    onSelectOffer={(offer) => navigate(`/offer/${offer.id}`)}
-                    onBuyNow={(offer) => navigate(`/buy/${offer.id}`)}
+                    onSelectOffer={openOffer}
+                    onBuyNow={openBuyOffer}
                     onEditOffer={isAdmin ? setAdminEditOffer : undefined}
                     onEditGame={isAdmin ? setAdminEditGame : undefined}
                     onAddGame={isAdmin ? (options = {}) => setAdminEditGame({ id: null, show_in_carousel: !!options.showInCarousel }) : undefined}
@@ -1028,8 +1151,8 @@ export default function App() {
                 offers={offers}
                 t={t}
                 lang={lang}
-                onSelectOffer={(offer) => navigate(`/offer/${offer.id}`)}
-                onBuyNow={(offer) => navigate(`/buy/${offer.id}`)}
+                onSelectOffer={openOffer}
+                onBuyNow={openBuyOffer}
                 onEditOffer={isAdmin ? setAdminEditOffer : undefined}
                 isAdmin={isAdmin}
                 addToCart={addToCart}
@@ -1061,6 +1184,48 @@ export default function App() {
             }
           />
 
+          {/* Offer buy — nested under game for clean URLs */}
+          <Route
+            path="/game/:gameSlug/:offerSlug/buy"
+            element={
+              <ProtectedRoute user={user} loadingAuth={loadingAuth} lang={lang}>
+                <BuyView
+                  t={t}
+                  lang={lang}
+                  navigate={navigate}
+                  user={user}
+                  games={games}
+                  offers={offers}
+                  loadingCatalog={loadingGames}
+                  currentBalance={user?.balance || 0}
+                  onPurchase={submitPurchase}
+                  paymentConfig={paymentConfig}
+                  onNotify={showToast}
+                />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Offer detail — /game/mobile-legends/86-diamonds-6d2dea31 */}
+          <Route
+            path="/game/:gameSlug/:offerSlug"
+            element={
+              <OfferDetail
+                games={games}
+                offers={offers}
+                t={t}
+                lang={lang}
+                navigate={navigate}
+                addToCart={addToCart}
+                user={user}
+                updateProduct={updateProduct}
+                updateGame={updateGame}
+                loadingCatalog={loadingGames}
+                onBuyNow={openBuyOffer}
+              />
+            }
+          />
+
           {/* Dynamic Game page */}
           <Route
             path="/game/:slug"
@@ -1076,26 +1241,23 @@ export default function App() {
                 updateProduct={updateProduct}
                 updateGame={updateGame}
                 loadingGames={loadingGames}
+                onSelectOffer={openOffer}
+                onBuyNow={openBuyOffer}
               />
             }
           />
 
-          {/* Dynamic Offer page */}
+          {/* Legacy UUID routes → canonical game/offer paths */}
           <Route
             path="/offer/:id"
-            element={
-              <OfferDetail
-                games={games}
+            element={(
+              <LegacyOfferRedirect
                 offers={offers}
-                t={t}
+                games={games}
+                loading={loadingGames}
                 lang={lang}
-                navigate={navigate}
-                addToCart={addToCart}
-                user={user}
-                updateProduct={updateProduct}
-                updateGame={updateGame}
               />
-            }
+            )}
           />
 
           <Route
@@ -1192,7 +1354,6 @@ export default function App() {
                   navigate={navigate}
                   user={user}
                   currentBalance={user?.balance || 0}
-                  onRechargeComplete={handleRecharge}
                   paymentConfig={paymentConfig}
                   onNotify={showToast}
                 />
@@ -1203,25 +1364,17 @@ export default function App() {
           <Route path="/privacy" element={<PrivacyView lang={lang} />} />
           <Route path="/terms" element={<TermsView lang={lang} />} />
 
-          {/* Instant Buy + UID entry page */}
           <Route
             path="/buy/:offerId"
-            element={
-              <ProtectedRoute user={user} loadingAuth={loadingAuth} lang={lang}>
-                <BuyView
-                  t={t}
-                  lang={lang}
-                  navigate={navigate}
-                  user={user}
-                  games={games}
-                  offers={offers}
-                  currentBalance={user?.balance || 0}
-                  onPurchase={submitPurchase}
-                  paymentConfig={paymentConfig}
-                  onNotify={showToast}
-                />
-              </ProtectedRoute>
-            }
+            element={(
+              <LegacyOfferRedirect
+                offers={offers}
+                games={games}
+                loading={loadingGames}
+                lang={lang}
+                target="buy"
+              />
+            )}
           />
 
           <Route
@@ -1252,6 +1405,9 @@ export default function App() {
                   reviews={reviews}
                   onReviewsChanged={refreshReviews}
                   onNotify={showToast}
+                  onRechargeApproved={handleRechargeApproved}
+                  onApproveOrder={handleApproveOrder}
+                  onRejectOrder={handleRejectOrder}
                 />
               ) : (
                 <Navigate to="/" replace />

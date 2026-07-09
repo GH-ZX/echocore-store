@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "cross-env NODE_NO_WARNINGS=1 vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/gh-pages-spa.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },

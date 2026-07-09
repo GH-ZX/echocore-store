@@ -1,22 +1,46 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 import AdminEditButton from '../components/admin/AdminEditButton';
 import AdminGameEditModal from '../components/admin/AdminGameEditModal';
 import AdminOfferEditModal from '../components/admin/AdminOfferEditModal';
+import { resolveOfferRoute } from '../lib/offerRoutes';
 
-export default function OfferDetail({ games, offers, t = {}, lang, navigate, addToCart, user, updateProduct, updateGame }) {
-  const { id } = useParams();
-  const offer = offers.find((o) => String(o.id) === String(id));
-  const game = offer ? games.find((g) => g.id === offer.game_id) : null;
+export default function OfferDetail({
+  games,
+  offers,
+  t = {},
+  lang,
+  navigate,
+  addToCart,
+  user,
+  updateProduct,
+  updateGame,
+  loadingCatalog = false,
+  onBuyNow,
+}) {
+  const { gameSlug, offerSlug } = useParams();
+  const { offer, game } = resolveOfferRoute(offers, games, { gameSlug, offerSlug });
   const isAdmin = user?.role === 'admin';
   const [editingOffer, setEditingOffer] = useState(false);
   const [editingGame, setEditingGame] = useState(false);
+
+  if (loadingCatalog || (!offer && offers.length === 0)) {
+    return (
+      <div className="max-w-4xl mx-auto py-16 sm:py-20">
+        <div className="flex flex-col items-center justify-center gap-3">
+          <Loader2 className="w-9 h-9 text-[var(--accent)] animate-spin" />
+          <p className="text-[var(--text-sec)]">{t.loadingOffer || (lang === 'ar' ? 'جاري تحميل العرض...' : 'Loading offer...')}</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!offer) {
     return (
       <div className="max-w-4xl mx-auto text-center py-20">
         <p className="text-xl text-[var(--text-sec)]">{t.offerNotFound}</p>
-        <button onClick={() => navigate('/')} className="btn btn-secondary mt-4">{t.backToHome}</button>
+        <button type="button" onClick={() => navigate('/')} className="btn btn-secondary mt-4">{t.backToHome}</button>
       </div>
     );
   }
@@ -105,7 +129,8 @@ export default function OfferDetail({ games, offers, t = {}, lang, navigate, add
 
           <div className="flex flex-col gap-3 mt-6 sm:mt-8">
             <button
-              onClick={() => navigate(`/buy/${offer.id}`)}
+              type="button"
+              onClick={() => onBuyNow?.(offer)}
               className="btn btn-primary w-full py-3.5 sm:py-4 text-base sm:text-lg font-black"
             >
               {t.buyNow}

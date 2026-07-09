@@ -6,7 +6,20 @@ import BorderGlow from '../components/ui/BorderGlow';
 import AdminGameEditModal from '../components/admin/AdminGameEditModal';
 import AdminOfferEditModal from '../components/admin/AdminOfferEditModal';
 
-export default function GameDetail({ games, offers, t = {}, lang, navigate, addToCart: _addToCart, user, updateProduct, updateGame, loadingGames = false }) {
+export default function GameDetail({
+  games,
+  offers,
+  t = {},
+  lang,
+  navigate,
+  addToCart: _addToCart,
+  user,
+  updateProduct,
+  updateGame,
+  loadingGames = false,
+  onSelectOffer,
+  onBuyNow,
+}) {
   const { slug } = useParams();
   const game = games.find((g) => (g.slug || g.id) === slug) || games.find((g) => g.id === slug);
   const isAdmin = user?.role === 'admin';
@@ -91,7 +104,7 @@ export default function GameDetail({ games, offers, t = {}, lang, navigate, addT
               fillOpacity={0.35}
             >
             <div
-              onClick={() => navigate(`/offer/${offer.id}`)}
+              onClick={() => onSelectOffer?.(offer)}
               className="p-4 sm:p-5 cursor-pointer group active:scale-[0.985] transition-all flex flex-col relative"
             >
               {isAdmin && (
@@ -149,13 +162,13 @@ export default function GameDetail({ games, offers, t = {}, lang, navigate, addT
               {/* Actions */}
               <div className="mt-4 flex gap-2">
                 <button 
-                  onClick={(e) => { e.stopPropagation(); navigate(`/buy/${offer.id}`); }}
+                  onClick={(e) => { e.stopPropagation(); onBuyNow?.(offer); }}
                   className="flex-1 btn btn-primary text-xs py-2 font-semibold active:scale-[0.985]"
                 >
                   {t.buyNow}
                 </button>
                 <button 
-                  onClick={(e) => { e.stopPropagation(); navigate(`/offer/${offer.id}`); }}
+                  onClick={(e) => { e.stopPropagation(); onSelectOffer?.(offer); }}
                   className="flex-1 btn btn-secondary text-xs py-2"
                 >
                   {t.details || (lang==='ar' ? 'تفاصيل' : 'Details')}

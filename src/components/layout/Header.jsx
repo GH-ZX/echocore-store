@@ -8,8 +8,25 @@ import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import EchoLogo from '../ui/EchoLogo';
 import SiteNav, { MobileNavLinks } from './SiteNav';
+import NotificationBell from './NotificationBell';
 
 const iconBtn = (extra = '') => `header-btn header-btn-icon ${extra}`.trim();
+
+function useIsMobile() {
+  const query = '(max-width: 767px)';
+  const [isMobile, setIsMobile] = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia(query).matches
+  ));
+
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const onChange = (event) => setIsMobile(event.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  return isMobile;
+}
 
 export default function Header({
   t,
@@ -24,8 +41,18 @@ export default function Header({
   onRecharge = () => {},
   cartRef = null,
   langSwitching = false,
+  notifications = [],
+  unreadCount = 0,
+  notificationsLoading = false,
+  notificationsOpen = false,
+  onNotificationsToggle = () => {},
+  onNotificationsClose = () => {},
+  onNotificationMarkRead = () => {},
+  onNotificationsMarkAllRead = () => {},
+  onNotificationNavigate = () => {},
 }) {
   const location = useLocation();
+  const isMobile = useIsMobile();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -38,11 +65,17 @@ export default function Header({
     setIsMenuOpen(false);
     setIsSearchOpen(false);
     setProfileOpen(false);
-  }, []);
+    onNotificationsClose();
+  }, [onNotificationsClose]);
 
   useEffect(() => {
-    closeAll();
-  }, [location.pathname, closeAll]);
+    setIsMenuOpen(false);
+    setIsSearchOpen(false);
+    setProfileOpen(false);
+    onNotificationsClose();
+    // Only close overlays on route change — not when parent callbacks are recreated.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
   useEffect(() => {
     document.body.style.overflow = isMenuOpen ? 'hidden' : '';
@@ -85,6 +118,33 @@ export default function Header({
     navigate(path);
     closeAll();
   };
+
+  const handleBellNavigate = useCallback((dest) => {
+    onNotificationsClose();
+    setIsMenuOpen(false);
+    onNotificationNavigate(dest);
+  }, [onNotificationsClose, onNotificationNavigate]);
+
+  const notificationBell = user ? (
+    <NotificationBell
+      t={t}
+      lang={lang}
+      user={user}
+      notifications={notifications}
+      unreadCount={unreadCount}
+      loading={notificationsLoading}
+      open={notificationsOpen}
+      onToggle={() => {
+        setProfileOpen(false);
+        setIsMenuOpen(false);
+        onNotificationsToggle();
+      }}
+      onClose={onNotificationsClose}
+      onMarkRead={onNotificationMarkRead}
+      onMarkAllRead={onNotificationsMarkAllRead}
+      onNavigate={handleBellNavigate}
+    />
+  ) : null;
 
   const getInitials = (name, email) => {
     const source = (name || email || '?').trim();
@@ -282,7 +342,10 @@ export default function Header({
       {cartButton()}
 
       {user ? (
-        profileDropdown
+        <div className="header-account-group">
+          {!isMobile && notificationBell}
+          {profileDropdown}
+        </div>
       ) : (
         <button
           type="button"
@@ -330,6 +393,7 @@ export default function Header({
 
         {/* Mobile utilities */}
         <div className="flex md:hidden items-center gap-1.5 flex-shrink-0">
+          {isMobile && notificationBell}
           {cartButton()}
           <button
             type="button"

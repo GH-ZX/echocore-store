@@ -47,6 +47,21 @@ Checkout and recharge **will not work** until this migration (or the updated ful
 
 The contact form also requires the `contact_messages` table (included in the full schema and security migration).
 
+### Manual ShamCash recharge (required for balance top-ups)
+
+Run after the security migration:
+
+👉 [supabase_recharge_manual_migration.sql](./supabase_recharge_manual_migration.sql)
+
+This migration:
+- Adds ShamCash QR image + pay code fields to `store_settings`
+- Creates `recharge_requests` (pending → admin approval flow)
+- **Removes self-service balance credit** — only admins can approve recharges
+- Exposes safe payment config via `get_payment_methods` (QR URL + pay code, no API token)
+
+Then in **Admin → Payments**: upload QR, enter pay code, save.  
+Approve requests in **Admin → Recharges**.
+
 ### Storage & Image Assets Setup (Recommended)
 1. In your Supabase dashboard, navigate to **Storage > Buckets**.
 2. Verify that the `"product-images"` bucket was created and ensure it is set to **Public** so product images can load for site visitors.

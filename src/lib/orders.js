@@ -26,10 +26,25 @@ export async function createOrderAtomic({ userId, total, paymentMethod, items })
   return assertRpcData(data, error)
 }
 
+export async function markOrderPaymentSent(orderId) {
+  const { data, error } = await supabase.rpc('mark_order_payment_sent', {
+    p_order_id: orderId,
+  })
+  return assertRpcData(data, error)
+}
+
 export async function confirmOrderPayment(orderId, reference = null) {
   const { data, error } = await supabase.rpc('confirm_order_payment', {
     p_order_id: orderId,
     p_reference: reference,
+  })
+  return assertRpcData(data, error)
+}
+
+export async function rejectOrderPayment(orderId, note = null) {
+  const { data, error } = await supabase.rpc('reject_order_payment', {
+    p_order_id: orderId,
+    p_note: note,
   })
   return assertRpcData(data, error)
 }

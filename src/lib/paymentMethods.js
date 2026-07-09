@@ -52,10 +52,13 @@ export function buildPaymentMethods(t, lang, paymentConfig = {}, options = {}) {
   const isAr = lang === 'ar';
   const { includeBalance = false, currentBalance = 0 } = options;
 
+  const manualReady = !!paymentConfig.shamcashManualReady;
+  const shamcashFlag = paymentConfig.shamcash !== false && paymentConfig.shamcash !== undefined
+    ? !!paymentConfig.shamcash
+    : true;
+
   const enabled = {
-    shamcash: paymentConfig.shamcash !== false && paymentConfig.shamcash !== undefined
-      ? !!paymentConfig.shamcash
-      : true,
+    shamcash: shamcashFlag && manualReady,
     binance: !!paymentConfig.binance,
     mastercard: !!paymentConfig.mastercard,
   };

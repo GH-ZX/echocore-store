@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Trash2, Upload, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid, MessageSquare } from 'lucide-react';
+import { Trash2, Upload, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uploadImage } from '../../lib/uploadImage';
 
@@ -10,6 +10,7 @@ const AdminPaymentsSettings = lazy(() => import('../../components/admin/AdminPay
 const AdminThemeSettings = lazy(() => import('../../components/admin/AdminThemeSettings'));
 const AdminHomeLayoutSettings = lazy(() => import('../../components/admin/AdminHomeLayoutSettings'));
 const AdminReviewsManager = lazy(() => import('../../components/admin/AdminReviewsManager'));
+const AdminRechargeManager = lazy(() => import('../../components/admin/AdminRechargeManager'));
 
 function AdminTabLoader() {
   return (
@@ -39,8 +40,12 @@ export default function AdminView({
   reviews = [],
   onReviewsChanged,
   onNotify,
+  onRechargeApproved,
+  onApproveOrder,
+  onRejectOrder,
 }) {
   const notifyError = (message) => onNotify?.(message, 'error');
+  const notifySuccess = (message) => onNotify?.(message, 'success');
   const location = useLocation();
   const [activeTab, setActiveTab] = useState(() => location.state?.adminTab || 'overview');
   const tabButtonRefs = useRef({});
@@ -102,6 +107,88 @@ export default function AdminView({
 
   // Orders expandable
   const [expandedOrderId, setExpandedOrderId] = useState(null);
+  const [processingOrderId, setProcessingOrderId] = useState(null);
+
+  const isAr = lang === 'ar';
+  const isAwaitingShamcash = (order) => (
+    order.payment_method === 'ShamCash'
+    && (order.status === 'pending_payment' || order.status === 'payment_sent')
+  );
+
+  const handleApproveOrder = async (orderId) => {
+    if (!onApproveOrder) return;
+    setProcessingOrderId(orderId);
+    try {
+      await onApproveOrder(orderId);
+      notifySuccess(t.orderApproved || (isAr ? 'تمت الموافقة على الطلب' : 'Order approved'));
+    } catch (err) {
+      notifyError(err.message);
+    } finally {
+      setProcessingOrderId(null);
+    }
+  };
+
+  const handleRejectOrder = async (orderId) => {
+    if (!onRejectOrder) return;
+    setProcessingOrderId(orderId);
+    try {
+      await onRejectOrder(orderId);
+      notifySuccess(t.orderRejected || (isAr ? 'تم رفض الطلب' : 'Order rejected'));
+    } catch (err) {
+      notifyError(err.message);
+    } finally {
+      setProcessingOrderId(null);
+    }
+  };
+
+  const orderStatusLabel = (status) => {
+    const map = {
+      pending_payment: isAr ? 'بانتظار الدفع' : 'Awaiting payment',
+      payment_sent: isAr ? 'بانتظار الموافقة' : 'Awaiting approval',
+      completed: isAr ? 'مكتمل' : 'Completed',
+      cancelled: isAr ? 'ملغى' : 'Cancelled',
+    };
+    return map[status] || status;
+  };
+
+  const orderStatusColor = (status) => {
+    if (status === 'completed') return 'text-emerald-400';
+    if (status === 'payment_sent') return 'text-amber-300';
+    if (status === 'pending_payment') return 'text-amber-400';
+    if (status === 'cancelled') return 'text-red-400';
+    return 'text-[var(--text-sec)]';
+  };
+
+  const renderOrderExtras = (order) => (
+    <>
+      {order.payment_reference && (
+        <div className="text-xs mt-2">
+          <span className="text-[var(--text-muted)]">{t.paymentReference || 'Payment reference'}:</span>{' '}
+          <span className="font-mono">{order.payment_reference}</span>
+        </div>
+      )}
+      {isAwaitingShamcash(order) && onApproveOrder && onRejectOrder && (
+        <div className="flex flex-wrap gap-2 mt-3">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); handleApproveOrder(order.id); }}
+            disabled={processingOrderId === order.id}
+            className="btn btn-primary text-xs py-2 px-3"
+          >
+            {processingOrderId === order.id ? '...' : (t.approveOrder || (isAr ? 'موافقة' : 'Approve'))}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); handleRejectOrder(order.id); }}
+            disabled={processingOrderId === order.id}
+            className="btn btn-secondary text-xs py-2 px-3"
+          >
+            {t.rejectOrder || (isAr ? 'رفض' : 'Reject')}
+          </button>
+        </div>
+      )}
+    </>
+  );
 
   // Quick lookup for game names in offers list
   const gamesMap = Object.fromEntries(games.map(g => [g.id, g]));
@@ -417,6 +504,7 @@ export default function AdminView({
             { id: 'products', label: t.gamesAndOffers, shortLabel: t.tabGamesShort, icon: Package },
             { id: 'orders', label: t.ordersTab, shortLabel: t.tabOrdersShort, icon: ShoppingCart },
             { id: 'payments', label: t.paymentsTab, shortLabel: t.tabPaymentsShort, icon: Wallet },
+            { id: 'recharges', label: t.rechargesTab, shortLabel: t.tabRechargesShort, icon: CircleDollarSign },
             { id: 'theme', label: t.themeTab, shortLabel: t.tabThemeShort, icon: Palette },
             { id: 'home', label: t.homeLayoutTab, shortLabel: t.tabHomeShort, icon: LayoutGrid },
             { id: 'reviews', label: t.reviewsTab, shortLabel: t.tabReviewsShort, icon: MessageSquare },
@@ -1098,8 +1186,12 @@ export default function AdminView({
                       <div className="px-4 pb-4 pt-0 border-t border-[var(--border)] text-sm">
                         <div className="flex flex-col gap-1 mb-3 text-xs">
                           <div><span className="text-[var(--text-muted)]">{t.customerLabel || 'Customer:'}</span> <span className="font-medium">{customer}</span></div>
-                          <div><span className="text-[var(--text-muted)]">{t.statusLabel || 'Status:'}</span> <span className="capitalize text-emerald-400">{order.status || 'completed'}</span></div>
+                          <div>
+                            <span className="text-[var(--text-muted)]">{t.statusLabel || 'Status:'}</span>{' '}
+                            <span className={orderStatusColor(order.status)}>{orderStatusLabel(order.status || 'completed')}</span>
+                          </div>
                           <div><span className="text-[var(--text-muted)]">{t.payment || 'Payment:'}</span> <span className="capitalize">{order.payment_method || '—'}</span></div>
+                          {renderOrderExtras(order)}
                         </div>
                         <div className="text-[var(--text-sec)] mb-2 text-xs font-semibold uppercase tracking-wider">{t.itemsLabel || 'Items'}</div>
                         <div className="space-y-1">
@@ -1167,9 +1259,13 @@ export default function AdminView({
                               <div className="bg-[var(--bg-primary)] px-4 py-4 text-sm border-b border-[var(--border)]">
                                 <div className="flex flex-wrap gap-x-8 gap-y-1 mb-3 text-xs">
                                   <div><span className="text-[var(--text-muted)]">{t.customerLabel || 'Customer:'}</span> <span className="font-medium">{customer}</span></div>
-                                  <div><span className="text-[var(--text-muted)]">{t.statusLabel || 'Status:'}</span> <span className="capitalize text-emerald-400">{order.status || 'completed'}</span></div>
+                                  <div>
+                                    <span className="text-[var(--text-muted)]">{t.statusLabel || 'Status:'}</span>{' '}
+                                    <span className={orderStatusColor(order.status)}>{orderStatusLabel(order.status || 'completed')}</span>
+                                  </div>
                                   <div><span className="text-[var(--text-muted)]">{t.payment || 'Payment:'}</span> <span className="capitalize">{order.payment_method || '—'}</span></div>
                                 </div>
+                                {renderOrderExtras(order)}
 
                                 <div className="text-[var(--text-sec)] mb-2 text-xs font-semibold uppercase tracking-wider">{t.itemsLabel || 'Items'}</div>
                                 <div className="space-y-1 pl-1">
@@ -1203,6 +1299,17 @@ export default function AdminView({
             t={t}
             lang={lang}
             onSaved={onPaymentSettingsSaved}
+          />
+        </Suspense>
+      )}
+
+      {activeTab === 'recharges' && (
+        <Suspense fallback={<AdminTabLoader />}>
+          <AdminRechargeManager
+            t={t}
+            lang={lang}
+            onNotify={onNotify}
+            onApproved={onRechargeApproved}
           />
         </Suspense>
       )}

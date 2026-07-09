@@ -7,6 +7,8 @@ const DEFAULT_SETTINGS = {
   shamcash_api_token: '',
   shamcash_account_id: '',
   shamcash_merchant_name: 'ECHOCORE Store',
+  shamcash_qr_image_url: '',
+  shamcash_pay_code: '',
   binance_enabled: false,
   mastercard_enabled: false,
   theme: {},
@@ -61,6 +63,12 @@ export async function saveStoreSettings(settings) {
       ? (settings.shamcash_account_id?.trim() || null)
       : (existing.shamcash_account_id?.trim() || null),
     shamcash_merchant_name: (settings.shamcash_merchant_name ?? existing.shamcash_merchant_name ?? DEFAULT_SETTINGS.shamcash_merchant_name).trim() || 'ECHOCORE Store',
+    shamcash_qr_image_url: settings.shamcash_qr_image_url !== undefined
+      ? (settings.shamcash_qr_image_url?.trim() || null)
+      : (existing.shamcash_qr_image_url?.trim() || null),
+    shamcash_pay_code: settings.shamcash_pay_code !== undefined
+      ? (settings.shamcash_pay_code?.trim() || null)
+      : (existing.shamcash_pay_code?.trim() || null),
     binance_enabled: settings.binance_enabled ?? existing.binance_enabled ?? DEFAULT_SETTINGS.binance_enabled,
     mastercard_enabled: settings.mastercard_enabled ?? existing.mastercard_enabled ?? DEFAULT_SETTINGS.mastercard_enabled,
     theme: settings.theme !== undefined ? (settings.theme || {}) : (existing.theme || {}),

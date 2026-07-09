@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Gamepad2, HelpCircle, BookOpen, Mail, ChevronDown, Sparkles, Percent } from 'lucide-react';
 
 /* ───── Navigation structure ─────
@@ -205,16 +205,15 @@ export default function SiteNav({ t, lang, navigate, className = '' }) {
             const active = isPathActive(item.path);
             return (
               <li key={item.path} className="site-nav-item-wrap">
-                <button
-                  type="button"
+                <Link
+                  to={item.path}
                   className={triggerClass(active)}
-                  onClick={() => navigate(item.path)}
                   aria-current={active ? 'page' : undefined}
                 >
                   <Icon className="site-nav-trigger-icon" strokeWidth={2} />
                   <span>{getNavLabel(t, lang, item)}</span>
                   <NavGlow active={active} />
-                </button>
+                </Link>
               </li>
             );
           }

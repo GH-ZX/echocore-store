@@ -1,39 +1,46 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { ArrowLeft, Loader2, CheckCircle, User, Server } from 'lucide-react';
+import { ArrowLeft, Loader2, CheckCircle, User, Server, QrCode, Clock } from 'lucide-react';
 import { buildPaymentMethods, getDefaultPaymentMethod } from '../lib/paymentMethods';
+import { markOrderPaymentSent } from '../lib/orders';
+import { resolveOfferRoute } from '../lib/offerRoutes';
 
-export default function BuyView({ 
-  t = {}, 
-  lang, 
-  navigate, 
-  user, 
-  games = [], 
-  offers = [], 
-  currentBalance = 0, 
+export default function BuyView({
+  t = {},
+  lang,
+  navigate,
+  user,
+  games = [],
+  offers = [],
+  currentBalance = 0,
   onPurchase,
   paymentConfig = {},
   onNotify,
+  loadingCatalog = false,
 }) {
   const notifyError = (message) => onNotify?.(message, 'error');
-  const { offerId } = useParams();
+  const notifySuccess = (message) => onNotify?.(message, 'success');
+  const { gameSlug, offerSlug } = useParams();
+  const isAr = lang === 'ar';
 
-  const offer = offers.find(o => String(o.id) === String(offerId));
-  const game = offer ? games.find(g => g.id === offer.game_id) : null;
+  const { offer, game } = resolveOfferRoute(offers, games, { gameSlug, offerSlug });
 
-  const availableServers = (game && Array.isArray(game.servers)) ? game.servers : [];
+  const availableServers = game && Array.isArray(game.servers) ? game.servers : [];
+
+  const merchantName = paymentConfig.shamcashMerchantName || 'ECHOCORE Store';
+  const qrImageUrl = paymentConfig.shamcashQrImageUrl || '';
+  const payCode = paymentConfig.shamcashPayCode || '';
+  const manualReady = !!paymentConfig.shamcashManualReady && paymentConfig.shamcash !== false;
 
   const [playerUid, setPlayerUid] = useState('');
   const [playerServer, setPlayerServer] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showSimModal, setShowSimModal] = useState(false);
-  const [simRef, setSimRef] = useState('');
-  const [pendingShamRef, setPendingShamRef] = useState('');
-  const merchantName = paymentConfig.shamcashMerchantName || 'ECHOCORE Store';
+  const [step, setStep] = useState('details');
+  const [activeOrder, setActiveOrder] = useState(null);
 
-  // For games with 'both' redemption, user must choose one
   const [redemptionChoice, setRedemptionChoice] = useState('uid');
 
+  const catalogLoading = loadingCatalog || (!offer && offers.length === 0);
   const isValidOffer = !!(offer && game);
   const needsUid = isValidOffer && (game.redemption_method === 'uid' || game.redemption_method === 'both');
   const needsCode = isValidOffer && (game.redemption_method === 'redeem_code' || game.redemption_method === 'both');
@@ -47,8 +54,9 @@ export default function BuyView({
   const paymentMethods = useMemo(
     () => (isValidOffer
       ? buildPaymentMethods(t, lang, paymentConfig, { includeBalance: true, currentBalance: hasEnough ? currentBalance : 0 })
+        .filter((m) => m.id === 'balance' || m.id === 'ShamCash')
       : []),
-    [t, lang, paymentConfig, hasEnough, currentBalance, isValidOffer]
+    [t, lang, paymentConfig, hasEnough, currentBalance, isValidOffer],
   );
 
   const usableMethods = paymentMethods.filter((m) => !m.disabled && !m.comingSoon);
@@ -65,11 +73,20 @@ export default function BuyView({
     }
   }, [paymentMethods, selectedMethod, usableMethods, hasEnough, isValidOffer]);
 
+  if (catalogLoading) {
+    return (
+      <div className="max-w-2xl mx-auto py-20 text-center text-[var(--text-sec)]">
+        <Loader2 className="w-8 h-8 animate-spin mx-auto text-[var(--accent)]" />
+        <p className="mt-3">{t.loadingOffer || (isAr ? 'جاري تحميل العرض...' : 'Loading offer...')}</p>
+      </div>
+    );
+  }
+
   if (!isValidOffer) {
     return (
       <div className="max-w-md mx-auto text-center py-20">
         <p className="text-xl text-[var(--text-sec)]">{t.offerNotFound || 'Offer not found'}</p>
-        <button onClick={() => navigate('/')} className="btn btn-secondary mt-4">Back</button>
+        <button type="button" onClick={() => navigate('/')} className="btn btn-secondary mt-4">Back</button>
       </div>
     );
   }
@@ -81,21 +98,15 @@ export default function BuyView({
     player_server: playerServer.trim() || null,
   };
 
-  const isUidComplete = !showUidForm || (playerUid.trim().length > 2);
+  const isUidComplete = !showUidForm || playerUid.trim().length > 2;
   const isServerComplete = availableServers.length === 0 || (playerServer && playerServer.trim().length > 0);
   const canProceed = isUidComplete && isServerComplete && !!currentMethod;
-
-  // Simulate payment like in recharge
-  const simulatePayment = async () => {
-    await new Promise((r) => setTimeout(r, 1200));
-    return { success: true, reference: `ECHOCORE-${Date.now().toString(36).toUpperCase()}` };
-  };
+  const isShamCash = selectedMethod === 'ShamCash';
 
   const startPurchase = async () => {
     if (!user?.id || !canProceed) return;
 
     if (selectedMethod === 'balance') {
-      // Direct balance path
       setIsProcessing(true);
       try {
         const result = await onPurchase(offer, 'balance', playerInfo);
@@ -111,47 +122,154 @@ export default function BuyView({
     }
 
     if (!usableMethods.some((m) => m.id === selectedMethod)) {
-      notifyError(lang === 'ar' ? 'طريقة الدفع غير متاحة' : 'Payment method unavailable');
+      notifyError(isAr ? 'طريقة الدفع غير متاحة' : 'Payment method unavailable');
       return;
     }
 
-    setPendingShamRef(`ECHOCORE-${Date.now().toString().slice(-8)}`);
-    setShowSimModal(true);
-    setSimRef('');
-  };
+    if (isShamCash && !manualReady) {
+      notifyError(t.rechargeNotConfigured || (isAr ? 'دفع ShamCash غير مُعدّ بعد من الإدارة' : 'ShamCash manual payment is not configured yet'));
+      return;
+    }
 
-  const confirmExternalPayment = async () => {
     setIsProcessing(true);
     try {
-      const sim = await simulatePayment();
-
-      const result = await onPurchase(offer, selectedMethod, playerInfo, {
-        paymentReference: sim.reference,
-      });
-
-      setSimRef(sim.reference);
-
-      setTimeout(() => {
-        setShowSimModal(false);
-        setIsProcessing(false);
-        if (result?.orderId) {
-          navigate(`/success?orderId=${result.orderId}`);
-        }
-      }, 850);
+      const result = await onPurchase(offer, selectedMethod, playerInfo);
+      if (result?.orderId) {
+        setActiveOrder({
+          orderId: result.orderId,
+          reference: result.reference,
+          total: price,
+          status: result.status || 'pending_payment',
+        });
+        setStep(result.status === 'payment_sent' ? 'pending' : 'payment');
+      }
     } catch (e) {
       notifyError(`${t.paymentFailed || 'Payment failed'}: ${e.message || ''}`);
+    } finally {
       setIsProcessing(false);
-      setShowSimModal(false);
+    }
+  };
+
+  const confirmPaymentSent = async () => {
+    if (!activeOrder?.orderId) return;
+
+    setIsProcessing(true);
+    try {
+      const result = await markOrderPaymentSent(activeOrder.orderId);
+      setActiveOrder((prev) => ({ ...prev, ...result, status: 'payment_sent' }));
+      setStep('pending');
+      notifySuccess(
+        t.orderPendingApproval
+          || (isAr ? 'تم استلام طلبك. سيُكتمل الشراء بعد تأكيد الإدارة.' : 'Request received. Your order will complete after admin approval.'),
+      );
+    } catch (e) {
+      notifyError(e.message || t.paymentFailed);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const name = lang === 'ar' ? offer.name_ar : offer.name_en;
   const gameName = lang === 'ar' ? game.name_ar : game.name_en;
 
+  if (step === 'payment' || step === 'pending') {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <button
+          type="button"
+          onClick={() => { setStep('details'); setActiveOrder(null); }}
+          className="flex items-center gap-2 mb-6 text-sm text-[var(--text-sec)] hover:text-white"
+        >
+          <ArrowLeft className="w-4 h-4" /> {t.back || (isAr ? 'رجوع' : 'Back')}
+        </button>
+
+        <div className="card p-8">
+          <div className="mb-6 text-center">
+            <div className="text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">ShamCash Pay</div>
+            <h1 className="text-2xl font-black">{t.completeShamcashPayment || (isAr ? 'إتمام الدفع عبر ShamCash' : 'Complete ShamCash Payment')}</h1>
+            <p className="mt-1 text-[var(--text-sec)]">{gameName} • {name}</p>
+          </div>
+
+          <div className="text-center mb-6">
+            <div className="text-sm text-[var(--text-muted)]">{t.total || 'Total'}</div>
+            <div className="text-4xl font-black font-mono text-[var(--accent)]">
+              ${activeOrder?.total != null ? parseFloat(activeOrder.total).toFixed(2) : total}
+            </div>
+            <div className="text-xs text-[var(--text-sec)] mt-1">{merchantName}</div>
+          </div>
+
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-5 text-center mb-5">
+            <div className="flex items-center justify-center gap-2 text-green-400 text-sm font-semibold mb-4">
+              <QrCode className="w-4 h-4" />
+              ShamCash Pay
+            </div>
+
+            {qrImageUrl ? (
+              <img
+                src={qrImageUrl}
+                alt="ShamCash QR"
+                className="mx-auto max-w-[220px] w-full rounded-xl border border-[var(--border)] bg-white p-2"
+              />
+            ) : (
+              <div className="py-10 text-sm text-[var(--text-muted)]">{t.qrNotConfigured}</div>
+            )}
+
+            {payCode && (
+              <div className="mt-4">
+                <div className="text-xs text-[var(--text-muted)] mb-1">
+                  {t.shamcashPayCodeLabel || (isAr ? 'رمز / حساب الدفع' : 'Payment code / account')}
+                </div>
+                <div className="font-mono text-lg tracking-wide break-all text-[var(--text-primary)] bg-black/30 rounded-xl px-4 py-3">
+                  {payCode}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-[var(--border)] bg-black/40 p-4 text-center mb-5">
+            <div className="text-green-400 text-xs mb-1 uppercase tracking-wider">
+              {t.paymentReference || (isAr ? 'مرجع الدفع' : 'Payment reference')}
+            </div>
+            <div className="font-mono text-lg tracking-wider">{activeOrder?.reference || '—'}</div>
+            <p className="text-xs text-[var(--text-muted)] mt-2">
+              {t.includeReferenceNote
+                || (isAr ? 'أرسل المبلغ عبر ShamCash مع هذا المرجع في الملاحظة إن أمكن.' : 'Send the exact amount via ShamCash and include this reference in the note if possible.')}
+            </p>
+          </div>
+
+          {step === 'payment' ? (
+            <button
+              type="button"
+              onClick={confirmPaymentSent}
+              disabled={isProcessing}
+              className="btn btn-primary w-full py-4 font-bold flex items-center justify-center gap-2"
+            >
+              {isProcessing ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> {t.processing}</>
+              ) : (
+                t.confirmPaymentSent || (isAr ? 'لقد أرسلت الدفع' : 'I have sent the payment')
+              )}
+            </button>
+          ) : (
+            <div className="text-center py-4 rounded-2xl border border-amber-500/30 bg-amber-500/10">
+              <Clock className="w-8 h-8 mx-auto text-amber-300 mb-2" />
+              <div className="font-bold text-amber-100">{t.awaitingAdminApproval || (isAr ? 'بانتظار موافقة الإدارة' : 'Awaiting admin approval')}</div>
+              <p className="text-xs text-[var(--text-sec)] mt-2 max-w-sm mx-auto">
+                {t.orderPendingDesc
+                  || (isAr ? 'سيُكتمل طلبك بعد أن يتحقق المسؤول من استلام المبلغ في ShamCash.' : 'Your order will complete after an admin verifies the ShamCash payment.')}
+              </p>
+              <CheckCircle className="w-5 h-5 mx-auto text-emerald-400 mt-3" />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-2xl mx-auto">
-      <button onClick={() => navigate(-1)} className="flex items-center gap-2 mb-6 text-sm text-[var(--text-sec)] hover:text-white">
-        <ArrowLeft className="w-4 h-4" /> {t.back || (lang === 'ar' ? 'رجوع' : 'Back')}
+      <button type="button" onClick={() => navigate(-1)} className="flex items-center gap-2 mb-6 text-sm text-[var(--text-sec)] hover:text-white">
+        <ArrowLeft className="w-4 h-4" /> {t.back || (isAr ? 'رجوع' : 'Back')}
       </button>
 
       <div className="card p-8">
@@ -161,24 +279,21 @@ export default function BuyView({
           <p className="mt-1 text-[var(--text-sec)]">{gameName} • {name}</p>
         </div>
 
-        {/* Price */}
         <div className="flex justify-between items-baseline mb-6 p-4 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)]">
           <div className="text-sm text-[var(--text-muted)]">{t.total || 'Total'}</div>
           <div className="text-4xl font-black text-[var(--accent)]">${total}</div>
         </div>
 
-        {/* In-Game Details Form - Server selector always shown */}
         <div className="mb-8">
           <div className="font-semibold mb-3 flex items-center gap-2">
             <User className="w-4 h-4" />
             {t.inGameDetails}
           </div>
 
-          {/* Choice for 'both' redemption_method */}
           {isBoth && (
             <div className="mb-4">
               <div className="text-xs text-[var(--text-muted)] mb-1.5 font-medium">
-                {t.chooseRedemptionMethod || (lang === 'ar' ? 'اختر طريقة الاسترداد' : 'Choose redemption method')}
+                {t.chooseRedemptionMethod || (isAr ? 'اختر طريقة الاسترداد' : 'Choose redemption method')}
               </div>
               <div className="flex gap-3">
                 <button
@@ -186,49 +301,45 @@ export default function BuyView({
                   onClick={() => setRedemptionChoice('uid')}
                   className={`flex-1 py-3 rounded-2xl border text-sm font-semibold transition ${redemptionChoice === 'uid' ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border)] hover:border-[var(--accent)]/60'}`}
                 >
-                  {t.useUid || (lang === 'ar' ? 'استخدم UID' : 'Use UID')}
+                  {t.useUid || (isAr ? 'استخدم UID' : 'Use UID')}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setRedemptionChoice('redeem_code'); setPlayerUid(''); setPlayerServer(''); }}
                   className={`flex-1 py-3 rounded-2xl border text-sm font-semibold transition ${redemptionChoice === 'redeem_code' ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border)] hover:border-[var(--accent)]/60'}`}
                 >
-                  {t.useRedeemCode || (lang === 'ar' ? 'استخدم كود الشحن' : 'Use Redeem Code')}
+                  {t.useRedeemCode || (isAr ? 'استخدم كود الشحن' : 'Use Redeem Code')}
                 </button>
               </div>
             </div>
           )}
 
-          {/* UID input - only for uid or both+uid */}
           {showUidForm && (
             <div className="mb-3">
-              <div>
-                <label className="text-xs text-[var(--text-muted)] block mb-1">
-                  {lang === 'ar' ? 'معرف اللاعب (UID)' : 'Player UID / User ID'} <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={playerUid}
-                  onChange={e => setPlayerUid(e.target.value)}
-                  placeholder={t.enterUid}
-                  className="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 text-lg font-mono focus:border-[var(--accent)] outline-none"
-                />
-              </div>
+              <label className="text-xs text-[var(--text-muted)] block mb-1">
+                {isAr ? 'معرف اللاعب (UID)' : 'Player UID / User ID'} <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={playerUid}
+                onChange={(e) => setPlayerUid(e.target.value)}
+                placeholder={t.enterUid}
+                className="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 text-lg font-mono focus:border-[var(--accent)] outline-none"
+              />
             </div>
           )}
 
-          {/* Server / Region selector - ALWAYS shown for any game */}
           <div>
             <label className="text-xs text-[var(--text-muted)] block mb-1 flex items-center gap-1">
               <Server className="w-3.5 h-3.5" />
-              {t.selectServer || (lang === 'ar' ? 'السيرفر / المنطقة' : 'Server / Region')}
+              {t.selectServer || (isAr ? 'السيرفر / المنطقة' : 'Server / Region')}
               {availableServers.length > 0 && <span className="text-red-400 ml-1">*</span>}
             </label>
 
             {availableServers.length > 0 ? (
               <select
                 value={playerServer}
-                onChange={e => setPlayerServer(e.target.value)}
+                onChange={(e) => setPlayerServer(e.target.value)}
                 className="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 focus:border-[var(--accent)] outline-none"
                 required
               >
@@ -241,8 +352,8 @@ export default function BuyView({
               <input
                 type="text"
                 value={playerServer}
-                onChange={e => setPlayerServer(e.target.value)}
-                placeholder={t.serverPlaceholder || (lang === 'ar' ? 'مثال: Europe أو Global' : 'e.g. Europe or Global')}
+                onChange={(e) => setPlayerServer(e.target.value)}
+                placeholder={t.serverPlaceholder || (isAr ? 'مثال: Europe أو Global' : 'e.g. Europe or Global')}
                 className="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 font-mono focus:border-[var(--accent)] outline-none"
               />
             )}
@@ -254,28 +365,31 @@ export default function BuyView({
             )}
           </div>
 
-          {/* Note when redeem code is chosen (for pure redeem or both) */}
           {(needsCode && !showUidForm) && (
-            <div className="text-sm p-3 rounded-xl bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 mb-2">
-              {t.redeemCodeWillBeProvided || (lang === 'ar' 
-                ? 'ستحصل على كود شحن بعد الشراء. استخدمه داخل اللعبة.' 
+            <div className="text-sm p-3 rounded-xl bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 mt-3 mb-2">
+              {t.redeemCodeWillBeProvided || (isAr
+                ? 'ستحصل على كود شحن بعد الشراء. استخدمه داخل اللعبة.'
                 : 'You will receive a redeem code after purchase. Use it in-game.')}
             </div>
           )}
 
-          {/* Info for both - only when uid chosen */}
           {isBoth && showUidForm && (
-            <div className="text-xs text-[var(--text-muted)] mb-2">
-              {lang === 'ar' ? 'اخترت الشحن عبر UID. سيتم إرسال النقاط إلى حسابك.' : 'You chose UID top-up. Points will be sent to the provided UID.'}
+            <div className="text-xs text-[var(--text-muted)] mb-2 mt-2">
+              {isAr ? 'اخترت الشحن عبر UID. سيتم إرسال النقاط إلى حسابك.' : 'You chose UID top-up. Points will be sent to the provided UID.'}
             </div>
           )}
 
           {!isUidComplete && needsUid && (
-            <div className="text-xs text-amber-400 mb-2">* {lang === 'ar' ? 'الرجاء إدخال UID صحيح' : 'Please enter a valid UID'}</div>
+            <div className="text-xs text-amber-400 mb-2 mt-2">* {isAr ? 'الرجاء إدخال UID صحيح' : 'Please enter a valid UID'}</div>
           )}
         </div>
 
-        {/* Payment Methods */}
+        {!manualReady && (
+          <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            {t.rechargeNotConfigured || (isAr ? 'دفع ShamCash اليدوي غير جاهز. يمكنك الدفع من الرصيد أو التواصل مع الدعم.' : 'Manual ShamCash payment is not ready. Pay from balance or contact support.')}
+          </div>
+        )}
+
         <div className="mb-6">
           <div className="font-semibold mb-3 text-sm text-[var(--text-sec)]">{t.paymentMethod}</div>
           <div className="space-y-2">
@@ -294,13 +408,15 @@ export default function BuyView({
                   }`}
                 >
                   <Icon className={`w-7 h-7 ${m.color} mr-4 flex-shrink-0`} />
-                  <div className="font-bold flex items-center gap-2 min-w-0">
-                    {m.name}
-                    {m.comingSoon && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-elevated)] text-[var(--text-muted)]">
-                        {t.comingSoon || (lang === 'ar' ? 'قريباً' : 'Coming soon')}
-                      </span>
-                    )}
+                  <div className="min-w-0">
+                    <div className="font-bold flex items-center gap-2">
+                      {m.name}
+                      {m.id === 'ShamCash' && (
+                        <span className="text-[10px] text-[var(--text-muted)] font-normal">
+                          {t.shamcashManualOnly || (isAr ? 'يدوي — موافقة الإدارة' : 'Manual — admin approval')}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   {m.id === 'balance' && <div className="ml-auto text-xs text-emerald-400">(${currentBalance.toFixed(2)})</div>}
                 </div>
@@ -310,8 +426,9 @@ export default function BuyView({
         </div>
 
         <button
+          type="button"
           onClick={startPurchase}
-          disabled={!canProceed || isProcessing || !user}
+          disabled={!canProceed || isProcessing || !user || (isShamCash && !manualReady)}
           className="btn btn-primary w-full py-5 text-xl font-black disabled:opacity-50"
         >
           {isProcessing ? (
@@ -323,55 +440,17 @@ export default function BuyView({
           )}
         </button>
 
-        <div className="text-center text-[10px] mt-4 text-[var(--text-muted)]">
-          {t.instantDeliveryNote}
-        </div>
-      </div>
-
-      {/* Simulation Modal (for external payment methods) */}
-      {showSimModal && selectedMethod === 'ShamCash' && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[80] p-4" onClick={() => !isProcessing && setShowSimModal(false)}>
-          <div className="card max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-center font-bold text-xl mb-4">
-              {lang === 'ar' ? 'إتمام الدفع عبر ShamCash' : 'Complete ShamCash Payment'}
-            </h3>
-
-            <div className="mb-4 text-center text-sm text-[var(--text-sec)]">
-              ${total} → {merchantName}
-            </div>
-
-            <div className="p-4 bg-black/70 rounded-xl mb-5 text-center">
-              <div className="text-green-400 mb-1 text-sm">SHAMCASH REFERENCE</div>
-              <div className="font-mono text-2xl tracking-widest">{pendingShamRef || simRef}</div>
-              <p className="text-xs mt-2 text-[var(--text-muted)]">
-                {lang === 'ar' ? 'ادفع عبر تطبيق ShamCash ثم أكّد' : 'Pay in ShamCash app, then confirm'}
-              </p>
-            </div>
-
-            {!simRef ? (
-              <button 
-                onClick={confirmExternalPayment} 
-                disabled={isProcessing}
-                className="btn btn-primary w-full py-4 font-bold flex justify-center gap-2"
-              >
-                {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                {lang === 'ar' ? 'تأكيد الدفع وإكمال الشراء' : 'Confirm Payment & Complete Purchase'}
-              </button>
-            ) : (
-              <div className="text-center py-2">
-                <CheckCircle className="mx-auto w-9 h-9 text-emerald-400 mb-2" />
-                <div className="font-bold text-lg">{lang === 'ar' ? 'تم الدفع بنجاح!' : 'Payment successful!'}</div>
-              </div>
-            )}
-
-            {!isProcessing && (
-              <button onClick={() => setShowSimModal(false)} className="mt-3 w-full text-sm text-[var(--text-sec)]">
-                {t.cancel || 'Cancel'}
-              </button>
-            )}
+        {isShamCash && (
+          <div className="text-center text-[10px] mt-4 text-[var(--text-muted)]">
+            {t.orderManualNote || (isAr ? 'لا يُكتمل الطلب تلقائياً. تُراجع كل دفعة ShamCash يدوياً من الإدارة.' : 'Orders are not completed automatically. Every ShamCash payment is reviewed manually.')}
           </div>
-        </div>
-      )}
+        )}
+        {!isShamCash && (
+          <div className="text-center text-[10px] mt-4 text-[var(--text-muted)]">
+            {t.instantDeliveryNote}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

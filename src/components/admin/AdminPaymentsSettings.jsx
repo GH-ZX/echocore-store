@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Wallet, Link2, Loader2, CheckCircle, AlertCircle, ExternalLink, RefreshCw, Save } from 'lucide-react';
 import { fetchStoreSettings, saveStoreSettings } from '../../lib/storeSettings';
 import { testShamcashConnection } from '../../lib/shamcashApi';
+import { uploadImage } from '../../lib/uploadImage';
 
 export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved }) {
   const isAr = lang === 'ar';
@@ -12,12 +13,16 @@ export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved }) 
   const [success, setSuccess] = useState('');
   const [testResult, setTestResult] = useState(null);
 
+  const [qrUploading, setQrUploading] = useState(false);
+
   const [form, setForm] = useState({
     shamcash_enabled: true,
     shamcash_api_base_url: 'https://api.shamcash-api.com/v1',
     shamcash_api_token: '',
     shamcash_account_id: '',
     shamcash_merchant_name: 'ECHOCORE Store',
+    shamcash_qr_image_url: '',
+    shamcash_pay_code: '',
     binance_enabled: false,
     mastercard_enabled: false,
   });
@@ -33,6 +38,8 @@ export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved }) 
         shamcash_api_token: data.shamcash_api_token || '',
         shamcash_account_id: data.shamcash_account_id || '',
         shamcash_merchant_name: data.shamcash_merchant_name || 'ECHOCORE Store',
+        shamcash_qr_image_url: data.shamcash_qr_image_url || '',
+        shamcash_pay_code: data.shamcash_pay_code || '',
         binance_enabled: false,
         mastercard_enabled: false,
       });
@@ -97,19 +104,111 @@ export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved }) 
     );
   }
 
+  const handleQrUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setQrUploading(true);
+    setError('');
+    try {
+      const url = await uploadImage(file, 'shamcash-qr');
+      if (url) setForm((p) => ({ ...p, shamcash_qr_image_url: url }));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setQrUploading(false);
+      e.target.value = '';
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div className="card p-5 sm:p-6">
+      <div className="card p-5 sm:p-6 border-green-500/20">
+        <div className="mb-6">
+          <h2 className="text-xl font-black flex items-center gap-2">
+            <Wallet className="w-5 h-5 text-green-400" />
+            {t.shamcashManualTitle || (isAr ? 'ShamCash Pay — شحن يدوي' : 'ShamCash Pay — Manual Recharge')}
+          </h2>
+          <p className="text-sm text-[var(--text-sec)] mt-1 max-w-2xl">
+            {t.shamcashManualHelp || (isAr
+              ? 'ارفع صورة QR ورمز الدفع النصي. يظهران للعملاء عند شحن الرصيد. توافق على الطلبات من تبويب Recharges.'
+              : 'Upload the QR image and payment code text. Customers see these when recharging. Approve requests in the Recharges tab.')}
+          </p>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-4 mb-6">
+          <div>
+            <label className="text-xs text-[var(--text-muted)] block mb-1.5">{t.shamcashQrImage || (isAr ? 'صورة QR' : 'QR image')}</label>
+            <input type="file" accept="image/*" onChange={handleQrUpload} className="w-full text-sm" />
+            {qrUploading && <p className="text-xs text-[var(--text-muted)] mt-1">{t.uploading}</p>}
+            {form.shamcash_qr_image_url && (
+              <img
+                src={form.shamcash_qr_image_url}
+                alt="ShamCash QR preview"
+                className="mt-3 max-w-[180px] rounded-xl border border-[var(--border)] bg-white p-2"
+              />
+            )}
+          </div>
+          <div>
+            <label className="text-xs text-[var(--text-muted)] block mb-1.5">{t.shamcashPayCodeLabel || (isAr ? 'رمز / حساب الدفع (نص)' : 'Payment code / account (text)')}</label>
+            <input
+              type="text"
+              value={form.shamcash_pay_code}
+              onChange={(e) => setForm((p) => ({ ...p, shamcash_pay_code: e.target.value }))}
+              placeholder={isAr ? 'مثال: 09xxxxxxxx أو رقم حساب' : 'e.g. 09xxxxxxxx or account ID'}
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 font-mono text-sm outline-none"
+            />
+            <p className="text-[10px] text-[var(--text-muted)] mt-1.5">
+              {t.shamcashPayCodeHelp || (isAr ? 'يُعرض أسفل صورة QR للنسخ اليدوي.' : 'Shown below the QR image for manual copy.')}
+            </p>
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label className="text-xs text-[var(--text-muted)] block mb-1.5">{t.merchantDisplayName || (isAr ? 'اسم التاجر (يظهر للعميل)' : 'Merchant name (shown to customers)')}</label>
+          <input
+            type="text"
+            value={form.shamcash_merchant_name}
+            onChange={(e) => setForm((p) => ({ ...p, shamcash_merchant_name: e.target.value }))}
+            className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 outline-none"
+          />
+        </div>
+
+        <label className="flex items-center gap-3 mb-2 p-4 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] cursor-pointer">
+          <input
+            type="checkbox"
+            checked={form.shamcash_enabled}
+            onChange={(e) => setForm((p) => ({ ...p, shamcash_enabled: e.target.checked }))}
+            className="w-4 h-4 accent-[var(--accent)]"
+          />
+          <div>
+            <div className="font-semibold">{t.enableShamcash || (isAr ? 'تفعيل ShamCash للعملاء' : 'Enable ShamCash for customers')}</div>
+            <div className="text-xs text-[var(--text-muted)]">{t.enableShamcashManualHelp || (isAr ? 'مطلوب QR + رمز الدفع لتفعيل شحن الرصيد' : 'QR + pay code required to enable balance recharge')}</div>
+          </div>
+        </label>
+
+        <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-[var(--border)]">
+          <button type="button" onClick={handleSave} disabled={saving} className="btn btn-primary action-chip gap-2 !border-0">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {t.saveSettings || (isAr ? 'حفظ الإعدادات' : 'Save Settings')}
+          </button>
+          <button type="button" onClick={load} className="action-chip gap-2">
+            <RefreshCw className="w-4 h-4" />
+            {t.refresh || (isAr ? 'تحديث' : 'Refresh')}
+          </button>
+        </div>
+      </div>
+
+      <div className="card p-5 sm:p-6 opacity-90">
         <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
           <div>
             <h2 className="text-xl font-black flex items-center gap-2">
-              <Wallet className="w-5 h-5 text-green-400" />
-              {t.shamcashSettings || (isAr ? 'إعدادات ShamCash' : 'ShamCash API')}
+              <Link2 className="w-5 h-5 text-[var(--accent)]" />
+              {t.shamcashSettings || (isAr ? 'ShamCash API (لاحقاً)' : 'ShamCash API (later)')}
             </h2>
             <p className="text-sm text-[var(--text-sec)] mt-1 max-w-2xl">
-              {t.shamcashSettingsHelp || (isAr
-                ? 'اربط حساب التاجر عبر API Token من لوحة ShamCash. التوكن يُخزّن بشكل آمن ولا يظهر للعملاء.'
-                : 'Connect your merchant account with an API token from the ShamCash dashboard. The token is stored securely and never shown to customers.')}
+              {t.shamcashApiLaterHelp || (isAr
+                ? 'اختياري — للأتمتة لاحقاً عند توفر API التاجر.'
+                : 'Optional — for automation later when merchant API docs are available.')}
             </p>
           </div>
           <a
@@ -123,30 +222,7 @@ export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved }) 
           </a>
         </div>
 
-        <label className="flex items-center gap-3 mb-6 p-4 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] cursor-pointer">
-          <input
-            type="checkbox"
-            checked={form.shamcash_enabled}
-            onChange={(e) => setForm((p) => ({ ...p, shamcash_enabled: e.target.checked }))}
-            className="w-4 h-4 accent-[var(--accent)]"
-          />
-          <div>
-            <div className="font-semibold">{t.enableShamcash || (isAr ? 'تفعيل ShamCash للعملاء' : 'Enable ShamCash for customers')}</div>
-            <div className="text-xs text-[var(--text-muted)]">{t.enableShamcashHelp || (isAr ? 'يظهر كطريقة دفع في الشحن والشراء' : 'Shows as a payment method in recharge and checkout')}</div>
-          </div>
-        </label>
-
         <div className="grid sm:grid-cols-2 gap-4">
-          <div className="sm:col-span-2">
-            <label className="text-xs text-[var(--text-muted)] block mb-1.5">{t.merchantDisplayName || (isAr ? 'اسم التاجر (يظهر للعميل)' : 'Merchant name (shown to customers)')}</label>
-            <input
-              type="text"
-              value={form.shamcash_merchant_name}
-              onChange={(e) => setForm((p) => ({ ...p, shamcash_merchant_name: e.target.value }))}
-              className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 outline-none"
-            />
-          </div>
-
           <div className="sm:col-span-2">
             <label className="text-xs text-[var(--text-muted)] block mb-1.5">{t.apiBaseUrl || 'API Base URL'}</label>
             <input
