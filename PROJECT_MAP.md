@@ -120,19 +120,12 @@ data/translations.js → ar/en UI strings (t.key pattern)
 | `store_settings` | Payment flags, theme JSON, home_layout JSON |
 | `get_site_theme` | RPC — theme overrides |
 | `get_payment_methods` | RPC — enabled payment methods |
-| `create_order_atomic` | RPC — atomic order + balance deduct (**run `atomic_order_rpc.sql`**) |
+| `create_order_atomic` | RPC — atomic order + balance deduct (**run `supabase_complete_schema.sql`**) |
 
-**SQL migration files** (run in Supabase SQL Editor as needed):
+**SQL migration files**:
 
 ```
-schema.sql / schema_games_offers.sql   → base schema
-add_balance_transactions.sql           → balance + transactions
-add_carousel_order.sql / add_carousel_focus.sql
-add_player_info.sql / add_game_servers.sql
-setup_store_settings.sql               → store_settings table
-add_theme_settings.sql / add_payment_settings.sql / add_home_layout.sql
-atomic_order_rpc.sql                   → secure checkout RPC
-fix_sale_upload_rls.sql
+supabase_complete_schema.sql   → Unified schema, policies, RPCs, storage bucket setup & seed data
 ```
 
 ---
@@ -177,7 +170,7 @@ These are local edits not yet committed — **merge carefully**:
 | **Border glow cards** | `BorderGlow.jsx`, `BorderGlow.css` |
 | **Theme admin** | `AdminThemeSettings.jsx` |
 | **App shell** | `App.jsx` (Aurora wrapper, z-index layering) |
-| **Atomic orders** | `atomic_order_rpc.sql` |
+| **Atomic orders** | `supabase_complete_schema.sql` |
 | **Deps** | `package.json` — added `ogl`, `@radix-ui/react-navigation-menu` |
 
 ---

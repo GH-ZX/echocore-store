@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import AdminEditButton from './components/AdminEditButton';
-import BorderGlow from './components/BorderGlow';
-import StoreBackground from './components/StoreBackground';
+import { flushSync } from 'react-dom';
+import AdminEditButton from './components/admin/AdminEditButton';
+import BorderGlow from './components/ui/BorderGlow';
+import StoreBackground from './components/backgrounds/StoreBackground';
 import { getCarouselGames, sortGamesByCarousel } from './lib/carouselUtils';
 import { CheckCircle, Loader2, Globe } from 'lucide-react';
 import { supabase, getUserProfile } from './lib/supabase';
@@ -12,25 +13,31 @@ import { fetchApprovedReviews } from './lib/customerReviews';
 import { translations } from './data/translations';
 import { Routes, Route, useNavigate, useParams, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import Header from './components/Header';
-import HomeView from './components/HomeView';
-import Footer from './components/Footer';
+import Header from './components/layout/Header';
+import HomeView from './views/home/HomeView';
+import Footer from './components/layout/Footer';
 
-const LoginView = lazy(() => import('./components/LoginView'));
-const CartView = lazy(() => import('./components/CartView'));
-const CheckoutView = lazy(() => import('./components/CheckoutView'));
-const AdminView = lazy(() => import('./components/AdminView'));
-const AllGamesView = lazy(() => import('./components/AllGamesView'));
-const SaleOffersView = lazy(() => import('./components/SaleOffersView'));
-const FAQView = lazy(() => import('./components/FAQView'));
-const HowItWorksView = lazy(() => import('./components/HowItWorksView'));
-const ContactView = lazy(() => import('./components/ContactView'));
-const RechargeView = lazy(() => import('./components/RechargeView'));
-const BuyView = lazy(() => import('./components/BuyView'));
-const ProfileView = lazy(() => import('./components/ProfileView'));
-const AdminOfferEditModal = lazy(() => import('./components/AdminOfferEditModal'));
-const AdminGameEditModal = lazy(() => import('./components/AdminGameEditModal'));
-const AdminCarouselManager = lazy(() => import('./components/AdminCarouselManager'));
+import LoginView from './views/auth/LoginView';
+import CartView from './views/CartView';
+import CheckoutView from './views/CheckoutView';
+import AllGamesView from './views/AllGamesView';
+import SaleOffersView from './views/SaleOffersView';
+import FAQView from './views/FAQView';
+import HowItWorksView from './views/HowItWorksView';
+import ContactView from './views/ContactView';
+import RechargeView from './views/RechargeView';
+import BuyView from './views/BuyView';
+import ProfileView from './views/profile/ProfileView';
+
+import AdminOfferEditModal from './components/admin/AdminOfferEditModal';
+import AdminGameEditModal from './components/admin/AdminGameEditModal';
+const AdminView = lazy(() => import('./views/admin/AdminView'));
+const AdminCarouselManager = lazy(() => import('./components/admin/AdminCarouselManager'));
+
+// Statically import extracted views
+import GameDetail from './views/GameDetail';
+import OfferDetail from './views/OfferDetail';
+import SuccessView from './views/SuccessView';
 
 function PageLoader({ lang = 'ar' }) {
   return (
@@ -42,27 +49,7 @@ function PageLoader({ lang = 'ar' }) {
   );
 }
 
-/** Pre-load lazy routes during idle time — avoids competing with first navigation */
-function PreloadComponents() {
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
 
-    const preload = () => {
-      import('./components/AllGamesView');
-      import('./components/SaleOffersView');
-      import('./components/BuyView');
-    };
-
-    if ('requestIdleCallback' in window) {
-      const id = window.requestIdleCallback(preload, { timeout: 4000 });
-      return () => window.cancelIdleCallback(id);
-    }
-
-    const id = window.setTimeout(preload, 2500);
-    return () => window.clearTimeout(id);
-  }, []);
-  return null;
-}
 
 const LANG_SWITCH_FADE_OUT_MS = 120;
 const LANG_SWITCH_LOADING_MS = 180;
@@ -112,568 +99,23 @@ function LangSwitchOverlay({ lang, active }) {
   );
 }
 
-// Standalone route page components (receive data via props)
-function GameDetail({ games, offers, t = {}, lang, navigate, addToCart, user, updateProduct, updateGame, loadingGames = false }) {
-  const { slug } = useParams();
-  const game = games.find((g) => (g.slug || g.id) === slug) || games.find((g) => g.id === slug);
-  const isAdmin = user?.role === 'admin';
-  const [editingOffer, setEditingOffer] = useState(null);
-  const [editingGame, setEditingGame] = useState(false);
-
-  if (loadingGames || (!game && games.length === 0)) {
-    return (
-      <div className="max-w-4xl mx-auto py-16 sm:py-20">
-        <div className="flex flex-col items-center justify-center gap-3">
-          <Loader2 className="w-9 h-9 text-[var(--accent)] animate-spin" />
-          <p className="text-[var(--text-sec)]">
-            {t.loadingGame}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!game) {
-    return (
-      <div className="max-w-4xl mx-auto text-center py-20">
-        <p className="text-xl text-[var(--text-sec)]">{t.gameNotFound}</p>
-        <button onClick={() => navigate('/')} className="btn btn-secondary mt-4">{t.backToHome}</button>
-      </div>
-    );
-  }
-
-  const gameOffers = offers.filter((o) => o.game_id === game.id);
-
-  return (
-    <div className="max-w-6xl mx-auto">
-      <div className="mb-4 sm:mb-6 flex flex-wrap items-center justify-between gap-2">
-        <button onClick={() => navigate('/')} className="btn btn-secondary text-sm sm:text-base">
-          {t.backToHome || (lang === 'ar' ? 'العودة إلى الرئيسية' : '← Back to Home')}
-        </button>
-        {isAdmin && (
-          <AdminEditButton
-            label={t.editGame || (lang === 'ar' ? 'تعديل اللعبة' : 'Edit Game')}
-            onClick={() => setEditingGame(true)}
-          />
-        )}
-      </div>
-
-      <div className="card overflow-hidden mb-8">
-        <div className="relative h-72 md:h-96">
-          {game.image_url && (
-            <img
-              src={game.image_url}
-              alt={lang === 'ar' ? game.name_ar : game.name_en}
-              loading="lazy"
-              decoding="async"
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
-          <div className="absolute bottom-0 p-6 md:p-8">
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-white">
-              {lang === 'ar' ? game.name_ar : game.name_en}
-            </h1>
-            <p className="text-white/70 text-lg mt-1">{game.points_name} Top-ups</p>
-            <p className="text-white/50 text-sm mt-1">{t.redemptionMethod || 'Redemption'}: {game.redemption_method === 'uid' ? (t.redemptionUid || 'UID') : game.redemption_method === 'redeem_code' ? (t.redemptionCode || 'Redeem Code') : (t.redemptionBoth || 'UID or Redeem Code')}</p>
-            {Array.isArray(game.servers) && game.servers.length > 0 && (
-              <p className="text-white/40 text-xs mt-0.5">{t.availableServers}: {game.servers.join(' • ')}</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <h2 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6">{t.availableOffers}</h2>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {gameOffers.length > 0 ? (
-          gameOffers.map((offer) => (
-            <BorderGlow
-              key={offer.id}
-              edgeSensitivity={25}
-              borderRadius={16}
-              glowRadius={28}
-              glowIntensity={0.8}
-              coneSpread={25}
-              fillOpacity={0.35}
-            >
-            <div
-              onClick={() => navigate(`/offer/${offer.id}`)}
-              className="p-4 sm:p-5 cursor-pointer group active:scale-[0.985] transition-all flex flex-col relative"
-            >
-              {isAdmin && (
-                <div className="absolute top-3 right-3 z-10">
-                  <AdminEditButton
-                    iconOnly
-                    label={t.edit || 'Edit'}
-                    onClick={() => setEditingOffer(offer)}
-                  />
-                </div>
-              )}
-              {/* Game logo + name header */}
-              <div className="flex items-center gap-2.5 mb-2.5">
-                {game.logo_url && (
-                  <img
-                    src={game.logo_url}
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                    className="w-7 h-7 object-contain rounded-sm flex-shrink-0 ring-1 ring-white/10 group-hover:ring-[var(--accent)]/30 transition-all"
-                  />
-                )}
-                <div className="text-xs font-medium text-[var(--text-sec)] truncate">
-                  {lang === 'ar' ? game.name_ar : game.name_en}
-                </div>
-              </div>
-
-              {/* Offer name */}
-              <div className="font-bold text-base sm:text-lg leading-tight mb-1 line-clamp-2 flex-1">
-                {lang === 'ar' ? offer.name_ar : offer.name_en}
-              </div>
-
-              {/* Region */}
-              {offer.region && (
-                <div className="text-[10px] text-[var(--text-sec)] mb-2.5">
-                  {t.region}: {offer.region}
-                </div>
-              )}
-
-              {/* Price section */}
-              <div className="mt-auto pt-2 border-t border-[var(--border)]">
-                {offer.is_sale && offer.original_price ? (
-                  <div>
-                    <div className="text-xs line-through text-[var(--text-sec)]">${parseFloat(offer.original_price).toFixed(2)}</div>
-                    <div className="flex items-baseline gap-2">
-                      <div className="text-2xl font-black text-[var(--accent)]">${parseFloat(offer.price).toFixed(2)}</div>
-                      <div className="text-[9px] px-1.5 py-px bg-red-500/15 text-red-400 rounded font-medium tracking-wide">SALE</div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-2xl font-black text-[var(--accent)]">${parseFloat(offer.price).toFixed(2)}</div>
-                )}
-              </div>
-
-              {/* Actions */}
-              <div className="mt-4 flex gap-2">
-                <button 
-                  onClick={(e) => { e.stopPropagation(); navigate(`/buy/${offer.id}`); }}
-                  className="flex-1 btn btn-primary text-xs py-2 font-semibold active:scale-[0.985]"
-                >
-                  {t.buyNow}
-                </button>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); navigate(`/offer/${offer.id}`); }}
-                  className="flex-1 btn btn-secondary text-xs py-2"
-                >
-                  {t.details || (lang==='ar' ? 'تفاصيل' : 'Details')}
-                </button>
-              </div>
-            </div>
-            </BorderGlow>
-          ))
-        ) : (
-          <div className="text-[var(--text-sec)] col-span-full">{t.noOffers}</div>
-        )}
-      </div>
-
-      {isAdmin && editingGame && (
-        <Suspense fallback={null}>
-          <AdminGameEditModal
-            game={game}
-            lang={lang}
-            t={t}
-            onClose={() => setEditingGame(false)}
-            onSave={updateGame}
-          />
-        </Suspense>
-      )}
-      {isAdmin && editingOffer && (
-        <Suspense fallback={null}>
-          <AdminOfferEditModal
-            offer={editingOffer}
-            games={games}
-            lang={lang}
-            t={t}
-            onClose={() => setEditingOffer(null)}
-            onSave={updateProduct}
-          />
-        </Suspense>
-      )}
-    </div>
-  );
-}
-
-function OfferDetail({ games, offers, t = {}, lang, navigate, addToCart, user, updateProduct, updateGame }) {
-  const { id } = useParams();
-  const offer = offers.find((o) => String(o.id) === String(id));
-  const game = offer ? games.find((g) => g.id === offer.game_id) : null;
-  const isAdmin = user?.role === 'admin';
-  const [editingOffer, setEditingOffer] = useState(false);
-  const [editingGame, setEditingGame] = useState(false);
-
-  if (!offer) {
-    return (
-      <div className="max-w-4xl mx-auto text-center py-20">
-        <p className="text-xl text-[var(--text-sec)]">{t.offerNotFound}</p>
-        <button onClick={() => navigate('/')} className="btn btn-secondary mt-4">{t.backToHome}</button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-4 sm:mb-6 flex flex-wrap items-center justify-between gap-2">
-        <button
-          onClick={() => (game ? navigate(`/game/${game.slug || game.id}`) : navigate('/'))}
-          className="btn btn-secondary text-sm sm:text-base"
-        >
-          ← Back to {game ? (lang === 'ar' ? game.name_ar : game.name_en) : 'Game'}
-        </button>
-        {isAdmin && (
-          <div className="flex flex-wrap items-center gap-2">
-            <AdminEditButton label={t.editOffer || 'Edit Offer'} onClick={() => setEditingOffer(true)} />
-            {game && (
-              <AdminEditButton label={t.editGame || 'Edit Game'} onClick={() => setEditingGame(true)} />
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="card overflow-hidden mb-8">
-        <div className="relative h-64 md:h-80">
-          {(offer.sale_image_url || offer.image_url) ? (
-            <img
-              src={offer.sale_image_url || offer.image_url}
-              alt={lang === 'ar' ? offer.name_ar : offer.name_en}
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-          ) : game?.image_url && (
-            <img
-              src={game.image_url}
-              alt=""
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/85 to-transparent" />
-          <div className="absolute bottom-0 p-8 w-full">
-            <div className="text-sm opacity-75 mb-1">
-              {game ? (lang === 'ar' ? game.name_ar : game.name_en) : ''}
-            </div>
-            <h1 className="text-4xl font-black">
-              {lang === 'ar' ? offer.name_ar : offer.name_en}
-            </h1>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid md:grid-cols-3 gap-8">
-        {/* Details */}
-        <div className="md:col-span-1 card p-6 h-fit">
-          <div>
-            <div className="text-[var(--text-sec)] text-sm">{t.price}</div>
-            {offer.is_sale && offer.original_price ? (
-              <>
-                <div className="text-sm line-through text-[var(--text-sec)]">${parseFloat(offer.original_price).toFixed(2)}</div>
-                <div className="text-4xl sm:text-5xl font-black text-[var(--accent)]">${parseFloat(offer.price).toFixed(2)}</div>
-              </>
-            ) : (
-              <div className="text-4xl sm:text-5xl font-black text-[var(--accent)]">${parseFloat(offer.price).toFixed(2)}</div>
-            )}
-            {offer.is_sale && <div className="text-[10px] mt-1 px-2 py-0.5 bg-red-500/10 text-red-400 rounded inline-block">{t.sale}</div>}
-          </div>
-
-          {offer.amount && (
-            <div className="mt-6">
-              <div className="text-[var(--text-sec)] text-sm">{t.youReceive}</div>
-              <div className="text-2xl font-bold">{offer.amount} {game?.points_name || ''}</div>
-            </div>
-          )}
-
-          {offer.region && (
-            <div className="mt-6">
-              <div className="text-[var(--text-sec)] text-sm">{t.region}</div>
-              <div className="font-medium">{offer.region}</div>
-            </div>
-          )}
-          {Array.isArray(game?.servers) && game.servers.length > 0 && (
-            <div className="mt-4">
-              <div className="text-[var(--text-sec)] text-sm">{t.availableServers || 'Available Servers'}</div>
-              <div className="text-sm">{game.servers.join(', ')}</div>
-            </div>
-          )}
-
-          <div className="flex flex-col gap-3 mt-6 sm:mt-8">
-            <button
-              onClick={() => navigate(`/buy/${offer.id}`)}
-              className="btn btn-primary w-full py-3.5 sm:py-4 text-base sm:text-lg font-black"
-            >
-              {t.buyNow}
-            </button>
-            <button
-              onClick={(e) => addToCart(offer, e)}
-              className="btn btn-secondary w-full py-3 text-sm"
-            >
-              {t.addToCart}
-            </button>
-          </div>
-        </div>
-
-        {/* Description + How to Apply */}
-        <div className="md:col-span-2 space-y-8">
-          <div className="card p-6">
-            <div className="flex items-center justify-between gap-2 mb-4">
-              <h3 className="font-bold text-xl">{t.description}</h3>
-              {isAdmin && (
-                <AdminEditButton
-                  label={t.edit || 'Edit'}
-                  onClick={() => setEditingOffer(true)}
-                />
-              )}
-            </div>
-            <p className="text-[var(--text-sec)] leading-relaxed">
-              {lang === 'ar' ? offer.description_ar : offer.description_en || t.instantDeliveryNote}
-            </p>
-          </div>
-
-          <div className="card p-6">
-            <h3 className="font-bold text-xl mb-4">{t.howToApply}</h3>
-            <div className="space-y-3 text-[var(--text-sec)]">
-              {game?.slug === 'valorant' && (
-                <>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">1.</span> Go to the Valorant store in-game.</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">2.</span> Click on the store currency (VP) purchase option.</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">3.</span> Choose the matching amount and region.</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">4.</span> Use the redeem code or UID we send you after purchase.</div>
-                </>
-              )}
-              {game?.slug === 'league-of-legends' && (
-                <>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">1.</span> Log into your Riot account on the official website.</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">2.</span> Go to the RP purchase page.</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">3.</span> Select the amount and enter the code we provide.</div>
-                </>
-              )}
-              {game?.slug === 'pubg-mobile' && (
-                <>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">1.</span> Open PUBG Mobile and go to the Store.</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">2.</span> Tap on UC purchase.</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">3.</span> Use the redeem code or link the UID we send.</div>
-                </>
-              )}
-              {game?.slug === 'mobile-legends' && (
-                <>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">1.</span> Open Mobile Legends: Bang Bang.</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">2.</span> Tap your profile icon (top left).</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">3.</span> Go to "Redeem" or provide your User ID + Server ID.</div>
-                  <div className="flex gap-3"><span className="font-mono text-[var(--accent)]">4.</span> Enter the code or use the top-up link we send after purchase.</div>
-                </>
-              )}
-              {!['valorant', 'league-of-legends', 'pubg-mobile', 'mobile-legends'].includes(game?.slug) && (
-                <div>{t.useCode || (lang === 'ar' ? 'استخدم الكود أو الـ UID الذي نرسله لك بعد الشراء في المتجر داخل اللعبة.' : 'Use the code or UID we send you after purchase in the in-game store.')}</div>
-              )}
-              <div className="pt-2 text-sm text-[var(--text-muted)]">{t.instantDeliveryNote}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {isAdmin && editingOffer && (
-        <Suspense fallback={null}>
-          <AdminOfferEditModal
-            offer={offer}
-            games={games}
-            lang={lang}
-            t={t}
-            onClose={() => setEditingOffer(false)}
-            onSave={updateProduct}
-          />
-        </Suspense>
-      )}
-      {isAdmin && editingGame && game && (
-        <Suspense fallback={null}>
-          <AdminGameEditModal
-            game={game}
-            lang={lang}
-            t={t}
-            onClose={() => setEditingGame(false)}
-            onSave={updateGame}
-          />
-        </Suspense>
-      )}
-    </div>
-  );
-}
-
-// Note: Run this in Supabase SQL if not already:
-// ALTER TABLE public.games ADD COLUMN IF NOT EXISTS redemption_method text DEFAULT 'both';
-
-function SuccessView({ navigate, games = [], t = {}, lang = 'ar' }) {
-  const [searchParams] = useSearchParams();
-  const orderId = searchParams.get('orderId');
-  const [orderDetails, setOrderDetails] = useState(null);
-  const [orderItems, setOrderItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!orderId) {
-      setLoading(false);
-      return;
-    }
-
-    const fetchOrder = async () => {
-      try {
-        const { data: order } = await supabase
-          .from('orders')
-          .select('*')
-          .eq('id', orderId)
-          .single();
-
-        const { data: items } = await supabase
-          .from('order_items')
-          .select('*')
-          .eq('order_id', orderId);
-
-        setOrderDetails(order);
-        setOrderItems(items || []);
-      } catch (err) {
-        console.error('Fetch order error:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchOrder();
-  }, [orderId]);
-
-  if (loading) {
-    return (
-      <div className="max-w-4xl mx-auto p-6 text-center">
-        <p className="text-[var(--text-sec)]">{t.loadingOrderDetails}</p>
-      </div>
-    );
-  }
-
-  if (!orderDetails) {
-    return (
-      <div className="max-w-4xl mx-auto p-6 text-center">
-        <p className="text-xl text-[var(--text-sec)]">{t.orderNotFound || (lang === 'ar' ? 'الطلب غير موجود.' : 'Order not found.')}</p>
-        <button onClick={() => navigate('/')} className="btn btn-secondary mt-4">{t.backToHome}</button>
-      </div>
-    );
-  }
-
-  // Determine redemption type based on player_uid presence (from BuyView)
-  const firstItem = orderItems[0] || {};
-  const playerUid = firstItem.player_uid;
-  const playerServer = firstItem.player_server;
-  const hasUid = !!playerUid;
-
-  const demoCode = hasUid ? null : `CODE-${orderId.slice(0, 8).toUpperCase()}`;
-  const isArabic = lang === 'ar';
-
-  return (
-    <div className="max-w-4xl mx-auto p-6">
-      <div className="text-center mb-8">
-        <div className="text-6xl mb-4">✅</div>
-        <h1 className="text-3xl font-black mb-2">
-          {t.successMsg}
-        </h1>
-        <p className="text-[var(--text-sec)]">
-          {t.codeOrUidInGame || (isArabic ? 'تم تسجيل طلبك بنجاح في قاعدة البيانات.' : 'Your order has been recorded successfully.')}
-        </p>
-      </div>
-
-      <div className="card p-6 mb-6">
-        <h2 className="font-bold text-xl mb-4">{t.orderInfo}</h2>
-        <div className="space-y-2 text-sm">
-          <div><span className="text-[var(--text-muted)]">{isArabic ? 'رقم الطلب' : 'Order ID'}:</span> <span className="font-mono">{orderDetails.id}</span></div>
-          <div><span className="text-[var(--text-muted)]">{t.total}:</span> ${parseFloat(orderDetails.total).toFixed(2)}</div>
-          <div><span className="text-[var(--text-muted)]">{isArabic ? 'طريقة الدفع' : 'Payment Method'}:</span> {orderDetails.payment_method === 'balance' ? (t.payFromBalance || 'رصيد الحساب') : orderDetails.payment_method}</div>
-          <div><span className="text-[var(--text-muted)]">{t.date}:</span> {new Date(orderDetails.created_at).toLocaleString()}</div>
-          <div><span className="text-[var(--text-muted)]">{isArabic ? 'الحالة' : 'Status'}:</span> <span className="capitalize text-emerald-400">{orderDetails.status || 'completed'}</span></div>
-        </div>
-      </div>
-
-      <div className="card p-6 mb-6">
-        <h2 className="font-bold text-xl mb-4">{t.itemsPurchased}</h2>
-        {orderItems.length > 0 ? (
-          <div className="space-y-2">
-            {orderItems.map((item, idx) => (
-              <div key={idx} className="flex justify-between text-sm py-1 border-b border-[var(--border)] last:border-0">
-                <span>{item.name_snapshot}</span>
-                <span className="font-mono">${parseFloat(item.price).toFixed(2)} × {item.quantity || 1}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-[var(--text-sec)]">{t.noItems}</p>
-        )}
-
-        {/* Player UID info - always show if present */}
-        {hasUid && (
-          <div className="mt-4 pt-4 border-t border-[var(--border)]">
-            <div className="text-sm font-semibold mb-2 text-emerald-400">
-              {t.topUpSent}
-            </div>
-            <div className="text-sm">
-              <span className="text-[var(--text-muted)]">{isArabic ? 'UID:' : 'UID:'}</span>{' '}
-              <span className="font-mono text-[var(--accent)] text-lg">{playerUid}</span>
-              {playerServer && (
-                <>
-                  {' • '}<span className="text-[var(--text-muted)]">{t.serverLabel}:</span>{' '}
-                  <span className="font-mono">{playerServer}</span>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Redeem Code Section - ONLY for redeem_code purchases */}
-      {!hasUid && demoCode && (
-        <div className="card p-6 mb-6">
-          <h2 className="font-bold text-xl mb-4">
-            {t.yourRedeemCode}
-          </h2>
-          <div className="bg-[var(--bg-primary)] p-6 rounded-xl text-center mb-4">
-            <div className="text-4xl font-mono tracking-widest text-[var(--accent)] mb-2">{demoCode}</div>
-            <p className="text-xs text-[var(--text-muted)]">
-              {t.demoCodeNote}
-            </p>
-          </div>
-          <p className="text-[var(--text-sec)] text-sm">
-            {t.useCodeInGame}
-          </p>
-        </div>
-      )}
-
-      {/* UID Only Success - no redeem code shown */}
-      {hasUid && (
-        <div className="card p-6 mb-6 text-center">
-          <h2 className="font-bold text-xl mb-3 text-emerald-400">
-            {t.topUpSentSuccess}
-          </h2>
-          <p className="text-[var(--text-sec)]">
-            {t.topUpSentDesc}
-          </p>
-          <p className="text-xs text-[var(--text-muted)] mt-2">
-            {t.topUpArrivesSoon}
-          </p>
-        </div>
-      )}
-
-      <div className="text-center">
-        <button onClick={() => navigate('/')} className="btn btn-primary px-8 py-3">
-          {t.backToHomeSuccess || t.backToHome}
-        </button>
-      </div>
-    </div>
-  );
-}
+// Extracted route page components (GameDetail, OfferDetail, SuccessView) have been moved to src/views/
 
 export default function App() {
-  const navigate = useNavigate();
+  const reactNavigate = useNavigate();
+  const navigate = (path, options) => {
+    console.log(`[Diagnostic] Clicked to navigate to: ${path} at ${new Date().toLocaleTimeString()}`);
+    console.time(`Time to render page ${path}`);
+    flushSync(() => {
+      reactNavigate(path, options);
+    });
+  };
   const location = useLocation();
+
+  useEffect(() => {
+    console.log(`[Diagnostic] Router Location updated to: ${location.pathname} at ${new Date().toLocaleTimeString()}`);
+    console.timeEnd(`Time to render page ${location.pathname}`);
+  }, [location.pathname]);
   const hasShownLoginToast = useRef(false);
   const cartIconRef = useRef(null);
 
@@ -1650,19 +1092,8 @@ export default function App() {
         className={langSwitching ? 'pointer-events-none select-none' : ''}
       >
       <main id="main-content" className="container mx-auto px-3 sm:px-4 pb-20 sm:pb-24 max-w-7xl">
-        <AnimatePresence mode="sync" initial={false}>
-          <motion.div
-            key={`${location.pathname}-${lang}`}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{
-              duration: langSwitching ? 0.14 : 0.1,
-              ease: 'easeOut',
-            }}
-          >
-            <Suspense fallback={<PageLoader lang={lang} />}>
-            <Routes location={location}>
+        <Suspense fallback={<PageLoader lang={lang} />}>
+        <Routes>
               <Route
                 path="/"
                 element={
@@ -1945,12 +1376,9 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </Suspense>
-        </motion.div>
-        </AnimatePresence>
       </main>
 
-      {/* Pre-load common lazy components after first paint */}
-      <PreloadComponents />
+
       {flyingItems.map((fly) => {
         const start = fly.startRect;
         const end = fly.endRect;
@@ -1994,28 +1422,24 @@ export default function App() {
       </motion.div>
 
       {isAdmin && adminEditOffer && (
-        <Suspense fallback={null}>
-          <AdminOfferEditModal
-            offer={adminEditOffer}
-            games={games}
-            lang={lang}
-            t={t}
-            onClose={() => setAdminEditOffer(null)}
-            onSave={saveProduct}
-          />
-        </Suspense>
+        <AdminOfferEditModal
+          offer={adminEditOffer}
+          games={games}
+          lang={lang}
+          t={t}
+          onClose={() => setAdminEditOffer(null)}
+          onSave={saveProduct}
+        />
       )}
 
       {isAdmin && adminEditGame && (
-        <Suspense fallback={null}>
-          <AdminGameEditModal
-            game={adminEditGame}
-            lang={lang}
-            t={t}
-            onClose={() => setAdminEditGame(null)}
-            onSave={saveGame}
-          />
-        </Suspense>
+        <AdminGameEditModal
+          game={adminEditGame}
+          lang={lang}
+          t={t}
+          onClose={() => setAdminEditGame(null)}
+          onSave={saveGame}
+        />
       )}
 
       {isAdmin && adminCarouselOpen && (

@@ -22,11 +22,12 @@ cp .env.example .env     # fill your Supabase keys
 npm run dev
 ```
 
-Then run the SQL in Supabase → SQL Editor from the setup file.
+Then run the SQL in Supabase → SQL Editor using [supabase_complete_schema.sql](./supabase_complete_schema.sql).
 
 ### For User Balance + Recharge feature:
-Run `add_balance_transactions.sql` in Supabase SQL Editor (adds balance column + transactions table + secure RPC helpers).
+The unified SQL file already sets up the balance column, transactions table, and secure RPC helpers.
 Recharge page at /recharge supports simulated Binance Pay / ShamCash / Cards (see SQL file + RechargeView.jsx for real API implementation notes).
+
 
 
 ## ✨ الميزات

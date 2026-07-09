@@ -1741,6 +1741,15 @@ html, body {
   --carousel-height: clamp(300px, max(58dvh, 34vw), 780px);
 }
 
+.carousel-skeleton {
+  height: var(--carousel-height);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
 @media (min-width: 640px) {
   :root {
     --carousel-height: clamp(360px, max(54vh, 38vw), 720px);
@@ -1898,4 +1907,19 @@ html, body {
   .admin-shell .input[type='file'] {
     font-size: 0.75rem;
   }
+}
+
+/* Carousel Progress Bar Animation */
+@keyframes carouselProgress {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
+.carousel-progress-bar {
+  height: 100%;
+  animation: carouselProgress 6000ms linear forwards;
+}
+
+.carousel-progress-bar.paused {
+  animation-play-state: paused;
 }

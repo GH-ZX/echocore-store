@@ -2,7 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import './index.css'
-import './components/BorderGlow.css'
+import './components/ui/BorderGlow.css'
 import { applyCachedTheme } from './lib/theme'
 import App from './App.jsx'
 
