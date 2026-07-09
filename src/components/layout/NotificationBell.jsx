@@ -193,7 +193,7 @@ export default function NotificationBell({
                 }}
                 className="header-notif-view-all"
               >
-                {t.viewAllNotifications || (lang === 'ar' ? 'فتح بريد الموقع' : 'Open site inbox')}
+                {t.viewAllNotifications}
               </button>
             </div>
           </motion.div>

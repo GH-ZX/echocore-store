@@ -2629,7 +2629,7 @@ html, body {
 
 /* Carousel slide height — taller on mobile (dvh), scales with viewport width on desktop */
 :root {
-  --carousel-height: clamp(300px, max(58dvh, 34vw), 780px);
+  --carousel-height: clamp(240px, max(46dvh, 28vw), 600px);
 }
 
 .carousel-skeleton {
@@ -2643,13 +2643,13 @@ html, body {
 
 @media (min-width: 640px) {
   :root {
-    --carousel-height: clamp(360px, max(54vh, 38vw), 720px);
+    --carousel-height: clamp(280px, max(42vh, 30vw), 560px);
   }
 }
 
 @media (min-width: 1024px) {
   :root {
-    --carousel-height: clamp(420px, max(56vh, 42vw), 780px);
+    --carousel-height: clamp(340px, max(44vh, 34vw), 600px);
   }
 }
 
@@ -2657,7 +2657,7 @@ html, body {
   flex: 0 0 100%;
   min-width: 0;
   height: var(--carousel-height);
-  min-height: 300px;
+  min-height: 240px;
   background: #060b19;
 }
 
@@ -3094,11 +3094,23 @@ html, body {
 
 .carousel-progress-bar {
   height: 100%;
+  background: var(--accent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 55%, transparent);
   animation: carouselProgress 6000ms linear forwards;
 }
 
 .carousel-progress-bar.paused {
   animation-play-state: paused;
+}
+
+[data-glows-enabled='false'] .carousel-progress-bar {
+  box-shadow: none;
+}
+
+.carousel-strip-top-line {
+  background: linear-gradient(90deg, transparent, var(--carousel-logo-color, var(--accent)), transparent);
+  opacity: 0.65;
+  transition: background 0.5s ease;
 }
 
 /* Carousel bottom strip — icon + game name (hesap-style) */
@@ -3363,25 +3375,31 @@ html, body {
 
 .profile-details-grid {
   display: grid;
-  grid-template-columns: repeat(1, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
+  grid-auto-rows: 1fr;
 }
 
-@media (min-width: 640px) {
+@media (min-width: 768px) {
   .profile-details-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
 .profile-detail-item {
+  display: flex;
+  flex-direction: column;
+  min-height: 4.5rem;
   padding: 0.75rem 0.875rem;
   border-radius: var(--radius-sm);
   border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
   background: color-mix(in srgb, var(--bg-elevated) 35%, transparent);
 }
 
-.profile-detail-item--full {
-  grid-column: 1 / -1;
+.profile-hero__details {
+  border-top: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
 }
 
 .profile-detail-label {

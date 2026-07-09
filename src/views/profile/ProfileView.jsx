@@ -205,7 +205,6 @@ export default function ProfileView({
   const savedDiscord = savedProfile.discord_username || '';
   const savedPlayerUid = savedProfile.default_player_uid || '';
   const heroName = editingProfile ? (nameDraft || user.name) : savedName;
-  const heroBio = editingProfile ? bioDraft : savedBio;
   const displayAvatar = removeAvatar ? '' : (avatarPreview || avatarUrl);
   const memberSince = formatDate(profileMeta?.created_at, lang);
 
@@ -214,16 +213,18 @@ export default function ProfileView({
     [notSetLabel],
   );
 
+  const accountTypeLabel = isAdmin ? t.profileRoleAdmin : t.profileRolePlayer;
+
   const profileDetails = useMemo(() => [
-    { key: 'name', label: t.displayName, icon: UserRound, value: formatDetail(savedName) },
-    { key: 'email', label: t.emailAddress, icon: Mail, value: user.email, fullWidth: true },
-    { key: 'bio', label: t.profileBio, icon: Sparkles, value: formatDetail(savedBio), fullWidth: true },
+    { key: 'bio', label: t.profileBio, icon: Sparkles, value: formatDetail(savedBio) },
     { key: 'phone', label: t.profilePhone, icon: Phone, value: formatDetail(savedPhone) },
     { key: 'country', label: t.profileCountry, icon: MapPin, value: formatDetail(savedCountry) },
     { key: 'favorite_game', label: t.profileFavoriteGame, icon: Gamepad2, value: formatDetail(savedFavoriteGame) },
     { key: 'discord', label: t.profileDiscord, icon: AtSign, value: formatDetail(savedDiscord) },
     { key: 'player_uid', label: t.profileDefaultUid, icon: Hash, value: formatDetail(savedPlayerUid) },
-  ], [savedName, savedBio, savedPhone, savedCountry, savedFavoriteGame, savedDiscord, savedPlayerUid, user.email, t, formatDetail]);
+    { key: 'member_since', label: t.memberSince, icon: Calendar, value: memberSince },
+    { key: 'account_type', label: t.accountType, icon: ShieldCheck, value: accountTypeLabel },
+  ], [savedBio, savedPhone, savedCountry, savedFavoriteGame, savedDiscord, savedPlayerUid, memberSince, accountTypeLabel, t, formatDetail]);
 
   const isDirty = useMemo(() => {
     const base = {
@@ -405,19 +406,10 @@ export default function ProfileView({
                 {t.profileTitle}
               </p>
               <h1 className="text-xl sm:text-2xl md:text-3xl font-black truncate">{heroName}</h1>
-              {heroBio?.trim() && (
-                <p className="text-sm text-[var(--text-sec)] mt-2 line-clamp-2">{heroBio}</p>
-              )}
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-sm text-[var(--text-sec)]">
-                <span className="flex items-center gap-1.5 min-w-0">
-                  <Mail className="w-3.5 h-3.5 flex-shrink-0 text-[var(--accent)]/70" />
-                  <span className="truncate">{user.email}</span>
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-[var(--accent)]/70" />
-                  {t.memberSince} {memberSince}
-                </span>
-              </div>
+              <p className="flex items-center gap-1.5 mt-2 text-sm text-[var(--text-sec)] min-w-0">
+                <Mail className="w-3.5 h-3.5 flex-shrink-0 text-[var(--accent)]/70" />
+                <span className="truncate">{user.email}</span>
+              </p>
               <div className="flex flex-wrap items-center gap-2 mt-3">
                 <span className={`profile-badge ${isAdmin ? 'profile-badge--admin' : 'profile-badge--player'}`}>
                   {isAdmin ? <ShieldCheck className="w-3 h-3" /> : <Gamepad2 className="w-3 h-3" />}
@@ -461,42 +453,39 @@ export default function ProfileView({
             )}
           </div>
         </div>
-      </div>
 
-      <div className="card profile-details p-5 sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-          <div>
-            <h2 className="font-bold text-lg flex items-center gap-2">
-              <UserRound className="w-5 h-5 text-[var(--accent)]" />
-              {t.profileDetails}
-            </h2>
-            <p className="text-xs text-[var(--text-muted)] mt-1">
-              {t.profileDetailsHelp}
-            </p>
-          </div>
-          {!editingProfile && (
-            <button type="button" onClick={openEditProfile} className="btn btn-secondary gap-2 px-4">
-              <Pencil className="w-4 h-4" />
-              {t.editProfile}
-            </button>
-          )}
-        </div>
-
-        <div className="profile-details-grid">
-          {profileDetails.map((item) => (
-            <div
-              key={item.key}
-              className={`profile-detail-item${item.fullWidth ? ' profile-detail-item--full' : ''}`}
-            >
-              <span className="profile-detail-label">
-                <item.icon className="w-3.5 h-3.5 text-[var(--accent)]/70" />
-                {item.label}
-              </span>
-              <p className={`profile-detail-value${item.value === notSetLabel ? ' profile-detail-value--empty' : ''}`}>
-                {item.value}
+        <div className="profile-hero__details px-5 sm:px-8 pb-5 sm:pb-8">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 className="font-bold text-base sm:text-lg flex items-center gap-2">
+                <UserRound className="w-5 h-5 text-[var(--accent)]" />
+                {t.profileDetails}
+              </h2>
+              <p className="text-xs text-[var(--text-muted)] mt-1">
+                {t.profileDetailsHelp}
               </p>
             </div>
-          ))}
+            {!editingProfile && (
+              <button type="button" onClick={openEditProfile} className="btn btn-secondary gap-2 px-4">
+                <Pencil className="w-4 h-4" />
+                {t.editProfile}
+              </button>
+            )}
+          </div>
+
+          <div className="profile-details-grid">
+            {profileDetails.map((item) => (
+              <div key={item.key} className="profile-detail-item">
+                <span className="profile-detail-label">
+                  <item.icon className="w-3.5 h-3.5 text-[var(--accent)]/70" />
+                  {item.label}
+                </span>
+                <p className={`profile-detail-value mt-auto${item.value === notSetLabel ? ' profile-detail-value--empty' : ''}`}>
+                  {item.value}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -608,11 +597,6 @@ export default function ProfileView({
               <p className="text-[10px] text-[var(--text-muted)] mt-1 text-right font-mono">
                 {bioDraft.length}/160
               </p>
-            </div>
-
-            <div className="profile-field-readonly">
-              <span className="profile-field-label">{t.emailAddress}</span>
-              <p className="text-sm text-[var(--text-sec)] mt-1 break-all">{user.email}</p>
             </div>
 
             <div className="grid sm:grid-cols-2 gap-4">
@@ -736,15 +720,13 @@ export default function ProfileView({
         ))}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
         {(isAdmin ? [
           { icon: ShieldCheck, label: t.adminDash, path: '/dashboard' },
           { icon: Inbox, label: t.siteInboxTitle, path: '/notifications' },
-          { icon: Gamepad2, label: t.browseGames, path: '/games' },
           { icon: ShoppingCart, label: t.cart, path: '/cart' },
         ] : [
           { icon: Inbox, label: t.siteInboxTitle, path: '/notifications' },
-          { icon: Gamepad2, label: t.browseGames, path: '/games' },
           { icon: ShoppingCart, label: t.cart, path: '/cart' },
           { icon: Wallet, label: t.recharge, action: onRecharge },
         ]).map((action) => (

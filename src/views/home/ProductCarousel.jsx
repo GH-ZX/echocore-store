@@ -1,13 +1,13 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
 import { ChevronLeft, ChevronRight, Settings2, ChevronUp, ChevronDown, Plus } from 'lucide-react';
 import AdminEditButton from '../../components/admin/AdminEditButton';
 
 import { brandUserText } from '../../lib/branding';
 import { presetImageUrl } from '../../lib/imageUtils';
+import { extractDominantLogoColor, isCanvasSafeUrl, sampleLogoColorFromUrl } from '../../lib/logoColor';
 
 const AUTOPLAY_MS = 6000;
-const DEFAULT_ACCENT = { r: 34, g: 211, b: 238 };
 
 function slideDistance(index, active, total) {
   const direct = Math.abs(index - active);
@@ -43,9 +43,9 @@ export default function ProductCarousel({
   });
   const [activeSlide, setActiveSlide] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
-  const [accent, setAccent] = useState(DEFAULT_ACCENT);
-  const [logoAccent, setLogoAccent] = useState(DEFAULT_ACCENT);
   const [kenBurnsEnabled, setKenBurnsEnabled] = useState(false);
+  const [logoLineColor, setLogoLineColor] = useState(null);
+  const logoImgRefs = useRef({});
   const colorJobRef = useRef(0);
 
   useEffect(() => {
@@ -72,58 +72,6 @@ export default function ProductCarousel({
     return () => embla.off('select', onSelect);
   }, [embla]);
 
-  const extractAverageColor = useCallback((src, setter) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = 24;
-        canvas.height = 24;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, 24, 24);
-        const d = ctx.getImageData(0, 0, 24, 24).data;
-        let r = 0, g = 0, b = 0, n = 0;
-        for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
-        const raw = { r: r / n, g: g / n, b: b / n };
-        const mx = Math.max(raw.r, raw.g, raw.b);
-        const boost = mx > 30 ? Math.min(255 / mx, 2.2) : 1;
-        setter({
-          r: Math.min(255, Math.round(raw.r * boost)),
-          g: Math.min(255, Math.round(raw.g * boost)),
-          b: Math.min(255, Math.round(raw.b * boost)),
-        });
-      } catch {
-        setter(DEFAULT_ACCENT);
-      }
-    };
-    img.onerror = () => setter(DEFAULT_ACCENT);
-    img.src = src;
-  }, []);
-
-  useEffect(() => {
-    const item = slides[activeSlide];
-    if (!item) return;
-
-    const jobId = ++colorJobRef.current;
-    const timer = window.setTimeout(() => {
-      if (colorJobRef.current !== jobId) return;
-      const coverSrc = presetImageUrl(
-        item.image_url || item.image || placeholderCover,
-        'colorSample',
-      );
-      const logoSrc = item.logo_url || item.logo;
-      extractAverageColor(coverSrc, setAccent);
-      if (logoSrc) {
-        extractAverageColor(presetImageUrl(logoSrc, 'colorSample'), setLogoAccent);
-      } else {
-        setLogoAccent(DEFAULT_ACCENT);
-      }
-    }, 120);
-
-    return () => window.clearTimeout(timer);
-  }, [activeSlide, slides, extractAverageColor, placeholderCover]);
-
   const getCoverUrl = useCallback(
     (item) => presetImageUrl(item.image_url || item.image || placeholderCover, 'carouselCover'),
     [placeholderCover],
@@ -134,9 +82,35 @@ export default function ProductCarousel({
     [],
   );
 
-  const ac = (a) => `rgba(${accent.r},${accent.g},${accent.b},${a})`;
-  const acSolid = `rgb(${accent.r},${accent.g},${accent.b})`;
-  const logoAcSolid = `rgb(${logoAccent.r},${logoAccent.g},${logoAccent.b})`;
+  const resolveActiveLogoColor = useCallback(async (item) => {
+    const jobId = ++colorJobRef.current;
+    const logoSrc = getLogo(item);
+
+    if (!logoSrc) {
+      setLogoLineColor(null);
+      return;
+    }
+
+    const domImg = logoImgRefs.current[item.id];
+    let color = domImg?.complete && domImg.naturalWidth
+      ? extractDominantLogoColor(domImg)
+      : null;
+
+    if (!color) {
+      color = await sampleLogoColorFromUrl(logoSrc);
+    }
+
+    if (colorJobRef.current === jobId && color) {
+      setLogoLineColor(color);
+    }
+  }, [getLogo]);
+
+  useEffect(() => {
+    const item = slides[activeSlide];
+    if (!item) return;
+    setLogoLineColor(null);
+    resolveActiveLogoColor(item);
+  }, [activeSlide, slides, resolveActiveLogoColor]);
 
   const currentItem = slides[activeSlide] || slides[0];
   const slideCount = slides.length;
@@ -198,11 +172,6 @@ export default function ProductCarousel({
           <div
             key={activeSlide}
             className={`carousel-progress-bar ${isPaused ? 'paused' : ''}`}
-            style={{
-              background: acSolid,
-              boxShadow: `0 0 12px ${acSolid}`,
-              transition: 'background 0.6s ease, box-shadow 0.6s ease',
-            }}
           />
         </div>
 
@@ -255,15 +224,7 @@ export default function ProductCarousel({
                            linear-gradient(0deg, rgba(6,11,25,0.45) 0%, transparent 45%)`,
                     }}
                   />
-                  <div
-                    className="absolute inset-0 pointer-events-none"
-                    style={{
-                      background: lang === 'ar'
-                        ? `radial-gradient(ellipse at 95% 80%, ${ac(0.12)} 0%, transparent 55%)`
-                        : `radial-gradient(ellipse at 5% 80%, ${ac(0.12)} 0%, transparent 55%)`,
-                      transition: 'background 0.8s ease',
-                    }}
-                  />
+
                   <div
                     className={`absolute inset-0 flex flex-col justify-end p-4 sm:p-5 md:p-10 ${
                       lang === 'ar' ? 'items-end text-right' : 'items-start text-left'
@@ -321,23 +282,10 @@ export default function ProductCarousel({
         style={{
           background: 'transparent',
           boxShadow: '0 1px 0 rgba(255,255,255,0.05), 0 -8px 20px rgba(0,0,0,0.4)',
+          '--carousel-logo-color': logoLineColor || undefined,
         }}
       >
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background: `radial-gradient(ellipse at 50% 0%, ${ac(0.3)} 0%, transparent 50%)`,
-            transition: 'background 0.8s ease',
-          }}
-        />
-        <div
-          className="absolute top-0 left-0 right-0 h-[1px] opacity-40 pointer-events-none"
-          style={{ background: `linear-gradient(90deg, transparent, ${acSolid}, transparent)`, transition: 'background 0.6s ease' }}
-        />
-        <div
-          className="absolute bottom-0 left-0 right-0 h-[1px] opacity-25 pointer-events-none"
-          style={{ background: `linear-gradient(90deg, transparent, ${acSolid}, transparent)`, transition: 'background 0.6s ease' }}
-        />
+        <div className="carousel-strip-top-line absolute top-0 left-0 right-0 h-px pointer-events-none" />
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
@@ -368,11 +316,8 @@ export default function ProductCarousel({
                   >
                     {isActive && (
                       <div
-                        className="absolute top-0 left-0 right-0 h-px"
-                        style={{
-                          background: logoAcSolid,
-                          boxShadow: `0 0 6px ${logoAcSolid}`,
-                        }}
+                        className="absolute top-0 left-0 right-0 h-px transition-colors duration-500"
+                        style={{ background: logoLineColor || 'var(--accent)' }}
                       />
                     )}
                     <div
@@ -381,18 +326,25 @@ export default function ProductCarousel({
                       }`}
                       style={{
                         background: isActive ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
-                        boxShadow: isActive ? `0 0 12px ${ac(0.15)}` : 'none',
                       }}
                     >
                       {logoPresetSrc ? (
                         <img
+                          ref={(el) => {
+                            if (el) logoImgRefs.current[item.id] = el;
+                            else delete logoImgRefs.current[item.id];
+                          }}
                           src={logoPresetSrc}
                           alt=""
                           width={40}
                           height={40}
                           loading="lazy"
                           decoding="async"
+                          crossOrigin={isCanvasSafeUrl(logoPresetSrc) ? 'anonymous' : undefined}
                           className="h-full w-full object-contain p-1"
+                          onLoad={() => {
+                            if (index === activeSlide) resolveActiveLogoColor(item);
+                          }}
                           onError={(e) => {
                             e.currentTarget.style.display = 'none';
                             const fallback = e.currentTarget.nextElementSibling;
@@ -449,11 +401,7 @@ export default function ProductCarousel({
 
                 {index < slides.length - 1 && (
                   <div
-                    className="flex-shrink-0 self-center w-px h-5 mx-0.5 rounded-full"
-                    style={{
-                      background: `linear-gradient(to bottom, transparent, ${acSolid}, transparent)`,
-                      opacity: 0.4,
-                    }}
+                    className="flex-shrink-0 self-center w-px h-5 mx-0.5 rounded-full bg-white/15"
                   />
                 )}
               </React.Fragment>

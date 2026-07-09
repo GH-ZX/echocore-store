@@ -20,6 +20,8 @@
 
 تخضع شروط الخدمة لقوانين جمهورية تركيا. راجع `/terms` على الموقع.
 
+**الترخيص:** ملكية خاصة — راجع [LICENSE](./LICENSE). للتواصل: ahmedghuwu3@gmail.com
+
 English: [CREDITS.md](./CREDITS.md)
 
 ---

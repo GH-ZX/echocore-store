@@ -5,6 +5,8 @@
 
 Bilingual (Arabic / English) game top-up and digital cards storefront. React + Supabase + GitHub Pages.
 
+**License:** Proprietary — all rights reserved. Source is public for transparency only; not licensed for reuse. See [LICENSE](./LICENSE).
+
 النسخة العربية: [README.ar.md](./README.ar.md)
 
 ---
@@ -91,4 +93,4 @@ supabase_echocore_full.sql  # Complete DB setup (run this)
 
 ---
 
-© 2026 ECHOCORE Store · Developer: [Ahmed Ghawi](https://github.com/GH-ZX)
+© 2026 ECHOCORE Store. All rights reserved. · Developer: [Ahmed Ghawi](https://github.com/GH-ZX) · ahmedghuwu3@gmail.com

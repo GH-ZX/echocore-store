@@ -61,7 +61,7 @@ export default function NotificationsView({
           </div>
           <div className="flex-1 min-w-0">
             <h1 className="text-2xl font-black">
-              {t.siteInboxTitle || (isAr ? 'بريد الموقع' : 'Site inbox')}
+              {t.siteInboxTitle}
             </h1>
             <p className="text-sm text-[var(--text-sec)] mt-1">
               {t.siteInboxDesc || (isAr
