@@ -234,8 +234,8 @@ Deno.serve(async (req) => {
     const { data, error } = await userClient.rpc('save_sam_api_settings', {
       p_enabled: body.enabled ?? false,
       p_wallet_mode: body.walletMode ?? 'manual',
-      p_invoice_method: body.invoiceMethod ?? 'shamcash',
-      p_wallet_identifier: body.walletIdentifier ?? null,
+      p_shamcash_wallet_identifier: body.shamcashWalletIdentifier ?? null,
+      p_syriatel_wallet_identifier: body.syriatelWalletIdentifier ?? null,
       p_invoice_currency: body.invoiceCurrency ?? 'USD',
       p_api_key: body.apiKey !== undefined ? body.apiKey : null,
       p_regenerate_webhook_secret: !!body.regenerateWebhookSecret,

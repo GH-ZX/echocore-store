@@ -383,6 +383,7 @@ export default function ProfileView({
     if (method === 'balance') return t.payFromBalance;
     if (method === 'binance') return t.binance;
     if (method === 'ShamCash') return t.shamCash;
+    if (method === 'SyriatelCash') return t.syriatelCash;
     if (method === 'mastercard') return t.mastercard;
     return method || '—';
   };

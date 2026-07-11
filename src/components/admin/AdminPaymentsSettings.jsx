@@ -9,10 +9,98 @@ import {
   RefreshCw,
   Save,
   Copy,
+  Smartphone,
 } from 'lucide-react';
 import { fetchStoreSettings, saveStoreSettings } from '../../lib/storeSettings';
 import { fetchSamApiSettings, listSamWallets, saveSamApiSettings } from '../../lib/samApi';
 import { uploadImage } from '../../lib/uploadImage';
+
+function ManualWalletSection({
+  title,
+  help,
+  qrLabel,
+  payCodeLabel,
+  payCodeHelp,
+  payCodePlaceholder,
+  enableLabel,
+  enableHelp,
+  qrImageUrl,
+  payCode,
+  enabled,
+  uploading,
+  onQrUpload,
+  onPayCodeChange,
+  onEnabledChange,
+}) {
+  return (
+    <div className="space-y-4 p-4 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)]">
+      <div>
+        <h3 className="font-bold text-sm">{title}</h3>
+        <p className="text-xs text-[var(--text-sec)] mt-1">{help}</p>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div>
+          <label className="text-xs text-[var(--text-muted)] block mb-1.5">{qrLabel}</label>
+          <input type="file" accept="image/*" onChange={onQrUpload} className="w-full text-sm" />
+          {uploading && <p className="text-xs text-[var(--text-muted)] mt-1">…</p>}
+          {qrImageUrl && (
+            <img
+              src={qrImageUrl}
+              alt=""
+              className="mt-3 max-w-[180px] rounded-xl border border-[var(--border)] bg-white p-2"
+            />
+          )}
+        </div>
+        <div>
+          <label className="text-xs text-[var(--text-muted)] block mb-1.5">{payCodeLabel}</label>
+          <input
+            type="text"
+            value={payCode}
+            onChange={onPayCodeChange}
+            placeholder={payCodePlaceholder}
+            className="w-full bg-[var(--bg-surface)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 font-mono text-sm outline-none"
+          />
+          <p className="text-[10px] text-[var(--text-muted)] mt-1.5">{payCodeHelp}</p>
+        </div>
+      </div>
+      <label className="flex items-center gap-3 p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] cursor-pointer">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={onEnabledChange}
+          className="w-4 h-4 accent-[var(--accent)]"
+        />
+        <div>
+          <div className="font-semibold text-sm">{enableLabel}</div>
+          <div className="text-xs text-[var(--text-muted)]">{enableHelp}</div>
+        </div>
+      </label>
+    </div>
+  );
+}
+
+function WalletPickerChips({ wallets, onPick, t }) {
+  if (!wallets.length) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {wallets.map((wallet) => {
+        const id = wallet.walletAddress || wallet.phone || wallet.cashCode || wallet.accountNumber || wallet.id;
+        const label = wallet.providerDisplayName || wallet.provider || 'Wallet';
+        const isSyriatel = wallet.provider === 'syriatel';
+        return (
+          <button
+            key={String(wallet.id || id)}
+            type="button"
+            onClick={() => onPick(String(id), isSyriatel ? 'syriatel' : 'shamcash')}
+            className="action-chip text-xs font-mono"
+          >
+            {label}: {String(id).slice(0, 12)}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function AdminPaymentsSettings({ t = {}, onSaved }) {
   const [loading, setLoading] = useState(true);
@@ -20,14 +108,15 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
   const [samTesting, setSamTesting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [qrUploading, setQrUploading] = useState(false);
+  const [shamQrUploading, setShamQrUploading] = useState(false);
+  const [syriatelQrUploading, setSyriatelQrUploading] = useState(false);
   const [samWallets, setSamWallets] = useState([]);
 
   const [samForm, setSamForm] = useState({
     sam_api_enabled: false,
     sam_wallet_mode: 'manual',
-    sam_invoice_method: 'shamcash',
-    sam_wallet_identifier: '',
+    sam_shamcash_wallet_identifier: '',
+    sam_syriatel_wallet_identifier: '',
     sam_invoice_currency: 'USD',
     sam_api_key: '',
     sam_api_key_set: false,
@@ -40,6 +129,9 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
     shamcash_merchant_name: 'ECHOCORE Store',
     shamcash_qr_image_url: '',
     shamcash_pay_code: '',
+    syriatel_enabled: false,
+    syriatel_qr_image_url: '',
+    syriatel_pay_code: '',
   });
 
   const isApiMode = samForm.sam_wallet_mode === 'api';
@@ -58,13 +150,16 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
         shamcash_merchant_name: data.shamcash_merchant_name || 'ECHOCORE Store',
         shamcash_qr_image_url: data.shamcash_qr_image_url || '',
         shamcash_pay_code: data.shamcash_pay_code || '',
+        syriatel_enabled: data.syriatel_enabled ?? false,
+        syriatel_qr_image_url: data.syriatel_qr_image_url || '',
+        syriatel_pay_code: data.syriatel_pay_code || '',
       });
 
       setSamForm({
         sam_api_enabled: samData.sam_api_enabled ?? false,
         sam_wallet_mode: samData.sam_wallet_mode || 'manual',
-        sam_invoice_method: samData.sam_invoice_method || 'shamcash',
-        sam_wallet_identifier: samData.sam_wallet_identifier || '',
+        sam_shamcash_wallet_identifier: samData.sam_shamcash_wallet_identifier || '',
+        sam_syriatel_wallet_identifier: samData.sam_syriatel_wallet_identifier || '',
         sam_invoice_currency: samData.sam_invoice_currency || 'USD',
         sam_api_key: '',
         sam_api_key_set: !!samData.sam_api_key_set,
@@ -92,6 +187,9 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
         shamcash_merchant_name: form.shamcash_merchant_name,
         shamcash_qr_image_url: form.shamcash_qr_image_url,
         shamcash_pay_code: form.shamcash_pay_code,
+        syriatel_enabled: form.syriatel_enabled,
+        syriatel_qr_image_url: form.syriatel_qr_image_url,
+        syriatel_pay_code: form.syriatel_pay_code,
         binance_enabled: false,
         mastercard_enabled: false,
       });
@@ -99,8 +197,8 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
       const settings = await saveSamApiSettings({
         enabled: isApiMode ? samForm.sam_api_enabled : false,
         walletMode: samForm.sam_wallet_mode,
-        invoiceMethod: samForm.sam_invoice_method,
-        walletIdentifier: samForm.sam_wallet_identifier,
+        shamcashWalletIdentifier: samForm.sam_shamcash_wallet_identifier,
+        syriatelWalletIdentifier: samForm.sam_syriatel_wallet_identifier,
         invoiceCurrency: samForm.sam_invoice_currency,
         apiKey: samForm.sam_api_key?.trim() ? samForm.sam_api_key : undefined,
         regenerateWebhookSecret,
@@ -111,8 +209,8 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
         sam_api_key: '',
         sam_api_enabled: settings.sam_api_enabled ?? prev.sam_api_enabled,
         sam_wallet_mode: settings.sam_wallet_mode || prev.sam_wallet_mode,
-        sam_invoice_method: settings.sam_invoice_method || prev.sam_invoice_method,
-        sam_wallet_identifier: settings.sam_wallet_identifier || prev.sam_wallet_identifier,
+        sam_shamcash_wallet_identifier: settings.sam_shamcash_wallet_identifier || prev.sam_shamcash_wallet_identifier,
+        sam_syriatel_wallet_identifier: settings.sam_syriatel_wallet_identifier || prev.sam_syriatel_wallet_identifier,
         sam_invoice_currency: settings.sam_invoice_currency || prev.sam_invoice_currency,
         sam_api_key_set: !!settings.sam_api_key_set,
         sam_api_key_masked: settings.sam_api_key_masked || prev.sam_api_key_masked,
@@ -137,8 +235,8 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
         await saveSamApiSettings({
           enabled: samForm.sam_api_enabled,
           walletMode: samForm.sam_wallet_mode,
-          invoiceMethod: samForm.sam_invoice_method,
-          walletIdentifier: samForm.sam_wallet_identifier,
+          shamcashWalletIdentifier: samForm.sam_shamcash_wallet_identifier,
+          syriatelWalletIdentifier: samForm.sam_syriatel_wallet_identifier,
           invoiceCurrency: samForm.sam_invoice_currency,
           apiKey: samForm.sam_api_key,
         });
@@ -149,23 +247,33 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
       const list = Array.isArray(wallets) ? wallets : [];
       setSamWallets(list);
 
-      if (!samForm.sam_wallet_identifier && list[0]) {
-        const first = list[0];
-        const identifier = first.walletAddress || first.phone || first.cashCode || first.accountNumber || first.id;
-        if (identifier) {
-          setSamForm((prev) => ({
-            ...prev,
-            sam_wallet_identifier: String(identifier),
-            sam_invoice_method: first.provider === 'syriatel' ? 'syriatel' : 'shamcash',
-          }));
-        }
-      }
+      const shamWallet = list.find((w) => w.provider !== 'syriatel');
+      const syriatelWallet = list.find((w) => w.provider === 'syriatel');
+      const pickId = (w) => {
+        if (!w) return null;
+        return w.walletAddress || w.phone || w.cashCode || w.accountNumber || w.id;
+      };
+
+      setSamForm((prev) => ({
+        ...prev,
+        sam_shamcash_wallet_identifier: prev.sam_shamcash_wallet_identifier || (pickId(shamWallet) ? String(pickId(shamWallet)) : ''),
+        sam_syriatel_wallet_identifier: prev.sam_syriatel_wallet_identifier || (pickId(syriatelWallet) ? String(pickId(syriatelWallet)) : ''),
+      }));
+
       setSuccess(t.samWalletsLoaded);
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err.message);
     } finally {
       setSamTesting(false);
+    }
+  };
+
+  const pickWallet = (identifier, provider) => {
+    if (provider === 'syriatel') {
+      setSamForm((p) => ({ ...p, sam_syriatel_wallet_identifier: identifier }));
+    } else {
+      setSamForm((p) => ({ ...p, sam_shamcash_wallet_identifier: identifier }));
     }
   };
 
@@ -180,18 +288,18 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
     }
   };
 
-  const handleQrUpload = async (e) => {
+  const handleQrUpload = async (e, field, setUploading, folder) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setQrUploading(true);
+    setUploading(true);
     setError('');
     try {
-      const url = await uploadImage(file, 'shamcash-qr');
-      if (url) setForm((p) => ({ ...p, shamcash_qr_image_url: url }));
+      const url = await uploadImage(file, folder);
+      if (url) setForm((p) => ({ ...p, [field]: url }));
     } catch (err) {
       setError(err.message);
     } finally {
-      setQrUploading(false);
+      setUploading(false);
       e.target.value = '';
     }
   };
@@ -203,6 +311,9 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
       </div>
     );
   }
+
+  const shamWallets = samWallets.filter((w) => w.provider !== 'syriatel');
+  const syriatelWallets = samWallets.filter((w) => w.provider === 'syriatel');
 
   return (
     <div className="space-y-6">
@@ -258,45 +369,43 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
 
         {!isApiMode ? (
           <div className="space-y-4 pt-2 border-t border-[var(--border)]">
-            <p className="text-sm text-[var(--text-sec)] pt-4">{t.shamcashManualAdminHelp}</p>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs text-[var(--text-muted)] block mb-1.5">{t.shamcashQrImage}</label>
-                <input type="file" accept="image/*" onChange={handleQrUpload} className="w-full text-sm" />
-                {qrUploading && <p className="text-xs text-[var(--text-muted)] mt-1">{t.uploading}</p>}
-                {form.shamcash_qr_image_url && (
-                  <img
-                    src={form.shamcash_qr_image_url}
-                    alt="ShamCash QR preview"
-                    className="mt-3 max-w-[180px] rounded-xl border border-[var(--border)] bg-white p-2"
-                  />
-                )}
-              </div>
-              <div>
-                <label className="text-xs text-[var(--text-muted)] block mb-1.5">{t.shamcashPayCodeLabel}</label>
-                <input
-                  type="text"
-                  value={form.shamcash_pay_code}
-                  onChange={(e) => setForm((p) => ({ ...p, shamcash_pay_code: e.target.value }))}
-                  placeholder={t.shamcashPayCodePlaceholder}
-                  className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 font-mono text-sm outline-none"
-                />
-                <p className="text-[10px] text-[var(--text-muted)] mt-1.5">{t.shamcashPayCodeHelp}</p>
-              </div>
-            </div>
+            <p className="text-sm text-[var(--text-sec)] pt-4">{t.syriaManualPaymentsHelp}</p>
 
-            <label className="flex items-center gap-3 p-4 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.shamcash_enabled}
-                onChange={(e) => setForm((p) => ({ ...p, shamcash_enabled: e.target.checked }))}
-                className="w-4 h-4 accent-[var(--accent)]"
-              />
-              <div>
-                <div className="font-semibold">{t.enableShamcash}</div>
-                <div className="text-xs text-[var(--text-muted)]">{t.enableShamcashManualHelp}</div>
-              </div>
-            </label>
+            <ManualWalletSection
+              title={t.shamcashManualTitle}
+              help={t.shamcashManualHelp}
+              qrLabel={t.shamcashQrImage}
+              payCodeLabel={t.shamcashPayCodeLabel}
+              payCodeHelp={t.shamcashPayCodeHelp}
+              payCodePlaceholder={t.shamcashPayCodePlaceholder}
+              enableLabel={t.enableShamcash}
+              enableHelp={t.enableShamcashManualHelp}
+              qrImageUrl={form.shamcash_qr_image_url}
+              payCode={form.shamcash_pay_code}
+              enabled={form.shamcash_enabled}
+              uploading={shamQrUploading}
+              onQrUpload={(e) => handleQrUpload(e, 'shamcash_qr_image_url', setShamQrUploading, 'shamcash-qr')}
+              onPayCodeChange={(e) => setForm((p) => ({ ...p, shamcash_pay_code: e.target.value }))}
+              onEnabledChange={(e) => setForm((p) => ({ ...p, shamcash_enabled: e.target.checked }))}
+            />
+
+            <ManualWalletSection
+              title={t.syriatelManualTitle}
+              help={t.syriatelManualHelp}
+              qrLabel={t.syriatelQrImage}
+              payCodeLabel={t.syriatelPayCodeLabel}
+              payCodeHelp={t.syriatelPayCodeHelp}
+              payCodePlaceholder={t.syriatelPayCodePlaceholder}
+              enableLabel={t.enableSyriatel}
+              enableHelp={t.enableSyriatelManualHelp}
+              qrImageUrl={form.syriatel_qr_image_url}
+              payCode={form.syriatel_pay_code}
+              enabled={form.syriatel_enabled}
+              uploading={syriatelQrUploading}
+              onQrUpload={(e) => handleQrUpload(e, 'syriatel_qr_image_url', setSyriatelQrUploading, 'syriatel-qr')}
+              onPayCodeChange={(e) => setForm((p) => ({ ...p, syriatel_pay_code: e.target.value }))}
+              onEnabledChange={(e) => setForm((p) => ({ ...p, syriatel_enabled: e.target.checked }))}
+            />
           </div>
         ) : (
           <div className="space-y-4 pt-2 border-t border-[var(--border)]">
@@ -328,64 +437,48 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
               <p className="text-[10px] text-[var(--text-muted)] mt-1.5">{t.samApiKeyHelp}</p>
             </div>
 
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs text-[var(--text-muted)] block mb-1.5">{t.samInvoiceMethodLabel}</label>
-                <select
-                  value={samForm.sam_invoice_method}
-                  onChange={(e) => setSamForm((p) => ({ ...p, sam_invoice_method: e.target.value }))}
-                  className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 text-sm outline-none"
-                >
-                  <option value="shamcash">ShamCash</option>
-                  <option value="syriatel">Syriatel Cash</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-[var(--text-muted)] block mb-1.5">{t.samInvoiceCurrencyLabel}</label>
-                <select
-                  value={samForm.sam_invoice_currency}
-                  onChange={(e) => setSamForm((p) => ({ ...p, sam_invoice_currency: e.target.value }))}
-                  className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 text-sm outline-none"
-                >
-                  <option value="USD">USD</option>
-                  <option value="SYP">SYP</option>
-                  <option value="EUR">EUR</option>
-                </select>
-              </div>
+            <div>
+              <label className="text-xs text-[var(--text-muted)] block mb-1.5">{t.samInvoiceCurrencyLabel}</label>
+              <select
+                value={samForm.sam_invoice_currency}
+                onChange={(e) => setSamForm((p) => ({ ...p, sam_invoice_currency: e.target.value }))}
+                className="w-full max-w-xs bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 text-sm outline-none"
+              >
+                <option value="USD">USD</option>
+                <option value="SYP">SYP</option>
+                <option value="EUR">EUR</option>
+              </select>
             </div>
 
-            <div>
-              <label className="text-xs text-[var(--text-muted)] block mb-1.5">{t.samWalletIdentifierLabel}</label>
-              <input
-                type="text"
-                value={samForm.sam_wallet_identifier}
-                onChange={(e) => setSamForm((p) => ({ ...p, sam_wallet_identifier: e.target.value }))}
-                className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 font-mono text-sm outline-none"
-              />
-              <p className="text-[10px] text-[var(--text-muted)] mt-1.5">{t.samWalletIdentifierHelp}</p>
-              {samWallets.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {samWallets.map((wallet) => {
-                    const id = wallet.walletAddress || wallet.phone || wallet.cashCode || wallet.accountNumber || wallet.id;
-                    const label = wallet.providerDisplayName || wallet.provider || 'Wallet';
-                    return (
-                      <button
-                        key={String(wallet.id || id)}
-                        type="button"
-                        onClick={() => setSamForm((p) => ({
-                          ...p,
-                          sam_wallet_identifier: String(id),
-                          sam_invoice_method: wallet.provider === 'syriatel' ? 'syriatel' : 'shamcash',
-                        }))}
-                        className="action-chip text-xs font-mono"
-                      >
-                        {label}: {String(id).slice(0, 12)}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs text-[var(--text-muted)] block mb-1.5 flex items-center gap-1.5">
+                  <Wallet className="w-3.5 h-3.5 text-green-400" />
+                  {t.samShamcashWalletLabel}
+                </label>
+                <input
+                  type="text"
+                  value={samForm.sam_shamcash_wallet_identifier}
+                  onChange={(e) => setSamForm((p) => ({ ...p, sam_shamcash_wallet_identifier: e.target.value }))}
+                  className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 font-mono text-sm outline-none"
+                />
+                <WalletPickerChips wallets={shamWallets} onPick={pickWallet} t={t} />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--text-muted)] block mb-1.5 flex items-center gap-1.5">
+                  <Smartphone className="w-3.5 h-3.5 text-red-400" />
+                  {t.samSyriatelWalletLabel}
+                </label>
+                <input
+                  type="text"
+                  value={samForm.sam_syriatel_wallet_identifier}
+                  onChange={(e) => setSamForm((p) => ({ ...p, sam_syriatel_wallet_identifier: e.target.value }))}
+                  className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 font-mono text-sm outline-none"
+                />
+                <WalletPickerChips wallets={syriatelWallets} onPick={pickWallet} t={t} />
+              </div>
             </div>
+            <p className="text-[10px] text-[var(--text-muted)]">{t.receivingWalletHelp}</p>
 
             {samForm.webhookUrl && (
               <div>

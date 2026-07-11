@@ -9,6 +9,9 @@ const DEFAULT_SETTINGS = {
   shamcash_merchant_name: 'ECHOCORE Store',
   shamcash_qr_image_url: '',
   shamcash_pay_code: '',
+  syriatel_enabled: false,
+  syriatel_qr_image_url: '',
+  syriatel_pay_code: '',
   binance_enabled: false,
   mastercard_enabled: false,
   theme: {},
@@ -69,6 +72,13 @@ export async function saveStoreSettings(settings) {
     shamcash_pay_code: settings.shamcash_pay_code !== undefined
       ? (settings.shamcash_pay_code?.trim() || null)
       : (existing.shamcash_pay_code?.trim() || null),
+    syriatel_enabled: settings.syriatel_enabled ?? existing.syriatel_enabled ?? DEFAULT_SETTINGS.syriatel_enabled,
+    syriatel_qr_image_url: settings.syriatel_qr_image_url !== undefined
+      ? (settings.syriatel_qr_image_url?.trim() || null)
+      : (existing.syriatel_qr_image_url?.trim() || null),
+    syriatel_pay_code: settings.syriatel_pay_code !== undefined
+      ? (settings.syriatel_pay_code?.trim() || null)
+      : (existing.syriatel_pay_code?.trim() || null),
     binance_enabled: settings.binance_enabled ?? existing.binance_enabled ?? DEFAULT_SETTINGS.binance_enabled,
     mastercard_enabled: settings.mastercard_enabled ?? existing.mastercard_enabled ?? DEFAULT_SETTINGS.mastercard_enabled,
     theme: settings.theme !== undefined ? (settings.theme || {}) : (existing.theme || {}),

@@ -2,7 +2,15 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { ArrowLeft, Loader2, CheckCircle, User, Server, QrCode, Clock, Ticket, Zap } from 'lucide-react';
 import { isVoucherGame } from '../lib/catalogUtils';
-import { buildPaymentMethods, getDefaultPaymentMethod } from '../lib/paymentMethods';
+import {
+  buildPaymentMethods,
+  getDefaultPaymentMethod,
+  getManualPaymentDisplay,
+  isManualWalletMethod,
+  isPaymentMethodReady,
+  hasAnyManualWalletReady,
+} from '../lib/paymentMethods';
+import { formatMessage } from '../lib/i18n';
 import { markOrderPaymentSent } from '../lib/orders';
 import { resolveOfferRoute } from '../lib/offerRoutes';
 import { brandUserText } from '../lib/branding';
@@ -28,10 +36,7 @@ export default function BuyView({
 
   const availableServers = game && Array.isArray(game.servers) ? game.servers : [];
 
-  const merchantName = paymentConfig.shamcashMerchantName || 'ECHOCORE Store';
-  const qrImageUrl = paymentConfig.shamcashQrImageUrl || '';
-  const payCode = paymentConfig.shamcashPayCode || '';
-  const manualReady = !!paymentConfig.shamcashManualReady && paymentConfig.shamcash !== false;
+  const anyManualReady = hasAnyManualWalletReady(paymentConfig);
 
   const [playerUid, setPlayerUid] = useState('');
   const [playerServer, setPlayerServer] = useState('');
@@ -56,7 +61,7 @@ export default function BuyView({
   const paymentMethods = useMemo(
     () => (isValidOffer
       ? buildPaymentMethods(t, lang, paymentConfig, { includeBalance: true, currentBalance: hasEnough ? currentBalance : 0 })
-        .filter((m) => m.id === 'balance' || m.id === 'ShamCash')
+        .filter((m) => m.id === 'balance' || m.id === 'ShamCash' || m.id === 'SyriatelCash')
       : []),
     [t, lang, paymentConfig, hasEnough, currentBalance, isValidOffer],
   );
@@ -103,7 +108,10 @@ export default function BuyView({
   const isUidComplete = !showUidForm || playerUid.trim().length > 2;
   const isServerComplete = availableServers.length === 0 || (playerServer && playerServer.trim().length > 0);
   const canProceed = isUidComplete && isServerComplete && !!currentMethod;
-  const isShamCash = selectedMethod === 'ShamCash';
+  const isManualWallet = isManualWalletMethod(selectedMethod);
+  const methodReady = isPaymentMethodReady(selectedMethod, paymentConfig);
+  const paymentDisplay = getManualPaymentDisplay(paymentConfig, selectedMethod);
+  const methodLabel = t[paymentDisplay.methodLabelKey] || selectedMethod;
 
   const startPurchase = async () => {
     if (!user?.id || !canProceed) return;
@@ -128,8 +136,8 @@ export default function BuyView({
       return;
     }
 
-    if (isShamCash && !manualReady) {
-      notifyError(t.shamcashBuyNotConfigured);
+    if (isManualWallet && !methodReady) {
+      notifyError(t.walletBuyNotConfigured);
       return;
     }
 
@@ -186,8 +194,8 @@ export default function BuyView({
 
         <div className="card p-8">
           <div className="mb-6 text-center">
-            <div className="text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">ShamCash Pay</div>
-            <h1 className="text-2xl font-black">{t.completeShamcashPayment}</h1>
+            <div className="text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">{methodLabel}</div>
+            <h1 className="text-2xl font-black">{formatMessage(t.completeWalletPayment, { method: methodLabel })}</h1>
             <p className="mt-1 text-[var(--text-sec)]">{purchaseSubtitle}</p>
           </div>
 
@@ -196,32 +204,32 @@ export default function BuyView({
             <div className="text-4xl font-black font-mono text-[var(--accent)]">
               ${activeOrder?.total != null ? parseFloat(activeOrder.total).toFixed(2) : total}
             </div>
-            <div className="text-xs text-[var(--text-sec)] mt-1">{merchantName}</div>
+            <div className="text-xs text-[var(--text-sec)] mt-1">{paymentDisplay.merchantName}</div>
           </div>
 
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-5 text-center mb-5">
             <div className="flex items-center justify-center gap-2 text-green-400 text-sm font-semibold mb-4">
               <QrCode className="w-4 h-4" />
-              ShamCash Pay
+              {methodLabel}
             </div>
 
-            {qrImageUrl ? (
+            {paymentDisplay.qrImageUrl ? (
               <img
-                src={qrImageUrl}
-                alt="ShamCash QR"
+                src={paymentDisplay.qrImageUrl}
+                alt=""
                 className="mx-auto max-w-[220px] w-full rounded-xl border border-[var(--border)] bg-white p-2"
               />
             ) : (
               <div className="py-10 text-sm text-[var(--text-muted)]">{t.qrNotConfigured}</div>
             )}
 
-            {payCode && (
+            {paymentDisplay.payCode && (
               <div className="mt-4">
                 <div className="text-xs text-[var(--text-muted)] mb-1">
                   {t.shamcashPayCodeLabel}
                 </div>
                 <div className="font-mono text-lg tracking-wide break-all text-[var(--text-primary)] bg-black/30 rounded-xl px-4 py-3">
-                  {payCode}
+                  {paymentDisplay.payCode}
                 </div>
               </div>
             )}
@@ -412,9 +420,9 @@ export default function BuyView({
         </div>
         )}
 
-        {!manualReady && (
+        {!anyManualReady && (
           <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-            {t.shamcashManualNotReady}
+            {t.walletManualNotReady}
           </div>
         )}
 
@@ -439,9 +447,9 @@ export default function BuyView({
                   <div className="min-w-0">
                     <div className="font-bold flex items-center gap-2">
                       {m.name}
-                      {m.id === 'ShamCash' && (
+                      {isManualWalletMethod(m.id) && m.manualOnlyKey && (
                         <span className="text-[10px] text-[var(--text-muted)] font-normal">
-                          {t.shamcashManualOnly}
+                          {t[m.manualOnlyKey]}
                         </span>
                       )}
                     </div>
@@ -456,7 +464,7 @@ export default function BuyView({
         <button
           type="button"
           onClick={startPurchase}
-          disabled={!canProceed || isProcessing || !user || (isShamCash && !manualReady)}
+          disabled={!canProceed || isProcessing || !user || (isManualWallet && !methodReady)}
           className="btn btn-primary w-full py-5 text-xl font-black disabled:opacity-50"
         >
           {isProcessing ? (
@@ -468,12 +476,12 @@ export default function BuyView({
           )}
         </button>
 
-        {isShamCash && (
+        {isManualWallet && (
           <div className="text-center text-[10px] mt-4 text-[var(--text-muted)]">
             {t.orderManualNote}
           </div>
         )}
-        {!isShamCash && (
+        {!isManualWallet && (
           <div className="text-center text-[10px] mt-4 text-[var(--text-muted)]">
             {t.instantDeliveryNote}
           </div>

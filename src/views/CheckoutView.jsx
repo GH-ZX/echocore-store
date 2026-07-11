@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { buildPaymentMethods, getDefaultPaymentMethod } from '../lib/paymentMethods';
+import { buildPaymentMethods, getDefaultPaymentMethod, isManualWalletMethod } from '../lib/paymentMethods';
 
 export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComplete, currentBalance = 0, paymentConfig = {}, onNotify }) {
   const notifyError = (message) => onNotify?.(message, 'error');
@@ -140,17 +140,17 @@ export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComp
         </div>
       </div>
 
-      {showSimModal && selectedMethod === 'ShamCash' && (
+      {showSimModal && isManualWalletMethod(selectedMethod) && (
         <div className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-4" onClick={() => !isProcessing && setShowSimModal(false)}>
           <div className="card w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-bold mb-2 text-center">{t.confirmPayment || (lang === 'ar' ? 'تأكيد الدفع' : 'Confirm Payment')}</h3>
             <p className="text-center text-sm mb-5 text-[var(--text-sec)]">${total} → {merchantName}</p>
 
             <div className="bg-black/60 rounded-2xl p-4 mb-4 text-center">
-              <div className="text-green-400 text-sm mb-1">SHAMCASH REFERENCE</div>
+              <div className="text-green-400 text-sm mb-1">{t.paymentReference}</div>
               <div className="font-mono text-lg">{pendingShamRef || simRef}</div>
               <p className="text-xs text-[var(--text-muted)] mt-2">
-                {lang === 'ar' ? 'ادفع عبر تطبيق ShamCash ثم أكّد' : 'Pay in ShamCash app, then confirm'}
+                {t.shamcashPayThenConfirm}
               </p>
             </div>
 

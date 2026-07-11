@@ -1,4 +1,6 @@
-import { Bitcoin, CreditCard, Wallet, WalletCards } from 'lucide-react';
+import { Bitcoin, CreditCard, Smartphone, Wallet, WalletCards } from 'lucide-react';
+
+export const MANUAL_WALLET_METHODS = ['ShamCash', 'SyriatelCash'];
 
 export const PAYMENT_METHOD_DEFS = {
   balance: {
@@ -21,6 +23,18 @@ export const PAYMENT_METHOD_DEFS = {
     fallbackAr: 'ShamCash',
     descEn: 'Pay via ShamCash app',
     descAr: 'ادفع عبر تطبيق ShamCash',
+    manualOnlyKey: 'shamcashManualOnly',
+  },
+  SyriatelCash: {
+    id: 'SyriatelCash',
+    icon: Smartphone,
+    color: 'text-red-400',
+    nameKey: 'syriatelCash',
+    fallbackEn: 'Syriatel Cash',
+    fallbackAr: 'Syriatel Cash',
+    descEn: 'Pay via Syriatel Cash app',
+    descAr: 'ادفع عبر تطبيق Syriatel Cash',
+    manualOnlyKey: 'syriatelManualOnly',
   },
   binance: {
     id: 'binance',
@@ -48,20 +62,65 @@ export const PAYMENT_METHOD_DEFS = {
   },
 };
 
+function walletMode(paymentConfig) {
+  return paymentConfig.walletMode === 'api' ? 'api' : 'manual';
+}
+
+export function isManualWalletMethod(methodId) {
+  return MANUAL_WALLET_METHODS.includes(methodId);
+}
+
+export function isPaymentMethodReady(methodId, paymentConfig = {}) {
+  const mode = walletMode(paymentConfig);
+
+  if (methodId === 'ShamCash') {
+    const enabled = paymentConfig.shamcash !== false && paymentConfig.shamcash !== undefined
+      ? !!paymentConfig.shamcash
+      : true;
+    if (!enabled) return false;
+    return mode === 'api' ? !!paymentConfig.samShamcashApiReady : !!paymentConfig.shamcashManualReady;
+  }
+
+  if (methodId === 'SyriatelCash') {
+    if (!paymentConfig.syriatel) return false;
+    return mode === 'api' ? !!paymentConfig.samSyriatelApiReady : !!paymentConfig.syriatelManualReady;
+  }
+
+  return true;
+}
+
+export function getManualPaymentDisplay(paymentConfig = {}, methodId = 'ShamCash') {
+  const merchantName = paymentConfig.shamcashMerchantName || 'ECHOCORE Store';
+
+  if (methodId === 'SyriatelCash') {
+    return {
+      merchantName,
+      qrImageUrl: paymentConfig.syriatelQrImageUrl || '',
+      payCode: paymentConfig.syriatelPayCode || '',
+      methodLabelKey: 'syriatelCash',
+    };
+  }
+
+  return {
+    merchantName,
+    qrImageUrl: paymentConfig.shamcashQrImageUrl || '',
+    payCode: paymentConfig.shamcashPayCode || '',
+    methodLabelKey: 'shamCash',
+  };
+}
+
+export function hasAnyManualWalletReady(paymentConfig = {}) {
+  return isPaymentMethodReady('ShamCash', paymentConfig)
+    || isPaymentMethodReady('SyriatelCash', paymentConfig);
+}
+
 export function buildPaymentMethods(t, lang, paymentConfig = {}, options = {}) {
   const isAr = lang === 'ar';
   const { includeBalance = false, currentBalance = 0 } = options;
 
-  const walletMode = paymentConfig.walletMode === 'api' ? 'api' : 'manual';
-  const manualReady = !!paymentConfig.shamcashManualReady;
-  const apiReady = !!paymentConfig.samApiReady;
-  const shamcashFlag = paymentConfig.shamcash !== false && paymentConfig.shamcash !== undefined
-    ? !!paymentConfig.shamcash
-    : true;
-  const shamcashPaymentReady = walletMode === 'api' ? apiReady : manualReady;
-
   const enabled = {
-    shamcash: shamcashFlag && shamcashPaymentReady,
+    shamcash: isPaymentMethodReady('ShamCash', paymentConfig),
+    syriatel: isPaymentMethodReady('SyriatelCash', paymentConfig),
     binance: !!paymentConfig.binance,
     mastercard: !!paymentConfig.mastercard,
   };
@@ -83,6 +142,11 @@ export function buildPaymentMethods(t, lang, paymentConfig = {}, options = {}) {
 
   if (enabled.shamcash) {
     const def = PAYMENT_METHOD_DEFS.ShamCash;
+    methods.push({ ...def, name: label(def), desc: desc(def), disabled: false });
+  }
+
+  if (enabled.syriatel) {
+    const def = PAYMENT_METHOD_DEFS.SyriatelCash;
     methods.push({ ...def, name: label(def), desc: desc(def), disabled: false });
   }
 
@@ -121,6 +185,8 @@ export function getDefaultPaymentMethod(methods) {
   const usable = methods.filter((m) => !m.disabled && !m.comingSoon);
   const shamcash = usable.find((m) => m.id === 'ShamCash');
   if (shamcash) return 'ShamCash';
+  const syriatel = usable.find((m) => m.id === 'SyriatelCash');
+  if (syriatel) return 'SyriatelCash';
   const balance = usable.find((m) => m.id === 'balance');
   if (balance) return 'balance';
   return usable[0]?.id || 'ShamCash';
