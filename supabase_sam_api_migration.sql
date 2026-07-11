@@ -6,6 +6,16 @@
 -- After SQL: deploy Edge Function  supabase/functions/sam-api
 -- =============================================================================
 
+-- Webhook token helper (no pgcrypto — gen_random_bytes may be unavailable)
+CREATE OR REPLACE FUNCTION public.new_sam_webhook_secret()
+RETURNS text
+LANGUAGE sql
+VOLATILE
+SET search_path = public
+AS $$
+  SELECT replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '');
+$$;
+
 -- 1. Store settings columns
 ALTER TABLE public.store_settings
   ADD COLUMN IF NOT EXISTS sam_api_key text,
@@ -166,8 +176,8 @@ BEGIN
       ELSE sam_api_key
     END,
     sam_webhook_secret = CASE
-      WHEN p_regenerate_webhook_secret THEN encode(gen_random_bytes(24), 'hex')
-      WHEN sam_webhook_secret IS NULL OR length(trim(sam_webhook_secret)) = 0 THEN encode(gen_random_bytes(24), 'hex')
+      WHEN p_regenerate_webhook_secret THEN public.new_sam_webhook_secret()
+      WHEN sam_webhook_secret IS NULL OR length(trim(sam_webhook_secret)) = 0 THEN public.new_sam_webhook_secret()
       ELSE sam_webhook_secret
     END,
     updated_at = now()

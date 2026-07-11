@@ -2913,6 +2913,26 @@ html, body {
   min-width: 0;
 }
 
+/* Admin dashboard RTL (Arabic) — mixed AR/EN copy */
+.admin-shell--rtl {
+  text-align: start;
+}
+
+.admin-shell--rtl .admin-nav-btn,
+.admin-shell--rtl .admin-sidebar__toggle {
+  text-align: start;
+}
+
+/* Keep codes, URLs, and API values left-to-right */
+.admin-shell--rtl input.font-mono,
+.admin-shell--rtl textarea.font-mono,
+.admin-shell--rtl input[type='password'],
+.admin-shell--rtl [data-ltr='true'] {
+  direction: ltr;
+  text-align: left;
+  unicode-bidi: isolate;
+}
+
 /* Theme preset picker */
 .theme-preset-grid {
   display: grid;

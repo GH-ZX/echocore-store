@@ -423,7 +423,11 @@ export default function AdminView({
   const recentOrders = [...orders].slice(0, 5);
 
   return (
-    <div className={`admin-shell admin-layout mt-4 sm:mt-6 animate-fade-in${sidebarCollapsed ? ' admin-layout--collapsed' : ''}`} dir="ltr">
+    <div
+      className={`admin-shell admin-layout mt-4 sm:mt-6 animate-fade-in${sidebarCollapsed ? ' admin-layout--collapsed' : ''}${lang === 'ar' ? ' admin-shell--rtl' : ''}`}
+      dir={lang === 'ar' ? 'rtl' : 'ltr'}
+      lang={lang}
+    >
       <aside
         className={`admin-sidebar${sidebarCollapsed ? ' admin-sidebar--collapsed' : ''}`}
         aria-label={t.adminNavLabel}
