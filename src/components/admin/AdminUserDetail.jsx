@@ -16,7 +16,7 @@ import {
   ShoppingBag,
   UserRound,
 } from 'lucide-react';
-import { getAdminGiftPath, getAdminOrdersPath, getAdminUserPath } from '../../lib/adminRoutes';
+import { getAdminGiftPath, getAdminUserPath } from '../../lib/adminRoutes';
 import {
   adminBanUser,
   adminGetUserByUsername,

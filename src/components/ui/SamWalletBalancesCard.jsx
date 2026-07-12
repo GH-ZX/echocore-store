@@ -86,7 +86,7 @@ export default function SamWalletBalancesCard({
   notConfigured = false,
   idle = false,
   idleHint = '',
-  lang = 'ar',
+  lang: _lang = 'ar',
   compact = false,
   usdOnly = false,
   onRefresh,

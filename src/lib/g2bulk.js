@@ -358,12 +358,13 @@ export async function listG2bulkPullCatalog({ refresh = false, settings = null }
       pullCatalogCache = data;
       pullCatalogCacheAt = now;
       return data;
-    } catch (fallbackError) {
-      if (isEdgeTransportError(primaryError)) {
-        throw new Error(await parseInvokeError(primaryError));
-      }
-      throw primaryError;
+    } catch (_fallbackError) {
+      // Fallback failed — surface the original catalog error below.
     }
+    if (isEdgeTransportError(primaryError)) {
+      throw new Error(await parseInvokeError(primaryError), { cause: primaryError });
+    }
+    throw primaryError;
   }
 }
 

@@ -18,8 +18,8 @@ export default function SamInvoicePaymentPanel({
   expiredDescKey = 'samInvoiceExpiredDesc',
   autoConfirmNoteKey = 'samInvoiceAutoConfirmNote',
 }) {
-  const notifyError = (message) => onNotify?.(message, 'error');
-  const notifySuccess = (message) => onNotify?.(message, 'success');
+  const notifyError = useCallback((message) => onNotify?.(message, 'error'), [onNotify]);
+  const notifySuccess = useCallback((message) => onNotify?.(message, 'success'), [onNotify]);
 
   const [transactionRef, setTransactionRef] = useState('');
   const [verifying, setVerifying] = useState(false);

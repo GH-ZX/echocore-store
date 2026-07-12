@@ -174,7 +174,7 @@ export default function SearchView({
             <section>
               <div className="flex items-center gap-2 mb-5">
                 <Ticket className="w-5 h-5 text-violet-300" />
-                <h2 className="text-xl font-bold">{isAr ? t.searchGiftCards || 'بطاقات الهدايا' : t.searchGiftCards || 'Gift cards'}</h2>
+                <h2 className="text-xl font-bold">{isAr ? t.giftCards || 'بطاقات الهدايا' : t.giftCards || 'Gift cards'}</h2>
               </div>
 
               <motion.div

@@ -264,7 +264,6 @@ export function evaluateHomeSectionStatus(section, context = {}) {
     gamesCount = 0,
     giftCardCount = 0,
     voucherCount = 0,
-    gamingAccountCount = 0,
     saleOfferCount = 0,
     offerCount = 0,
     games = [],

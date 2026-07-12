@@ -1368,7 +1368,7 @@ export default function App() {
       unsubscribe();
       clearInterval(pollId);
     };
-  }, [user?.id, refreshNotifications]);
+  }, [user?.id, refreshNotifications, navigate]);
 
   // Keep cart prices in sync when offers load or admin prices change
   useEffect(() => {

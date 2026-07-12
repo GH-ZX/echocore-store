@@ -6,7 +6,6 @@ import { formatMessage } from '../../lib/i18n';
 import AdminOfferCostBadge from './AdminOfferCostBadge';
 import {
   getOfferCatalogOptionLabel,
-  getOfferDisplayName,
   getOfferPackAmount,
 } from '../../lib/offerDisplay';
 import { formatOfferWholesaleCost, hasOfferWholesaleCost } from '../../lib/offerCost';

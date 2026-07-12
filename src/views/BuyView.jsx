@@ -87,10 +87,9 @@ export default function BuyView({
     }
   }, [paymentMethods, selectedMethod, usableMethods, hasEnough, isValidOffer]);
 
-  const savedGamePlayer = useMemo(
-    () => (isValidOffer && showUidForm ? getSavedGamePlayerEntry(user?.game_player_uids, game) : { uid: '', server: '' }),
-    [isValidOffer, showUidForm, user?.game_player_uids, game],
-  );
+  const savedGamePlayer = isValidOffer && showUidForm && game
+    ? getSavedGamePlayerEntry(user?.game_player_uids, game)
+    : { uid: '', server: '' };
 
   useEffect(() => {
     if (!isValidOffer || !showUidForm || !game) return;
@@ -163,9 +162,6 @@ export default function BuyView({
   const isManualWallet = isManualWalletMethod(selectedMethod);
   const isApiWallet = isApiWalletMethod(selectedMethod, paymentConfig);
   const methodReady = isPaymentMethodReady(selectedMethod, paymentConfig);
-  const paymentDisplay = getManualPaymentDisplay(paymentConfig, selectedMethod);
-  const methodLabel = t[paymentDisplay.methodLabelKey] || selectedMethod;
-
   const startPurchase = async () => {
     if (!user?.id || !canProceed) return;
 

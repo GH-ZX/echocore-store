@@ -82,7 +82,7 @@ function ManualWalletSection({
   );
 }
 
-function WalletPickerChips({ wallets, onPick, t }) {
+function WalletPickerChips({ wallets, onPick }) {
   if (!wallets.length) return null;
   return (
     <div className="mt-2 flex flex-wrap gap-2">
@@ -513,7 +513,7 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
                   onChange={(e) => setSamForm((p) => ({ ...p, sam_shamcash_wallet_identifier: e.target.value }))}
                   className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 font-mono text-sm outline-none"
                 />
-                <WalletPickerChips wallets={shamWallets} onPick={pickWallet} t={t} />
+                <WalletPickerChips wallets={shamWallets} onPick={pickWallet} />
               </div>
               <div>
                 <label className="text-xs text-[var(--text-muted)] block mb-1.5 flex items-center gap-1.5">
@@ -526,7 +526,7 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
                   onChange={(e) => setSamForm((p) => ({ ...p, sam_syriatel_wallet_identifier: e.target.value }))}
                   className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 font-mono text-sm outline-none"
                 />
-                <WalletPickerChips wallets={syriatelWallets} onPick={pickWallet} t={t} />
+                <WalletPickerChips wallets={syriatelWallets} onPick={pickWallet} />
               </div>
             </div>
             <p className="text-[10px] text-[var(--text-muted)]">{t.receivingWalletHelp}</p>

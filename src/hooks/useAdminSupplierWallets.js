@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  DEFAULT_POLL_MS,
   DEFAULT_STALE_MS,
   SUPPLIER_WALLETS_CACHE_KEY,
 } from '../lib/adminSupplierWallets';
