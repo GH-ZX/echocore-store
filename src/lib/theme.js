@@ -1258,9 +1258,37 @@ export function normalizeThemeOverrides(value) {
 
   return sanitizeThemeOverrides(
     Object.fromEntries(
-      Object.entries(value).filter(([key, val]) => key in DEFAULT_THEME && typeof val === 'string' && val.trim()),
+      Object.entries(value)
+        .filter(([key, val]) => key in DEFAULT_THEME && val != null && String(val).trim())
+        .map(([key, val]) => [key, String(val).trim()]),
     ),
   );
+}
+
+/** Sync html data-* attrs from localStorage before React paints (repeat visits). */
+export function bootstrapThemeFromStorage() {
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = localStorage.getItem(THEME_STORAGE_KEY);
+    if (!raw) return false;
+    const overrides = JSON.parse(raw);
+    const root = document.documentElement;
+    const style = resolveSurfacesStyle(overrides, { ...DEFAULT_THEME, ...overrides });
+    root.setAttribute('data-surfaces-style', style);
+    root.setAttribute(
+      'data-surfaces-opacity-enabled',
+      style !== 'solid' ? 'true' : 'false',
+    );
+    if (overrides['color-mode']) {
+      root.setAttribute('data-color-mode', String(overrides['color-mode']));
+    }
+    if (overrides['background-type']) {
+      root.setAttribute('data-background-type', String(overrides['background-type']));
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function presetMatchesColor(preset, colorOverrides, mode = 'dark') {

@@ -12,6 +12,29 @@
     <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800;900&display=swap" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800;900&display=swap" />
     <title>ECHOCORE Store</title>
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem('echocore-theme');
+          if (!raw) return;
+          var theme = JSON.parse(raw);
+          var style = theme['surfaces-style'];
+          if (!style || style === 'solid') {
+            style = theme['surfaces-opacity-enabled'] === 'true' ? 'transparent' : 'solid';
+          }
+          if (style !== 'solid') {
+            document.documentElement.setAttribute('data-surfaces-style', style);
+            document.documentElement.setAttribute('data-surfaces-opacity-enabled', 'true');
+          }
+          if (theme['color-mode']) {
+            document.documentElement.setAttribute('data-color-mode', theme['color-mode']);
+          }
+          if (theme['background-type']) {
+            document.documentElement.setAttribute('data-background-type', theme['background-type']);
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <!-- ECHOCORE Store v0.5.0 | Developed by Ahmed Ghawi (@ahmedghx) -->

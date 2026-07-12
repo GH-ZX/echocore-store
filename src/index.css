@@ -156,6 +156,7 @@ html, body {
 .site-nav-dropdown-portal,
 .site-nav-viewport,
 .header-notif-dropdown,
+[data-surfaces-style='frosted'] .border-glow-card,
 [data-surfaces-style='frosted'] .card,
 [data-surfaces-style='frosted'] .storefront-card,
 [data-surfaces-style='frosted'] .home-game-card,
@@ -184,6 +185,7 @@ html, body {
 .site-nav-dropdown-portal,
 .site-nav-viewport,
 .header-notif-dropdown,
+[data-surfaces-style='frosted'] .border-glow-card,
 [data-surfaces-style='frosted'] .card,
 [data-surfaces-style='frosted'] .storefront-card,
 [data-surfaces-style='frosted'] .home-game-card,
@@ -191,6 +193,7 @@ html, body {
 [data-surfaces-style='frosted'] .dash-stat-card,
 [data-surfaces-style='frosted'] .modal-panel,
 [data-surfaces-style='frosted'] .g2bulk-pull-panel__dialog,
+[data-surfaces-style='transparent'] .border-glow-card,
 [data-surfaces-style='transparent'] .card,
 [data-surfaces-style='transparent'] .storefront-card,
 [data-surfaces-style='transparent'] .home-game-card {
@@ -200,6 +203,7 @@ html, body {
   --text-sec: var(--glass-text-secondary, var(--text-secondary));
 }
 
+[data-surfaces-style='frosted'] .border-glow-card:not(:has(.storefront-card--teaser)):not(:has(.home-game-card--teaser)):hover,
 [data-surfaces-style='frosted'] .card:hover,
 [data-surfaces-style='frosted'] .storefront-card:not(.storefront-card--teaser):hover,
 [data-surfaces-style='frosted'] .home-game-card:not(.home-game-card--teaser):hover {
@@ -209,11 +213,13 @@ html, body {
     0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
+[data-surfaces-style='frosted'][data-color-mode='light'] .border-glow-card,
 [data-surfaces-style='frosted'][data-color-mode='light'] .storefront-card,
 [data-surfaces-style='frosted'][data-color-mode='light'] .home-game-card {
   background: color-mix(in srgb, var(--bg-header) calc(var(--glass-fill, 72) * 1%), transparent) !important;
 }
 
+[data-surfaces-style='transparent'] .border-glow-card,
 [data-surfaces-style='transparent'] .card,
 [data-surfaces-style='transparent'] .admin-sidebar,
 [data-surfaces-style='transparent'] .header-shell,
@@ -225,6 +231,22 @@ html, body {
 [data-surfaces-style='transparent'] .home-game-card {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+}
+
+/* BorderGlow wraps cards with an opaque shell — clear it so blur reaches the page background */
+[data-surfaces-style='frosted'] .border-glow-card,
+[data-surfaces-style='transparent'] .border-glow-card {
+  --card-bg: transparent;
+}
+
+[data-surfaces-style='frosted'] .border-glow-card > .border-glow-inner > .storefront-card,
+[data-surfaces-style='frosted'] .border-glow-card > .border-glow-inner > .home-game-card,
+[data-surfaces-style='transparent'] .border-glow-card > .border-glow-inner > .storefront-card,
+[data-surfaces-style='transparent'] .border-glow-card > .border-glow-inner > .home-game-card {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
 }
 
 .card:hover {
@@ -1210,7 +1232,6 @@ html, body {
 }
 
 .home-expandable-grid__stage {
-  isolation: isolate;
   overflow: hidden;
   transition: min-height 0.45s cubic-bezier(0.22, 1, 0.36, 1);
 }

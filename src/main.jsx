@@ -3,10 +3,11 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import './components/ui/BorderGlow.css'
-import { applyCachedTheme } from './lib/theme'
+import { applyCachedTheme, bootstrapThemeFromStorage } from './lib/theme'
 import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 
+bootstrapThemeFromStorage()
 applyCachedTheme()
 
 const savedLang = typeof localStorage !== 'undefined' && localStorage.getItem('echocore-lang') === 'en' ? 'en' : 'ar'

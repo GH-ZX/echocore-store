@@ -1114,9 +1114,8 @@ export default function App() {
       return;
     }
     const theme = await fetchSiteTheme();
-    if (theme) {
-      applyTheme(normalizeThemeOverrides(theme), { replace: true });
-    }
+    if (theme == null) return;
+    applyTheme(normalizeThemeOverrides(theme), { replace: true });
   };
 
   const refreshHomeLayout = async (layout) => {

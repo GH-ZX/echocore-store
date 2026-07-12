@@ -74,7 +74,7 @@ function ToggleField({ label, value, onChange }) {
   );
 }
 
-function AppearanceSettings({ form, t, onChange, onColorModeChange }) {
+function AppearanceSettings({ form, t, onChange, onPatch, onColorModeChange }) {
   const colorMode = form['color-mode'] ?? 'dark';
   const glowsEnabled = form['glows-enabled'] ?? 'true';
   const surfacesOpacityEnabled = form['surfaces-opacity-enabled'] ?? 'false';
@@ -85,13 +85,15 @@ function AppearanceSettings({ form, t, onChange, onColorModeChange }) {
 
   const setSurfacesEnabled = (enabled) => {
     if (enabled) {
-      onChange('surfaces-opacity-enabled', 'true');
-      if ((form['surfaces-style'] ?? 'solid') === 'solid') {
-        onChange('surfaces-style', 'transparent');
-      }
+      onPatch({
+        'surfaces-opacity-enabled': 'true',
+        ...((form['surfaces-style'] ?? 'solid') === 'solid' ? { 'surfaces-style': 'transparent' } : {}),
+      });
     } else {
-      onChange('surfaces-opacity-enabled', 'false');
-      onChange('surfaces-style', 'solid');
+      onPatch({
+        'surfaces-opacity-enabled': 'false',
+        'surfaces-style': 'solid',
+      });
     }
   };
 
@@ -167,10 +169,10 @@ function AppearanceSettings({ form, t, onChange, onColorModeChange }) {
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      onChange('surfaces-opacity-enabled', 'true');
-                      onChange('surfaces-style', 'transparent');
-                    }}
+                    onClick={() => onPatch({
+                      'surfaces-opacity-enabled': 'true',
+                      'surfaces-style': 'transparent',
+                    })}
                     className={`px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
                       surfacesStyle === 'transparent'
                         ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10'
@@ -181,10 +183,10 @@ function AppearanceSettings({ form, t, onChange, onColorModeChange }) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      onChange('surfaces-opacity-enabled', 'true');
-                      onChange('surfaces-style', 'frosted');
-                    }}
+                    onClick={() => onPatch({
+                      'surfaces-opacity-enabled': 'true',
+                      'surfaces-style': 'frosted',
+                    })}
                     className={`px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
                       surfacesStyle === 'frosted'
                         ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10'
@@ -1145,6 +1147,15 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
     });
   };
 
+  const patchForm = (patch) => {
+    setForm((prev) => {
+      const next = { ...prev, ...patch };
+      setPresetId('custom');
+      applyTheme(next, { replace: true });
+      return next;
+    });
+  };
+
   const colorMode = form['color-mode'] ?? 'dark';
   const activePresets = getPresetsForMode(colorMode);
 
@@ -1265,6 +1276,7 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
           form={form}
           t={t}
           onChange={handleFieldChange}
+          onPatch={patchForm}
           onColorModeChange={handleColorModeChange}
         />
 
