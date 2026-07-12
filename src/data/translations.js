@@ -2198,6 +2198,18 @@ export const translations = {
     g2bulkSyncNeedSelection: "Open Pull from API and choose top-ups or gift cards first",
     g2bulkSaveSettingsHint: "Save after changing schedule or markup",
     g2bulkPullSelectionSaved: "Pull selection saved",
+    g2bulkPullFilterAll: "All",
+    g2bulkPullFilterSelected: "Selected",
+    g2bulkPullFilterUnselected: "Unselected",
+    g2bulkPullFilterClear: "Clear filter",
+    g2bulkPullSaveAndSync: "Save & Sync",
+    g2bulkDeletionDisabled: "Deleting is disabled. Use the G2Bulk selection menu to deselect products from the store.",
+    g2bulkPullFilterAll: "All",
+    g2bulkPullFilterSelected: "Selected",
+    g2bulkPullFilterUnselected: "Unselected",
+    g2bulkPullFilterClear: "Clear filter",
+    g2bulkPullSaveAndSync: "Save & Sync",
+    g2bulkDeletionDisabled: "Deleting is disabled. Use the G2Bulk selection menu to deselect products from the store.",
 
     /* UX / ROUTES */
     contactUs: "Contact Us",

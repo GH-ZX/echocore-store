@@ -109,6 +109,43 @@ async function resolveApiKeyRaw(serviceClient: ReturnType<typeof createClient>) 
   return (data?.g2bulk_api_key as string | null)?.trim() || null;
 }
 
+async function loadStoreSettingsRow(serviceClient: ReturnType<typeof createClient>) {
+  const { data, error } = await serviceClient
+    .from('store_settings')
+    .select('g2bulk_enabled, g2bulk_markup_percent, g2bulk_charm_pricing_enabled, g2bulk_catalog_only, g2bulk_catalog_mode, g2bulk_last_sync_at, g2bulk_last_check_at, g2bulk_check_summary, g2bulk_auto_sync_enabled, g2bulk_auto_sync_hour, g2bulk_auto_sync_timezone, g2bulk_pull_selection, g2bulk_api_key')
+    .eq('id', 1)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data as Json;
+}
+
+function buildSettingsEnvelope(row: Json | null | undefined, envKey: string | null | undefined) {
+  const settingsRow = (row || {}) as Record<string, unknown>;
+  const apiKey = String(settingsRow.g2bulk_api_key ?? '').trim();
+  const apiKeySource = envKey ? (apiKey ? 'both' : 'env') : (apiKey ? 'db' : 'none');
+
+  return {
+    g2bulk_enabled: settingsRow.g2bulk_enabled === true,
+    g2bulk_markup_percent: Number(settingsRow.g2bulk_markup_percent ?? 15),
+    g2bulk_charm_pricing_enabled: settingsRow.g2bulk_charm_pricing_enabled === true,
+    g2bulk_catalog_only: settingsRow.g2bulk_catalog_only !== false,
+    g2bulk_catalog_mode: String(settingsRow.g2bulk_catalog_mode || 'sync'),
+    g2bulk_last_sync_at: settingsRow.g2bulk_last_sync_at || null,
+    g2bulk_last_check_at: settingsRow.g2bulk_last_check_at || null,
+    g2bulk_check_summary: settingsRow.g2bulk_check_summary || {},
+    g2bulk_auto_sync_enabled: settingsRow.g2bulk_auto_sync_enabled !== false,
+    g2bulk_auto_sync_hour: Number(settingsRow.g2bulk_auto_sync_hour ?? 5),
+    g2bulk_auto_sync_timezone: String(settingsRow.g2bulk_auto_sync_timezone || 'Asia/Damascus'),
+    g2bulk_pull_selection: settingsRow.g2bulk_pull_selection || {},
+    g2bulk_api_key_set: !!apiKey,
+    g2bulk_api_key_masked: apiKey
+      ? (apiKey.length <= 8 ? '********' : `${apiKey.slice(0, 4)}…${apiKey.slice(-4)}`)
+      : null,
+    g2bulk_api_key_source: apiKeySource,
+  };
+}
+
 function slugify(value: string) {
   return value
     .toLowerCase()
@@ -670,29 +707,70 @@ Deno.serve(async (req) => {
     }
   }
 
+  if (action === 'saveSettings') {
+    if (!(await isAdmin(userClient, userId!))) {
+      return jsonResponse({ success: false, message: 'Admin only' }, 403);
+    }
+
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    const payload = body as Json;
+
+    if (payload.enabled !== undefined) {
+      updates.g2bulk_enabled = !!payload.enabled;
+    }
+    if (payload.markupPercent !== undefined) {
+      updates.g2bulk_markup_percent = Number(payload.markupPercent ?? 15);
+    }
+    if (payload.charmPricingEnabled !== undefined) {
+      updates.g2bulk_charm_pricing_enabled = !!payload.charmPricingEnabled;
+    }
+    if (payload.apiKey !== undefined) {
+      updates.g2bulk_api_key = String(payload.apiKey || '').trim() || null;
+    }
+    if (payload.catalogOnly !== undefined) {
+      updates.g2bulk_catalog_only = !!payload.catalogOnly;
+    }
+    if (payload.catalogMode !== undefined) {
+      updates.g2bulk_catalog_mode = String(payload.catalogMode || 'sync');
+    }
+    if (payload.autoSyncEnabled !== undefined) {
+      updates.g2bulk_auto_sync_enabled = !!payload.autoSyncEnabled;
+    }
+    if (payload.autoSyncHour !== undefined) {
+      updates.g2bulk_auto_sync_hour = Number(payload.autoSyncHour ?? 5);
+    }
+    if (payload.autoSyncTimezone !== undefined) {
+      updates.g2bulk_auto_sync_timezone = String(payload.autoSyncTimezone || 'Asia/Damascus');
+    }
+
+    const { error } = await serviceClient.from('store_settings').update(updates).eq('id', 1);
+    if (error) {
+      return jsonResponse({ success: false, message: error.message }, 500);
+    }
+
+    const row = await loadStoreSettingsRow(serviceClient);
+    const envKey = Deno.env.get('G2BULK_API_KEY')?.trim();
+    return jsonResponse({ success: true, settings: buildSettingsEnvelope(row, envKey) });
+  }
+
   if (action === 'getSettings') {
     if (!(await isAdmin(userClient, userId!))) {
       return jsonResponse({ success: false, message: 'Admin only' }, 403);
     }
-    const { data, error } = await userClient.rpc('get_g2bulk_settings');
-    if (error) {
-      return jsonResponse({
-        success: false,
-        message: error.message.includes('g2bulk_auto_sync')
-          ? 'Run supabase_echocore_full.sql in Supabase SQL Editor first.'
-          : error.message,
-      }, 400);
-    }
-    const settings = { ...(data as Json) };
+
     const envKey = Deno.env.get('G2BULK_API_KEY')?.trim();
-    if (envKey && !settings.g2bulk_api_key_set) {
-      settings.g2bulk_api_key_set = true;
-      settings.g2bulk_api_key_masked = '•••••••• (edge secret)';
-      settings.g2bulk_api_key_source = 'env';
-    } else if (settings.g2bulk_api_key_set) {
-      settings.g2bulk_api_key_source = envKey ? 'both' : 'db';
-    } else {
-      settings.g2bulk_api_key_source = 'none';
+    const row = await loadStoreSettingsRow(serviceClient);
+    let settings = buildSettingsEnvelope(row, envKey);
+
+    if (!row) {
+      try {
+        const { data, error } = await userClient.rpc('get_g2bulk_settings');
+        if (!error && data && typeof data === 'object') {
+          settings = { ...settings, ...(data as Json) };
+        }
+      } catch {
+        // ignore and fall back to the direct row values above
+      }
     }
 
     const savedSelection = normalizePullSelection(settings.g2bulk_pull_selection);
@@ -1413,21 +1491,22 @@ Deno.serve(async (req) => {
       let offersSkipped = 0;
       const errors: string[] = [];
 
-      const batchResults = await Promise.all(batch.map(async (g) => {
+      const batchResults = [] as Array<{ code: string; error: string | null; gamesSynced: number; offersSynced: number; offersSkipped: number }>;
+      for (const g of batch) {
         const code = String(g.code || '').trim();
         try {
           const result = await syncTopupGame(g, now);
-          return { code, error: null as string | null, ...result };
+          batchResults.push({ code, error: null, ...result });
         } catch (err) {
-          return {
+          batchResults.push({
             code,
             error: `${code}: ${formatSyncError(err)}`,
             gamesSynced: 0,
             offersSynced: 0,
             offersSkipped: 0,
-          };
+          });
         }
-      }));
+      }
 
       for (const result of batchResults) {
         if (result.error) errors.push(result.error);

@@ -20,6 +20,7 @@ import { brandUserText } from '../lib/branding';
 import { getSavedGamePlayerEntry } from '../lib/gamePlayerUid';
 import { getAdminGiftPath } from '../lib/adminRoutes';
 import { getGameOfferPath } from '../lib/offerRoutes';
+import { g2bulkCheckPlayer } from '../lib/g2bulk';
 
 export default function BuyView({
   t = {},
@@ -60,6 +61,7 @@ export default function BuyView({
   const isBoth = isValidOffer && game.redemption_method === 'both';
   const isVoucherOnly = isValidOffer && isVoucherGame(game);
   const showUidForm = needsUid && (!isBoth || redemptionChoice === 'uid') && !isVoucherOnly;
+  const showRecipientFields = showUidForm && !isVoucherOnly;
 
   const price = offer ? parseFloat(offer.price) : 0;
   const total = price.toFixed(2);
@@ -157,13 +159,32 @@ export default function BuyView({
   };
 
   const isUidComplete = !showUidForm || playerUid.trim().length > 2;
-  const isServerComplete = availableServers.length === 0 || (playerServer && playerServer.trim().length > 0);
+  const isServerComplete = !showRecipientFields || playerServer.trim().length > 0;
   const canProceed = isUidComplete && isServerComplete && !!currentMethod;
   const isManualWallet = isManualWalletMethod(selectedMethod);
   const isApiWallet = isApiWalletMethod(selectedMethod, paymentConfig);
   const methodReady = isPaymentMethodReady(selectedMethod, paymentConfig);
   const startPurchase = async () => {
     if (!user?.id || !canProceed) return;
+
+    if (showRecipientFields) {
+      try {
+        const validation = await g2bulkCheckPlayer({
+          game: game?.g2bulk_game_code || game?.slug || game?.id || '',
+          userId: user.id,
+          serverId: playerServer.trim() || undefined,
+        });
+        const isValidationValid = validation?.valid === 'valid' || validation?.valid === true || validation?.valid === 'true' || validation?.success !== false;
+        if (!isValidationValid) {
+          const validationMessage = validation?.message || validation?.error || t.playerValidationFailed || t.validationFailed || 'We could not validate this account for the selected game.';
+          notifyError(brandUserText(validationMessage));
+          return;
+        }
+      } catch (e) {
+        notifyError(brandUserText(t.playerValidationFailed || t.validationFailed || 'We could not validate this account for the selected game right now.'));
+        return;
+      }
+    }
 
     if (selectedMethod === 'balance') {
       setIsProcessing(true);
@@ -454,10 +475,10 @@ export default function BuyView({
           )}
 
           <div>
-            <label className="text-xs text-[var(--text-muted)] block mb-1 flex items-center gap-1">
+            <label className="text-xs text-[var(--text-muted)] inline-flex items-center gap-1 mb-1">
               <Server className="w-3.5 h-3.5" />
-              {t.selectServer}
-              {availableServers.length > 0 && <span className="text-red-400 ml-1">*</span>}
+              {t.selectServer || 'Server / Region'}
+              <span className="text-red-400 ml-1">*</span>
             </label>
 
             {availableServers.length > 0 ? (
@@ -477,15 +498,15 @@ export default function BuyView({
                 type="text"
                 value={playerServer}
                 onChange={(e) => setPlayerServer(e.target.value)}
-                placeholder={t.serverPlaceholder}
+                placeholder={t.serverPlaceholder || 'Enter server / region (e.g. Europe, China, America)'}
                 className="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 font-mono focus:border-[var(--accent)] outline-none"
               />
             )}
             {availableServers.length > 0 && (
               <p className="text-[10px] text-[var(--text-muted)] mt-1">{t.availableServers} ({availableServers.length})</p>
             )}
-            {availableServers.length > 0 && !playerServer && (
-              <div className="text-xs text-amber-400 mt-1">{t.serverRequired}</div>
+            {showRecipientFields && !playerServer && (
+              <div className="text-xs text-amber-400 mt-1">{t.serverRequired || 'A server or region is required for top-up orders.'}</div>
             )}
           </div>
 

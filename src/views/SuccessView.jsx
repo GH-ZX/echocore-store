@@ -112,9 +112,8 @@ export default function SuccessView({
         const codes = extractDeliveryCodes(result.items);
         const fs = result.order.fulfillment_status;
         const shouldPoll = isOrderPaid(result.order)
-          && (fs === 'fulfilling' || (fs === 'pending' && codes.length === 0))
-          && codes.length === 0
-          && !result.items.some((item) => item.player_uid);
+          && ['pending', 'fulfilling', 'processing'].includes(fs || 'pending')
+          && codes.length === 0;
 
         if (shouldPoll) {
           pollTimer = setTimeout(run, 3000);
@@ -186,12 +185,36 @@ export default function SuccessView({
   const tone = presentation.tone;
   const toneStyle = TONE_STYLES[tone] || TONE_STYLES.info;
   const fulfillmentFailed = isOrderPaid(orderDetails) && fulfillmentStatus === 'failed';
+  const isAwaitingFulfillment = isOrderPaid(orderDetails)
+    && !hasCodes
+    && !fulfillmentFailed
+    && ['pending', 'fulfilling', 'processing'].includes(fulfillmentStatus);
   const isPreparingCodes = isOrderPaid(orderDetails)
     && !hasCodes
     && !hasUid
     && (fulfillmentStatus === 'fulfilling' || fulfillmentStatus === 'pending');
-  const showTopupDetails = isOrderPaid(orderDetails) && hasUid;
+  const showTopupDetails = isOrderPaid(orderDetails) && hasUid && fulfillmentStatus === 'fulfilled';
   const allCodesText = deliveryCodes.join('\n');
+
+  if (isAwaitingFulfillment) {
+    return (
+      <div className="max-w-3xl mx-auto p-4 sm:p-6 animate-fade-in">
+        <div className="card p-8 sm:p-10 text-center border border-[var(--accent)]/20 bg-[var(--bg-surface)]/60">
+          <Loader2 className="w-10 h-10 animate-spin text-[var(--accent)] mx-auto mb-4" />
+          <h1 className="text-2xl sm:text-3xl font-black mb-2">
+            {t.orderProcessingTitle || 'Your order is being processed'}
+          </h1>
+          <p className="text-[var(--text-sec)] max-w-xl mx-auto leading-relaxed">
+            {t.orderProcessingSubtitle || 'We are waiting for G2Bulk to confirm the delivery or top-up result for this purchase.'}
+          </p>
+          <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-[var(--border)] px-3 py-2 text-sm text-[var(--text-muted)]">
+            <Clock className="w-4 h-4" />
+            #{formatOrderDisplayId(orderDetails)}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 animate-fade-in">
@@ -334,22 +357,28 @@ export default function SuccessView({
         <div className="card p-6 mb-6 border border-emerald-500/25 bg-emerald-500/5">
           <h2 className="font-bold text-lg mb-3 flex items-center gap-2 text-emerald-400">
             <UserRound className="w-5 h-5" />
-            {t.topUpSentSuccess}
+            {t.topUpSentSuccess || 'Top-up request received'}
           </h2>
-          <p className="text-[var(--text-sec)] text-sm mb-4">{t.topUpSentDesc}</p>
-          <div className="rounded-xl border border-[var(--border)] p-4 text-sm space-y-2">
-            <div>
-              <span className="text-[var(--text-muted)]">UID: </span>
-              <span className="font-mono text-[var(--accent)] text-lg">{playerUid}</span>
+          <p className="text-[var(--text-sec)] text-sm mb-4">{t.topUpSentDesc || 'Your top-up request is ready for delivery to the recipient below.'}</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-[var(--border)] p-4 text-sm">
+              <div className="text-[var(--text-muted)] text-xs mb-1">{t.playerUidLabel || 'Player ID'}</div>
+              <div className="font-mono text-[var(--accent)] text-lg break-all">{playerUid}</div>
             </div>
-            {playerServer && (
-              <div>
-                <span className="text-[var(--text-muted)]">{t.serverLabel}: </span>
-                <span className="font-mono">{playerServer}</span>
-              </div>
-            )}
+            <div className="rounded-xl border border-[var(--border)] p-4 text-sm">
+              <div className="text-[var(--text-muted)] text-xs mb-1">{t.serverLabel || 'Server / Region'}</div>
+              <div className="font-mono">{playerServer || (t.notProvided || 'Required for this game')}</div>
+            </div>
+            <div className="rounded-xl border border-[var(--border)] p-4 text-sm">
+              <div className="text-[var(--text-muted)] text-xs mb-1">{t.total}</div>
+              <div className="font-semibold">${parseFloat(orderDetails.total).toFixed(2)}</div>
+            </div>
+            <div className="rounded-xl border border-[var(--border)] p-4 text-sm">
+              <div className="text-[var(--text-muted)] text-xs mb-1">{t.date}</div>
+              <div>{new Date(orderDetails.created_at).toLocaleString(lang === 'ar' ? 'ar-SY' : 'en-US')}</div>
+            </div>
           </div>
-          <p className="text-xs text-[var(--text-muted)] mt-3">{t.topUpArrivesSoon}</p>
+          <p className="text-xs text-[var(--text-muted)] mt-3">{t.topUpArrivesSoon || 'The delivery will be processed shortly after payment confirmation.'}</p>
         </div>
       )}
 

@@ -176,7 +176,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
 
   const persistSettings = async (overrides = {}) => {
     const payload = { ...form, ...overrides };
-    await saveG2bulkSettings({
+    const saved = await saveG2bulkSettings({
       enabled: payload.g2bulk_enabled,
       markupPercent: parseFloat(payload.g2bulk_markup_percent) || 15,
       charmPricingEnabled: !!payload.g2bulk_charm_pricing_enabled,
@@ -188,6 +188,28 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
       apiKey: apiKeyInput.trim() ? apiKeyInput.trim() : undefined,
     });
     if (apiKeyInput.trim()) setApiKeyInput('');
+    if (saved) {
+      setForm((prev) => ({
+        ...prev,
+        g2bulk_enabled: saved.g2bulk_enabled ?? prev.g2bulk_enabled,
+        g2bulk_markup_percent: saved.g2bulk_markup_percent ?? prev.g2bulk_markup_percent,
+        g2bulk_charm_pricing_enabled: saved.g2bulk_charm_pricing_enabled ?? prev.g2bulk_charm_pricing_enabled,
+        g2bulk_catalog_only: saved.g2bulk_catalog_only ?? prev.g2bulk_catalog_only,
+        g2bulk_catalog_mode: saved.g2bulk_catalog_mode || prev.g2bulk_catalog_mode,
+        g2bulk_auto_sync_enabled: saved.g2bulk_auto_sync_enabled ?? prev.g2bulk_auto_sync_enabled,
+        g2bulk_auto_sync_hour: saved.g2bulk_auto_sync_hour ?? prev.g2bulk_auto_sync_hour,
+        g2bulk_auto_sync_timezone: saved.g2bulk_auto_sync_timezone || prev.g2bulk_auto_sync_timezone,
+        g2bulk_last_sync_at: saved.g2bulk_last_sync_at || prev.g2bulk_last_sync_at,
+        g2bulk_last_check_at: saved.g2bulk_last_check_at || prev.g2bulk_last_check_at,
+        g2bulk_check_summary: saved.g2bulk_check_summary || prev.g2bulk_check_summary,
+        g2bulk_pull_selection: saved.g2bulk_pull_selection || prev.g2bulk_pull_selection,
+        g2bulk_api_key_set: saved.g2bulk_api_key_set ?? prev.g2bulk_api_key_set,
+        g2bulk_api_key_masked: saved.g2bulk_api_key_masked || prev.g2bulk_api_key_masked,
+        g2bulk_api_key_source: saved.g2bulk_api_key_source || prev.g2bulk_api_key_source,
+      }));
+      setPullSelection(normalizePullSelection(saved.g2bulk_pull_selection || {}));
+    }
+    return saved;
   };
 
   const handleSave = async () => {
@@ -195,9 +217,11 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     setError('');
     setSuccess('');
     try {
-      await persistSettings();
+      const saved = await persistSettings();
       setSuccess(t.g2bulkSettingsSaved);
-      await load();
+      if (!saved) {
+        await load();
+      }
       await onCatalogSynced?.(form.g2bulk_catalog_only);
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
@@ -214,7 +238,6 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     try {
       if (apiKeyInput.trim()) {
         await persistSettings();
-        await load();
       }
       const me = await g2bulkGetMe();
       setTestResult({
@@ -249,6 +272,14 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     onCatalogSynced?.(form.g2bulk_catalog_only);
     setTimeout(() => setSuccess(''), 3000);
   }, [t.g2bulkPullSelectionSaved, onCatalogSynced, form.g2bulk_catalog_only]);
+
+  const handleSaveAndSyncSelection = useCallback(async (selection, catalogMode) => {
+    setPullSelection(normalizePullSelection(selection || {}));
+    if (catalogMode) {
+      setForm((prev) => ({ ...prev, g2bulk_catalog_mode: catalogMode }));
+    }
+    await handleSyncCatalog({ selectionOverride: selection });
+  }, []);
 
   const pullCounts = useMemo(
     () => countPullSelection(pullSelection),
@@ -318,8 +349,12 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     }
   };
 
-  const handleSyncCatalog = async () => {
-    if (!hasSyncableSelection) {
+  const handleSyncCatalog = async ({ selectionOverride = null } = {}) => {
+    const effectiveSelection = selectionOverride || pullSelection;
+    const counts = countPullSelection(effectiveSelection);
+    const canSync = (counts.syncGames + counts.syncVouchers) > 0;
+
+    if (!canSync) {
       setError(hasAnyPullSelection ? t.g2bulkSyncNeedLiveGames : t.g2bulkSyncNeedSelection);
       setPullPanelOpen(true);
       return;

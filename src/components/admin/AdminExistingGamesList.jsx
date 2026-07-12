@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Edit, Trash2 } from 'lucide-react';
+import { Edit } from 'lucide-react';
 
 function matchesFilter(game, filterId) {
   switch (filterId) {
@@ -171,14 +171,6 @@ export default function AdminExistingGamesList({
                     title={t.edit}
                   >
                     <Edit className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onDelete?.(game.id)}
-                    className="p-2 text-red-400 hover:bg-red-500/10 rounded-xl"
-                    title={t.delete}
-                  >
-                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               </div>

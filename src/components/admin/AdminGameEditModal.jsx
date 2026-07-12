@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Trash2, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { uploadImage } from '../../lib/uploadImage';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import ImageFocusPicker from './ImageFocusPicker';
@@ -296,31 +296,10 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
                 {t.cancel || 'Cancel'}
               </button>
             </div>
-            {!isNew && onDelete && (
-              <button
-                type="button"
-                disabled={saving || deleting}
-                onClick={() => setShowDeleteConfirm(true)}
-                className="btn w-full py-2.5 text-red-400 border border-red-500/30 hover:bg-red-500/10 disabled:opacity-60 flex items-center justify-center gap-2"
-              >
-                <Trash2 className="w-4 h-4" />
-                {t.deleteGame || t.delete || 'Delete Game'}
-              </button>
-            )}
           </div>
         </form>
       </div>
 
-      <ConfirmDialog
-        open={showDeleteConfirm}
-        title={t.deleteGame || t.delete || 'Delete Game'}
-        message={t.deleteGameConfirm || 'Delete this game? This will also delete all its offers.'}
-        confirmLabel={t.confirm || t.delete || 'Confirm'}
-        cancelLabel={t.cancel || 'Cancel'}
-        loading={deleting}
-        onConfirm={handleDelete}
-        onCancel={() => setShowDeleteConfirm(false)}
-      />
     </div>
   );
 }

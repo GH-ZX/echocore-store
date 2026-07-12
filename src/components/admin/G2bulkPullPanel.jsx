@@ -144,6 +144,7 @@ export default function G2bulkPullPanel({
   initialSelection = null,
   onSaved,
   onLoaded,
+  onSaveAndSync,
 }) {
   const [phase, setPhase] = useState(PHASE.library);
   const [fetching, setFetching] = useState(false);
@@ -153,6 +154,7 @@ export default function G2bulkPullPanel({
   const [success, setSuccess] = useState('');
   const [activeTab, setActiveTab] = useState(TABS.topups);
   const [voucherFilter, setVoucherFilter] = useState(VOUCHER_FILTER_ALL);
+  const [selectionFilter, setSelectionFilter] = useState('all');
   const [query, setQuery] = useState('');
   const [catalog, setCatalog] = useState({ games: [], accounts: [], giftCards: [] });
   const [selection, setSelection] = useState(emptySelection());
@@ -160,6 +162,7 @@ export default function G2bulkPullPanel({
   const selectionRef = useRef(selection);
   const onLoadedRef = useRef(onLoaded);
   const onSavedRef = useRef(onSaved);
+  const onSaveAndSyncRef = useRef(onSaveAndSync);
   const initialSelectionRef = useRef(initialSelection);
   const openTokenRef = useRef(0);
 
@@ -174,6 +177,10 @@ export default function G2bulkPullPanel({
   useEffect(() => {
     onSavedRef.current = onSaved;
   }, [onSaved]);
+
+  useEffect(() => {
+    onSaveAndSyncRef.current = onSaveAndSync;
+  }, [onSaveAndSync]);
 
   useEffect(() => {
     initialSelectionRef.current = initialSelection;
@@ -250,6 +257,7 @@ export default function G2bulkPullPanel({
     setSuccess('');
     setError('');
     setVoucherFilter(VOUCHER_FILTER_ALL);
+    setSelectionFilter('all');
     setActiveTab(TABS.topups);
 
     const cached = peekPullCatalogCache();
@@ -308,12 +316,19 @@ export default function G2bulkPullPanel({
   const activeItems = useMemo(() => {
     const list = activeTab === TABS.topups ? catalog.games : filteredVoucherItems;
     const q = query.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter((item) => {
+    const baseList = !q ? list : list.filter((item) => {
       const name = String(item.baseName || item.title || '').toLowerCase();
       return name.includes(q);
     });
-  }, [activeTab, catalog.games, filteredVoucherItems, query]);
+
+    if (selectionFilter === 'selected') {
+      return baseList.filter((item) => isSelected(item));
+    }
+    if (selectionFilter === 'unselected') {
+      return baseList.filter((item) => !isSelected(item));
+    }
+    return baseList;
+  }, [activeTab, catalog.games, filteredVoucherItems, query, selectionFilter]);
 
   const getVoucherSelectionKeys = (item) => (
     item.voucherKind === 'account'
@@ -523,6 +538,24 @@ export default function G2bulkPullPanel({
     }
   };
 
+  const handleSaveAndSync = async () => {
+    setSaving(true);
+    setError('');
+    setSuccess('');
+    try {
+      const payload = selectionPayloadFromSets(selection);
+      const result = await saveG2bulkPullSelection(payload);
+      onSavedRef.current?.(result.selection || payload, result.catalogMode);
+      await onSaveAndSyncRef.current?.(result.selection || payload, result.catalogMode);
+      setSuccess(t.g2bulkPullSelectionSaved);
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError(err.message || t.g2bulkPullSaveFailed);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleRefreshLibrary = () => {
     fetchLibrary({ refresh: true, preserveUserEdits: true, background: true });
   };
@@ -660,18 +693,52 @@ export default function G2bulkPullPanel({
               </div>
             )}
 
-            <div className="px-3 sm:px-4 py-2 border-b border-[var(--border)] flex flex-col sm:flex-row sm:items-center gap-2 shrink-0">
-              <div className="relative w-full sm:flex-1 sm:min-w-[12rem]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
-                <input
-                  type="search"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder={t.g2bulkPullSearch}
-                  className="input w-full pl-9 min-h-[44px]"
-                />
+            <div className="px-3 sm:px-4 py-2 border-b border-[var(--border)] flex flex-col gap-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2">
+                {['all', 'selected', 'unselected'].map((option) => {
+                  const active = selectionFilter === option;
+                  const label = option === 'selected'
+                    ? (t.g2bulkPullFilterSelected || 'Selected')
+                    : option === 'unselected'
+                      ? (t.g2bulkPullFilterUnselected || 'Unselected')
+                      : (t.g2bulkPullFilterAll || 'All');
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setSelectionFilter(option)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors touch-manipulation ${
+                        active
+                          ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
+                          : 'border-[var(--border)] text-[var(--text-sec)] hover:border-[var(--accent)]/50'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+                {selectionFilter !== 'all' && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectionFilter('all')}
+                    className="px-3 py-1.5 rounded-full text-xs font-semibold border border-[var(--border)] text-[var(--text-sec)] hover:border-[var(--accent)]/50"
+                  >
+                    {t.g2bulkPullFilterClear || 'Clear filter'}
+                  </button>
+                )}
               </div>
-              <div className="grid grid-cols-2 sm:flex gap-2 w-full sm:w-auto">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <div className="relative w-full sm:flex-1 sm:min-w-[12rem]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder={t.g2bulkPullSearch}
+                    className="input w-full pl-9 min-h-[44px]"
+                  />
+                </div>
+                <div className="grid grid-cols-2 sm:flex gap-2 w-full sm:w-auto">
                 <button
                   type="button"
                   onClick={selectAllActive}
@@ -680,14 +747,15 @@ export default function G2bulkPullPanel({
                 >
                   {t.g2bulkPullSelectAll}
                 </button>
-                <button
-                  type="button"
-                  onClick={clearActive}
-                  disabled={refreshing}
-                  className="btn btn-secondary text-sm min-h-[44px] touch-manipulation w-full sm:w-auto"
-                >
-                  {t.g2bulkPullClear}
-                </button>
+                  <button
+                    type="button"
+                    onClick={clearActive}
+                    disabled={refreshing}
+                    className="btn btn-secondary text-sm min-h-[44px] touch-manipulation w-full sm:w-auto"
+                  >
+                    {t.g2bulkPullClear}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -864,7 +932,7 @@ export default function G2bulkPullPanel({
                   </div>
                 )}
               </div>
-              <div className="flex gap-2 w-full sm:w-auto">
+              <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                 <button type="button" onClick={onClose} className="btn btn-secondary flex-1 sm:flex-none min-h-[44px] touch-manipulation">
                   {t.cancel}
                 </button>
@@ -872,11 +940,22 @@ export default function G2bulkPullPanel({
                   type="button"
                   onClick={handleSave}
                   disabled={saving || refreshing}
-                  className="btn btn-primary inline-flex items-center justify-center gap-2 flex-1 sm:flex-none min-h-[44px] touch-manipulation"
+                  className="btn btn-secondary inline-flex items-center justify-center gap-2 flex-1 sm:flex-none min-h-[44px] touch-manipulation"
                 >
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   {t.g2bulkPullSave}
                 </button>
+                {onSaveAndSyncRef.current && (
+                  <button
+                    type="button"
+                    onClick={handleSaveAndSync}
+                    disabled={saving || refreshing}
+                    className="btn btn-primary inline-flex items-center justify-center gap-2 flex-1 sm:flex-none min-h-[44px] touch-manipulation"
+                  >
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudDownload className="w-4 h-4" />}
+                    {t.g2bulkPullSaveAndSync || 'Save & Sync'}
+                  </button>
+                )}
               </div>
             </div>
           </>

@@ -760,33 +760,15 @@ export default function App() {
   };
 
   const deleteProduct = async (productId) => {
-    const { error } = await supabase
-      .from('offers')
-      .delete()
-      .eq('id', productId);
-
-    if (error) {
-      console.error(error);
-      showToast(t.failedToDelete || 'Delete failed. Are you admin?', 'error');
-      throw new Error(error.message || t.failedToDelete || 'Failed to delete.');
-    }
-    setOffers(prev => prev.filter(p => p.id !== productId));
+    const message = t.g2bulkDeletionDisabled || 'Deleting products is disabled. Use the G2Bulk selection menu to deselect items from the store.';
+    showToast(message, 'warning');
+    throw new Error(message);
   };
 
   const deleteGame = async (gameId) => {
-    const { error } = await supabase
-      .from('games')
-      .delete()
-      .eq('id', gameId);
-
-    if (error) {
-      console.error('Delete game error:', error);
-      showToast(`${t.failedToDeleteGame || 'Failed to delete game'}: ${error.message}`, 'error');
-      throw new Error(error.message || t.failedToDeleteGame || 'Failed to delete game.');
-    }
-
-    setGames(prev => prev.filter(g => g.id !== gameId));
-    setOffers(prev => prev.filter(o => o.game_id !== gameId));
+    const message = t.g2bulkDeletionDisabled || 'Deleting games is disabled. Use the G2Bulk selection menu to deselect items from the store.';
+    showToast(message, 'warning');
+    throw new Error(message);
   };
 
   const updateProduct = async (productData) => {

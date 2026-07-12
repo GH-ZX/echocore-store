@@ -74,24 +74,23 @@ export async function saveG2bulkSettings({
   autoSyncHour,
   autoSyncTimezone,
 }) {
-  const { data, error } = await supabase.rpc('save_g2bulk_settings', {
-    p_enabled: !!enabled,
-    p_markup_percent: markupPercent ?? 15,
-    p_charm_pricing_enabled: charmPricingEnabled !== undefined ? !!charmPricingEnabled : null,
-    p_api_key: apiKey !== undefined ? (apiKey?.trim() || '') : null,
-    p_catalog_only: catalogOnly !== undefined ? !!catalogOnly : null,
-    p_catalog_mode: catalogMode !== undefined ? (catalogMode?.trim() || 'sync') : null,
-    p_auto_sync_enabled: autoSyncEnabled !== undefined ? !!autoSyncEnabled : null,
-    p_auto_sync_hour: autoSyncHour !== undefined ? Number(autoSyncHour) : null,
-    p_auto_sync_timezone: autoSyncTimezone !== undefined ? (autoSyncTimezone?.trim() || null) : null,
+  const data = await invokeG2bulk({
+    action: 'saveSettings',
+    enabled: enabled !== undefined ? !!enabled : undefined,
+    markupPercent: markupPercent !== undefined ? Number(markupPercent) : undefined,
+    charmPricingEnabled: charmPricingEnabled !== undefined ? !!charmPricingEnabled : undefined,
+    apiKey: apiKey !== undefined ? (apiKey?.trim() || '') : undefined,
+    catalogOnly: catalogOnly !== undefined ? !!catalogOnly : undefined,
+    catalogMode: catalogMode !== undefined ? (catalogMode?.trim() || 'sync') : undefined,
+    autoSyncEnabled: autoSyncEnabled !== undefined ? !!autoSyncEnabled : undefined,
+    autoSyncHour: autoSyncHour !== undefined ? Number(autoSyncHour) : undefined,
+    autoSyncTimezone: autoSyncTimezone !== undefined ? (autoSyncTimezone?.trim() || null) : undefined,
   });
-  if (error) {
-    const msg = error.message || '';
-    if (/g2bulk_auto_sync|g2bulk_catalog_mode|g2bulk_charm_pricing|save_g2bulk_settings|function.*does not exist/i.test(msg)) {
-      throw new Error('Run supabase_charm_pricing_migration.sql (or supabase_echocore_full.sql) in Supabase SQL Editor, then retry.');
-    }
-    throw error;
+
+  if (data?.settings) {
+    return data.settings;
   }
+
   return data;
 }
 
