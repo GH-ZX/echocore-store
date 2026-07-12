@@ -6,6 +6,7 @@ import G2bulkWalletCard from '../ui/G2bulkWalletCard';
 import SamWalletBalancesCard from '../ui/SamWalletBalancesCard';
 import { useAdminG2bulkWallet } from '../../hooks/useAdminG2bulkWallet';
 import { useAdminSamWallets } from '../../hooks/useAdminSamWallets';
+import { getSamAccountLabel } from '../../lib/samWalletFormat';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
@@ -84,6 +85,7 @@ export default function Header({
     error: samError,
     notConfigured: samNotConfigured,
   } = useAdminSamWallets(isAdmin);
+  const samAccountLabel = getSamAccountLabel(samWallets, t.samWalletTitle);
 
   const closeAll = useCallback(() => {
     setIsMenuOpen(false);
@@ -374,7 +376,7 @@ export default function Header({
                 </span>
                 <span className="header-profile-dd-balance-copy">
                   <span className="header-profile-dd-balance-label">
-                    {t.samWalletTitle}
+                    {samAccountLabel}
                   </span>
                   <span className="header-profile-dd-balance-hint">
                     {t.viewInPayments}
@@ -382,7 +384,6 @@ export default function Header({
                 </span>
                 <SamWalletBalancesCard
                   compact
-                  lang={lang}
                   t={t}
                   wallets={samWallets}
                   loading={samLoading}
@@ -664,10 +665,9 @@ export default function Header({
                             className="header-mobile-action"
                           >
                             <Smartphone className="w-4 h-4 text-emerald-300" strokeWidth={2} />
-                            <span>{t.samWalletTitle}</span>
+                            <span>{samAccountLabel}</span>
                             <SamWalletBalancesCard
                               compact
-                              lang={lang}
                               t={t}
                               wallets={samWallets}
                               loading={samLoading}

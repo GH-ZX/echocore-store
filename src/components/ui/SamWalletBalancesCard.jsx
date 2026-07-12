@@ -1,7 +1,7 @@
 import { Loader2, RefreshCw, Wallet, AlertCircle, Smartphone } from 'lucide-react';
-import { formatSamCurrencyAmount } from '../../lib/samWalletFormat';
+import { formatSamCurrencyAmount, getSamAccountLabel, getSamWalletDisplayName } from '../../lib/samWalletFormat';
 
-function BalanceGrid({ balances, lang, compact = false }) {
+function BalanceGrid({ balances, compact = false }) {
   if (!balances?.length) return null;
 
   if (compact) {
@@ -12,7 +12,7 @@ function BalanceGrid({ balances, lang, compact = false }) {
             {index > 0 && <span className="sam-wallet-compact-sep">·</span>}
             <span className="sam-wallet-compact-currency">{row.currency}</span>
             {' '}
-            {formatSamCurrencyAmount(row.currency, row.amount, lang)}
+            {formatSamCurrencyAmount(row.currency, row.amount)}
           </span>
         ))}
       </span>
@@ -25,7 +25,7 @@ function BalanceGrid({ balances, lang, compact = false }) {
         <div key={row.currency} className="sam-wallet-balance-cell">
           <div className="sam-wallet-balance-currency">{row.currency}</div>
           <div className="sam-wallet-balance-amount font-mono" dir="ltr">
-            {formatSamCurrencyAmount(row.currency, row.amount, lang)}
+            {formatSamCurrencyAmount(row.currency, row.amount)}
           </div>
         </div>
       ))}
@@ -33,17 +33,18 @@ function BalanceGrid({ balances, lang, compact = false }) {
   );
 }
 
-function WalletBlock({ wallet, lang, compact }) {
+function WalletBlock({ wallet, compact }) {
+  const displayName = getSamWalletDisplayName(wallet);
   const providerLabel = wallet.providerDisplayName || wallet.provider;
 
   if (compact) {
     return (
       <div className="sam-wallet-compact-block">
-        <span className="sam-wallet-compact-provider">{providerLabel}</span>
+        <span className="sam-wallet-compact-provider">{displayName}</span>
         {wallet.error ? (
           <span className="text-xs text-amber-400">—</span>
         ) : (
-          <BalanceGrid balances={wallet.balances} lang={lang} compact />
+          <BalanceGrid balances={wallet.balances} compact />
         )}
       </div>
     );
@@ -53,9 +54,9 @@ function WalletBlock({ wallet, lang, compact }) {
     <div className="sam-wallet-provider-block">
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="min-w-0">
-          <p className="font-bold text-sm text-[var(--text-primary)] truncate">{providerLabel}</p>
-          {wallet.label && (
-            <p className="text-xs text-[var(--text-muted)] truncate">{wallet.label}</p>
+          <p className="font-bold text-sm text-[var(--text-primary)] truncate">{displayName}</p>
+          {wallet.label?.trim() && providerLabel && displayName !== providerLabel && (
+            <p className="text-xs text-[var(--text-muted)] truncate">{providerLabel}</p>
           )}
         </div>
         {wallet.identifier && (
@@ -67,7 +68,7 @@ function WalletBlock({ wallet, lang, compact }) {
       {wallet.error ? (
         <p className="text-xs text-amber-300/90">{wallet.error}</p>
       ) : (
-        <BalanceGrid balances={wallet.balances} lang={lang} />
+        <BalanceGrid balances={wallet.balances} />
       )}
     </div>
   );
@@ -86,6 +87,7 @@ export default function SamWalletBalancesCard({
   t = {},
 }) {
   const hasWallets = wallets.length > 0;
+  const accountLabel = getSamAccountLabel(wallets, t.samWalletTitle);
 
   if (compact) {
     if (loading) {
@@ -112,7 +114,7 @@ export default function SamWalletBalancesCard({
     return (
       <div className="sam-wallet-compact-stack">
         {wallets.map((wallet) => (
-          <WalletBlock key={String(wallet.id || wallet.identifier || wallet.provider)} wallet={wallet} lang={lang} compact />
+          <WalletBlock key={String(wallet.id || wallet.identifier || wallet.provider)} wallet={wallet} compact />
         ))}
       </div>
     );
@@ -126,8 +128,8 @@ export default function SamWalletBalancesCard({
             <Smartphone className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-300">
-              {t.samWalletTitle}
+            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-300 truncate">
+              {accountLabel}
             </p>
             <p className="text-[11px] text-[var(--text-muted)]">
               {t.samWalletHelp}
@@ -171,7 +173,7 @@ export default function SamWalletBalancesCard({
       ) : (
         <div className="space-y-4">
           {wallets.map((wallet) => (
-            <WalletBlock key={String(wallet.id || wallet.identifier || wallet.provider)} wallet={wallet} lang={lang} />
+            <WalletBlock key={String(wallet.id || wallet.identifier || wallet.provider)} wallet={wallet} />
           ))}
         </div>
       )}

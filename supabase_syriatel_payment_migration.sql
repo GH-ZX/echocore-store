@@ -327,7 +327,8 @@ CREATE OR REPLACE FUNCTION public.save_sam_api_settings(
   p_syriatel_wallet_identifier text DEFAULT null,
   p_invoice_currency text DEFAULT 'USD',
   p_api_key text DEFAULT null,
-  p_regenerate_webhook_secret boolean DEFAULT false
+  p_regenerate_webhook_secret boolean DEFAULT false,
+  p_clear_api_key boolean DEFAULT false
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -352,12 +353,13 @@ BEGIN
 
   UPDATE public.store_settings
   SET
-    sam_api_enabled = COALESCE(p_enabled, false),
+    sam_api_enabled = CASE WHEN COALESCE(p_clear_api_key, false) THEN false ELSE COALESCE(p_enabled, false) END,
     sam_wallet_mode = COALESCE(nullif(trim(p_wallet_mode), ''), sam_wallet_mode, 'manual'),
     sam_shamcash_wallet_identifier = COALESCE(nullif(trim(p_shamcash_wallet_identifier), ''), sam_shamcash_wallet_identifier),
     sam_syriatel_wallet_identifier = COALESCE(nullif(trim(p_syriatel_wallet_identifier), ''), sam_syriatel_wallet_identifier),
     sam_invoice_currency = COALESCE(nullif(trim(p_invoice_currency), ''), sam_invoice_currency, 'USD'),
     sam_api_key = CASE
+      WHEN COALESCE(p_clear_api_key, false) THEN null
       WHEN p_api_key IS NOT NULL THEN v_trim_key
       ELSE sam_api_key
     END,
@@ -373,8 +375,8 @@ BEGIN
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.save_sam_api_settings(boolean, text, text, text, text, text, boolean) FROM public;
-GRANT EXECUTE ON FUNCTION public.save_sam_api_settings(boolean, text, text, text, text, text, boolean) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.save_sam_api_settings(boolean, text, text, text, text, text, boolean, boolean) FROM public;
+GRANT EXECUTE ON FUNCTION public.save_sam_api_settings(boolean, text, text, text, text, text, boolean, boolean) TO authenticated;
 
 -- 6. Public payment config
 CREATE OR REPLACE FUNCTION public.get_payment_methods()

@@ -15,13 +15,14 @@ export function normalizeSamBalances(balances) {
   }));
 }
 
-export function formatSamCurrencyAmount(currency, amount, lang = 'ar') {
+const AMOUNT_LOCALE = 'en-US';
+
+export function formatSamCurrencyAmount(currency, amount) {
   const value = Number(amount);
   const safe = Number.isFinite(value) ? value : 0;
-  const locale = lang === 'ar' ? 'ar-SY' : 'en-US';
 
   if (currency === 'USD') {
-    return new Intl.NumberFormat(locale, {
+    return new Intl.NumberFormat(AMOUNT_LOCALE, {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 2,
@@ -30,7 +31,7 @@ export function formatSamCurrencyAmount(currency, amount, lang = 'ar') {
   }
 
   if (currency === 'EUR') {
-    return new Intl.NumberFormat(locale, {
+    return new Intl.NumberFormat(AMOUNT_LOCALE, {
       style: 'currency',
       currency: 'EUR',
       minimumFractionDigits: 2,
@@ -38,10 +39,22 @@ export function formatSamCurrencyAmount(currency, amount, lang = 'ar') {
     }).format(safe);
   }
 
-  return `${new Intl.NumberFormat(locale, {
+  return `${new Intl.NumberFormat(AMOUNT_LOCALE, {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(safe)} SYP`;
+}
+
+export function getSamWalletDisplayName(wallet) {
+  const label = wallet?.label?.trim();
+  if (label) return label;
+  return wallet?.providerDisplayName || wallet?.provider || '';
+}
+
+export function getSamAccountLabel(wallets, fallback = '') {
+  if (!Array.isArray(wallets)) return fallback;
+  const label = wallets.map((w) => w.label?.trim()).find(Boolean);
+  return label || fallback;
 }
 
 export function sumBalancesAcrossWallets(wallets, currency) {

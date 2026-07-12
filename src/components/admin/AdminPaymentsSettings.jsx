@@ -10,10 +10,13 @@ import {
   Save,
   Copy,
   Smartphone,
+  Trash2,
 } from 'lucide-react';
 import { fetchStoreSettings, saveStoreSettings } from '../../lib/storeSettings';
 import { fetchSamApiSettings, listSamWallets, saveSamApiSettings } from '../../lib/samApi';
 import { uploadImage } from '../../lib/uploadImage';
+import ConfirmDialog from '../ui/ConfirmDialog';
+import { getSamWalletDisplayName } from '../../lib/samWalletFormat';
 
 function ManualWalletSection({
   title,
@@ -85,7 +88,7 @@ function WalletPickerChips({ wallets, onPick, t }) {
     <div className="mt-2 flex flex-wrap gap-2">
       {wallets.map((wallet) => {
         const id = wallet.walletAddress || wallet.phone || wallet.cashCode || wallet.accountNumber || wallet.id;
-        const label = wallet.providerDisplayName || wallet.provider || 'Wallet';
+        const label = getSamWalletDisplayName(wallet) || wallet.providerDisplayName || wallet.provider || 'Wallet';
         const isSyriatel = wallet.provider === 'syriatel';
         return (
           <button
@@ -111,6 +114,8 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
   const [shamQrUploading, setShamQrUploading] = useState(false);
   const [syriatelQrUploading, setSyriatelQrUploading] = useState(false);
   const [samWallets, setSamWallets] = useState([]);
+  const [deleteKeyOpen, setDeleteKeyOpen] = useState(false);
+  const [deletingKey, setDeletingKey] = useState(false);
 
   const [samForm, setSamForm] = useState({
     sam_api_enabled: false,
@@ -135,6 +140,7 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
   });
 
   const isApiMode = samForm.sam_wallet_mode === 'api';
+  const apiKeyLocked = !!samForm.sam_api_key_set;
 
   const load = async () => {
     setLoading(true);
@@ -288,6 +294,37 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
     }
   };
 
+  const handleDeleteSamApiKey = async () => {
+    setDeletingKey(true);
+    setError('');
+    try {
+      const settings = await saveSamApiSettings({
+        clearApiKey: true,
+        enabled: false,
+        walletMode: samForm.sam_wallet_mode,
+        shamcashWalletIdentifier: samForm.sam_shamcash_wallet_identifier,
+        syriatelWalletIdentifier: samForm.sam_syriatel_wallet_identifier,
+        invoiceCurrency: samForm.sam_invoice_currency,
+      });
+      setSamForm((prev) => ({
+        ...prev,
+        sam_api_key: '',
+        sam_api_enabled: false,
+        sam_api_key_set: !!settings.sam_api_key_set,
+        sam_api_key_masked: settings.sam_api_key_masked || '',
+      }));
+      setSamWallets([]);
+      setDeleteKeyOpen(false);
+      setSuccess(t.samApiKeyRemoved);
+      setTimeout(() => setSuccess(''), 3000);
+      onSaved?.();
+    } catch (err) {
+      setError(err.message || t.saveFailed);
+    } finally {
+      setDeletingKey(false);
+    }
+  };
+
   const handleQrUpload = async (e, field, setUploading, folder) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -424,17 +461,31 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
               </div>
             </label>
 
-            <div>
+            <div className={`rounded-xl border p-4 ${apiKeyLocked ? 'border-emerald-500/25 bg-emerald-500/5' : 'border-transparent'}`}>
               <label className="text-xs text-[var(--text-muted)] block mb-1.5">{t.samApiKeyLabel}</label>
               <input
                 type="password"
-                value={samForm.sam_api_key}
-                onChange={(e) => setSamForm((p) => ({ ...p, sam_api_key: e.target.value }))}
-                placeholder={samForm.sam_api_key_set ? samForm.sam_api_key_masked : 'sk_...'}
-                className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 font-mono text-sm outline-none"
+                value={apiKeyLocked ? samForm.sam_api_key_masked : samForm.sam_api_key}
+                onChange={(e) => !apiKeyLocked && setSamForm((p) => ({ ...p, sam_api_key: e.target.value }))}
+                placeholder={apiKeyLocked ? '' : 'sk_...'}
+                readOnly={apiKeyLocked}
+                disabled={apiKeyLocked}
+                className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 font-mono text-sm outline-none disabled:opacity-80 disabled:cursor-not-allowed"
                 autoComplete="off"
               />
-              <p className="text-[10px] text-[var(--text-muted)] mt-1.5">{t.samApiKeyHelp}</p>
+              <p className="text-[10px] text-[var(--text-muted)] mt-1.5">
+                {apiKeyLocked ? t.samApiKeyLocked : t.samApiKeyHelp}
+              </p>
+              {apiKeyLocked && (
+                <button
+                  type="button"
+                  onClick={() => setDeleteKeyOpen(true)}
+                  className="mt-3 action-chip border-red-500/40 text-red-400 hover:bg-red-500/10 gap-1.5"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {t.samApiDeleteKey}
+                </button>
+              )}
             </div>
 
             <div>
@@ -564,6 +615,18 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={deleteKeyOpen}
+        title={t.samApiDeleteKey}
+        message={t.samApiDeleteKeyConfirm}
+        confirmLabel={t.samApiDeleteKey}
+        cancelLabel={t.cancel}
+        variant="danger"
+        loading={deletingKey}
+        onConfirm={handleDeleteSamApiKey}
+        onCancel={() => !deletingKey && setDeleteKeyOpen(false)}
+      />
     </div>
   );
 }

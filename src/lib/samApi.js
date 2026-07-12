@@ -47,6 +47,7 @@ export async function saveSamApiSettings({
   invoiceCurrency,
   apiKey,
   regenerateWebhookSecret,
+  clearApiKey,
 }) {
   const data = await invokeSamApi({
     action: 'saveSettings',
@@ -57,6 +58,7 @@ export async function saveSamApiSettings({
     invoiceCurrency,
     apiKey,
     regenerateWebhookSecret,
+    clearApiKey,
   });
   return data.settings;
 }

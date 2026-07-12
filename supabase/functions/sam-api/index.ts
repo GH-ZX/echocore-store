@@ -239,6 +239,7 @@ Deno.serve(async (req) => {
       p_invoice_currency: body.invoiceCurrency ?? 'USD',
       p_api_key: body.apiKey !== undefined ? body.apiKey : null,
       p_regenerate_webhook_secret: !!body.regenerateWebhookSecret,
+      p_clear_api_key: !!body.clearApiKey,
     });
 
     if (error) {
