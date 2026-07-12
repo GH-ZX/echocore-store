@@ -2406,12 +2406,15 @@ $$;
 -- Game region grouping: one storefront game, many G2Bulk regional variants
 
 ALTER TABLE public.games
+  ADD COLUMN IF NOT EXISTS group_base_key text,
   ADD COLUMN IF NOT EXISTS parent_game_id uuid REFERENCES public.games(id) ON DELETE CASCADE,
   ADD COLUMN IF NOT EXISTS region_label text;
 
 CREATE INDEX IF NOT EXISTS games_parent_game_id_idx
   ON public.games (parent_game_id)
   WHERE parent_game_id IS NOT NULL;
+
+COMMENT ON COLUMN public.games.group_base_key IS 'Shared base key for G2Bulk game variants (e.g. mlbb, mlbb_global, mlbb_ru).';
 
 CREATE INDEX IF NOT EXISTS games_storefront_idx
   ON public.games (active, catalog_source)

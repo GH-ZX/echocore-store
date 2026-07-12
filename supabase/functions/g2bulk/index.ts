@@ -51,6 +51,21 @@ async function readJson(req: Request) {
   }
 }
 
+async function getGamesTableColumns(serviceClient: ReturnType<typeof createClient>): Promise<Set<string>> {
+  try {
+    const { error } = await serviceClient.from('games').select('id').limit(1);
+    if (!error) return new Set();
+    const message = String(error.message || '');
+    const match = message.match(/column\s+"?([a-zA-Z0-9_]+)"?/i);
+    if (match) {
+      return new Set([match[1].toLowerCase()]);
+    }
+  } catch {
+    // ignore and fall back to best-effort writes
+  }
+  return new Set();
+}
+
 async function g2bulkFetch(
   apiKey: string,
   path: string,
@@ -876,6 +891,8 @@ Deno.serve(async (req) => {
     const now = new Date().toISOString();
 
     const { markup, charmPricing } = await loadStorePricingSettings(serviceClient);
+    const gamesTableColumns = await getGamesTableColumns(serviceClient);
+    const hasGroupBaseKeyColumn = gamesTableColumns.has('group_base_key') || gamesTableColumns.size === 0;
 
     async function ensureParentGame(
       meta: { baseKey: string; baseName: string },
@@ -911,13 +928,24 @@ Deno.serve(async (req) => {
         region_label: null,
         g2bulk_game_code: null,
         g2bulk_source_id: null,
-        group_base_key: meta.baseKey,
+        ...(hasGroupBaseKeyColumn ? { group_base_key: meta.baseKey } : {}),
       };
 
       if (existingParent?.id) {
         const { error } = await serviceClient.from('games').update(parentRow).eq('id', existingParent.id);
         if (error) throw error;
         return existingParent.id as string;
+      }
+
+      const { data: bySlug } = await serviceClient
+        .from('games')
+        .select('id')
+        .eq('slug', parentSlug)
+        .maybeSingle();
+      if (bySlug?.id) {
+        const { error } = await serviceClient.from('games').update(parentRow).eq('id', bySlug.id);
+        if (error) throw error;
+        return bySlug.id as string;
       }
 
       const { data: inserted, error } = await serviceClient
@@ -993,6 +1021,7 @@ Deno.serve(async (req) => {
         parent_game_id: parentId,
         region_label: meta.regionLabel,
         servers: servers.length > 0 ? servers : [],
+        ...(hasGroupBaseKeyColumn ? { group_base_key: meta.baseKey } : {}),
       };
 
       let gameId = existingChild?.id as string | undefined;
@@ -1000,14 +1029,25 @@ Deno.serve(async (req) => {
         const { error } = await serviceClient.from('games').update(childRow).eq('id', gameId);
         if (error) throw error;
       } else {
-        const { data: inserted, error } = await serviceClient
+        const { data: bySlug } = await serviceClient
           .from('games')
-          .insert(childRow)
           .select('id')
-          .single();
-        if (error) throw error;
-        gameId = inserted.id;
-        gamesSynced += 1;
+          .eq('slug', childSlug)
+          .maybeSingle();
+        if (bySlug?.id) {
+          const { error } = await serviceClient.from('games').update(childRow).eq('id', bySlug.id);
+          if (error) throw error;
+          gameId = bySlug.id as string;
+        } else {
+          const { data: inserted, error } = await serviceClient
+            .from('games')
+            .insert(childRow)
+            .select('id')
+            .single();
+          if (error) throw error;
+          gameId = inserted.id;
+          gamesSynced += 1;
+        }
       }
 
       if (inferredPointsName) {
