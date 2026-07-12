@@ -25,17 +25,18 @@ export const HOME_SECTION_TYPES = {
   },
   gift_cards: {
     labelEn: 'Gift Cards & Vouchers',
-    labelAr: 'بطاقات الهدايا',
-    descriptionEn: 'Instant redeem-code gift cards and vouchers',
-    descriptionAr: 'بطاقات هدايا وأكواد شحن فورية',
+    labelAr: 'بطاقات الهدايا والقسائم',
+    descriptionEn: 'Platform gift cards and in-game voucher codes (single G2Bulk lane)',
+    descriptionAr: 'بطاقات المنصات وقسائم الألعاب — مسار G2Bulk الموحّد',
     singleton: true,
   },
   gaming_accounts: {
-    labelEn: 'Gaming Accounts & Subscriptions',
-    labelAr: 'حسابات واشتراكات الألعاب',
-    descriptionEn: 'Xbox, PlayStation, and platform subscription codes',
-    descriptionAr: 'Xbox و PlayStation واشتراكات المنصات',
+    labelEn: 'Gaming Accounts (legacy)',
+    labelAr: 'حسابات الألعاب (قديم)',
+    descriptionEn: 'Merged into Gift Cards & Vouchers — remove this section if still present',
+    descriptionAr: 'مُدمج في بطاقات الهدايا والقسائم — احذف هذا القسم إن وُجد',
     singleton: true,
+    deprecated: true,
   },
   game_picks: {
     labelEn: 'Custom Game Cards',
@@ -110,15 +111,7 @@ export const DEFAULT_HOME_LAYOUT = [
     type: 'gift_cards',
     enabled: true,
     title_en: 'Gift Cards & Vouchers',
-    title_ar: 'بطاقات الهدايا',
-    limit: 6,
-  },
-  {
-    id: 'gaming_accounts',
-    type: 'gaming_accounts',
-    enabled: true,
-    title_en: 'Gaming Accounts',
-    title_ar: 'حسابات الألعاب',
+    title_ar: 'بطاقات الهدايا والقسائم',
     limit: 6,
   },
   {
@@ -149,10 +142,10 @@ function defaultSectionConfig(type, id) {
     return { ...base, title_en: 'Choose a Game', title_ar: 'اختر لعبتك' };
   }
   if (type === 'gift_cards') {
-    return { ...base, title_en: 'Gift Cards & Vouchers', title_ar: 'بطاقات الهدايا', limit: 6 };
+    return { ...base, title_en: 'Gift Cards & Vouchers', title_ar: 'بطاقات الهدايا والقسائم', limit: 6 };
   }
   if (type === 'gaming_accounts') {
-    return { ...base, title_en: 'Gaming Accounts', title_ar: 'حسابات الألعاب', limit: 6 };
+    return { ...base, title_en: 'Gaming Accounts', title_ar: 'حسابات الألعاب', limit: 6, enabled: false };
   }
   if (type === 'game_picks') {
     return {
@@ -211,6 +204,7 @@ export function normalizeHomeLayout(value) {
     if (!raw || typeof raw !== 'object') return;
     const type = raw.type;
     if (!VALID_TYPES.has(type)) return;
+    if (type === 'gaming_accounts') return;
 
     const id = typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : `${type}_${index}`;
     if (seen.has(id)) return;
@@ -269,6 +263,7 @@ export function evaluateHomeSectionStatus(section, context = {}) {
     carouselCount = 0,
     gamesCount = 0,
     giftCardCount = 0,
+    voucherCount = 0,
     gamingAccountCount = 0,
     saleOfferCount = 0,
     offerCount = 0,
@@ -283,9 +278,9 @@ export function evaluateHomeSectionStatus(section, context = {}) {
     case 'games':
       return { hidden: false, empty: gamesCount === 0 };
     case 'gift_cards':
-      return { hidden: false, empty: giftCardCount === 0 };
+      return { hidden: false, empty: (voucherCount || giftCardCount) === 0 };
     case 'gaming_accounts':
-      return { hidden: false, empty: gamingAccountCount === 0 };
+      return { hidden: true, empty: true };
     case 'sale_offers':
       return { hidden: false, empty: saleOfferCount === 0 };
     case 'suggested_offers':
@@ -313,8 +308,12 @@ export function evaluateHomeSectionStatus(section, context = {}) {
   }
 }
 
+export function isDeprecatedHomeSectionType(type) {
+  return !!HOME_SECTION_TYPES[type]?.deprecated;
+}
+
 export function createHomeSection(type) {
-  if (!VALID_TYPES.has(type)) return null;
+  if (!VALID_TYPES.has(type) || isDeprecatedHomeSectionType(type)) return null;
   const id = `${type}_${Date.now().toString(36)}`;
   return defaultSectionConfig(type, id);
 }

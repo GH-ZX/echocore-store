@@ -47,6 +47,8 @@ lib/i18n.js           → getT(), formatMessage()
 
 **Standards:** `.grok/skills/echocore-standards/` — no inline `isAr ?` copy; use `t.key` only.
 
+**Pricing (G2Bulk):** `g2bulk_cost_usd` = supplier · `offer.price` = customer (markup + optional charm `.49`/`.89`/`.99`). Admin sees cost via `AdminOfferCostBadge`.
+
 ---
 
 ## Routes (see `AppRoutes.jsx`)
@@ -86,7 +88,9 @@ Game CRUD: `AdminGameEditModal` only (no inline form in `AdminView`).
 
 - [ ] GitHub secrets: Supabase URL/key, `VITE_SITE_DOMAIN=www.echocore412.com`, `VITE_BASE_PATH=/`
 - [ ] Supabase Auth redirect URLs match production domain
-- [ ] SQL full file applied on Supabase project
+- [ ] SQL full file applied on Supabase project (or incremental `supabase_charm_pricing_migration.sql` if needed)
+- [ ] Edge: `supabase functions deploy g2bulk` (+ `g2bulk-sync-cron`, `sam-api` as used)
 - [ ] Admin `role` set in `profiles`
+- [ ] G2Bulk: API key, markup %, optional charm pricing + **Apply charm prices**
 
 Arabic map: [PROJECT_MAP.ar.md](./PROJECT_MAP.ar.md)

@@ -28,8 +28,7 @@ import { fetchStoreSettings, saveStoreSettings } from '../../lib/storeSettings';
 import { getCarouselGames } from '../../lib/carouselUtils';
 import {
   countActiveOffers,
-  getGiftCardGames,
-  getGamingAccountGames,
+  getCatalogVoucherGames,
   getVisibleTopupGames,
 } from '../../lib/catalogUtils';
 import { offerBelongsToStorefront } from '../../lib/gameRegions';
@@ -40,6 +39,7 @@ import {
   HOME_SECTION_TYPES,
   createHomeSection,
   evaluateHomeSectionStatus,
+  isDeprecatedHomeSectionType,
   normalizeHomeLayout,
 } from '../../lib/homeLayout';
 
@@ -371,9 +371,9 @@ function getSectionContentHint(type, counts, t) {
     case 'games':
       return formatMessage(t.homeHintGames, { count: counts.gamesCount });
     case 'gift_cards':
-      return formatMessage(t.homeHintGiftCards, { count: counts.giftCardCount });
+      return formatMessage(t.homeHintGiftCards, { count: counts.voucherCount });
     case 'gaming_accounts':
-      return formatMessage(t.homeHintGamingAccounts, { count: counts.gamingAccountCount });
+      return t.homeSectionGamingAccountsDeprecated;
     case 'sale_offers':
       return formatMessage(t.homeHintSaleOffers, { count: counts.saleOfferCount });
     case 'suggested_offers':
@@ -421,12 +421,11 @@ export default function AdminHomeLayoutSettings({
   const statusContext = useMemo(() => ({
     carouselCount: getCarouselGames(topupGames).length,
     gamesCount: topupGames.length,
-    giftCardCount: getGiftCardGames(games)
+    voucherCount: getCatalogVoucherGames(games)
       .filter((game) => countActiveOffers(game.id, offers) > 0 || game.catalog_source === 'live')
       .length,
-    gamingAccountCount: getGamingAccountGames(games)
-      .filter((game) => countActiveOffers(game.id, offers) > 0 || game.catalog_source === 'live')
-      .length,
+    giftCardCount: 0,
+    gamingAccountCount: 0,
     saleOfferCount: storefrontOffers.filter((offer) => offer.is_sale).length,
     offerCount: storefrontOffers.length,
     approvedReviewCount: reviews.filter(isDisplayableReview).length,
@@ -711,7 +710,7 @@ export default function AdminHomeLayoutSettings({
             {t.addHomeSectionHelp}
           </p>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {Object.entries(HOME_SECTION_TYPES).map(([type, meta]) => {
+            {Object.entries(HOME_SECTION_TYPES).filter(([type]) => !isDeprecatedHomeSectionType(type)).map(([type, meta]) => {
               const Icon = SECTION_TYPE_ICONS[type] || LayoutGrid;
               const alreadyAdded = meta.singleton && sections.some((section) => section.type === type);
               const hint = getSectionContentHint(type, statusContext, t);

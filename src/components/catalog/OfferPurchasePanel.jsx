@@ -1,11 +1,15 @@
 import { ShoppingCart, Zap, Globe, Server, Package } from 'lucide-react';
-import { formatPrice, getOfferDiscount } from '../../lib/offerDisplay';
+import AdminOfferCostBadge from '../admin/AdminOfferCostBadge';
+import { formatPrice, getOfferDiscount, getOfferDisplayName } from '../../lib/offerDisplay';
 
 export default function OfferPurchasePanel({
   offer,
   game,
+  games = [],
+  catalogOffers = [],
   t = {},
   lang = 'ar',
+  isAdmin = false,
   onBuyNow,
   onAddToCart,
   className = '',
@@ -13,6 +17,11 @@ export default function OfferPurchasePanel({
   const isAr = lang === 'ar';
   const discount = getOfferDiscount(offer);
   const servers = Array.isArray(game?.servers) ? game.servers : [];
+  const packLabel = getOfferDisplayName(offer, lang, {
+    game,
+    games,
+    relatedOffers: catalogOffers,
+  });
 
   return (
     <aside className={`catalog-purchase-panel card p-5 sm:p-6 h-fit ${className}`}>
@@ -30,13 +39,14 @@ export default function OfferPurchasePanel({
               </span>
             )}
           </div>
+          {isAdmin && <AdminOfferCostBadge offer={offer} t={t} size="md" className="mt-1" />}
         </div>
 
-        {offer.amount && (
+        {(offer.amount || packLabel) && (
           <div className="catalog-purchase-panel__meta">
             <div className="flex items-center gap-2 text-sm text-[var(--text-sec)]">
               <Package className="w-4 h-4 text-[var(--accent)] shrink-0" />
-              <span>{t.youReceive || 'You receive'}: <strong className="text-[var(--text-primary)]">{offer.amount} {game?.points_name || ''}</strong></span>
+              <span>{t.youReceive || 'You receive'}: <strong className="text-[var(--text-primary)]">{packLabel}</strong></span>
             </div>
           </div>
         )}

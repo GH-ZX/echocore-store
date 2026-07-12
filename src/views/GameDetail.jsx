@@ -3,12 +3,14 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { Globe, Loader2, Ticket, Zap } from 'lucide-react';
 import AdminEditButton from '../components/admin/AdminEditButton';
 import AdminGameEditModal from '../components/admin/AdminGameEditModal';
+import { getAdminGiftPath } from '../lib/adminRoutes';
 import AdminOfferEditModal from '../components/admin/AdminOfferEditModal';
 import CatalogHero from '../components/catalog/CatalogHero';
 import CatalogPageShell from '../components/catalog/CatalogPageShell';
 import OfferPackCard from '../components/catalog/OfferPackCard';
 import { isGamingAccountGame, isVoucherGame } from '../lib/catalogUtils';
 import { getGameDisplayName } from '../lib/offerDisplay';
+import { getGameMarketingDescription } from '../lib/gameDescriptions';
 import {
   findVariantByRegionParam,
   getChildGameIds,
@@ -37,10 +39,13 @@ export default function GameDetail({
   loadingGames = false,
   catalogMode = 'sync',
   onLiveCatalogUpdate,
+  onRegionCatalogRefresh,
   onSelectOffer,
   onBuyNow,
+  onNotify,
 }) {
   const [loadingLiveGroup, setLoadingLiveGroup] = useState(false);
+  const [refreshingRegionOffers, setRefreshingRegionOffers] = useState(false);
   const { slug } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const matchedGame = games.find((g) => (g.slug || g.id) === slug) || games.find((g) => g.id === slug);
@@ -103,16 +108,29 @@ export default function GameDetail({
     }
 
     const fromParam = findVariantByRegionParam(regionVariants, regionParam);
+    if (fromParam) {
+      setSelectedVariantId(fromParam.id);
+      return;
+    }
+
     const fromDirectChild = matchedGame?.parent_game_id
       ? regionVariants.find((variant) => variant.id === matchedGame.id)
       : (matchedGame?.g2bulk_game_code
         ? regionVariants.find((variant) => variant.id === matchedGame.id)
         : null);
-    const nextVariant = fromParam || fromDirectChild || pickDefaultVariant(regionVariants, offers);
-    setSelectedVariantId(nextVariant?.id || storefrontGame.id);
+    if (fromDirectChild) {
+      setSelectedVariantId(fromDirectChild.id);
+      return;
+    }
+
+    if (!regionParam) {
+      const nextVariant = pickDefaultVariant(regionVariants, offers);
+      setSelectedVariantId(nextVariant?.id || storefrontGame.id);
+    }
   }, [storefrontGame, regionVariants, regionParam, matchedGame, offers, games]);
 
   const activeVariant = regionVariants.find((variant) => variant.id === selectedVariantId)
+    || games.find((row) => row.id === selectedVariantId)
     || (regionVariants.length === 0 ? storefrontGame : pickDefaultVariant(regionVariants, offers));
   const activeGameId = activeVariant?.id || storefrontGame?.id;
 
@@ -120,12 +138,24 @@ export default function GameDetail({
     offers.filter((offer) => offer.game_id === activeGameId && offer.active !== false),
   ), [offers, activeGameId]);
 
-  const handleRegionSelect = (variant) => {
-    if (!variant) return;
+  const handleRegionSelect = async (variant) => {
+    if (!variant || variant.id === activeGameId) return;
+
     setSelectedVariantId(variant.id);
     const next = new URLSearchParams(searchParams);
     next.set('region', regionParamSlug(variant.region_label));
     setSearchParams(next, { replace: true });
+
+    if (!onRegionCatalogRefresh) return;
+
+    setRefreshingRegionOffers(true);
+    try {
+      await onRegionCatalogRefresh(variant, storefrontGame);
+    } catch (err) {
+      onNotify?.(err.message, 'error');
+    } finally {
+      setRefreshingRegionOffers(false);
+    }
   };
 
   if (loadingGames || loadingLiveGroup || (!storefrontGame && games.length === 0)) {
@@ -150,6 +180,7 @@ export default function GameDetail({
 
   const game = storefrontGame;
   const gameName = getGameDisplayName(game, lang);
+  const gameDescription = getGameMarketingDescription(game, lang, games, offers, t);
   const { breadcrumb, backLabel, backPath } = buildGameBreadcrumb(game, t, lang, navigate);
   const displayServers = isVoucher ? [] : (Array.isArray(activeVariant?.servers) ? activeVariant.servers : []);
   const heroBadges = isAccount
@@ -186,7 +217,7 @@ export default function GameDetail({
           ? t.redeemSubtitle
           : isVoucher
             ? t.giftCardsSubtitle
-            : `${game.points_name || 'Top-up'} ${t.instantTopUpSuffix}`}
+            : (gameDescription || `${game.points_name || 'Top-up'} ${t.instantTopUpSuffix}`)}
         meta={isAccount || isVoucher
           ? t.voucherRedemption
           : `${t.redemptionMethod}: ${
@@ -264,24 +295,47 @@ export default function GameDetail({
         </div>
 
         {gameOffers.length > 0 ? (
-          <div className="catalog-offer-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-            {gameOffers.map((offer) => (
-              <OfferPackCard
-                key={offer.id}
-                offer={offer}
-                game={game}
-                lang={lang}
-                t={t}
-                regionLabel={offer.region || activeVariant?.region_label}
-                isAdmin={isAdmin}
-                onSelect={onSelectOffer}
-                onBuyNow={onBuyNow}
-                onEdit={setEditingOffer}
-              />
-            ))}
+          <div className="relative">
+            {refreshingRegionOffers && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-[var(--bg-surface)]/75 backdrop-blur-[2px]">
+                <div className="flex flex-col items-center gap-2 text-sm text-[var(--text-sec)]">
+                  <Loader2 className="w-7 h-7 animate-spin text-[var(--accent)]" />
+                  <span>{t.loadingOffers}</span>
+                </div>
+              </div>
+            )}
+            <div className="catalog-offer-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+              {gameOffers.map((offer) => (
+                <OfferPackCard
+                  key={`${activeGameId}:${offer.id}`}
+                  offer={offer}
+                  game={activeVariant || game}
+                  catalogGames={games}
+                  catalogOffers={offers}
+                  lang={lang}
+                  t={t}
+                  regionLabel={offer.region || activeVariant?.region_label}
+                  isAdmin={isAdmin}
+                  onSelect={onSelectOffer}
+                  onBuyNow={onBuyNow}
+                  onGift={isAdmin ? (giftOffer) => navigate(getAdminGiftPath({
+                    offerId: giftOffer.id,
+                    returnTo: `/game/${slug}${regionParam ? `?region=${regionParam}` : ''}`,
+                  })) : undefined}
+                  onEdit={setEditingOffer}
+                />
+              ))}
+            </div>
           </div>
         ) : (
-          <div className="card p-8 text-center text-[var(--text-sec)]">{t.noOffers}</div>
+          <div className="card p-8 text-center text-[var(--text-sec)]">
+            {refreshingRegionOffers ? (
+              <div className="flex flex-col items-center gap-2">
+                <Loader2 className="w-7 h-7 animate-spin text-[var(--accent)]" />
+                <span>{t.loadingOffers}</span>
+              </div>
+            ) : t.noOffers}
+          </div>
         )}
       </section>
 

@@ -1,14 +1,15 @@
-import { Ticket, Gamepad2, KeyRound, Globe } from 'lucide-react';
+import { Ticket, Gamepad2 } from 'lucide-react';
 import AdminEditButton from '../admin/AdminEditButton';
 import BorderGlow from './BorderGlow';
 import { presetImageUrl } from '../../lib/imageUtils';
-import { isGamingAccountGame, isGiftCardGame, isVoucherGame } from '../../lib/catalogUtils';
+import { isVoucherGame } from '../../lib/catalogUtils';
 import { brandUserText } from '../../lib/branding';
 
 export default function HomeGameCard({
   game,
   lang,
   t = {},
+  description = '',
   variant,
   offerCount,
   packCount,
@@ -19,33 +20,27 @@ export default function HomeGameCard({
   className = '',
 }) {
   const isAr = lang === 'ar';
-  const isAccount = variant === 'account' || isGamingAccountGame(game);
-  const isVoucher = !isAccount && (variant === 'voucher' || isGiftCardGame(game) || isVoucherGame(game));
+  const isVoucher = variant === 'voucher'
+    || variant === 'account'
+    || isVoucherGame(game);
   const regionCount = Number(game.variant_count || game.region_count || 0);
-  const hasRegions = !isVoucher && !isAccount && regionCount > 1;
+  const hasRegions = !isVoucher && regionCount > 1;
   const packs = packCount ?? offerCount;
   if (!game) return null;
 
   const gameName = brandUserText(isAr ? game.name_ar : game.name_en);
-  const categoryLabel = isAccount
-    ? (t.gamingAccount || (isAr ? 'استرداد' : 'Redeem'))
-    : isVoucher
-      ? (isAr ? t.giftCards || 'بطاقة هدايا' : t.giftCards || 'Gift card')
-      : (isAr ? t.game || 'لعبة' : t.game || 'Game');
 
-  const metaLabel = isAccount
+  const metaLabel = isVoucher
     ? (packs != null
-      ? `${packs} ${isAr ? (t.accountPacks || 'خطة') : (t.accountPacks || 'plans')}`
-      : (t.redeemMeta || (isAr ? 'كود استرداد للمنصة' : 'Platform redeem code')))
-    : isVoucher
-      ? (packs != null
+      ? `${packs} ${isAr ? (t.voucherPacks || 'باقة') : (t.voucherPacks || 'packs')}`
+      : null)
+    : hasRegions
+      ? (isAr
+        ? `${regionCount} ${t.regionsBadge || 'مناطق'}`
+        : `${regionCount} ${t.regionsBadge || 'regions'}`)
+      : (packs != null
         ? `${packs} ${isAr ? (t.voucherPacks || 'باقة') : (t.voucherPacks || 'packs')}`
-        : (isAr ? t.voucherBadge || 'كود فوري' : t.voucherBadge || 'Instant code'))
-      : hasRegions
-        ? (isAr
-          ? `${regionCount} ${t.regionsBadge || 'مناطق'}`
-          : `${regionCount} ${t.regionsBadge || 'regions'}`)
-        : `${game.points_name || 'Top-up'} ${isAr ? 'شحن' : 'top-ups'}`;
+        : `${game.points_name || 'Top-up'} ${isAr ? 'شحن' : 'top-ups'}`);
 
   const handleOpen = () => {
     if (!teaser) onSelectGame?.(game);
@@ -87,20 +82,20 @@ export default function HomeGameCard({
 
           <div className="absolute top-2 left-2 right-2 flex items-start justify-between gap-1.5">
             <div className="flex items-center gap-1.5 flex-wrap">
-              {(isVoucher || isAccount || hasRegions) && (
-                <span className={`home-game-card-badge ${
-                  isAccount
-                    ? 'home-game-card-badge--account'
-                    : isVoucher
-                      ? 'home-game-card-badge--voucher'
-                      : 'home-game-card-badge--regions'
-                }`}>
-                  {isAccount ? <KeyRound className="w-3 h-3" /> : isVoucher ? <Ticket className="w-3 h-3" /> : <Globe className="w-3 h-3" />}
-                  {isAccount
-                    ? (t.accountBadge || (isAr ? 'استرداد' : 'Redeem'))
-                    : isVoucher
-                      ? (t.voucherBadge || (isAr ? 'كود' : 'Code'))
-                      : `${regionCount} ${t.regionsBadge || (isAr ? 'مناطق' : 'regions')}`}
+              {isVoucher && (
+                <span
+                  className="home-game-card-badge home-game-card-badge--icon home-game-card-badge--voucher"
+                  aria-label={t.giftCards || (isAr ? 'بطاقات وقسائم' : 'Gift cards & vouchers')}
+                >
+                  <Ticket className="w-3.5 h-3.5" aria-hidden="true" />
+                </span>
+              )}
+              {!isVoucher && (
+                <span
+                  className="home-game-card-badge home-game-card-badge--icon home-game-card-badge--game"
+                  aria-label={t.game || (isAr ? 'لعبة' : 'Game')}
+                >
+                  <Gamepad2 className="w-3.5 h-3.5" aria-hidden="true" />
                 </span>
               )}
             </div>
@@ -116,16 +111,20 @@ export default function HomeGameCard({
         </div>
 
         <div className="storefront-card__body flex flex-col flex-1 p-3 sm:p-3.5 gap-1.5 min-w-0">
-          <p className="text-[11px] sm:text-xs text-[var(--text-muted)] truncate font-medium inline-flex items-center gap-1">
-            {isAccount ? <KeyRound className="w-3 h-3 flex-shrink-0" /> : isVoucher ? <Ticket className="w-3 h-3 flex-shrink-0" /> : <Gamepad2 className="w-3 h-3 flex-shrink-0" />}
-            {categoryLabel}
-          </p>
           <h3 className="font-semibold text-sm sm:text-base leading-snug text-[var(--text-primary)] line-clamp-2 min-h-[2.5rem]">
             {gameName}
           </h3>
-          <p className="text-[11px] sm:text-xs text-[var(--text-muted)] truncate mt-auto">
-            {metaLabel}
-          </p>
+          {description && (
+            <p className="text-[11px] sm:text-xs text-[var(--text-sec)] line-clamp-2 leading-relaxed">
+              {description}
+            </p>
+          )}
+          {metaLabel && (
+            <p className="text-[11px] sm:text-xs text-[var(--text-muted)] truncate mt-auto inline-flex items-center gap-1">
+              {!isVoucher && <Gamepad2 className="w-3 h-3 flex-shrink-0" aria-hidden="true" />}
+              {metaLabel}
+            </p>
+          )}
         </div>
       </div>
     </BorderGlow>

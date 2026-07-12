@@ -1,5 +1,9 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { brandUserText } from './branding';
+import {
+  buildPullCatalogClientFallback,
+  isEdgeTransportError,
+} from './g2bulkPullCatalogClient';
 import { supabase } from './supabase';
 
 async function parseInvokeError(error, { sanitizeForUser = false } = {}) {
@@ -24,6 +28,9 @@ async function parseInvokeError(error, { sanitizeForUser = false } = {}) {
   if (/unauthorized|admin only|jwt/i.test(message)) {
     message = 'Admin session expired or access denied. Log out, log back in as admin, then retry.';
   }
+  if (/failed to send a request to the edge function/i.test(message)) {
+    message = 'Could not reach the G2Bulk Edge Function. Check your connection or redeploy supabase/functions/g2bulk.';
+  }
   return sanitizeForUser ? brandUserText(message) : message;
 }
 
@@ -37,6 +44,11 @@ async function invokeG2bulk(body, { sanitizeForUser = false } = {}) {
     throw new Error(sanitizeForUser ? brandUserText(message) : message);
   }
   return data;
+}
+
+/** Admin: re-apply markup + .99 charm pricing to synced offers from stored cost. */
+export async function applyG2bulkCharmPricing() {
+  return invokeG2bulk({ action: 'applyCharmPricing', forceCharm: true });
 }
 
 /** Admin: verify API key + read G2Bulk wallet balance */
@@ -54,6 +66,7 @@ export async function fetchG2bulkSettings() {
 export async function saveG2bulkSettings({
   enabled,
   markupPercent,
+  charmPricingEnabled,
   apiKey,
   catalogOnly,
   catalogMode,
@@ -64,6 +77,7 @@ export async function saveG2bulkSettings({
   const { data, error } = await supabase.rpc('save_g2bulk_settings', {
     p_enabled: !!enabled,
     p_markup_percent: markupPercent ?? 15,
+    p_charm_pricing_enabled: charmPricingEnabled !== undefined ? !!charmPricingEnabled : null,
     p_api_key: apiKey !== undefined ? (apiKey?.trim() || '') : null,
     p_catalog_only: catalogOnly !== undefined ? !!catalogOnly : null,
     p_catalog_mode: catalogMode !== undefined ? (catalogMode?.trim() || 'sync') : null,
@@ -73,8 +87,8 @@ export async function saveG2bulkSettings({
   });
   if (error) {
     const msg = error.message || '';
-    if (/g2bulk_auto_sync|g2bulk_catalog_mode|function.*does not exist/i.test(msg)) {
-      throw new Error('Run supabase_echocore_full.sql in Supabase SQL Editor, then retry.');
+    if (/g2bulk_auto_sync|g2bulk_catalog_mode|g2bulk_charm_pricing|save_g2bulk_settings|function.*does not exist/i.test(msg)) {
+      throw new Error('Run supabase_charm_pricing_migration.sql (or supabase_echocore_full.sql) in Supabase SQL Editor, then retry.');
     }
     throw error;
   }
@@ -316,16 +330,41 @@ export function invalidateG2bulkPullCatalogCache() {
   pullCatalogCacheAt = 0;
 }
 
+/** Return cached pull catalog if still fresh (for instant panel open). */
+export function peekPullCatalogCache() {
+  const now = Date.now();
+  if (pullCatalogCache && now - pullCatalogCacheAt < PULL_CATALOG_CACHE_TTL_MS) {
+    return pullCatalogCache;
+  }
+  return null;
+}
+
 /** Admin: list live G2Bulk catalog grouped for selective pull */
-export async function listG2bulkPullCatalog({ refresh = false } = {}) {
+export async function listG2bulkPullCatalog({ refresh = false, settings = null } = {}) {
   const now = Date.now();
   if (!refresh && pullCatalogCache && now - pullCatalogCacheAt < PULL_CATALOG_CACHE_TTL_MS) {
     return pullCatalogCache;
   }
-  const data = await invokeG2bulk({ action: 'listPullCatalog' });
-  pullCatalogCache = data;
-  pullCatalogCacheAt = now;
-  return data;
+
+  try {
+    const data = await invokeG2bulk({ action: 'listPullCatalog' });
+    pullCatalogCache = data;
+    pullCatalogCacheAt = now;
+    return data;
+  } catch (primaryError) {
+    try {
+      const resolvedSettings = settings || await fetchG2bulkSettings().catch(() => ({}));
+      const data = await buildPullCatalogClientFallback(invokeG2bulk, resolvedSettings);
+      pullCatalogCache = data;
+      pullCatalogCacheAt = now;
+      return data;
+    } catch (fallbackError) {
+      if (isEdgeTransportError(primaryError)) {
+        throw new Error(await parseInvokeError(primaryError));
+      }
+      throw primaryError;
+    }
+  }
 }
 
 /** Admin: persist which games/accounts to sync + carousel picks */
@@ -335,7 +374,11 @@ export async function saveG2bulkPullSelection(selection) {
     topupSyncBaseKeys: selection.topupSyncBaseKeys || [],
     topupLiveBaseKeys: selection.topupLiveBaseKeys || [],
     topupBaseKeys: selection.topupBaseKeys || [],
+    accountSyncCategoryIds: selection.accountSyncCategoryIds || [],
+    accountLiveCategoryIds: selection.accountLiveCategoryIds || [],
     accountCategoryIds: selection.accountCategoryIds || [],
+    giftSyncCategoryIds: selection.giftSyncCategoryIds || [],
+    giftLiveCategoryIds: selection.giftLiveCategoryIds || [],
     giftCategoryIds: selection.giftCategoryIds || [],
     carouselBaseKeys: selection.carouselBaseKeys || [],
   });

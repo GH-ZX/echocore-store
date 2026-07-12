@@ -1,6 +1,19 @@
 import { supabase } from './supabase';
 
 export const PASSWORD_RECOVERY_FLAG = 'echocore-password-recovery';
+export const PASSWORD_MIN_LENGTH = 1;
+export const PASSWORD_MAX_LENGTH = 32;
+
+export function validatePasswordLength(password) {
+  const len = String(password ?? '').length;
+  if (len < PASSWORD_MIN_LENGTH || len > PASSWORD_MAX_LENGTH) {
+    return {
+      valid: false,
+      code: len > PASSWORD_MAX_LENGTH ? 'too_long' : 'too_short',
+    };
+  }
+  return { valid: true };
+}
 
 function joinUrlPath(basePath = '/', subPath = '/') {
   const base = String(basePath || '/').replace(/\/+$/, '') || '';

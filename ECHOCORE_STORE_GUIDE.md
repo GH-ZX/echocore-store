@@ -1,8 +1,8 @@
 # EchoCore Store — Full Catalog & Operations Guide
 
-> **Last verified:** 2026-07-09  
+> **Last verified:** 2026-07-12  
 > **Supabase project:** `uaiirtgzqtnrvcrlxstg`  
-> **Status:** Fresh start complete · Full G2Bulk sync complete · Catalog check complete
+> **Status:** G2Bulk sync live · Charm pricing (tiered) · Admin supplier-cost badges · Game currency labels
 
 This document is the single reference for how the EchoCore storefront catalog is structured, how G2Bulk sync/check works, what was changed in the UI, and how to operate or recover the store.
 
@@ -47,6 +47,10 @@ This document is the single reference for how the EchoCore storefront catalog is
 | Admin “Check for updates” | `checkCatalog` action in `g2bulk` edge function |
 | Faster sync/check | Batch size **32** (sync, check, cron, CLI) |
 | Fresh start | Wipe catalog/orders; reset theme & payments; keep API key; full re-sync |
+| Storefront pricing | Markup % + optional charm tiers (`.49` / `.89` / `.99`) on `offer.price` |
+| Admin supplier cost | `g2bulk_cost_usd` badge on game/offer UI (admins only) |
+| Pack labels | Game currency suffix (e.g. `60 UC`, `Riftcrystal`) via `gameCurrency.js` |
+| Marketing copy | Per-game descriptions in `gameDescriptions.js` on hero/carousel |
 
 ### Critical bug fixed (2026-07-09)
 
@@ -427,7 +431,27 @@ flowchart TD
 - `description_en/ar` from G2Bulk field notes
 - `servers` JSONB from `games/servers` endpoint
 - `region_label` from region parser
-- Offers: `g2bulk_cost_usd`, markup from `g2bulk_markup_percent` (default 15%)
+- Offers: `g2bulk_cost_usd` (supplier), `price` (customer), markup from `g2bulk_markup_percent` (default 15%)
+
+### Pricing model (two money flows)
+
+| Field / step | Who sees it | What it is |
+|--------------|-------------|------------|
+| `offers.g2bulk_cost_usd` | Admin only (badge) | G2Bulk wholesale — debited from **your G2Bulk wallet** on fulfill |
+| Markup + charm | Stored in `offers.price` | What the **customer pays** (balance, checkout, invoices) |
+| `create_order_atomic` | Server | Re-reads `offers.price` — client cannot underpay |
+
+**Charm pricing** (optional, `g2bulk_charm_pricing_enabled`): after markup, round up within each dollar:
+
+| Marked price (cents) | Rounds to |
+|----------------------|-----------|
+| Under $0.50 (e.g. `0.43`) | `.49` |
+| $0.50–$0.84 (e.g. `1.68`) | `.89` |
+| $0.85+ (e.g. `0.85`, `0.94`) | `.99` |
+
+Example: cost → markup `1.23` → charm **`1.49`** on storefront; G2Bulk still charges ~wholesale on fulfill.
+
+**Code:** `src/lib/charmPricing.js` · `supabase/functions/g2bulk/charmPricing.ts`
 
 ---
 
@@ -467,7 +491,8 @@ flowchart TD
 | Test connection | `getMe` | Shows wallet balance |
 | Sync catalog | `syncCatalog` | Batched; shows progress bar |
 | Check for updates | `checkCatalog` | Non-destructive diff |
-| Save settings | RPC `save_g2bulk_settings` | Markup, mode, auto-sync hour |
+| Save settings | RPC `save_g2bulk_settings` | Markup, charm toggle, mode, auto-sync hour |
+| Apply charm prices | `applyCharmPricing` action | Re-price synced offers from `g2bulk_cost_usd` |
 
 ### Catalog status indicators
 
@@ -486,6 +511,7 @@ flowchart TD
 | `g2bulk_catalog_mode` | `sync` | Write G2Bulk data to DB (vs live-only) |
 | `g2bulk_catalog_only` | `true` | Hide manual catalog entries |
 | `g2bulk_markup_percent` | 15 | % added to G2Bulk cost |
+| `g2bulk_charm_pricing_enabled` | false | Tiered `.49` / `.89` / `.99` after markup |
 | `g2bulk_auto_sync_enabled` | true | Daily cron sync |
 | `g2bulk_auto_sync_hour` | 5 | Hour in `g2bulk_auto_sync_timezone` |
 
@@ -497,9 +523,24 @@ flowchart TD
 
 | File | Purpose |
 |------|---------|
-| `supabase_echocore_full.sql` | **Only SQL file** — schema, RLS, RPCs, G2Bulk, notifications, ShamCash (~2,800 lines) |
+| `supabase_echocore_full.sql` | **Primary setup** — schema, RLS, RPCs, G2Bulk, charm pricing toggle, notifications, ShamCash (~3,000 lines) |
 
 Sections §01–§15 cover everything that was previously split across migrations. Optional §A/§B at the bottom (commented) wipe test data — dev/staging only.
+
+### Incremental migrations (existing DBs only)
+
+If the project predates a feature, run the matching file in SQL Editor **or** re-run the full file (idempotent):
+
+| File | Adds |
+|------|------|
+| `supabase_charm_pricing_migration.sql` | `g2bulk_charm_pricing_enabled` + `save_g2bulk_settings` / `get_g2bulk_settings` |
+| `supabase_moderation_v3_user_auth_migration.sql` | Admin user auth edge support |
+| `supabase_admin_gift_migration.sql` | Admin gift orders |
+| `supabase_game_player_uids_migration.sql` | Saved player UIDs on profile |
+| `supabase_catalog_voucher_normalization_migration.sql` | Voucher catalog normalization |
+| Other `supabase_*.sql` at repo root | See filename; all merged into full SQL when possible |
+
+After SQL changes that touch edge behavior, redeploy: `supabase functions deploy g2bulk`
 
 ### Fresh start — what is wiped
 
@@ -622,7 +663,9 @@ These are **intentionally blank** after fresh start — configure manually:
 - [ ] **Customer reviews** — Re-seed or wait for new submissions
 - [ ] **Carousel** — Verify 12 games look correct (auto-set on sync)
 - [ ] **Markup %** — Confirm `g2bulk_markup_percent` (default 15%)
-- [ ] **Smoke test** — Buy flow for one top-up + one voucher
+- [ ] **Charm pricing** — Enable if desired; run **Apply charm prices** once after enabling
+- [ ] **G2Bulk edge** — `supabase functions deploy g2bulk` after pricing/catalog changes
+- [ ] **Smoke test** — Buy flow for one top-up + one voucher; verify admin cost badge vs customer price
 
 ---
 
@@ -637,6 +680,11 @@ These are **intentionally blank** after fresh start — configure manually:
 | `src/lib/catalogSegments.js` | gift_card vs gaming_account classification |
 | `src/lib/catalogUtils.js` | `getTopupGames`, `getGiftCardGames`, etc. |
 | `src/lib/catalogNav.js` | Categories menu data |
+| `src/lib/charmPricing.js` | Markup + tiered charm endings (client preview) |
+| `src/lib/offerCost.js` | Wholesale cost helpers (`g2bulk_cost_usd`) |
+| `src/lib/gameCurrency.js` | Pack currency labels (UC, diamonds, Riftcrystal, …) |
+| `src/lib/gameDescriptions.js` | Per-game marketing blurbs |
+| `src/lib/offerDisplay.js` | Pack names, prices, order snapshots |
 
 ### UI
 
@@ -659,12 +707,15 @@ These are **intentionally blank** after fresh start — configure manually:
 | `supabase/functions/g2bulk-sync-cron/index.ts` | Scheduled sync |
 | `src/lib/g2bulk.js` | Frontend sync/check orchestration |
 | `src/components/admin/AdminG2BulkSettings.jsx` | Admin UI |
+| `src/components/admin/AdminOfferCostBadge.jsx` | Admin-only supplier cost on offer cards |
+| `supabase/functions/g2bulk/charmPricing.ts` | Charm pricing (sync, live, applyCharmPricing) |
+| `supabase/functions/g2bulk/gameCurrency.ts` | Currency suffix at sync time |
 
 ### Styles
 
 | File | Role |
 |------|------|
-| `src/index.css` | `.home-games-card-slot--teaser`, overlay styles |
+| `src/index.css` | `.home-games-card-slot--teaser`, `.admin-offer-cost`, `.offer-pack-label` |
 
 ---
 

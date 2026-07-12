@@ -6,6 +6,7 @@ import AdminGameEditModal from '../components/admin/AdminGameEditModal';
 import AdminOfferEditModal from '../components/admin/AdminOfferEditModal';
 import CatalogHero from '../components/catalog/CatalogHero';
 import CatalogPageShell from '../components/catalog/CatalogPageShell';
+import AdminOfferCostBadge from '../components/admin/AdminOfferCostBadge';
 import OfferPurchasePanel from '../components/catalog/OfferPurchasePanel';
 import { brandUserText } from '../lib/branding';
 import {
@@ -58,7 +59,7 @@ export default function OfferDetail({
   }
 
   const gameName = displayGame ? getGameDisplayName(displayGame, lang) : '';
-  const offerName = getOfferDisplayName(offer, lang);
+  const offerName = getOfferDisplayName(offer, lang, { game, games, relatedOffers: offers });
   const description = brandUserText(
     (lang === 'ar' ? offer.description_ar : offer.description_en) || t.instantDeliveryNote,
   );
@@ -99,8 +100,11 @@ export default function OfferDetail({
         <OfferPurchasePanel
           offer={offer}
           game={game}
+          games={games}
+          catalogOffers={offers}
           t={t}
           lang={lang}
+          isAdmin={isAdmin}
           onBuyNow={onBuyNow}
           onAddToCart={addToCart}
           className="order-1 lg:order-2 lg:sticky lg:top-24"
@@ -153,13 +157,14 @@ export default function OfferDetail({
           <div className="min-w-0 flex-1">
             <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide truncate">{offerName}</div>
             <div className="text-xl font-black text-[var(--accent)]">${Number.parseFloat(offer.price).toFixed(2)}</div>
+            {isAdmin && <AdminOfferCostBadge offer={offer} t={t} className="mt-0.5" />}
           </div>
           <button
             type="button"
             onClick={() => onBuyNow?.(offer)}
             className="btn btn-primary px-5 py-3 font-bold shrink-0 touch-manipulation"
           >
-            {t.buyNow}
+            {isAdmin ? t.giftOffer : t.buyNow}
           </button>
         </div>
       </div>

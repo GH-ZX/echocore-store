@@ -58,7 +58,7 @@ export async function markRechargePaymentSent(requestId) {
   return assertRpcData(data, error);
 }
 
-export async function fetchAdminRechargeRequests(status = 'payment_sent') {
+export async function fetchAdminRechargeRequests(status = 'all') {
   const { data, error } = await supabase.rpc('get_admin_recharge_requests', {
     p_status: status,
   });

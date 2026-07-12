@@ -1,33 +1,81 @@
-export function normalizePullSelection(raw = {}) {
-  const syncKeys = Array.isArray(raw.topupSyncBaseKeys)
-    ? raw.topupSyncBaseKeys.map((value) => String(value).trim()).filter(Boolean)
-    : [];
-  const liveKeys = Array.isArray(raw.topupLiveBaseKeys)
-    ? raw.topupLiveBaseKeys.map((value) => String(value).trim()).filter(Boolean)
-    : [];
-  const legacyKeys = Array.isArray(raw.topupBaseKeys)
-    ? raw.topupBaseKeys.map((value) => String(value).trim()).filter(Boolean)
-    : [];
+import { VOUCHER_UI_TAGS, classifyVoucherSegment } from './catalogSegments';
 
-  const topupSyncBaseKeys = syncKeys.length > 0 || liveKeys.length > 0
-    ? syncKeys
-    : legacyKeys;
+function normalizeIdList(raw, key) {
+  return Array.isArray(raw[key])
+    ? raw[key].map((value) => Number(value)).filter((value) => Number.isFinite(value))
+    : [];
+}
+
+function normalizeKeyList(raw, key) {
+  return Array.isArray(raw[key])
+    ? raw[key].map((value) => String(value).trim()).filter(Boolean)
+    : [];
+}
+
+function normalizeCategoryIdSplit(raw, syncKey, liveKey, legacyKey) {
+  const syncIds = normalizeIdList(raw, syncKey);
+  const liveIds = normalizeIdList(raw, liveKey);
+  const legacyIds = normalizeIdList(raw, legacyKey);
+  const syncCategoryIds = syncIds.length > 0 || liveIds.length > 0 ? syncIds : legacyIds;
+  const liveCategoryIds = liveIds;
+  const categoryIds = [...new Set([...syncCategoryIds, ...liveCategoryIds])];
+  return { syncCategoryIds, liveCategoryIds, categoryIds };
+}
+
+export function getVoucherCategoryId(game) {
+  const fromSource = Number(game?.g2bulk_source_id);
+  if (Number.isFinite(fromSource)) return fromSource;
+  const fromCategory = Number(game?.g2bulk_category_id);
+  if (Number.isFinite(fromCategory)) return fromCategory;
+  const liveId = String(game?.id || '');
+  if (liveId.startsWith('live:voucher:')) {
+    const categoryId = Number(liveId.split(':')[2]);
+    if (Number.isFinite(categoryId)) return categoryId;
+  }
+  return null;
+}
+
+function voucherMatchesCategorySets(game, accountIds, giftIds) {
+  const categoryId = getVoucherCategoryId(game);
+  if (!Number.isFinite(categoryId)) return false;
+  const uiSegment = classifyVoucherSegment(game.name_en || game.name_ar || game.slug || '');
+  if (uiSegment === VOUCHER_UI_TAGS.gamingAccount) return accountIds.has(categoryId);
+  return giftIds.has(categoryId);
+}
+
+export function normalizePullSelection(raw = {}) {
+  const syncKeys = normalizeKeyList(raw, 'topupSyncBaseKeys');
+  const liveKeys = normalizeKeyList(raw, 'topupLiveBaseKeys');
+  const legacyKeys = normalizeKeyList(raw, 'topupBaseKeys');
+
+  const topupSyncBaseKeys = syncKeys.length > 0 || liveKeys.length > 0 ? syncKeys : legacyKeys;
   const topupLiveBaseKeys = liveKeys;
   const topupBaseKeys = [...new Set([...topupSyncBaseKeys, ...topupLiveBaseKeys])];
+
+  const accountSplit = normalizeCategoryIdSplit(
+    raw,
+    'accountSyncCategoryIds',
+    'accountLiveCategoryIds',
+    'accountCategoryIds',
+  );
+  const giftSplit = normalizeCategoryIdSplit(
+    raw,
+    'giftSyncCategoryIds',
+    'giftLiveCategoryIds',
+    'giftCategoryIds',
+  );
 
   return {
     topupSyncBaseKeys,
     topupLiveBaseKeys,
     topupBaseKeys,
-    accountCategoryIds: Array.isArray(raw.accountCategoryIds)
-      ? raw.accountCategoryIds.map((value) => Number(value)).filter((value) => Number.isFinite(value))
-      : [],
-    giftCategoryIds: Array.isArray(raw.giftCategoryIds)
-      ? raw.giftCategoryIds.map((value) => Number(value)).filter((value) => Number.isFinite(value))
-      : [],
-    carouselBaseKeys: Array.isArray(raw.carouselBaseKeys)
-      ? raw.carouselBaseKeys.map((value) => String(value).trim()).filter(Boolean)
-      : [],
+    accountSyncCategoryIds: accountSplit.syncCategoryIds,
+    accountLiveCategoryIds: accountSplit.liveCategoryIds,
+    accountCategoryIds: accountSplit.categoryIds,
+    giftSyncCategoryIds: giftSplit.syncCategoryIds,
+    giftLiveCategoryIds: giftSplit.liveCategoryIds,
+    giftCategoryIds: giftSplit.categoryIds,
+    carouselBaseKeys: normalizeKeyList(raw, 'carouselBaseKeys'),
   };
 }
 
@@ -36,14 +84,30 @@ export function countPullSelection(pull = {}, { includeGiftCards = true } = {}) 
   const games = normalized.topupBaseKeys.length;
   const accounts = normalized.accountCategoryIds.length;
   const giftCards = includeGiftCards ? normalized.giftCategoryIds.length : 0;
+  const vouchers = accounts + giftCards;
   return {
     ...normalized,
-    total: games + accounts + giftCards,
+    total: games + vouchers,
     games,
     accounts,
     giftCards,
+    vouchers,
+    platformVouchers: accounts,
+    gameVouchers: giftCards,
     syncGames: normalized.topupSyncBaseKeys.length,
     liveGames: normalized.topupLiveBaseKeys.length,
+    syncAccounts: normalized.accountSyncCategoryIds.length,
+    liveAccounts: normalized.accountLiveCategoryIds.length,
+    syncGiftCards: normalized.giftSyncCategoryIds.length,
+    liveGiftCards: normalized.giftLiveCategoryIds.length,
+    syncVouchers: normalized.accountSyncCategoryIds.length
+      + (includeGiftCards ? normalized.giftSyncCategoryIds.length : 0),
+    liveVouchers: normalized.accountLiveCategoryIds.length
+      + (includeGiftCards ? normalized.giftLiveCategoryIds.length : 0),
+    syncPlatformVouchers: normalized.accountSyncCategoryIds.length,
+    livePlatformVouchers: normalized.accountLiveCategoryIds.length,
+    syncGameVouchers: includeGiftCards ? normalized.giftSyncCategoryIds.length : 0,
+    liveGameVouchers: includeGiftCards ? normalized.giftLiveCategoryIds.length : 0,
   };
 }
 
@@ -75,8 +139,7 @@ export function filterGamesByPullSelection(games = [], pull = {}) {
       parentIds.add(game.id);
     }
     if (game.redemption_method === 'redeem_code') {
-      const sourceId = Number(game.g2bulk_source_id);
-      if (accountIds.has(sourceId) || giftIds.has(sourceId)) {
+      if (voucherMatchesCategorySets(game, accountIds, giftIds)) {
         parentIds.add(game.id);
       }
     }
@@ -88,7 +151,15 @@ export function filterGamesByPullSelection(games = [], pull = {}) {
   return games.filter((game) => {
     if (game.catalog_source === 'live') {
       const baseKey = String(game.group_base_key || game.slug || '').trim();
-      return selectedTopup.has(baseKey);
+      if (baseKey && normalized.topupLiveBaseKeys.includes(baseKey)) return true;
+      if (game.redemption_method === 'redeem_code') {
+        return voucherMatchesCategorySets(
+          game,
+          new Set(normalized.accountLiveCategoryIds),
+          new Set(normalized.giftLiveCategoryIds),
+        );
+      }
+      return false;
     }
     if (game.parent_game_id) {
       return parentIds.has(game.parent_game_id);
@@ -97,8 +168,11 @@ export function filterGamesByPullSelection(games = [], pull = {}) {
       return parentIds.has(game.id);
     }
     if (game.redemption_method === 'redeem_code') {
-      const sourceId = Number(game.g2bulk_source_id);
-      return accountIds.has(sourceId) || giftIds.has(sourceId);
+      return voucherMatchesCategorySets(
+        game,
+        new Set(normalized.accountSyncCategoryIds),
+        new Set(normalized.giftSyncCategoryIds),
+      );
     }
     return true;
   });
@@ -132,8 +206,10 @@ export function mergePullSelections(saved = {}, database = {}) {
   return normalizePullSelection({
     topupSyncBaseKeys: [...new Set([...savedNorm.topupSyncBaseKeys, ...dbNorm.topupSyncBaseKeys])],
     topupLiveBaseKeys: [...new Set([...savedNorm.topupLiveBaseKeys, ...dbNorm.topupLiveBaseKeys])],
-    accountCategoryIds: [...new Set([...savedNorm.accountCategoryIds, ...dbNorm.accountCategoryIds])],
-    giftCategoryIds: [...new Set([...savedNorm.giftCategoryIds, ...dbNorm.giftCategoryIds])],
+    accountSyncCategoryIds: [...new Set([...savedNorm.accountSyncCategoryIds, ...dbNorm.accountSyncCategoryIds])],
+    accountLiveCategoryIds: [...new Set([...savedNorm.accountLiveCategoryIds, ...dbNorm.accountLiveCategoryIds])],
+    giftSyncCategoryIds: [...new Set([...savedNorm.giftSyncCategoryIds, ...dbNorm.giftSyncCategoryIds])],
+    giftLiveCategoryIds: [...new Set([...savedNorm.giftLiveCategoryIds, ...dbNorm.giftLiveCategoryIds])],
     carouselBaseKeys: savedNorm.carouselBaseKeys.length > 0
       ? savedNorm.carouselBaseKeys
       : dbNorm.carouselBaseKeys,
@@ -190,12 +266,15 @@ export function alignSelectionSetsToCatalog(selection, catalog = {}) {
   const index = buildCatalogKeyIndex(catalog.games || []);
   const alignKey = (value) => resolveCatalogBaseKey(value, index);
   const alignSet = (set) => new Set([...set].map(alignKey).filter(Boolean));
+  const alignIdSet = (set) => new Set([...set].map((value) => Number(value)).filter((value) => Number.isFinite(value)));
 
   return {
     topupSyncBaseKeys: alignSet(selection.topupSyncBaseKeys),
     topupLiveBaseKeys: alignSet(selection.topupLiveBaseKeys),
-    accountCategoryIds: new Set(selection.accountCategoryIds),
-    giftCategoryIds: new Set(selection.giftCategoryIds),
+    accountSyncCategoryIds: alignIdSet(selection.accountSyncCategoryIds),
+    accountLiveCategoryIds: alignIdSet(selection.accountLiveCategoryIds),
+    giftSyncCategoryIds: alignIdSet(selection.giftSyncCategoryIds),
+    giftLiveCategoryIds: alignIdSet(selection.giftLiveCategoryIds),
     carouselBaseKeys: alignSet(selection.carouselBaseKeys),
   };
 }
@@ -205,8 +284,10 @@ export function selectionSetsFromPayload(payload = {}, catalog = null) {
   const sets = {
     topupSyncBaseKeys: new Set(normalized.topupSyncBaseKeys),
     topupLiveBaseKeys: new Set(normalized.topupLiveBaseKeys),
-    accountCategoryIds: new Set(normalized.accountCategoryIds),
-    giftCategoryIds: new Set(normalized.giftCategoryIds),
+    accountSyncCategoryIds: new Set(normalized.accountSyncCategoryIds),
+    accountLiveCategoryIds: new Set(normalized.accountLiveCategoryIds),
+    giftSyncCategoryIds: new Set(normalized.giftSyncCategoryIds),
+    giftLiveCategoryIds: new Set(normalized.giftLiveCategoryIds),
     carouselBaseKeys: new Set(normalized.carouselBaseKeys),
   };
   if (catalog) return alignSelectionSetsToCatalog(sets, catalog);
@@ -214,13 +295,40 @@ export function selectionSetsFromPayload(payload = {}, catalog = null) {
 }
 
 export function selectionPayloadFromSets(selection) {
+  const accountCategoryIds = [...new Set([
+    ...selection.accountSyncCategoryIds,
+    ...selection.accountLiveCategoryIds,
+  ])];
+  const giftCategoryIds = [...new Set([
+    ...selection.giftSyncCategoryIds,
+    ...selection.giftLiveCategoryIds,
+  ])];
+
   return {
     topupSyncBaseKeys: [...selection.topupSyncBaseKeys],
     topupLiveBaseKeys: [...selection.topupLiveBaseKeys],
     topupBaseKeys: [...new Set([...selection.topupSyncBaseKeys, ...selection.topupLiveBaseKeys])],
-    accountCategoryIds: [...selection.accountCategoryIds],
-    giftCategoryIds: [...selection.giftCategoryIds],
+    accountSyncCategoryIds: [...selection.accountSyncCategoryIds],
+    accountLiveCategoryIds: [...selection.accountLiveCategoryIds],
+    accountCategoryIds,
+    giftSyncCategoryIds: [...selection.giftSyncCategoryIds],
+    giftLiveCategoryIds: [...selection.giftLiveCategoryIds],
+    giftCategoryIds,
     carouselBaseKeys: [...selection.carouselBaseKeys],
+  };
+}
+
+/** Pull selection scoped to synced DB rows only (hybrid mode). */
+export function syncedPullSelection(pull = {}) {
+  const normalized = normalizePullSelection(pull);
+  return {
+    ...normalized,
+    topupLiveBaseKeys: [],
+    topupBaseKeys: normalized.topupSyncBaseKeys,
+    accountLiveCategoryIds: [],
+    accountCategoryIds: normalized.accountSyncCategoryIds,
+    giftLiveCategoryIds: [],
+    giftCategoryIds: normalized.giftSyncCategoryIds,
   };
 }
 
@@ -229,8 +337,10 @@ export function applySyncedCatalogToSelection(catalog = {}, selection) {
   const next = {
     topupSyncBaseKeys: new Set(selection.topupSyncBaseKeys),
     topupLiveBaseKeys: new Set(selection.topupLiveBaseKeys),
-    accountCategoryIds: new Set(selection.accountCategoryIds),
-    giftCategoryIds: new Set(selection.giftCategoryIds),
+    accountSyncCategoryIds: new Set(selection.accountSyncCategoryIds),
+    accountLiveCategoryIds: new Set(selection.accountLiveCategoryIds),
+    giftSyncCategoryIds: new Set(selection.giftSyncCategoryIds),
+    giftLiveCategoryIds: new Set(selection.giftLiveCategoryIds),
     carouselBaseKeys: new Set(selection.carouselBaseKeys),
   };
 
@@ -244,12 +354,18 @@ export function applySyncedCatalogToSelection(catalog = {}, selection) {
 
   (catalog.accounts || []).forEach((item) => {
     if (!item?.synced || item.categoryId == null) return;
-    next.accountCategoryIds.add(Number(item.categoryId));
+    const categoryId = Number(item.categoryId);
+    if (!next.accountSyncCategoryIds.has(categoryId) && !next.accountLiveCategoryIds.has(categoryId)) {
+      next.accountSyncCategoryIds.add(categoryId);
+    }
   });
 
   (catalog.giftCards || []).forEach((item) => {
     if (!item?.synced || item.categoryId == null) return;
-    next.giftCategoryIds.add(Number(item.categoryId));
+    const categoryId = Number(item.categoryId);
+    if (!next.giftSyncCategoryIds.has(categoryId) && !next.giftLiveCategoryIds.has(categoryId)) {
+      next.giftSyncCategoryIds.add(categoryId);
+    }
   });
 
   return next;
@@ -258,14 +374,13 @@ export function applySyncedCatalogToSelection(catalog = {}, selection) {
 export function filterLiveCatalog(catalog = {}, pull = {}) {
   const normalized = normalizePullSelection(pull);
   const liveKeys = new Set(normalized.topupLiveBaseKeys);
-  const accountIds = new Set(normalized.accountCategoryIds);
-  const giftIds = new Set(normalized.giftCategoryIds);
+  const liveAccountIds = new Set(normalized.accountLiveCategoryIds);
+  const liveGiftIds = new Set(normalized.giftLiveCategoryIds);
 
   const games = (catalog.games || []).filter((game) => {
     if (game.group_base_key && liveKeys.has(game.group_base_key)) return true;
-    if (game.catalog_source === 'live' && game.redemption_method === 'redeem_code') {
-      const sourceId = Number(game.g2bulk_source_id);
-      return accountIds.has(sourceId) || giftIds.has(sourceId);
+    if (game.redemption_method === 'redeem_code') {
+      return voucherMatchesCategorySets(game, liveAccountIds, liveGiftIds);
     }
     return false;
   });

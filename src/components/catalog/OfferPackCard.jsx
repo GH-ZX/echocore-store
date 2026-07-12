@@ -1,18 +1,34 @@
+import { Gift } from 'lucide-react';
 import AdminEditButton from '../admin/AdminEditButton';
-import { formatPrice, getOfferDiscount, getOfferDisplayName } from '../../lib/offerDisplay';
+import AdminOfferCostBadge from '../admin/AdminOfferCostBadge';
+import OfferPackLabel from '../ui/OfferPackLabel';
+import {
+  formatPrice,
+  getOfferDiscount,
+  getOfferDisplayName,
+  getOfferPackAmount,
+} from '../../lib/offerDisplay';
 
 export default function OfferPackCard({
   offer,
   game,
+  catalogGames = [],
+  catalogOffers = [],
   lang = 'ar',
   t = {},
   regionLabel,
   isAdmin = false,
   onSelect,
   onBuyNow,
+  onGift,
   onEdit,
 }) {
-  const offerName = getOfferDisplayName(offer, lang);
+  const showGift = isAdmin && onGift;
+  const offerName = getOfferDisplayName(offer, lang, {
+    game,
+    games: catalogGames,
+    relatedOffers: catalogOffers,
+  });
   const discount = getOfferDiscount(offer);
   const price = formatPrice(offer.price);
 
@@ -38,9 +54,12 @@ export default function OfferPackCard({
 
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="min-w-0 flex-1">
-            <h3 className="font-bold text-base sm:text-lg leading-snug line-clamp-2 group-hover:text-[var(--accent)] transition-colors">
+            <OfferPackLabel
+              as="h3"
+              className="font-bold text-base sm:text-lg leading-snug line-clamp-2 group-hover:text-[var(--accent)] transition-colors"
+            >
               {offerName}
-            </h3>
+            </OfferPackLabel>
             {regionLabel && (
               <p className="text-[11px] text-[var(--text-muted)] mt-1">
                 {t.region || 'Region'}: {regionLabel}
@@ -52,9 +71,10 @@ export default function OfferPackCard({
           )}
         </div>
 
-        {offer.amount && (
+        {(offer.amount || getOfferPackAmount(offer)) && (
           <p className="text-xs text-[var(--text-sec)] mb-3">
-            {t.youReceive || 'You receive'}: <span className="font-semibold text-[var(--text-primary)]">{offer.amount} {game?.points_name || ''}</span>
+            {t.youReceive || 'You receive'}:{' '}
+            <OfferPackLabel className="font-semibold text-[var(--text-primary)]">{offerName}</OfferPackLabel>
           </p>
         )}
 
@@ -63,7 +83,7 @@ export default function OfferPackCard({
             {offer.is_sale && offer.original_price && (
               <div className="text-xs line-through text-[var(--text-muted)]">${formatPrice(offer.original_price)}</div>
             )}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-2xl font-black text-[var(--accent)]">${price}</span>
               {offer.is_sale && (
                 <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/25 font-bold">
@@ -71,17 +91,32 @@ export default function OfferPackCard({
                 </span>
               )}
             </div>
+            {isAdmin && <AdminOfferCostBadge offer={offer} t={t} className="mt-1" />}
           </div>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onBuyNow?.(offer);
-            }}
-            className="btn btn-primary text-xs px-3 py-2 min-h-[40px] shrink-0"
-          >
-            {t.buyNow || 'Buy'}
-          </button>
+          {showGift ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onGift(offer);
+              }}
+              className="btn btn-primary text-xs px-3 py-2 min-h-[40px] shrink-0 inline-flex items-center gap-1.5 bg-gradient-to-r from-pink-600 to-violet-600 border-pink-500/40"
+            >
+              <Gift className="w-3.5 h-3.5" />
+              {t.giftOffer}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onBuyNow?.(offer);
+              }}
+              className="btn btn-primary text-xs px-3 py-2 min-h-[40px] shrink-0"
+            >
+              {t.buyNow || 'Buy'}
+            </button>
+          )}
         </div>
       </div>
     </article>

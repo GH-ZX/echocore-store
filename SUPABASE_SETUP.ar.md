@@ -113,14 +113,25 @@
 
 | الملف | الغرض |
 |------|--------|
-| `supabase_echocore_full.sql` | **الملف الوحيد للتشغيل** — المخطط الكامل (~2800 سطر) |
+| `supabase_echocore_full.sql` | **الإعداد الأساسي** — المخطط الكامل (~3000 سطر) |
+| `supabase_charm_pricing_migration.sql` | ترقية تدريجية: تفعيل أسعار Charm (قواعد قديمة فقط) |
+| `supabase_*.sql` | ترقيات أخرى — راجع [ECHOCORE_STORE_GUIDE.md §13](./ECHOCORE_STORE_GUIDE.md#13-sql-migrations) |
 | `scripts/*.sql` | تشخيص / عمليات اختيارية |
 
 ---
 
+## G2Bulk (Edge Functions)
+
+```bash
+supabase secrets set G2BULK_API_KEY=your_key_here
+supabase functions deploy g2bulk
+```
+
+قاعدة قديمة بدون عمود charm؟ شغّل `supabase_charm_pricing_migration.sql`.
+
 ## خطوات اختيارية
 
-- G2Bulk: تبويب الإدارة + أسرار Edge Functions
+- Sam API: `supabase functions deploy sam-api`
 - النطاق المخصص: `www.echocore412.com`
 - الإشعارات: مدمجة في الملف الكامل (v1–v3)
 

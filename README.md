@@ -15,7 +15,10 @@ Bilingual (Arabic / English) game top-up and digital cards storefront. React + S
 
 - Supabase database (games, offers, orders, auth, balance)
 - Admin dashboard (`/dashboard`) — catalog, payments, theme, home layout, G2Bulk
-- ShamCash manual recharge + checkout (admin approval)
+- G2Bulk catalog sync + auto-fulfillment; tiered charm pricing (`.49` / `.89` / `.99`)
+- Admin-only supplier cost on offer cards (`g2bulk_cost_usd`)
+- Game pack currency labels (UC, diamonds, Riftcrystal, …) + per-game marketing copy
+- ShamCash / Sam API recharge + checkout
 - Centralized i18n (`translations.js` / `pageContent.js`)
 - Custom domain on GitHub Pages
 

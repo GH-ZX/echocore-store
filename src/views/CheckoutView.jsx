@@ -1,35 +1,66 @@
 import { useState, useEffect, useMemo } from 'react';
-import { buildPaymentMethods, getDefaultPaymentMethod, isManualWalletMethod } from '../lib/paymentMethods';
+import { ArrowLeft, Loader2, QrCode, Clock, CheckCircle, Gift } from 'lucide-react';
+import {
+  buildPaymentMethods,
+  getDefaultPaymentMethod,
+  getManualPaymentDisplay,
+  isManualWalletMethod,
+  isApiWalletMethod,
+  isPaymentMethodReady,
+} from '../lib/paymentMethods';
+import SamInvoicePaymentPanel from '../components/SamInvoicePaymentPanel';
+import { markOrderPaymentSent } from '../lib/orders';
+import { formatMessage } from '../lib/i18n';
+import { getAdminGiftPath, getAdminDashboardPath } from '../lib/adminRoutes';
 
-export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComplete, currentBalance = 0, paymentConfig = {}, onNotify }) {
+export default function CheckoutView({
+  t,
+  lang = 'ar',
+  user,
+  cart,
+  submitOrder,
+  onComplete,
+  onOrderPaid,
+  currentBalance = 0,
+  paymentConfig = {},
+  onNotify,
+  navigate,
+}) {
   const notifyError = (message) => onNotify?.(message, 'error');
+  const notifySuccess = (message) => onNotify?.(message, 'success');
+
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showSimModal, setShowSimModal] = useState(false);
-  const [simRef, setSimRef] = useState('');
-  const [pendingShamRef, setPendingShamRef] = useState('');
+  const [step, setStep] = useState('method');
+  const [activeOrder, setActiveOrder] = useState(null);
+  const [selectedMethod, setSelectedMethod] = useState('balance');
 
   const totalNum = cart.reduce((s, i) => s + parseFloat(i.price), 0);
   const total = totalNum.toFixed(2);
   const hasEnoughBalance = currentBalance >= totalNum;
-  const merchantName = paymentConfig.shamcashMerchantName || 'ECHOCORE Store';
 
   const allMethods = useMemo(
     () => buildPaymentMethods(t, lang, paymentConfig, { includeBalance: true, currentBalance: hasEnoughBalance ? currentBalance : 0 }),
-    [t, lang, paymentConfig, hasEnoughBalance, currentBalance]
+    [t, lang, paymentConfig, hasEnoughBalance, currentBalance],
   );
 
   const usableMethods = allMethods.filter((m) => !m.disabled && !m.comingSoon);
 
-  const [selectedMethod, setSelectedMethod] = useState(() => {
+  useEffect(() => {
     const methods = buildPaymentMethods(t, lang, paymentConfig, { includeBalance: true, currentBalance });
-    return hasEnoughBalance ? 'balance' : getDefaultPaymentMethod(methods);
-  });
+    setSelectedMethod(hasEnoughBalance ? 'balance' : getDefaultPaymentMethod(methods));
+  }, [t, lang, paymentConfig, hasEnoughBalance, currentBalance]);
 
   useEffect(() => {
     if (!usableMethods.some((m) => m.id === selectedMethod)) {
       setSelectedMethod(hasEnoughBalance ? 'balance' : getDefaultPaymentMethod(allMethods));
     }
   }, [allMethods, selectedMethod, usableMethods, hasEnoughBalance]);
+
+  const paymentMethod = activeOrder?.paymentMethod || selectedMethod;
+  const isApiWallet = isApiWalletMethod(paymentMethod, paymentConfig);
+  const paymentDisplay = getManualPaymentDisplay(paymentConfig, paymentMethod);
+  const methodLabel = t[paymentDisplay.methodLabelKey] || paymentMethod;
+  const methodReady = isPaymentMethodReady(paymentMethod, paymentConfig);
 
   const handleCheckoutProcess = async () => {
     if (selectedMethod === 'balance') {
@@ -46,33 +77,175 @@ export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComp
     }
 
     if (!usableMethods.some((m) => m.id === selectedMethod)) {
-      notifyError(lang === 'ar' ? 'طريقة الدفع غير متاحة' : 'Payment method unavailable');
+      notifyError(t.paymentMethodUnavailable);
       return;
     }
 
-    setPendingShamRef(`ECHOCORE-${Date.now().toString().slice(-7)}`);
-    setShowSimModal(true);
-    setSimRef('');
-  };
+    if (isManualWalletMethod(selectedMethod) && !methodReady) {
+      notifyError(t.walletBuyNotConfigured);
+      return;
+    }
 
-  const confirmExternalCheckout = async () => {
     setIsProcessing(true);
     try {
-      await new Promise((r) => setTimeout(r, 1200));
-      const ref = `ECHOCORE-${Date.now().toString(36).toUpperCase()}`;
-      const result = await submitOrder(cart, selectedMethod, { paymentReference: ref });
-      setSimRef(ref);
-      setTimeout(() => {
-        setShowSimModal(false);
-        setIsProcessing(false);
+      const result = await submitOrder(cart, selectedMethod);
+      if (result?.orderId) {
+        setActiveOrder({
+          orderId: result.orderId,
+          reference: result.reference,
+          total: totalNum,
+          status: result.status || 'pending_payment',
+          invoice: result.invoice || null,
+          paymentMethod: selectedMethod,
+        });
+        setStep('payment');
+      } else {
         onComplete(result);
-      }, 700);
+      }
     } catch (e) {
       notifyError(`${t.paymentFailed || 'Payment failed'}: ${e.message || ''}`);
+    } finally {
       setIsProcessing(false);
-      setShowSimModal(false);
     }
   };
+
+  const confirmPaymentSent = async () => {
+    if (!activeOrder?.orderId) return;
+
+    setIsProcessing(true);
+    try {
+      const result = await markOrderPaymentSent(activeOrder.orderId);
+      setActiveOrder((prev) => ({ ...prev, ...result, status: 'payment_sent' }));
+      notifySuccess(t.orderPendingApproval);
+    } catch (e) {
+      notifyError(e.message || t.paymentFailed);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleInvoicePaid = async () => {
+    const orderId = activeOrder?.orderId;
+    if (!orderId) return;
+    try {
+      await onOrderPaid?.(orderId);
+    } catch {
+      /* fulfillment surfaced elsewhere */
+    }
+    onComplete({ orderId, status: 'completed' });
+  };
+
+  if (user?.role === 'admin') {
+    return (
+      <div className="max-w-xl mx-auto mt-4 sm:mt-6 px-2 animate-fade-in">
+        <div className="card p-8 md:p-10 text-center border border-pink-500/20 bg-pink-500/5">
+          <Gift className="w-12 h-12 mx-auto text-pink-300 mb-4" />
+          <h2 className="text-2xl font-black mb-2">{t.adminCannotPurchaseTitle}</h2>
+          <p className="text-sm text-[var(--text-sec)] leading-relaxed max-w-md mx-auto mb-6">
+            {t.adminCannotPurchaseDesc}
+          </p>
+          {navigate && (
+            <button
+              type="button"
+              onClick={() => navigate(getAdminGiftPath({ returnTo: getAdminDashboardPath('users') }))}
+              className="btn btn-primary"
+            >
+              {t.adminGiftProduct}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'payment' && activeOrder) {
+    return (
+      <div className="max-w-xl mx-auto mt-4 sm:mt-6 px-2 animate-fade-in">
+        <button
+          type="button"
+          onClick={() => { setStep('method'); setActiveOrder(null); }}
+          className="flex items-center gap-2 mb-4 text-sm text-[var(--text-sec)] hover:text-white"
+        >
+          <ArrowLeft className="w-4 h-4" /> {t.back}
+        </button>
+
+        <div className="card p-8 md:p-10">
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-black mb-1">{formatMessage(t.completeWalletPayment, { method: methodLabel })}</h2>
+            <div className="text-sm text-[var(--text-sec)]">
+              {t.orderTotal}: <span className="font-mono font-bold text-[var(--accent)]">${total}</span>
+            </div>
+          </div>
+
+          {isApiWallet && activeOrder.invoice ? (
+            <SamInvoicePaymentPanel
+              t={t}
+              lang={lang}
+              total={activeOrder.total}
+              methodLabel={methodLabel}
+              invoice={activeOrder.invoice}
+              onPaid={handleInvoicePaid}
+              onExpired={() => { setStep('method'); setActiveOrder(null); }}
+              onNotify={onNotify}
+            />
+          ) : (
+            <>
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-5 text-center mb-5">
+                <div className="flex items-center justify-center gap-2 text-green-400 text-sm font-semibold mb-4">
+                  <QrCode className="w-4 h-4" />
+                  {methodLabel}
+                </div>
+                {paymentDisplay.qrImageUrl ? (
+                  <img
+                    src={paymentDisplay.qrImageUrl}
+                    alt=""
+                    className="mx-auto max-w-[220px] w-full rounded-xl border border-[var(--border)] bg-white p-2"
+                  />
+                ) : (
+                  <div className="py-8 text-sm text-[var(--text-muted)]">{t.qrNotConfigured}</div>
+                )}
+                {paymentDisplay.payCode && (
+                  <div className="mt-4">
+                    <div className="text-xs text-[var(--text-muted)] mb-1">{t.shamcashPayCodeLabel}</div>
+                    <div className="font-mono text-lg tracking-wide break-all bg-black/30 rounded-xl px-4 py-3">
+                      {paymentDisplay.payCode}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-[var(--border)] bg-black/40 p-4 text-center mb-5">
+                <div className="text-green-400 text-xs mb-1 uppercase tracking-wider">{t.paymentReference}</div>
+                <div className="font-mono text-lg tracking-wider">{activeOrder.reference || '—'}</div>
+              </div>
+
+              {activeOrder.status === 'payment_sent' ? (
+                <div className="text-center py-4 rounded-2xl border border-amber-500/30 bg-amber-500/10">
+                  <Clock className="w-8 h-8 mx-auto text-amber-300 mb-2" />
+                  <div className="font-bold text-amber-100">{t.awaitingAdminApproval}</div>
+                  <p className="text-xs text-[var(--text-sec)] mt-2">{t.orderPendingDesc}</p>
+                  <CheckCircle className="w-5 h-5 mx-auto text-emerald-400 mt-3" />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={confirmPaymentSent}
+                  disabled={isProcessing}
+                  className="btn btn-primary w-full py-4 font-bold flex items-center justify-center gap-2"
+                >
+                  {isProcessing ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> {t.processing}</>
+                  ) : (
+                    t.confirmPaymentSent
+                  )}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-xl mx-auto mt-4 sm:mt-6 px-2 animate-fade-in">
@@ -109,9 +282,12 @@ export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComp
                 <div className="flex-1 min-w-0">
                   <div className="font-bold text-lg flex items-center gap-2">
                     {method.name}
+                    {method.manualOnlyKey && (
+                      <span className="text-[10px] text-[var(--text-muted)] font-normal">{t[method.manualOnlyKey]}</span>
+                    )}
                     {method.comingSoon && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-elevated)] text-[var(--text-muted)]">
-                        {t.comingSoon || (lang === 'ar' ? 'قريباً' : 'Coming soon')}
+                        {t.comingSoon}
                       </span>
                     )}
                   </div>
@@ -120,7 +296,7 @@ export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComp
                   )}
                 </div>
                 {isBalance && !hasEnoughBalance && (
-                  <div className="text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-400">{t.insufficientBalance || 'Not enough'}</div>
+                  <div className="text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-400">{t.insufficientBalance}</div>
                 )}
               </div>
             );
@@ -129,43 +305,24 @@ export default function CheckoutView({ t, lang = 'ar', cart, submitOrder, onComp
 
         <button
           onClick={handleCheckoutProcess}
-          disabled={isProcessing || cart.length === 0 || (selectedMethod === 'balance' && !hasEnoughBalance) || (selectedMethod !== 'balance' && !usableMethods.some((m) => m.id === selectedMethod))}
+          disabled={
+            isProcessing
+            || cart.length === 0
+            || (selectedMethod === 'balance' && !hasEnoughBalance)
+            || (selectedMethod !== 'balance' && !usableMethods.some((m) => m.id === selectedMethod))
+            || (isManualWalletMethod(selectedMethod) && !isPaymentMethodReady(selectedMethod, paymentConfig))
+          }
           className="btn btn-primary w-full py-5 text-xl font-black disabled:opacity-60"
         >
-          {isProcessing ? t.processing : (selectedMethod === 'balance' ? (t.payFromBalance) : t.payNow)}
+          {isProcessing ? t.processing : (selectedMethod === 'balance' ? t.payFromBalance : t.payNow)}
         </button>
 
         <div className="text-center text-xs text-[var(--text-muted)] mt-4">
-          {selectedMethod === 'balance' ? t.balanceUsed : t.instantDeliveryNote}
+          {selectedMethod === 'balance'
+            ? t.balanceUsed
+            : (isApiWalletMethod(selectedMethod, paymentConfig) ? t.samInvoiceCheckoutNote : t.instantDeliveryNote)}
         </div>
       </div>
-
-      {showSimModal && isManualWalletMethod(selectedMethod) && (
-        <div className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-4" onClick={() => !isProcessing && setShowSimModal(false)}>
-          <div className="card w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-bold mb-2 text-center">{t.confirmPayment || (lang === 'ar' ? 'تأكيد الدفع' : 'Confirm Payment')}</h3>
-            <p className="text-center text-sm mb-5 text-[var(--text-sec)]">${total} → {merchantName}</p>
-
-            <div className="bg-black/60 rounded-2xl p-4 mb-4 text-center">
-              <div className="text-green-400 text-sm mb-1">{t.paymentReference}</div>
-              <div className="font-mono text-lg">{pendingShamRef || simRef}</div>
-              <p className="text-xs text-[var(--text-muted)] mt-2">
-                {t.shamcashPayThenConfirm}
-              </p>
-            </div>
-
-            {!simRef ? (
-              <button onClick={confirmExternalCheckout} disabled={isProcessing} className="btn btn-primary w-full py-4">
-                {isProcessing ? t.processing : (t.payNow)}
-              </button>
-            ) : (
-              <div className="text-center text-emerald-400 py-2 font-bold">Payment successful! Redirecting...</div>
-            )}
-
-            {!isProcessing && <button onClick={() => setShowSimModal(false)} className="text-xs mt-3 text-[var(--text-sec)] w-full">Cancel</button>}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

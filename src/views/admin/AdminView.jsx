@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { getAdminDashboardPath, isValidAdminTabSegment, resolveAdminTabFromPath } from '../../lib/adminRoutes';
-import { Trash2, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Zap, FlaskConical, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { getAdminDashboardPath, getAdminOrdersPath, isValidAdminTabSegment, resolveAdminTabFromPath } from '../../lib/adminRoutes';
+import { getOrderCustomerLabel } from '../../lib/adminOrderFilters';
+import { formatOrderDisplayId } from '../../lib/orderReceipt';
+import { Trash2, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Zap, FlaskConical, PanelLeftClose, PanelLeftOpen, Users } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uploadImage } from '../../lib/uploadImage';
 import { getCatalogOfferStats } from '../../lib/catalogUtils';
-import SamWalletBalancesCard from '../../components/ui/SamWalletBalancesCard';
-import { useAdminSamWallets } from '../../hooks/useAdminSamWallets';
+import AdminSupplierWalletsCard from '../../components/ui/AdminSupplierWalletsCard';
+import { useAdminSupplierWallets } from '../../hooks/useAdminSupplierWallets';
 import AdminExistingGamesList from '../../components/admin/AdminExistingGamesList';
 import AdminGameEditModal from '../../components/admin/AdminGameEditModal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
@@ -17,6 +19,8 @@ const AdminReviewsManager = lazy(() => import('../../components/admin/AdminRevie
 const AdminRechargeManager = lazy(() => import('../../components/admin/AdminRechargeManager'));
 const AdminG2BulkSettings = lazy(() => import('../../components/admin/AdminG2BulkSettings'));
 const AdminDevTools = lazy(() => import('../../components/admin/AdminDevTools'));
+const AdminUsersManager = lazy(() => import('../../components/admin/AdminUsersManager'));
+const AdminOrdersManager = lazy(() => import('../../components/admin/AdminOrdersManager'));
 
 function AdminTabLoader({ label = 'Loading...' }) {
   return (
@@ -47,6 +51,7 @@ function buildAdminNavItems(t) {
     { id: 'recharges', label: t.rechargesTab, shortLabel: t.tabRechargesShort, icon: CircleDollarSign },
     { id: 'theme', label: t.themeTab, shortLabel: t.tabThemeShort, icon: Palette },
     { id: 'reviews', label: t.reviewsTab, shortLabel: t.tabReviewsShort, icon: MessageSquare },
+    { id: 'users', label: t.usersTab, shortLabel: t.tabUsersShort, icon: Users },
     { id: 'devtools', label: t.devToolsTab, shortLabel: 'DEV', icon: FlaskConical },
   ];
 }
@@ -101,6 +106,7 @@ export default function AdminView({
   useEffect(() => {
     const parts = location.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
     if (parts[0] !== 'dashboard' || parts.length < 2) return;
+    if (parts.length === 3 && parts[1] === 'users') return;
     if (!isValidAdminTabSegment(parts[1])) {
       navigate('/dashboard', { replace: true });
     }
@@ -132,90 +138,6 @@ export default function AdminView({
 
   // Filter offers list by game
   const [filterGameId, setFilterGameId] = useState('');
-
-  // Orders expandable
-  const [expandedOrderId, setExpandedOrderId] = useState(null);
-  const [processingOrderId, setProcessingOrderId] = useState(null);
-
-  const isAwaitingShamcash = (order) => (
-    order.payment_method === 'ShamCash'
-    && (order.status === 'pending_payment' || order.status === 'payment_sent')
-  );
-
-  const handleApproveOrder = async (orderId) => {
-    if (!onApproveOrder) return;
-    setProcessingOrderId(orderId);
-    try {
-      await onApproveOrder(orderId);
-      notifySuccess(t.orderApproved);
-    } catch (err) {
-      notifyError(err.message);
-    } finally {
-      setProcessingOrderId(null);
-    }
-  };
-
-  const handleRejectOrder = async (orderId) => {
-    if (!onRejectOrder) return;
-    setProcessingOrderId(orderId);
-    try {
-      await onRejectOrder(orderId);
-      notifySuccess(t.orderRejected);
-    } catch (err) {
-      notifyError(err.message);
-    } finally {
-      setProcessingOrderId(null);
-    }
-  };
-
-  const orderStatusLabel = (status) => {
-    const map = {
-      pending_payment: t.orderStatusPendingPayment,
-      payment_sent: t.orderStatusPaymentSent,
-      completed: t.orderStatusCompleted,
-      cancelled: t.orderStatusCancelled,
-    };
-    return map[status] || status;
-  };
-
-  const orderStatusColor = (status) => {
-    if (status === 'completed') return 'text-emerald-400';
-    if (status === 'payment_sent') return 'text-amber-300';
-    if (status === 'pending_payment') return 'text-amber-400';
-    if (status === 'cancelled') return 'text-red-400';
-    return 'text-[var(--text-sec)]';
-  };
-
-  const renderOrderExtras = (order) => (
-    <>
-      {order.payment_reference && (
-        <div className="text-xs mt-2">
-          <span className="text-[var(--text-muted)]">{t.paymentReference}:</span>{' '}
-          <span className="font-mono">{order.payment_reference}</span>
-        </div>
-      )}
-      {isAwaitingShamcash(order) && onApproveOrder && onRejectOrder && (
-        <div className="flex flex-wrap gap-2 mt-3">
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); handleApproveOrder(order.id); }}
-            disabled={processingOrderId === order.id}
-            className="btn btn-primary text-xs py-2 px-3"
-          >
-            {processingOrderId === order.id ? '...' : t.approveShort}
-          </button>
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); handleRejectOrder(order.id); }}
-            disabled={processingOrderId === order.id}
-            className="btn btn-secondary text-xs py-2 px-3"
-          >
-            {t.rejectShort}
-          </button>
-        </div>
-      )}
-    </>
-  );
 
   // Quick lookup for game names in offers list
   const gamesMap = Object.fromEntries(games.map(g => [g.id, g]));
@@ -417,12 +339,16 @@ export default function AdminView({
   };
 
   const {
-    wallets: samWallets,
-    loading: samLoading,
-    error: samError,
-    notConfigured: samNotConfigured,
-    refresh: refreshSamWallets,
-  } = useAdminSamWallets(true);
+    g2bulkWallet,
+    g2bulkError,
+    g2bulkFetched,
+    samWallets,
+    samError,
+    samNotConfigured,
+    samFetched,
+    loading: supplierWalletsLoading,
+    refresh: refreshSupplierWallets,
+  } = useAdminSupplierWallets(true, { fetchOnMount: true });
 
   const catalogStats = useMemo(
     () => getCatalogOfferStats(offers, games),
@@ -499,16 +425,21 @@ export default function AdminView({
       {/* OVERVIEW TAB */}
       {activeTab === 'overview' && (
         <div className="space-y-8">
-          <SamWalletBalancesCard
-            wallets={samWallets}
-            loading={samLoading}
-            error={samError}
-            notConfigured={samNotConfigured}
-            lang={lang}
+          <AdminSupplierWalletsCard
             t={t}
-            onRefresh={refreshSamWallets}
-            onManage={() => setAdminTab('payments')}
-            manageLabel={t.samWalletManage}
+            variant="card"
+            g2bulkBalance={g2bulkWallet?.balance ?? 0}
+            g2bulkUsername={g2bulkWallet?.username}
+            g2bulkError={g2bulkError}
+            g2bulkFetched={g2bulkFetched}
+            samWallets={samWallets}
+            samError={samError}
+            samNotConfigured={samNotConfigured}
+            samFetched={samFetched}
+            loading={supplierWalletsLoading}
+            onRefresh={refreshSupplierWallets}
+            onOpenDashboard={() => setAdminTab('g2bulk')}
+            onOpenPayments={() => setAdminTab('payments')}
           />
 
           {/* Stats Cards */}
@@ -612,18 +543,15 @@ export default function AdminView({
             ) : (
               <div className="space-y-3">
                 {recentOrders.map(order => {
-                  const customer = order.profiles?.name || (order.user_id ? `User ${order.user_id.slice(0, 6)}` : 'Unknown');
+                  const customer = getOrderCustomerLabel(order, t);
                   return (
                     <div 
                       key={order.id} 
-                      onClick={() => {
-                        setAdminTab('orders');
-                        setExpandedOrderId(order.id);
-                      }}
+                      onClick={() => navigate(getAdminOrdersPath({ orderId: order.id }))}
                       className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between p-3 sm:p-4 bg-[var(--bg-primary)] rounded-xl border border-[var(--border)] hover:border-[var(--accent)]/30 cursor-pointer"
                     >
                       <div className="min-w-0">
-                        <div className="font-mono text-xs text-[var(--text-muted)]">#{order.id.slice(0,8)}</div>
+                        <div className="font-mono text-xs text-[var(--text-muted)]">#{formatOrderDisplayId(order)}</div>
                         <div className="text-sm truncate">{customer}</div>
                         <div className="text-xs text-[var(--text-muted)]">{new Date(order.created_at).toLocaleDateString()}</div>
                       </div>
@@ -890,171 +818,19 @@ export default function AdminView({
       </div>
       )}
 
-      {/* ORDERS TAB */}
       {activeTab === 'orders' && (
-        <div className="card p-4 sm:p-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-5">
-            <div className="min-w-0">
-              <h3 className="font-bold text-lg sm:text-xl">{t.ordersTab} ({orders.length})</h3>
-              <p className="text-xs text-[var(--text-muted)] mt-0.5">{t.clickAnyRow}</p>
-            </div>
-            {refreshOrders && (
-              <button onClick={refreshOrders} className="text-sm btn btn-secondary self-start sm:self-auto flex-shrink-0">
-                <RefreshCw className="w-4 h-4 sm:mr-1" />
-                <span className="hidden sm:inline">{t.refresh}</span>
-              </button>
-            )}
-          </div>
-
-          {loadingOrders ? (
-            <div className="py-12 text-center text-[var(--text-sec)]">Loading...</div>
-          ) : orders.length === 0 ? (
-            <div className="py-12 text-center">
-              <p>{t.noOrdersYet}</p>
-              <p className="text-xs text-[var(--text-muted)] mt-2">Make sure you are logged in as admin, your profile has role='admin', and RLS policies for orders are applied.</p>
-            </div>
-          ) : (
-            <>
-            <div className="md:hidden space-y-3">
-              {orders.map(order => {
-                const isExpanded = expandedOrderId === order.id;
-                const items = order.order_items || [];
-                const customer = order.profiles?.name || (order.user_id ? `User ${order.user_id.slice(0, 8)}` : 'Unknown');
-                return (
-                  <div
-                    key={order.id}
-                    className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] overflow-hidden"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
-                      className="w-full text-left p-4 space-y-2"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="font-mono text-xs text-[var(--text-muted)]">#{order.id.slice(0, 8)}...</div>
-                          <div className="font-medium text-sm mt-0.5 truncate">{customer}</div>
-                          <div className="text-xs text-[var(--text-muted)] mt-1">{new Date(order.created_at).toLocaleString()}</div>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <div className="font-bold text-[var(--accent)]">${parseFloat(order.total || 0).toFixed(2)}</div>
-                          <div className="text-[10px] text-[var(--text-sec)] mt-1 capitalize">{order.payment_method || '—'}</div>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between text-xs text-[var(--text-sec)]">
-                        <span>{items.length} {t.items}</span>
-                        <span>{isExpanded ? '−' : '+'}</span>
-                      </div>
-                    </button>
-                    {isExpanded && (
-                      <div className="px-4 pb-4 pt-0 border-t border-[var(--border)] text-sm">
-                        <div className="flex flex-col gap-1 mb-3 text-xs">
-                          <div><span className="text-[var(--text-muted)]">{t.customerLabel}</span> <span className="font-medium">{customer}</span></div>
-                          <div>
-                            <span className="text-[var(--text-muted)]">{t.statusLabel}</span>{' '}
-                            <span className={orderStatusColor(order.status)}>{orderStatusLabel(order.status || 'completed')}</span>
-                          </div>
-                          <div><span className="text-[var(--text-muted)]">{t.payment}</span> <span className="capitalize">{order.payment_method || '—'}</span></div>
-                          {renderOrderExtras(order)}
-                        </div>
-                        <div className="text-[var(--text-sec)] mb-2 text-xs font-semibold uppercase tracking-wider">{t.itemsLabel}</div>
-                        <div className="space-y-1">
-                          {items.length > 0 ? items.map((item, idx) => (
-                            <div key={idx} className="flex justify-between gap-3 text-xs py-0.5">
-                              <span className="min-w-0 break-words">{item.name_snapshot}</span>
-                              <span className="font-mono text-[var(--accent)] flex-shrink-0">${parseFloat(item.price).toFixed(2)} × {item.quantity || 1}</span>
-                            </div>
-                          )) : (
-                            <div className="text-[var(--text-muted)] text-xs">{t.noItemsRecorded}</div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-sm min-w-[720px]">
-                <thead>
-                  <tr className="text-left text-[var(--text-sec)] border-b border-[var(--border)]">
-                    <th className="py-3 pr-4">{t.orderId}</th>
-                    <th className="py-3 pr-4">{t.customer}</th>
-                    <th className="py-3 pr-4">{t.date}</th>
-                    <th className="py-3 pr-4">{t.total}</th>
-                    <th className="py-3 pr-4">{t.payment}</th>
-                    <th className="py-3 pr-4">{t.items}</th>
-                    <th className="py-3 w-8"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {orders.map(order => {
-                    const isExpanded = expandedOrderId === order.id;
-                    const items = order.order_items || [];
-                    const customer = order.profiles?.name || (order.user_id ? `User ${order.user_id.slice(0, 8)}` : 'Unknown');
-                    return (
-                      <React.Fragment key={order.id}>
-                        <tr 
-                          onClick={() => setExpandedOrderId(isExpanded ? null : order.id)} 
-                          className="border-b border-[var(--border)] last:border-0 hover:bg-white/5 cursor-pointer"
-                        >
-                          <td className="py-3 pr-4 font-mono text-xs">{order.id.slice(0, 8)}...</td>
-                          <td className="py-3 pr-4">
-                            <div className="font-medium text-sm">{customer}</div>
-                            {order.user_id && (
-                              <div className="font-mono text-[10px] text-[var(--text-muted)]">{order.user_id.slice(0, 8)}...</div>
-                            )}
-                          </td>
-                          <td className="py-3 pr-4 text-xs">{new Date(order.created_at).toLocaleString()}</td>
-                          <td className="py-3 pr-4 font-bold text-[var(--accent)]">${parseFloat(order.total || 0).toFixed(2)}</td>
-                          <td className="py-3 pr-4 text-xs capitalize">{order.payment_method || '—'}</td>
-                          <td className="py-3 pr-4 text-xs">
-                            <span className="inline-block px-2 py-0.5 rounded bg-[var(--bg-elevated)] text-[var(--text-sec)]">{items.length}</span>
-                          </td>
-                          <td className="py-3 text-right text-[var(--text-sec)]">
-                            {isExpanded ? '−' : '+'}
-                          </td>
-                        </tr>
-
-                        {/* Expanded details */}
-                        {isExpanded && (
-                          <tr>
-                            <td colSpan={7} className="p-0">
-                              <div className="bg-[var(--bg-primary)] px-4 py-4 text-sm border-b border-[var(--border)]">
-                                <div className="flex flex-wrap gap-x-8 gap-y-1 mb-3 text-xs">
-                                  <div><span className="text-[var(--text-muted)]">{t.customerLabel}</span> <span className="font-medium">{customer}</span></div>
-                                  <div>
-                                    <span className="text-[var(--text-muted)]">{t.statusLabel}</span>{' '}
-                                    <span className={orderStatusColor(order.status)}>{orderStatusLabel(order.status || 'completed')}</span>
-                                  </div>
-                                  <div><span className="text-[var(--text-muted)]">{t.payment}</span> <span className="capitalize">{order.payment_method || '—'}</span></div>
-                                </div>
-                                {renderOrderExtras(order)}
-
-                                <div className="text-[var(--text-sec)] mb-2 text-xs font-semibold uppercase tracking-wider">{t.itemsLabel}</div>
-                                <div className="space-y-1 pl-1">
-                                  {items.length > 0 ? items.map((item, idx) => (
-                                    <div key={idx} className="flex justify-between text-xs py-0.5">
-                                      <span>{item.name_snapshot}</span>
-                                      <span className="font-mono text-[var(--accent)]">${parseFloat(item.price).toFixed(2)} × {item.quantity || 1}</span>
-                                    </div>
-                                  )) : (
-                                    <div className="text-[var(--text-muted)] text-xs">{t.noItemsRecorded}</div>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            </>
-          )}
-        </div>
+        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+          <AdminOrdersManager
+            t={t}
+            lang={lang}
+            orders={orders}
+            loadingOrders={loadingOrders}
+            refreshOrders={refreshOrders}
+            onApproveOrder={onApproveOrder}
+            onRejectOrder={onRejectOrder}
+            onNotify={onNotify}
+          />
+        </Suspense>
       )}
 
       {activeTab === 'payments' && (
@@ -1113,6 +889,16 @@ export default function AdminView({
           <AdminReviewsManager
             t={t}
             onChanged={onReviewsChanged}
+          />
+        </Suspense>
+      )}
+
+      {activeTab === 'users' && (
+        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+          <AdminUsersManager
+            t={t}
+            lang={lang}
+            onNotify={onNotify}
           />
         </Suspense>
       )}

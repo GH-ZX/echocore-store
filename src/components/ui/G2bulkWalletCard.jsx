@@ -17,6 +17,8 @@ export default function G2bulkWalletCard({
   username = '',
   loading = false,
   error = null,
+  idle = false,
+  idleHint = '',
   lang = 'ar',
   compact = false,
   onRefresh,
@@ -82,6 +84,13 @@ export default function G2bulkWalletCard({
         <div className="flex items-center gap-3 py-6 text-[var(--text-sec)]">
           <Loader2 className="w-6 h-6 animate-spin text-[var(--accent)]" />
           <span className="text-sm">{isAr ? 'جاري تحميل الرصيد…' : 'Loading wallet…'}</span>
+        </div>
+      ) : idle ? (
+        <div className="py-6 text-center">
+          <p className="text-3xl sm:text-4xl font-black font-mono text-[var(--text-muted)]">—</p>
+          {idleHint ? (
+            <p className="text-xs text-[var(--text-muted)] mt-3">{idleHint}</p>
+          ) : null}
         </div>
       ) : error ? (
         <div className="flex items-start gap-2 text-sm text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-3">

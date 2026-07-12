@@ -52,6 +52,8 @@ export default function SaleOffersView({
                 key={offer.id}
                 offer={offer}
                 game={game}
+                games={games}
+                offers={offers}
                 t={t}
                 lang={lang}
                 onSelectOffer={onSelectOffer}

@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router-dom';
-import { ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import ProductCarousel from './ProductCarousel';
 import SaleOfferCard from '../../components/ui/SaleOfferCard';
 import HomeGameCard from '../../components/ui/HomeGameCard';
 import CustomerReviewsSection from './CustomerReviewsSection';
 import SocialLinksHomeSection from '../../components/home/SocialLinksHomeSection';
+import HomeExpandableGrid from '../../components/home/HomeExpandableGrid';
 import AdminAddCard from '../../components/admin/AdminAddCard';
 import { getCarouselGames, resolveCarouselLogo } from '../../lib/carouselUtils';
 import {
@@ -17,17 +17,18 @@ import {
 } from '../../lib/gameRegions';
 import {
   countActiveOffers,
-  getGiftCardGames,
-  getGamingAccountGames,
+  getCatalogVoucherGames,
   getVisibleTopupGames,
 } from '../../lib/catalogUtils';
 import { pickStableOffers } from '../../lib/customerReviews';
 import { brandUserText } from '../../lib/branding';
+import { getGameMarketingDescription } from '../../lib/gameDescriptions';
 import { DEFAULT_HOME_LAYOUT, getSectionLabel, normalizeHomeLayout } from '../../lib/homeLayout';
-import { formatMessage } from '../../lib/i18n';
-
-const HOME_GAMES_PREVIEW = 9;
-const HOME_GAMES_CLICKABLE = 6;
+import {
+  HOME_GRID_DENSE,
+  HOME_GRID_VOUCHER,
+  skeletonCountForWidth,
+} from '../../lib/homeExpandableGrid';
 
 function stripPlainText(value = '') {
   return String(value)
@@ -36,7 +37,16 @@ function stripPlainText(value = '') {
     .trim();
 }
 
-function resolveCarouselDescription(game, games = [], offers = []) {
+function resolveCarouselDescription(game, games = [], offers = [], t = {}) {
+  const marketingEn = getGameMarketingDescription(game, 'en', games, offers, t);
+  const marketingAr = getGameMarketingDescription(game, 'ar', games, offers, t);
+  if (marketingEn || marketingAr) {
+    return {
+      description_en: stripPlainText(marketingEn),
+      description_ar: stripPlainText(marketingAr || marketingEn),
+    };
+  }
+
   const children = getRegionVariantsWithOffers(games, game.id, offers);
   const childWithCopy = children.find((row) => row.description_en || row.description_ar);
   const en = stripPlainText(game.description_en || childWithCopy?.description_en || '');
@@ -57,6 +67,28 @@ function pickSaleOffers(offers, limit = 8) {
     .filter((offer) => offer.is_sale)
     .sort((a, b) => parseFloat(a.price) - parseFloat(b.price))
     .slice(0, cap);
+}
+
+function denseGridSkeleton() {
+  const count = skeletonCountForWidth(typeof window !== 'undefined' ? window.innerWidth : 1024, 'dense');
+  return (
+    <div className={`${HOME_GRID_DENSE} animate-pulse`}>
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="card h-[380px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl" />
+      ))}
+    </div>
+  );
+}
+
+function voucherGridSkeleton() {
+  const count = skeletonCountForWidth(typeof window !== 'undefined' ? window.innerWidth : 1024, 'voucher');
+  return (
+    <div className={`${HOME_GRID_VOUCHER} animate-pulse`}>
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="card h-48 sm:h-52 bg-[var(--bg-surface)]" />
+      ))}
+    </div>
+  );
 }
 
 export default function HomeView({
@@ -101,23 +133,25 @@ export default function HomeView({
     );
     const regions = getRegionVariantsWithOffers(games, game.id, offers);
 
+    const description = getGameMarketingDescription(game, lang, games, offers, t);
+
     return {
       ...game,
       region_count: regions.length > 1 ? regions.length : game.region_count,
       packCount: activeOffers.length,
+      marketingDescription: description,
     };
-  }), [topupGames, games, offers]);
-  const giftCardGames = useMemo(
-    () => getGiftCardGames(games)
-      .map((game) => ({ ...game, offerCount: countActiveOffers(game.id, offers) }))
-      .filter((game) => game.offerCount > 0 || game.catalog_source === 'live' || isAdmin),
-    [games, offers, isAdmin],
-  );
+  }), [topupGames, games, offers, lang, t]);
 
-  const gamingAccountGames = useMemo(
-    () => getGamingAccountGames(games)
+  const voucherGames = useMemo(
+    () => getCatalogVoucherGames(games)
       .map((game) => ({ ...game, offerCount: countActiveOffers(game.id, offers) }))
-      .filter((game) => game.offerCount > 0 || game.catalog_source === 'live' || isAdmin),
+      .filter((game) => game.offerCount > 0 || game.catalog_source === 'live' || isAdmin)
+      .sort((a, b) => {
+        const nameA = String(a.name_en || a.name_ar || '').toLowerCase();
+        const nameB = String(b.name_en || b.name_ar || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      }),
     [games, offers, isAdmin],
   );
 
@@ -158,7 +192,7 @@ export default function HomeView({
   const carouselGames = getCarouselGames(topupGames);
 
   const carouselItems = carouselGames.map((g) => {
-    const descriptions = resolveCarouselDescription(g, games, offers);
+    const descriptions = resolveCarouselDescription(g, games, offers, t);
     return {
       id: g.id,
       name_en: g.name_en,
@@ -190,141 +224,113 @@ export default function HomeView({
     );
   };
 
-  const renderGamesGrid = (items, section, addOptions = {}) => {
-    const showAddCard = isAdmin && onAddGame;
-    const hasItems = items.length > 0;
-    const previewLimit = addOptions.previewLimit;
-    const totalCount = addOptions.totalCount ?? items.length;
-    const teaserFromIndex = addOptions.teaserFromIndex ?? null;
-    const useTeaserPreview = teaserFromIndex != null && !!addOptions.showMoreLink;
-    const showMoreLink = useTeaserPreview
-      ? totalCount > teaserFromIndex
-      : !!addOptions.showMoreLink && totalCount > (previewLimit || items.length);
-    const displayItems = previewLimit ? items.slice(0, previewLimit) : items;
+  const renderSectionSubtitle = (text) => (
+    text ? (
+      <p className="text-center text-sm text-[var(--text-muted)] -mt-2 mb-6 max-w-2xl mx-auto px-4">
+        {text}
+      </p>
+    ) : null
+  );
 
-    if (!hasItems && !showAddCard && !loading) {
-      return null;
-    }
-
+  const renderSectionBlock = (section, style, subtitle, content) => {
+    if (!content) return null;
+    const shellClass = style === 'games' ? 'games-section home-games-section' : 'sale-offers-section';
     return (
-      <div className="sale-offers-section home-games-section">
-        {section && renderSectionHeading(section, 'sale')}
-        {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 items-stretch animate-pulse">
-            {Array.from({ length: HOME_GAMES_PREVIEW }).map((_, i) => (
-              <div key={i} className="card h-[380px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl" />
-            ))}
-          </div>
-        ) : (
-          <>
-            <div className={`relative ${showMoreLink && useTeaserPreview ? 'home-games-preview-stage' : ''}`}>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 items-stretch">
-                {displayItems.map((game, index) => {
-                  const isTeaser = showMoreLink && useTeaserPreview && index >= teaserFromIndex;
-                  return (
-                    <div
-                      key={game.id}
-                      className={isTeaser ? 'home-games-card-slot home-games-card-slot--teaser' : 'home-games-card-slot'}
-                      aria-hidden={isTeaser ? true : undefined}
-                    >
-                      <HomeGameCard
-                        game={game}
-                        lang={lang}
-                        t={t}
-                        packCount={game.packCount}
-                        teaser={isTeaser}
-                        onSelectGame={isTeaser ? undefined : onSelectGame}
-                        onEditGame={isTeaser ? undefined : onEditGame}
-                        isAdmin={isAdmin && !isTeaser}
-                        className="w-full min-w-0 h-full"
-                      />
-                    </div>
-                  );
-                })}
-                {showAddCard && !showMoreLink && (
-                  <AdminAddCard
-                    variant="game"
-                    ariaLabel={t.addGame}
-                    onClick={() => onAddGame(addOptions)}
-                  />
-                )}
-              </div>
-              {showMoreLink && useTeaserPreview && (
-                <div className="home-games-preview-overlay" aria-hidden={false}>
-                  <div className="home-games-preview-overlay-fade" aria-hidden="true" />
-                  <Link
-                    to="/games"
-                    className="home-games-preview-overlay-btn btn btn-secondary inline-flex items-center gap-2"
-                  >
-                    {formatMessage(t.showMoreGames, { count: totalCount })}
-                    <ChevronDown className="w-4 h-4" />
-                  </Link>
-                </div>
-              )}
-            </div>
-            {showMoreLink && !useTeaserPreview && (
-              <div className="flex justify-center mt-6">
-                <Link to="/games" className="btn btn-secondary inline-flex items-center gap-2">
-                  {formatMessage(t.showMoreGames, { count: totalCount })}
-                  <ChevronDown className="w-4 h-4" />
-                </Link>
-              </div>
-            )}
-          </>
-        )}
+      <div className={shellClass}>
+        {section && renderSectionHeading(section, style)}
+        {renderSectionSubtitle(subtitle)}
+        {content}
       </div>
     );
   };
 
-  const renderOfferCards = (items, section, addOptions = {}) => {
-    const showAddCard = isAdmin && onAddOffer;
-    const visibleItems = items.filter((offer) => offerBelongsToStorefront(offer, games));
-    const hasItems = visibleItems.length > 0;
+  const renderGamesExpandable = (section, items, options = {}) => {
+    const sectionTitle = getSectionLabel(section, lang);
+    const showAddCard = isAdmin && onAddGame && !options.hideAdd;
 
-    if (!hasItems && !showAddCard && !loading) return null;
-
-    const isSaleSection = addOptions.isSale ?? section?.type === 'sale_offers';
+    if (items.length === 0 && !showAddCard && !loading) return null;
 
     return (
-      <div className="sale-offers-section">
-        {section && renderSectionHeading(section, 'sale')}
-        {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 items-stretch animate-pulse">
-            {Array.from({ length: section?.limit || 5 }).map((_, i) => (
-              <div key={i} className="card h-[380px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl" />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 items-stretch">
-          {visibleItems.map((offer) => {
-            const game = getDisplayGameForOffer(offer, games);
-
-            return (
-              <SaleOfferCard
-                key={offer.id}
-                offer={offer}
-                game={game}
-                t={t}
-                lang={lang}
-                onSelectOffer={onSelectOffer}
-                onBuyNow={onBuyNow}
-                onEditOffer={onEditOffer}
-                isAdmin={isAdmin}
-                className="w-full min-w-0"
-              />
-            );
-          })}
-          {showAddCard && (
-            <AdminAddCard
-              variant="offer"
-              className="w-full min-w-0"
-              ariaLabel={isSaleSection ? t.addSaleOffer : t.addOffer}
-              onClick={() => onAddOffer({ isSale: isSaleSection })}
-            />
-          )}
-        </div>
+      <HomeExpandableGrid
+        sectionKey={`${section.id}-${items.length}`}
+        items={items}
+        sectionTitle={sectionTitle}
+        gridClassName={options.gridClassName || HOME_GRID_DENSE}
+        layoutId={options.layoutId || 'dense'}
+        loading={loading}
+        loadingSkeleton={options.loadingSkeleton || denseGridSkeleton()}
+        t={t}
+        footerSlot={showAddCard ? (
+          <AdminAddCard
+            variant="game"
+            ariaLabel={t.addGame}
+            onClick={() => onAddGame(options.addContext || {})}
+          />
+        ) : null}
+        renderItem={(game, { isTeaser }) => (
+          <HomeGameCard
+            game={game}
+            lang={lang}
+            t={t}
+            description={game.marketingDescription}
+            packCount={game.packCount}
+            offerCount={game.offerCount}
+            teaser={isTeaser}
+            onSelectGame={isTeaser ? undefined : onSelectGame}
+            onEditGame={isTeaser ? undefined : onEditGame}
+            isAdmin={isAdmin && !isTeaser}
+            className="w-full min-w-0 h-full"
+          />
         )}
-      </div>
+      />
+    );
+  };
+
+  const renderOffersExpandable = (section, items, { isSale = false } = {}) => {
+    const sectionTitle = getSectionLabel(section, lang);
+    const visibleItems = items.filter((offer) => {
+      if (!offerBelongsToStorefront(offer, games)) return false;
+      return !!getDisplayGameForOffer(offer, games);
+    });
+    const showAddCard = isAdmin && onAddOffer;
+
+    if (visibleItems.length === 0 && !showAddCard && !loading) return null;
+
+    return (
+      <HomeExpandableGrid
+        sectionKey={`${section.id}-${visibleItems.length}`}
+        items={visibleItems}
+        sectionTitle={sectionTitle}
+        gridClassName={HOME_GRID_DENSE}
+        layoutId="dense"
+        loading={loading}
+        loadingSkeleton={denseGridSkeleton()}
+        t={t}
+        footerSlot={showAddCard ? (
+          <AdminAddCard
+            variant="offer"
+            className="w-full min-w-0"
+            ariaLabel={isSale ? t.addSaleOffer : t.addOffer}
+            onClick={() => onAddOffer({ isSale })}
+          />
+        ) : null}
+        renderItem={(offer, { isTeaser }) => {
+          const game = getDisplayGameForOffer(offer, games);
+          return (
+            <SaleOfferCard
+              offer={offer}
+              game={game}
+              t={t}
+              lang={lang}
+              onSelectOffer={isTeaser ? undefined : onSelectOffer}
+              onBuyNow={isTeaser ? undefined : onBuyNow}
+              onEditOffer={isTeaser ? undefined : onEditOffer}
+              isAdmin={isAdmin && !isTeaser}
+              className={`w-full min-w-0${isTeaser ? ' storefront-card--teaser pointer-events-none' : ''}`}
+            />
+          );
+        }}
+      />
     );
   };
 
@@ -360,20 +366,34 @@ export default function HomeView({
 
       case 'sale_offers': {
         const saleItems = saleOffersMap.get(section.id) || [];
-        return renderOfferCards(saleItems, section, { isSale: true });
+        return renderSectionBlock(
+          section,
+          'sale',
+          null,
+          renderOffersExpandable(section, saleItems, { isSale: true }),
+        );
       }
 
       case 'offer_picks': {
         const picked = (section.offer_ids || [])
           .map((id) => offersWithGames.find((offer) => offer.id === id))
-          .filter(Boolean)
-          .slice(0, section.limit ?? 8);
-        return renderOfferCards(picked, section, { isSale: false });
+          .filter(Boolean);
+        return renderSectionBlock(
+          section,
+          'sale',
+          null,
+          renderOffersExpandable(section, picked, { isSale: false }),
+        );
       }
 
       case 'suggested_offers': {
         const pickedItems = suggestedOffersMap.get(section.id) || [];
-        return renderOfferCards(pickedItems, section, { isSale: false });
+        return renderSectionBlock(
+          section,
+          'sale',
+          null,
+          renderOffersExpandable(section, pickedItems, { isSale: false }),
+        );
       }
 
       case 'customer_reviews': {
@@ -393,120 +413,52 @@ export default function HomeView({
       case 'games': {
         const gamesSection = {
           ...section,
-          title_en: section.title_en || t.chooseGame || 'Choose a Game',
-          title_ar: section.title_ar || t.chooseGame || 'اختر لعبتك',
+          title_en: section.title_en || t.g2bulkTopupsNav || t.chooseGame,
+          title_ar: section.title_ar || t.g2bulkTopupsNav || t.chooseGame,
         };
-        return renderGamesGrid(topupGamesWithStats, gamesSection, {
-          previewLimit: HOME_GAMES_PREVIEW,
-          teaserFromIndex: HOME_GAMES_CLICKABLE,
-          totalCount: topupGamesWithStats.length,
-          showMoreLink: true,
-        });
+        const gamesContent = renderGamesExpandable(gamesSection, topupGamesWithStats);
+        if (!gamesContent) return null;
+        return renderSectionBlock(
+          gamesSection,
+          'games',
+          t.g2bulkTopupsDesc,
+          gamesContent,
+        );
       }
 
       case 'gift_cards': {
-        const limit = Math.max(1, Math.min(12, Number(section.limit) || 6));
         const giftSection = {
           ...section,
-          title_en: section.title_en || t.giftCards || 'Gift Cards & Vouchers',
-          title_ar: section.title_ar || t.giftCards || 'بطاقات الهدايا',
+          title_en: section.title_en || t.g2bulkVouchersNav || t.giftCards,
+          title_ar: section.title_ar || t.g2bulkVouchersNav || t.giftCards,
         };
-        if (giftCardGames.length === 0 && !(isAdmin && onAddGame)) return null;
-        return (
-          <div className="games-section">
-            {renderSectionHeading(giftSection, 'games')}
-            {loading ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="card h-48 sm:h-52 animate-pulse bg-[var(--bg-surface)]" />
-                ))}
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {giftCardGames.slice(0, limit).map((game) => (
-                    <HomeGameCard
-                      key={game.id}
-                      game={game}
-                      lang={lang}
-                      t={t}
-                      variant="voucher"
-                      offerCount={game.offerCount}
-                      onSelectGame={onSelectGame}
-                      onEditGame={onEditGame}
-                      isAdmin={isAdmin}
-                    />
-                  ))}
-                </div>
-                {giftCardGames.length > limit && (
-                  <div className="flex justify-center mt-6">
-                    <Link to="/gift-cards" className="btn btn-secondary inline-flex items-center gap-2">
-                      {t.viewAllGiftCards || (lang === 'ar' ? 'كل بطاقات الهدايا' : 'View all gift cards')}
-                      <ChevronDown className="w-4 h-4" />
-                    </Link>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+        return renderSectionBlock(
+          giftSection,
+          'games',
+          t.g2bulkVouchersDesc,
+          renderGamesExpandable(giftSection, voucherGames, {
+            gridClassName: HOME_GRID_VOUCHER,
+            layoutId: 'voucher',
+            loadingSkeleton: voucherGridSkeleton(),
+          }),
         );
       }
 
-      case 'gaming_accounts': {
-        const limit = Math.max(1, Math.min(12, Number(section.limit) || 6));
-        const accountsSection = {
-          ...section,
-          title_en: section.title_en || t.gamingAccounts || 'Gaming Accounts',
-          title_ar: section.title_ar || t.gamingAccounts || 'حسابات الألعاب',
-        };
-        if (gamingAccountGames.length === 0 && !(isAdmin && onAddGame)) return null;
-        return (
-          <div className="games-section">
-            {renderSectionHeading(accountsSection, 'games')}
-            {loading ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="card h-48 sm:h-52 animate-pulse bg-[var(--bg-surface)]" />
-                ))}
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {gamingAccountGames.slice(0, limit).map((game) => (
-                    <HomeGameCard
-                      key={game.id}
-                      game={game}
-                      lang={lang}
-                      t={t}
-                      variant="account"
-                      offerCount={game.offerCount}
-                      onSelectGame={onSelectGame}
-                      onEditGame={onEditGame}
-                      isAdmin={isAdmin}
-                    />
-                  ))}
-                </div>
-                {gamingAccountGames.length > limit && (
-                  <div className="flex justify-center mt-6">
-                    <Link to="/accounts" className="btn btn-secondary inline-flex items-center gap-2">
-                      {t.viewAllGamingAccounts || (lang === 'ar' ? 'كل الحسابات' : 'View all accounts')}
-                      <ChevronDown className="w-4 h-4" />
-                    </Link>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        );
-      }
+      case 'gaming_accounts':
+        return null;
 
       case 'game_picks': {
         const picked = (section.game_ids || [])
           .map((id) => topupGames.find((game) => game.id === id) || games.find((game) => game.id === id))
           .filter((game) => game && !game.parent_game_id)
           .filter(Boolean);
-        if (picked.length === 0 && !(isAdmin && onAddGame)) return null;
-        return renderGamesGrid(picked, section, {});
+        if (picked.length === 0 && !loading && !(isAdmin && onAddGame)) return null;
+        return renderSectionBlock(
+          section,
+          'sale',
+          null,
+          renderGamesExpandable(section, picked, { hideAdd: true }),
+        );
       }
 
       case 'social_links':

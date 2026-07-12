@@ -3,8 +3,8 @@ import { supabase } from './supabase';
 const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 const AVATAR_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
-export const PROFILE_CORE_SELECT = 'name, role, balance, created_at, avatar_url, bio';
-export const PROFILE_EXTENDED_SELECT = 'phone, country, favorite_game, discord_username, default_player_uid';
+export const PROFILE_CORE_SELECT = 'name, role, balance, created_at, avatar_url, bio, username, username_changed_at';
+export const PROFILE_EXTENDED_SELECT = 'phone, country, favorite_game, discord_username, default_player_uid, game_player_uids';
 export const PROFILE_SELECT = `${PROFILE_CORE_SELECT}, ${PROFILE_EXTENDED_SELECT}`;
 
 export const PROFILE_FIELD_LIMITS = {

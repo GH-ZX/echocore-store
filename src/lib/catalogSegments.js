@@ -24,44 +24,58 @@ const GIFT_CARD_KEYWORDS = [
 
 const PLATFORM_BRAND_PATTERN = /xbox|playstation|psn|nintendo|steam|netflix|spotify|itunes|apple|google play|razer|zgold|paysafe|blizzard|battle\.?net|epic games|origin|ea play|amazon/i;
 
+/** DB-backed catalog segments */
 export const CATALOG_SEGMENTS = {
   topup: 'topup',
+  voucher: 'voucher',
+};
+
+/** UI-only voucher tags for platform vs in-game filters */
+export const VOUCHER_UI_TAGS = {
   giftCard: 'gift_card',
   gamingAccount: 'gaming_account',
 };
 
 export function classifyVoucherSegment(title = '') {
   const normalized = String(title).trim().toLowerCase();
-  if (!normalized) return CATALOG_SEGMENTS.giftCard;
+  if (!normalized) return VOUCHER_UI_TAGS.giftCard;
 
   if (GAMING_ACCOUNT_KEYWORDS.some((keyword) => normalized.includes(keyword))) {
-    return CATALOG_SEGMENTS.gamingAccount;
+    return VOUCHER_UI_TAGS.gamingAccount;
   }
 
   if (GIFT_CARD_KEYWORDS.some((keyword) => normalized.includes(keyword))) {
-    return CATALOG_SEGMENTS.giftCard;
+    return VOUCHER_UI_TAGS.giftCard;
   }
 
   if (PLATFORM_BRAND_PATTERN.test(normalized)) {
-    return CATALOG_SEGMENTS.gamingAccount;
+    return VOUCHER_UI_TAGS.gamingAccount;
   }
 
-  return CATALOG_SEGMENTS.giftCard;
+  return VOUCHER_UI_TAGS.giftCard;
 }
 
+export function isVoucherCatalogGame(game) {
+  if (!game) return false;
+  if (game.redemption_method === 'redeem_code') return true;
+  return game.catalog_segment === CATALOG_SEGMENTS.voucher
+    || game.catalog_segment === VOUCHER_UI_TAGS.giftCard
+    || game.catalog_segment === VOUCHER_UI_TAGS.gamingAccount;
+}
+
+/** Storefront routing segment — topup or UI voucher tag */
 export function getGameCatalogSegment(game) {
   if (!game) return CATALOG_SEGMENTS.topup;
-  if (game.catalog_segment) return game.catalog_segment;
-  if (game.redemption_method === 'redeem_code') {
+  if (isVoucherCatalogGame(game)) {
     return classifyVoucherSegment(game.name_en || game.name_ar || game.slug || '');
   }
   return CATALOG_SEGMENTS.topup;
 }
 
 export function isGiftCardGame(game) {
-  return getGameCatalogSegment(game) === CATALOG_SEGMENTS.giftCard;
+  return getGameCatalogSegment(game) === VOUCHER_UI_TAGS.giftCard;
 }
 
 export function isGamingAccountGame(game) {
-  return getGameCatalogSegment(game) === CATALOG_SEGMENTS.gamingAccount;
+  return getGameCatalogSegment(game) === VOUCHER_UI_TAGS.gamingAccount;
 }

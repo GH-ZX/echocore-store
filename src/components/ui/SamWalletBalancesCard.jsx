@@ -1,5 +1,10 @@
 import { Loader2, RefreshCw, Wallet, AlertCircle, Smartphone } from 'lucide-react';
-import { formatSamCurrencyAmount, getSamAccountLabel, getSamWalletDisplayName } from '../../lib/samWalletFormat';
+import {
+  formatSamCurrencyAmount,
+  getSamAccountLabel,
+  getSamWalletDisplayName,
+  sumBalancesAcrossWallets,
+} from '../../lib/samWalletFormat';
 
 function BalanceGrid({ balances, compact = false }) {
   if (!balances?.length) return null;
@@ -79,8 +84,11 @@ export default function SamWalletBalancesCard({
   loading = false,
   error = null,
   notConfigured = false,
+  idle = false,
+  idleHint = '',
   lang = 'ar',
   compact = false,
+  usdOnly = false,
   onRefresh,
   onManage,
   manageLabel,
@@ -88,6 +96,26 @@ export default function SamWalletBalancesCard({
 }) {
   const hasWallets = wallets.length > 0;
   const accountLabel = getSamAccountLabel(wallets, t.samWalletTitle);
+  const usdTotal = sumBalancesAcrossWallets(wallets, 'USD');
+
+  if (compact && usdOnly) {
+    if (loading) {
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          Sam…
+        </span>
+      );
+    }
+    if (notConfigured || error || !hasWallets) {
+      return <span className="header-balance">—</span>;
+    }
+    return (
+      <span className="header-balance font-mono" dir="ltr">
+        {formatSamCurrencyAmount('USD', usdTotal)}
+      </span>
+    );
+  }
 
   if (compact) {
     if (loading) {
@@ -153,6 +181,11 @@ export default function SamWalletBalancesCard({
         <div className="flex items-center gap-3 py-6 text-[var(--text-sec)]">
           <Loader2 className="w-6 h-6 animate-spin text-emerald-300" />
           <span className="text-sm">{t.samWalletLoading}</span>
+        </div>
+      ) : idle ? (
+        <div className="text-sm text-[var(--text-sec)] bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl px-3 py-6 text-center">
+          <p className="text-2xl font-black font-mono text-[var(--text-muted)] mb-2">—</p>
+          <p className="text-xs text-[var(--text-muted)]">{idleHint || t.samWalletHelp}</p>
         </div>
       ) : notConfigured ? (
         <div className="text-sm text-[var(--text-sec)] bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl px-3 py-3">

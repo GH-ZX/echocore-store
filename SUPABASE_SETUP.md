@@ -115,14 +115,33 @@ See [SUPABASE_SETUP.ar.md](./SUPABASE_SETUP.ar.md) for the Arabic version.
 
 | File | Purpose |
 |------|---------|
-| `supabase_echocore_full.sql` | **Only file to run** — complete schema (~2,800 lines) |
+| `supabase_echocore_full.sql` | **Only file to run** — complete merged schema (~5,000 lines) |
+| Other `supabase_*.sql` | Deprecated stubs — do not run |
 | `scripts/*.sql` | Debug / one-off ops (optional, not setup) |
+
+---
+
+## G2Bulk edge functions
+
+After SQL is applied:
+
+```bash
+supabase secrets set G2BULK_API_KEY=your_key_here
+supabase functions deploy g2bulk
+supabase functions deploy g2bulk-sync-cron   # optional scheduled sync
+```
+
+**Existing DB missing charm pricing column?** Run [supabase_charm_pricing_migration.sql](./supabase_charm_pricing_migration.sql) in SQL Editor (already merged in the full file).
+
+Admin → **G2Bulk**: test connection, set markup %, enable charm pricing if desired, sync catalog, then **Apply charm prices** once.
+
+Full G2Bulk reference: [docs/g2bulk-api.md](./docs/g2bulk-api.md) · [ECHOCORE_STORE_GUIDE.md](./ECHOCORE_STORE_GUIDE.md)
 
 ---
 
 ## Optional next steps
 
-- G2Bulk: Admin → G2Bulk tab + Edge Function secrets
+- Sam API: `supabase functions deploy sam-api` + payment settings
 - Custom domain already live at `www.echocore412.com`
 - Notifications: included in full SQL (v1–v3)
 

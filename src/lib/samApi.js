@@ -77,3 +77,40 @@ export async function fetchAllSamWalletBalances() {
   const data = await invokeSamApi({ action: 'getAllWalletBalances' });
   return { wallets: data.wallets || [] };
 }
+
+export async function createOrderInvoice({ orderId, paymentMethod }) {
+  const data = await invokeSamApi({
+    action: 'createInvoice',
+    entityType: 'order',
+    entityId: orderId,
+    paymentMethod,
+  });
+  return data.invoice;
+}
+
+export async function createRechargeInvoice({ requestId, paymentMethod }) {
+  const data = await invokeSamApi({
+    action: 'createInvoice',
+    entityType: 'recharge',
+    entityId: requestId,
+    paymentMethod,
+  });
+  return data.invoice;
+}
+
+export async function verifyOrderInvoice(samInvoiceId, transactionRef) {
+  const data = await invokeSamApi({
+    action: 'verifyInvoice',
+    samInvoiceId,
+    transactionRef: String(transactionRef || '').trim(),
+  });
+  return data;
+}
+
+export async function getSamInvoiceStatus(samInvoiceId) {
+  const data = await invokeSamApi({
+    action: 'getInvoiceStatus',
+    samInvoiceId,
+  });
+  return data;
+}

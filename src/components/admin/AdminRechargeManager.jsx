@@ -6,8 +6,55 @@ import {
   rejectRechargeRequest,
 } from '../../lib/recharge';
 
+const FILTER_OPTIONS = [
+  { id: 'all', labelKey: 'adminRechargeFilterAll' },
+  { id: 'approved', labelKey: 'adminRechargeFilterApproved' },
+  { id: 'payment_sent', labelKey: 'adminRechargeFilterAwaiting' },
+  { id: 'pending', labelKey: 'adminRechargeFilterNew' },
+  { id: 'rejected', labelKey: 'adminRechargeFilterRejected' },
+];
+
+const STATUS_LABEL_KEYS = {
+  pending: 'adminRechargeStatusPending',
+  payment_sent: 'adminRechargeStatusPaymentSent',
+  approved: 'adminRechargeStatusApproved',
+  rejected: 'adminRechargeStatusRejected',
+  cancelled: 'adminRechargeStatusCancelled',
+};
+
+const STATUS_TONE = {
+  pending: 'pending',
+  payment_sent: 'warning',
+  approved: 'success',
+  rejected: 'danger',
+  cancelled: 'neutral',
+};
+
+function formatRechargeDate(value, lang) {
+  if (!value) return '—';
+  return new Date(value).toLocaleString(lang === 'ar' ? 'ar-SY' : 'en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
+
+function getPaymentMethodLabel(method, t) {
+  if (method === 'ShamCash') return t.shamCash || 'ShamCash';
+  if (method === 'SyriatelCash') return t.syriatelCash || 'Syriatel Cash';
+  return method || '—';
+}
+
+function RechargeStatusBadge({ status, t }) {
+  const tone = STATUS_TONE[status] || 'muted';
+  const labelKey = STATUS_LABEL_KEYS[status];
+  return (
+    <span className={`admin-order-status admin-order-status--${tone}`}>
+      {labelKey ? t[labelKey] : status}
+    </span>
+  );
+}
+
 export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, onNotify }) {
-  const isAr = lang === 'ar';
   const onNotifyRef = useRef(onNotify);
   useEffect(() => {
     onNotifyRef.current = onNotify;
@@ -23,7 +70,7 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
 
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
-  const [filter, setFilter] = useState('payment_sent');
+  const [filter, setFilter] = useState('all');
   const [requests, setRequests] = useState([]);
   const loadInFlightRef = useRef(false);
 
@@ -52,7 +99,7 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
     try {
       const result = await approveRechargeRequest(requestId);
       notifySuccess(
-        `${t.rechargeApproved || (isAr ? 'تمت الموافقة على الشحن' : 'Recharge approved')} +$${parseFloat(result.amount).toFixed(2)}`,
+        `${t.rechargeApproved} +$${parseFloat(result.amount).toFixed(2)}`,
       );
       onApproved?.(result);
       await load();
@@ -67,7 +114,7 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
     setProcessingId(requestId);
     try {
       await rejectRechargeRequest(requestId, null);
-      notifySuccess(t.rechargeRejected || (isAr ? 'تم رفض طلب الشحن' : 'Recharge request rejected'));
+      notifySuccess(t.rechargeRejected);
       await load();
     } catch (err) {
       notifyError(err.message);
@@ -76,15 +123,7 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
     }
   };
 
-  const statusLabel = (status) => {
-    const map = {
-      pending: isAr ? 'جديد' : 'New',
-      payment_sent: isAr ? 'بانتظار الموافقة' : 'Awaiting approval',
-      approved: isAr ? 'موافق عليه' : 'Approved',
-      rejected: isAr ? 'مرفوض' : 'Rejected',
-    };
-    return map[status] || status;
-  };
+  const needsManualReview = (status) => status === 'pending' || status === 'payment_sent';
 
   return (
     <div className="space-y-4">
@@ -92,11 +131,10 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
         <div>
           <h2 className="text-xl font-black flex items-center gap-2">
             <Wallet className="w-5 h-5 text-green-400" />
-            {t.rechargeQueue || (isAr ? 'طلبات شحن الرصيد' : 'Recharge Requests')}
+            {t.rechargeQueue}
           </h2>
-          <p className="text-sm text-[var(--text-sec)] mt-1">
-            {t.rechargeQueueHelp
-              || (isAr ? 'وافق على الطلبات بعد التحقق من استلام المبلغ في ShamCash.' : 'Approve requests after verifying ShamCash payment.')}
+          <p className="text-sm text-[var(--text-sec)] mt-1 max-w-2xl">
+            {t.rechargeQueueHelp}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -105,11 +143,11 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
             onChange={(e) => setFilter(e.target.value)}
             className="bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl px-3 py-2 text-sm outline-none"
           >
-            <option value="payment_sent">{isAr ? 'بانتظار الموافقة' : 'Awaiting approval'}</option>
-            <option value="pending">{isAr ? 'جديدة' : 'New'}</option>
-            <option value="approved">{isAr ? 'موافق عليها' : 'Approved'}</option>
-            <option value="rejected">{isAr ? 'مرفوضة' : 'Rejected'}</option>
-            <option value="all">{isAr ? 'الكل' : 'All'}</option>
+            {FILTER_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {t[option.labelKey]}
+              </option>
+            ))}
           </select>
           <button type="button" onClick={load} className="action-chip gap-2">
             <RefreshCw className="w-4 h-4" />
@@ -124,58 +162,88 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
         </div>
       ) : requests.length === 0 ? (
         <div className="card p-10 text-center text-[var(--text-sec)]">
-          {t.noRechargeRequests || (isAr ? 'لا توجد طلبات شحن.' : 'No recharge requests.')}
+          {t.noRechargeRequests}
         </div>
       ) : (
-        <div className="space-y-3">
-          {requests.map((req) => {
-            const canReview = req.status === 'pending' || req.status === 'payment_sent';
-            const busy = processingId === req.id;
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border)] text-[var(--text-muted)] text-xs">
+                  <th className="text-start p-3">{t.adminRechargeUser}</th>
+                  <th className="text-start p-3">{t.adminRechargeAmount}</th>
+                  <th className="text-start p-3">{t.paymentMethod}</th>
+                  <th className="text-start p-3">{t.adminRechargeReference}</th>
+                  <th className="text-start p-3">{t.adminRechargeDate}</th>
+                  <th className="text-start p-3">{t.adminOrderStatus}</th>
+                  <th className="text-end p-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {requests.map((req) => {
+                  const manual = needsManualReview(req.status);
+                  const busy = processingId === req.id;
 
-            return (
-              <div key={req.id} className="card p-4 sm:p-5">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="font-bold text-lg font-mono text-[var(--accent)]">
-                      ${parseFloat(req.amount).toFixed(2)}
-                    </div>
-                    <div className="text-sm text-[var(--text-sec)] mt-1">
-                      {req.user_name || (isAr ? 'مستخدم' : 'User')} · <span className="font-mono text-xs">{req.user_id?.slice(0, 8)}…</span>
-                    </div>
-                    <div className="font-mono text-xs text-[var(--text-muted)] mt-1 break-all">{req.reference}</div>
-                    <div className="text-[10px] text-[var(--text-muted)] mt-2">
-                      {new Date(req.created_at).toLocaleString(isAr ? 'ar' : 'en')}
-                      {' · '}
-                      <span className="uppercase tracking-wide">{statusLabel(req.status)}</span>
-                    </div>
-                  </div>
-
-                  {canReview && (
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleApprove(req.id)}
-                        disabled={busy}
-                        className="btn btn-primary action-chip gap-1.5 !border-0 text-sm"
-                      >
-                        {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                        {t.approveRecharge || (isAr ? 'موافقة' : 'Approve')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleReject(req.id)}
-                        disabled={busy}
-                        className="action-chip gap-1.5 text-red-400 border-red-500/30 hover:bg-red-500/10 text-sm"
-                      >
-                        <XCircle className="w-4 h-4" />
-                        {t.rejectRecharge || (isAr ? 'رفض' : 'Reject')}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                  return (
+                    <tr key={req.id} className="border-b border-[var(--border)] last:border-0 align-top">
+                      <td className="p-3 min-w-[10rem]">
+                        <div className="font-semibold truncate">{req.user_name || t.adminUsersUnnamed}</div>
+                        <div className="text-[10px] text-[var(--text-muted)] font-mono mt-0.5 break-all">
+                          {req.user_id}
+                        </div>
+                      </td>
+                      <td className="p-3 font-mono font-bold text-[var(--accent)] whitespace-nowrap">
+                        ${parseFloat(req.amount).toFixed(2)}
+                      </td>
+                      <td className="p-3 text-[var(--text-sec)] whitespace-nowrap">
+                        {getPaymentMethodLabel(req.payment_method, t)}
+                      </td>
+                      <td className="p-3 font-mono text-xs text-[var(--text-muted)] break-all max-w-[12rem]">
+                        {req.reference || '—'}
+                      </td>
+                      <td className="p-3 text-[var(--text-sec)] whitespace-nowrap">
+                        {formatRechargeDate(req.created_at, lang)}
+                      </td>
+                      <td className="p-3">
+                        <RechargeStatusBadge status={req.status} t={t} />
+                      </td>
+                      <td className="p-3 text-end whitespace-nowrap">
+                        {manual ? (
+                          <div className="inline-flex flex-col items-end gap-1.5">
+                            <span className="text-[10px] text-[var(--text-muted)]">{t.adminRechargeManualHint}</span>
+                            <div className="flex gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleApprove(req.id)}
+                                disabled={busy}
+                                className="action-chip gap-1 text-xs !py-1.5"
+                                title={t.approveRecharge}
+                              >
+                                {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                                {t.approveRecharge}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleReject(req.id)}
+                                disabled={busy}
+                                className="action-chip gap-1 text-xs !py-1.5 text-red-400 border-red-500/30 hover:bg-red-500/10"
+                                title={t.rejectRecharge}
+                              >
+                                <XCircle className="w-3.5 h-3.5" />
+                                {t.rejectRecharge}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-[var(--text-muted)]">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

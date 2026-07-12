@@ -1,8 +1,11 @@
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import HomeGameCard from '../components/ui/HomeGameCard';
 import CatalogCategoryHeader from '../components/catalog/CatalogCategoryHeader';
 import CatalogPageShell from '../components/catalog/CatalogPageShell';
+import CatalogSearchBar from '../components/catalog/CatalogSearchBar';
 import { countActiveOffers, getVisibleTopupGames } from '../lib/catalogUtils';
+import { filterGamesByQuery } from '../lib/catalogSearch';
 import {
   CATALOG_NAV_ITEMS,
   getCatalogNavDesc,
@@ -22,27 +25,35 @@ export default function AllGamesView({
   loading = false,
 }) {
   const navigate = useNavigate();
-  const isAr = lang === 'ar';
+  const [query, setQuery] = useState('');
   const categoryLabel = getCatalogNavLabel(t, lang, NAV_ITEM);
-  const storefrontGames = getVisibleTopupGames(games, offers, { isAdmin })
-    .map((game) => ({
-      ...game,
-      offerCount: countActiveOffers(game.id, offers),
-    }));
+
+  const storefrontGames = useMemo(() => {
+    const base = getVisibleTopupGames(games, offers, { isAdmin })
+      .map((game) => ({
+        ...game,
+        offerCount: countActiveOffers(game.id, offers),
+      }));
+    return filterGamesByQuery(base, query, lang);
+  }, [games, offers, isAdmin, query, lang]);
 
   return (
     <CatalogPageShell
       wide
       lang={lang}
-      backLabel={t.backToHome || (isAr ? 'العودة للرئيسية' : 'Back to home')}
+      backLabel={t.backToHome}
       onBack={() => navigate('/')}
       breadcrumb={[{ label: categoryLabel }]}
     >
       <CatalogCategoryHeader
         title={categoryLabel}
-        subtitle={getCatalogNavDesc(t, lang, NAV_ITEM) || (isAr
-          ? t.chooseGame || 'اختر لعبتك المفضلة وابدأ الشحن فوراً'
-          : t.chooseGame || 'Choose your favorite game and start topping up instantly')}
+        subtitle={getCatalogNavDesc(t, lang, NAV_ITEM) || t.chooseGame}
+      />
+
+      <CatalogSearchBar
+        value={query}
+        onChange={setQuery}
+        placeholder={t.searchTopupGames}
       />
 
       {loading ? (
@@ -53,7 +64,7 @@ export default function AllGamesView({
         </div>
       ) : storefrontGames.length === 0 ? (
         <div className="card p-10 text-center text-[var(--text-sec)]">
-          {isAr ? t.noGamesAvailable || 'لا توجد ألعاب متاحة حالياً.' : t.noGamesAvailable || 'No games available yet.'}
+          {t.noGamesAvailable}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
@@ -74,9 +85,7 @@ export default function AllGamesView({
 
       {!loading && storefrontGames.length > 0 && (
         <p className="text-sm text-[var(--text-muted)] text-center mt-8">
-          {isAr
-            ? t.clickAnyGame || 'اضغط على أي لعبة لعرض العروض المتاحة'
-            : t.clickAnyGame || 'Click any game to view available offers'}
+          {t.clickAnyGame}
         </p>
       )}
     </CatalogPageShell>

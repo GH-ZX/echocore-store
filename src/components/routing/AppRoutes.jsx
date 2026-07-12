@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from './ProtectedRoute';
+import SiteGate from './SiteGate';
 import LegacyOfferRedirect from './LegacyOfferRedirect';
 import PageLoader from './PageLoader';
 import AllGamesView from '../../views/AllGamesView';
@@ -24,7 +25,9 @@ const DeveloperCreditsView = lazy(() => import('../../views/DeveloperCreditsView
 const RechargeView = lazy(() => import('../../views/RechargeView'));
 const ProfileView = lazy(() => import('../../views/profile/ProfileView'));
 const NotificationsView = lazy(() => import('../../views/NotificationsView'));
+const BannedView = lazy(() => import('../../views/BannedView'));
 const AdminView = lazy(() => import('../../views/admin/AdminView'));
+const AdminGiftView = lazy(() => import('../../views/admin/AdminGiftView'));
 const SuccessView = lazy(() => import('../../views/SuccessView'));
 const NotFoundView = lazy(() => import('../../views/NotFoundView'));
 const PrivacyView = lazy(() => import('../../views/PrivacyView'));
@@ -59,6 +62,8 @@ export default function AppRoutes({
   paymentConfig,
   submitPurchase,
   submitOrder,
+  onOrderPaid,
+  onFulfillOrder,
   handleCheckoutComplete,
   showToast,
   handleAuthLogin,
@@ -69,6 +74,7 @@ export default function AppRoutes({
   updateGame,
   deleteGame,
   handleLiveCatalogUpdate,
+  handleRegionCatalogRefresh,
   notifications,
   unreadCount,
   notificationsLoading,
@@ -76,6 +82,7 @@ export default function AppRoutes({
   handleNotificationMarkRead,
   handleNotificationsMarkAllRead,
   handleNotificationsClearAll,
+  handleNotificationDismiss,
   handleNotificationNavigate,
   handleLogout,
   updateUserProfile,
@@ -94,14 +101,17 @@ export default function AppRoutes({
   handleRejectOrder,
   handleDevBalanceCredited,
   handlePreviewHomepage,
+  handleAdminGiftOrder,
   setAdminEditOffer,
   setAdminEditGame,
   setAdminCarouselOpen,
   setAdminCarouselPickerOpen,
   moveCarouselGame,
+  siteStatus,
 }) {
   return (
     <Suspense fallback={<PageLoader t={t} />}>
+      <SiteGate user={user}>
       <Routes>
         <Route
           path="/"
@@ -254,6 +264,7 @@ export default function AppRoutes({
                 loadingCatalog={loadingGames}
                 currentBalance={user?.balance || 0}
                 onPurchase={submitPurchase}
+                onOrderPaid={onOrderPaid}
                 paymentConfig={paymentConfig}
                 onNotify={showToast}
               />
@@ -298,8 +309,10 @@ export default function AppRoutes({
               loadingGames={loadingGames}
               catalogMode={paymentConfig.g2bulkCatalogMode || 'sync'}
               onLiveCatalogUpdate={handleLiveCatalogUpdate}
+              onRegionCatalogRefresh={handleRegionCatalogRefresh}
               onSelectOffer={openOffer}
               onBuyNow={openBuyOffer}
+              onNotify={showToast}
             />
           )}
         />
@@ -322,6 +335,7 @@ export default function AppRoutes({
             <LoginView
               t={t}
               lang={lang}
+              siteStatus={siteStatus}
               handleAuthLogin={handleAuthLogin}
               handleAuthSignup={handleAuthSignup}
               onLoginSuccess={handleLoginSuccess}
@@ -338,6 +352,8 @@ export default function AppRoutes({
                 t={t}
                 lang={lang}
                 cart={cart}
+                games={games}
+                offers={offers}
                 getCartTotal={getCartTotal}
                 onRemoveItem={removeCartItem}
                 onCheckout={() => navigate('/checkout')}
@@ -354,8 +370,11 @@ export default function AppRoutes({
               <CheckoutView
                 t={t}
                 lang={lang}
+                user={user}
+                navigate={navigate}
                 cart={cart}
                 submitOrder={submitOrder}
+                onOrderPaid={onOrderPaid}
                 onComplete={handleCheckoutComplete}
                 currentBalance={user?.balance || 0}
                 paymentConfig={paymentConfig}
@@ -370,9 +389,9 @@ export default function AppRoutes({
           element={(
             <SuccessView
               navigate={navigate}
-              games={games}
               t={t}
               lang={lang}
+              onFulfillOrder={onFulfillOrder}
             />
           )}
         />
@@ -392,6 +411,7 @@ export default function AppRoutes({
                 onMarkRead={handleNotificationMarkRead}
                 onMarkAllRead={handleNotificationsMarkAllRead}
                 onClearAll={handleNotificationsClearAll}
+                onDismiss={handleNotificationDismiss}
                 onNavigate={handleNotificationNavigate}
               />
             </ProtectedRoute>
@@ -431,6 +451,7 @@ export default function AppRoutes({
                 currentBalance={user?.balance || 0}
                 paymentConfig={paymentConfig}
                 onNotify={showToast}
+                onRechargePaid={handleRechargeApproved}
               />
             </ProtectedRoute>
           )}
@@ -450,6 +471,26 @@ export default function AppRoutes({
               target="buy"
             />
           )}
+        />
+
+        <Route
+          path="/dashboard/gift"
+          element={
+            loadingAuth ? (
+              <PageLoader t={t} />
+            ) : user?.role === 'admin' ? (
+              <AdminGiftView
+                t={t}
+                lang={lang}
+                offers={offers}
+                games={games}
+                onSubmit={handleAdminGiftOrder}
+                onNotify={showToast}
+              />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
         />
 
         <Route
@@ -493,6 +534,18 @@ export default function AppRoutes({
           }
         />
 
+        <Route
+          path="/banned"
+          element={(
+            <BannedView
+              t={t}
+              lang={lang}
+              user={user}
+              onContactSupport={() => navigate('/contact')}
+            />
+          )}
+        />
+
         <Route path="/product" element={<Navigate to="/" replace />} />
 
         <Route
@@ -500,6 +553,7 @@ export default function AppRoutes({
           element={<NotFoundView t={t} lang={lang} navigate={navigate} />}
         />
       </Routes>
+      </SiteGate>
     </Suspense>
   );
 }

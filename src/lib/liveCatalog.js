@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { normalizePullSelection } from './pullCatalogUtils';
 
 async function invokeG2bulk(body) {
   const { data, error } = await supabase.functions.invoke('g2bulk', { body });
@@ -7,8 +8,46 @@ async function invokeG2bulk(body) {
   return data;
 }
 
+export const LIVE_ID_PREFIX = 'live:';
+
 export function isLiveCatalogId(id) {
-  return typeof id === 'string' && id.startsWith('live:');
+  return typeof id === 'string' && id.startsWith(LIVE_ID_PREFIX);
+}
+
+export function parseLiveCatalogId(id) {
+  if (!isLiveCatalogId(id)) return null;
+  const parts = String(id).split(':');
+  if (parts.length < 3) return null;
+  const kind = parts[1];
+  if (kind === 'parent') return { kind: 'parent', baseKey: parts.slice(2).join(':') };
+  if (kind === 'variant') return { kind: 'variant', gameCode: parts.slice(2).join(':') };
+  if (kind === 'topup') return { kind: 'topup', gameCode: parts[2], catalogueName: parts.slice(3).join(':') };
+  if (kind === 'voucher') {
+    const ref = parts[2];
+    const numeric = Number(ref);
+    return { kind: 'voucher', ref, numeric: Number.isFinite(numeric) ? numeric : null };
+  }
+  return { kind, ref: parts.slice(2).join(':') };
+}
+
+export function buildLiveParentId(baseKey) {
+  return `live:parent:${baseKey}`;
+}
+
+export function buildLiveVariantId(gameCode) {
+  return `live:variant:${gameCode}`;
+}
+
+export function buildLiveTopupOfferId(gameCode, catalogueName) {
+  return `live:topup:${gameCode}:${catalogueName}`;
+}
+
+export function buildLiveVoucherGameId(categoryId) {
+  return `live:voucher:${categoryId}`;
+}
+
+export function buildLiveVoucherOfferId(productId) {
+  return `live:voucher:${productId}`;
 }
 
 export async function fetchLiveGameList() {
@@ -60,6 +99,24 @@ export async function fetchLiveFullCatalog() {
   return {
     games: mergeCatalogRows(topupGames, [...giftCards.games, ...gamingAccounts.games]),
     offers: mergeCatalogRows(giftCards.offers, gamingAccounts.offers),
+  };
+}
+
+/** Fetch only the live catalog slices referenced by the current pull selection. */
+export async function fetchLiveCatalogForSelection(pull = {}) {
+  const normalized = normalizePullSelection(pull);
+  const needTopups = normalized.topupLiveBaseKeys.length > 0;
+  const needVouchers = normalized.accountLiveCategoryIds.length > 0
+    || normalized.giftLiveCategoryIds.length > 0;
+
+  const [topupGames, voucherData] = await Promise.all([
+    needTopups ? fetchLiveGameList() : Promise.resolve([]),
+    needVouchers ? fetchLiveVouchers('') : Promise.resolve({ games: [], offers: [] }),
+  ]);
+
+  return {
+    games: mergeCatalogRows(topupGames, voucherData.games || []),
+    offers: voucherData.offers || [],
   };
 }
 

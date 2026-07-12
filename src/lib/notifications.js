@@ -84,6 +84,13 @@ export function formatNotification(item, t = {}, lang = 'ar') {
       body: applyTemplate(t.notifPurchaseCompletedBody, { amount, balance: newBalance }),
       tone: 'success',
     },
+    order_gifted: {
+      title: t.notifOrderGiftedTitle,
+      body: m.giftMessage
+        ? applyTemplate(t.notifOrderGiftedBody, { giftMessage: m.giftMessage })
+        : applyTemplate(t.notifOrderGiftedBodyFallback, { offer: m.offerName || amount }),
+      tone: 'success',
+    },
     delivery_ready: {
       title: t.notifDeliveryReadyTitle,
       body: applyTemplate(t.notifDeliveryReadyBody, { amount }),
@@ -104,11 +111,31 @@ export function formatNotification(item, t = {}, lang = 'ar') {
       body: applyTemplate(t.notifFulfillmentFailedBody, { amount }),
       tone: 'danger',
     },
+    admin_announcement: {
+      title: m.title || t.notifAdminAnnouncementTitle,
+      body: m.body || '',
+      tone: 'info',
+    },
+    admin_warning: {
+      title: m.title || t.notifAdminWarningTitle,
+      body: m.body || '',
+      tone: 'warning',
+    },
+    admin_maintenance_notice: {
+      title: m.title || t.notifAdminMaintenanceTitle,
+      body: m.body || '',
+      tone: 'warning',
+    },
+    account_banned: {
+      title: t.notifAccountBannedTitle,
+      body: applyTemplate(t.notifAccountBannedBody, { reason: m.reason || '' }),
+      tone: 'danger',
+    },
   };
 
   const fallback = {
-    title: lang === 'ar' ? 'إشعار' : 'Notification',
-    body: item?.type || '',
+    title: t.inboxNotificationFallbackTitle,
+    body: item?.type || t.inboxNotificationFallbackBody || '',
     tone: 'info',
   };
 
@@ -132,6 +159,7 @@ export function getNotificationDestination(item, formatted, userRole) {
   if (orderId && (
     item?.type === 'purchase_completed'
     || item?.type === 'order_completed'
+    || item?.type === 'order_gifted'
     || item?.type === 'delivery_ready'
     || item?.type === 'topup_delivered'
     || item?.type === 'order_fulfilled'
@@ -142,11 +170,14 @@ export function getNotificationDestination(item, formatted, userRole) {
   if (item?.type === 'order_payment_sent' || item?.type === 'order_rejected') {
     return { path: '/profile' };
   }
+  if (item?.type === 'account_banned') {
+    return { path: '/banned' };
+  }
+  if (item?.type === 'admin_announcement' || item?.type === 'admin_warning' || item?.type === 'admin_maintenance_notice') {
+    return { path: item?.link || '/notifications' };
+  }
   if (item?.link) {
     return { path: item.link };
-  }
-  if (orderId) {
-    return { path: `/success?orderId=${orderId}` };
   }
   return { path: '/profile' };
 }
@@ -196,6 +227,17 @@ export async function clearAllNotifications() {
     throw error;
   }
   return typeof data === 'number' ? data : 0;
+}
+
+export async function dismissNotification(notificationId) {
+  const { data, error } = await supabase.rpc('dismiss_notification', {
+    p_notification_id: notificationId,
+  });
+  if (error) {
+    if (isMissingRpc(error)) throw new Error(RPC_SETUP_MSG);
+    throw error;
+  }
+  return data === true;
 }
 
 export function subscribeToNotifications(userId, onInsert) {

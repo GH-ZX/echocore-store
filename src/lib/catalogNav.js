@@ -1,38 +1,36 @@
-import { Gamepad2, Ticket, UserCircle } from 'lucide-react';
+import { Gamepad2, Ticket } from 'lucide-react';
 import { CATALOG_SEGMENTS, getGameCatalogSegment } from './catalogSegments';
 import { getGameDisplayName } from './offerDisplay';
 
+/** G2Bulk-aligned storefront lanes: instant top-ups + gift cards/vouchers */
 export const CATALOG_NAV_ITEMS = [
   {
     path: '/games',
     icon: Gamepad2,
-    labelKey: 'allGames',
-    descKey: 'categoryGamesDesc',
-    fallbackEn: 'Games',
-    fallbackAr: 'الألعاب',
+    labelKey: 'g2bulkTopupsNav',
+    descKey: 'g2bulkTopupsDesc',
+    fallbackEn: 'Instant Game Top-Ups',
+    fallbackAr: 'شحن الألعاب الفوري',
     accent: 'games',
+    g2bulkLane: 'topup',
   },
   {
     path: '/gift-cards',
     icon: Ticket,
-    labelKey: 'giftCards',
-    descKey: 'categoryGiftCardsDesc',
-    fallbackEn: 'Gift cards',
-    fallbackAr: 'بطاقات الهدايا',
+    labelKey: 'g2bulkVouchersNav',
+    descKey: 'g2bulkVouchersDesc',
+    fallbackEn: 'Gift Cards & Vouchers',
+    fallbackAr: 'بطاقات الهدايا والقسائم',
     accent: 'gift',
-  },
-  {
-    path: '/accounts',
-    icon: UserCircle,
-    labelKey: 'gamingAccounts',
-    descKey: 'categoryAccountsDesc',
-    fallbackEn: 'Accounts',
-    fallbackAr: 'حسابات الألعاب',
-    accent: 'account',
+    g2bulkLane: 'voucher',
   },
 ];
 
 export const CATALOG_MENU_PATHS = CATALOG_NAV_ITEMS.map((item) => item.path);
+
+export const VOUCHER_FILTER_ALL = 'all';
+export const VOUCHER_FILTER_PLATFORM = 'platform';
+export const VOUCHER_FILTER_GAME = 'game';
 
 export function getCatalogNavLabel(t, lang, item) {
   if (t?.[item.labelKey]) return t[item.labelKey];
@@ -45,13 +43,10 @@ export function getCatalogNavDesc(t, lang, item) {
 }
 
 export function getCatalogNavItemForSegment(segment) {
-  if (segment === CATALOG_SEGMENTS.gamingAccount) {
-    return CATALOG_NAV_ITEMS.find((item) => item.path === '/accounts');
+  if (segment === CATALOG_SEGMENTS.topup) {
+    return CATALOG_NAV_ITEMS.find((item) => item.path === '/games');
   }
-  if (segment === CATALOG_SEGMENTS.giftCard) {
-    return CATALOG_NAV_ITEMS.find((item) => item.path === '/gift-cards');
-  }
-  return CATALOG_NAV_ITEMS.find((item) => item.path === '/games');
+  return CATALOG_NAV_ITEMS.find((item) => item.path === '/gift-cards');
 }
 
 export function getCatalogNavItemForGame(game) {

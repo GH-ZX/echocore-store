@@ -1,11 +1,17 @@
 import React from 'react';
 import AdminEditButton from '../admin/AdminEditButton';
+import AdminOfferCostBadge from '../admin/AdminOfferCostBadge';
 import BorderGlow from './BorderGlow';
+import { getOfferDisplayName } from '../../lib/offerDisplay';
+import { getFulfillmentGameForOffer } from '../../lib/gameRegions';
+import OfferPackLabel from './OfferPackLabel';
 import { presetImageUrl } from '../../lib/imageUtils';
 
 export default function SaleOfferCard({
   offer,
   game,
+  games = [],
+  offers = [],
   t = {},
   lang = 'en',
   onSelectOffer,
@@ -18,7 +24,8 @@ export default function SaleOfferCard({
 
   const isAr = lang === 'ar';
   const gameName = isAr ? game.name_ar : game.name_en;
-  const offerName = isAr ? offer.name_ar : offer.name_en;
+  const fulfillmentGame = getFulfillmentGameForOffer(offer, games) || game;
+  const offerName = getOfferDisplayName(offer, lang, { game: fulfillmentGame, games, relatedOffers: offers });
   const price = parseFloat(offer.price).toFixed(2);
   const originalPrice = offer.original_price ? parseFloat(offer.original_price).toFixed(2) : null;
   const discount =
@@ -83,19 +90,25 @@ export default function SaleOfferCard({
         <p className="text-[11px] sm:text-xs text-[var(--text-muted)] truncate font-medium">
           {gameName}
         </p>
-        <h3 className="font-semibold text-sm sm:text-base leading-snug text-[var(--text-primary)] line-clamp-2 min-h-[2.5rem]">
+        <OfferPackLabel
+          as="h3"
+          className="font-semibold text-sm sm:text-base leading-snug text-[var(--text-primary)] line-clamp-2 min-h-[2.5rem]"
+        >
           {offerName}
-        </h3>
+        </OfferPackLabel>
 
-        <div className="flex items-baseline gap-2 flex-wrap mt-auto pt-1">
-          {offer.is_sale && originalPrice && (
-            <span className="text-xs sm:text-sm line-through text-[var(--text-muted)]">
-              ${originalPrice}
+        <div className="mt-auto pt-1 space-y-1">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            {offer.is_sale && originalPrice && (
+              <span className="text-xs sm:text-sm line-through text-[var(--text-muted)]">
+                ${originalPrice}
+              </span>
+            )}
+            <span className="text-lg sm:text-xl font-black text-[var(--accent)]">
+              ${price}
             </span>
-          )}
-          <span className="text-lg sm:text-xl font-black text-[var(--accent)]">
-            ${price}
-          </span>
+          </div>
+          {isAdmin && <AdminOfferCostBadge offer={offer} t={t} />}
         </div>
 
         <div className="flex gap-2 pt-2">

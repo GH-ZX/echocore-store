@@ -171,12 +171,16 @@ Deno.serve(async (req) => {
   const topupSyncBaseKeys = Array.isArray(pullSelection.topupSyncBaseKeys) ? pullSelection.topupSyncBaseKeys : (
     Array.isArray(pullSelection.topupBaseKeys) ? pullSelection.topupBaseKeys : []
   );
-  const accountCategoryIds = Array.isArray(pullSelection.accountCategoryIds) ? pullSelection.accountCategoryIds : [];
-  const giftCategoryIds = Array.isArray(pullSelection.giftCategoryIds) ? pullSelection.giftCategoryIds : [];
-  const includeGiftCards = giftCategoryIds.length > 0;
+  const accountSyncCategoryIds = Array.isArray(pullSelection.accountSyncCategoryIds)
+    ? pullSelection.accountSyncCategoryIds
+    : (Array.isArray(pullSelection.accountCategoryIds) ? pullSelection.accountCategoryIds : []);
+  const giftSyncCategoryIds = Array.isArray(pullSelection.giftSyncCategoryIds)
+    ? pullSelection.giftSyncCategoryIds
+    : (Array.isArray(pullSelection.giftCategoryIds) ? pullSelection.giftCategoryIds : []);
+  const includeGiftCards = giftSyncCategoryIds.length > 0;
   const hasPullSelection = topupSyncBaseKeys.length > 0
-    || accountCategoryIds.length > 0
-    || giftCategoryIds.length > 0;
+    || accountSyncCategoryIds.length > 0
+    || giftSyncCategoryIds.length > 0;
 
   if (!state?.in_progress && !hasPullSelection) {
     return jsonResponse({ success: true, skipped: true, reason: 'no_pull_selection' });

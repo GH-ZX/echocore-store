@@ -64,3 +64,12 @@ export function sumBalancesAcrossWallets(wallets, currency) {
     return sum + (Number(row?.amount) || 0);
   }, 0);
 }
+
+export const SUPPLIER_SAM_CURRENCIES = ['USD', 'SYP'];
+
+export function getSamSupplierBalanceLines(wallets, currencies = SUPPLIER_SAM_CURRENCIES) {
+  return currencies.map((currency) => ({
+    currency,
+    amount: sumBalancesAcrossWallets(wallets, currency),
+  }));
+}

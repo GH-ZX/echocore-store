@@ -1,19 +1,41 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { g2bulkGetMe } from '../lib/g2bulk';
+import {
+  isWalletCacheStale,
+  readG2bulkWalletCache,
+  writeG2bulkWalletCache,
+} from '../lib/adminWalletCache';
 
-export function useAdminG2bulkWallet(enabled) {
+const DEFAULT_STALE_MS = 3 * 60 * 1000;
+const DEFAULT_POLL_MS = 3 * 60 * 1000;
+
+export function useAdminG2bulkWallet(enabled, {
+  autoFetch = true,
+  cacheKey = null,
+  staleAfterMs = DEFAULT_STALE_MS,
+  pollIntervalMs = DEFAULT_POLL_MS,
+} = {}) {
   const [wallet, setWallet] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [hasFetched, setHasFetched] = useState(false);
+  const refreshInFlight = useRef(false);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async ({ silent = false } = {}) => {
     if (!enabled) {
       setWallet(null);
       setError(null);
+      setHasFetched(false);
       return null;
     }
-    setLoading(true);
-    setError(null);
+    if (refreshInFlight.current) return null;
+
+    refreshInFlight.current = true;
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
+
     try {
       const me = await g2bulkGetMe();
       const next = {
@@ -22,19 +44,69 @@ export function useAdminG2bulkWallet(enabled) {
         userId: me.user_id ?? null,
       };
       setWallet(next);
+      setError(null);
+      setHasFetched(true);
+      if (cacheKey) {
+        writeG2bulkWalletCache(cacheKey, { wallet: next, error: null });
+      }
       return next;
     } catch (err) {
-      setError(err.message || 'Failed to load G2Bulk wallet');
-      setWallet(null);
+      const message = err.message || 'Failed to load G2Bulk wallet';
+      if (!silent) {
+        setError(message);
+        setWallet(null);
+      }
+      setHasFetched(true);
+      if (cacheKey && !silent) {
+        writeG2bulkWalletCache(cacheKey, { wallet: null, error: message });
+      }
       return null;
     } finally {
-      setLoading(false);
+      refreshInFlight.current = false;
+      if (!silent) setLoading(false);
     }
-  }, [enabled]);
+  }, [enabled, cacheKey]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (!enabled) {
+      setWallet(null);
+      setError(null);
+      setHasFetched(false);
+      setLoading(false);
+      return undefined;
+    }
 
-  return { wallet, loading, error, refresh };
+    let hydrated = false;
+    if (cacheKey) {
+      const cached = readG2bulkWalletCache(cacheKey);
+      if (cached) {
+        setWallet(cached.wallet);
+        setError(cached.error);
+        setHasFetched(true);
+        hydrated = true;
+        if (cached.error && !cached.wallet) {
+          /* keep error from last manual fetch */
+        }
+      }
+    }
+
+    if (autoFetch) {
+      refresh();
+      return undefined;
+    }
+
+    if (hydrated && cacheKey && isWalletCacheStale(readG2bulkWalletCache(cacheKey)?.fetchedAt, staleAfterMs)) {
+      refresh({ silent: true });
+    }
+
+    if (!pollIntervalMs || pollIntervalMs <= 0) return undefined;
+
+    const timer = window.setInterval(() => {
+      refresh({ silent: true });
+    }, pollIntervalMs);
+
+    return () => window.clearInterval(timer);
+  }, [enabled, autoFetch, cacheKey, staleAfterMs, pollIntervalMs, refresh]);
+
+  return { wallet, loading, error, refresh, hasFetched };
 }

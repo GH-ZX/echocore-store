@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { mapProfileBanFields } from './userBan'
 
 // Vite exposes env vars with VITE_ prefix via import.meta.env
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
@@ -48,7 +49,6 @@ export const resolveUserData = async (authUser, { createIfMissing = false } = {}
       .insert({
         id: authUser.id,
         role: 'user',
-        name: authUser.email?.split('@')[0] || 'User',
         balance: 0,
       })
       .select()
@@ -69,7 +69,9 @@ export const resolveUserData = async (authUser, { createIfMissing = false } = {}
   return {
     id: authUser.id,
     email: authUser.email,
-    name: profile.name || authUser.email?.split('@')[0] || 'User',
+    username: profile.username || '',
+    username_changed_at: profile.username_changed_at || null,
+    name: profile.name || profile.username || authUser.email?.split('@')[0] || 'User',
     role: profile.role || 'user',
     balance: profile.balance ?? 0,
     avatar_url: profile.avatar_url || '',
@@ -79,5 +81,9 @@ export const resolveUserData = async (authUser, { createIfMissing = false } = {}
     favorite_game: profile.favorite_game || '',
     discord_username: profile.discord_username || '',
     default_player_uid: profile.default_player_uid || '',
+    game_player_uids: profile.game_player_uids && typeof profile.game_player_uids === 'object'
+      ? profile.game_player_uids
+      : {},
+    ...mapProfileBanFields(profile),
   }
 }

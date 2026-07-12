@@ -1,19 +1,25 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { ArrowLeft, Loader2, CheckCircle, User, Server, QrCode, Clock, Ticket, Zap } from 'lucide-react';
+import { ArrowLeft, Loader2, CheckCircle, User, Server, QrCode, Clock, Ticket, Zap, Gift } from 'lucide-react';
 import { isVoucherGame } from '../lib/catalogUtils';
 import {
   buildPaymentMethods,
   getDefaultPaymentMethod,
   getManualPaymentDisplay,
   isManualWalletMethod,
+  isApiWalletMethod,
   isPaymentMethodReady,
   hasAnyManualWalletReady,
 } from '../lib/paymentMethods';
+import SamInvoicePaymentPanel from '../components/SamInvoicePaymentPanel';
 import { formatMessage } from '../lib/i18n';
 import { markOrderPaymentSent } from '../lib/orders';
+import { getOfferDisplayName } from '../lib/offerDisplay';
 import { resolveOfferRoute } from '../lib/offerRoutes';
 import { brandUserText } from '../lib/branding';
+import { getSavedGamePlayerEntry } from '../lib/gamePlayerUid';
+import { getAdminGiftPath } from '../lib/adminRoutes';
+import { getGameOfferPath } from '../lib/offerRoutes';
 
 export default function BuyView({
   t = {},
@@ -26,6 +32,7 @@ export default function BuyView({
   onPurchase,
   paymentConfig = {},
   onNotify,
+  onOrderPaid,
   loadingCatalog = false,
 }) {
   const notifyError = (message) => onNotify?.(message, 'error');
@@ -80,6 +87,22 @@ export default function BuyView({
     }
   }, [paymentMethods, selectedMethod, usableMethods, hasEnough, isValidOffer]);
 
+  const savedGamePlayer = useMemo(
+    () => (isValidOffer && showUidForm ? getSavedGamePlayerEntry(user?.game_player_uids, game) : { uid: '', server: '' }),
+    [isValidOffer, showUidForm, user?.game_player_uids, game],
+  );
+
+  useEffect(() => {
+    if (!isValidOffer || !showUidForm || !game) return;
+    const saved = getSavedGamePlayerEntry(user?.game_player_uids, game);
+    if (saved.uid) {
+      setPlayerUid((prev) => prev.trim() || saved.uid);
+    }
+    if (saved.server) {
+      setPlayerServer((prev) => prev.trim() || saved.server);
+    }
+  }, [isValidOffer, showUidForm, game, user?.game_player_uids]);
+
   if (catalogLoading) {
     return (
       <div className="max-w-2xl mx-auto py-20 text-center text-[var(--text-sec)]">
@@ -98,6 +121,35 @@ export default function BuyView({
     );
   }
 
+  if (user?.role === 'admin') {
+    const gamePath = `/game/${game.slug || game.id}`;
+    const giftPath = getAdminGiftPath({
+      offerId: offer.id,
+      returnTo: getGameOfferPath(offer, games),
+    });
+    return (
+      <div className="max-w-xl mx-auto mt-6 px-2 animate-fade-in">
+        <button
+          type="button"
+          onClick={() => navigate(gamePath)}
+          className="flex items-center gap-2 mb-4 text-sm text-[var(--text-sec)] hover:text-white"
+        >
+          <ArrowLeft className="w-4 h-4" /> {t.back}
+        </button>
+        <div className="card p-8 text-center border border-pink-500/20 bg-pink-500/5">
+          <Gift className="w-12 h-12 mx-auto text-pink-300 mb-4" />
+          <h1 className="text-2xl font-black mb-2">{t.adminCannotPurchaseTitle}</h1>
+          <p className="text-sm text-[var(--text-sec)] leading-relaxed max-w-md mx-auto">
+            {t.adminCannotPurchaseDesc}
+          </p>
+          <button type="button" onClick={() => navigate(giftPath)} className="btn btn-primary mt-6">
+            {t.giftOffer}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const currentMethod = paymentMethods.find((m) => m.id === selectedMethod) || usableMethods[0];
 
   const playerInfo = {
@@ -109,6 +161,7 @@ export default function BuyView({
   const isServerComplete = availableServers.length === 0 || (playerServer && playerServer.trim().length > 0);
   const canProceed = isUidComplete && isServerComplete && !!currentMethod;
   const isManualWallet = isManualWalletMethod(selectedMethod);
+  const isApiWallet = isApiWalletMethod(selectedMethod, paymentConfig);
   const methodReady = isPaymentMethodReady(selectedMethod, paymentConfig);
   const paymentDisplay = getManualPaymentDisplay(paymentConfig, selectedMethod);
   const methodLabel = t[paymentDisplay.methodLabelKey] || selectedMethod;
@@ -150,6 +203,8 @@ export default function BuyView({
           reference: result.reference,
           total: price,
           status: result.status || 'pending_payment',
+          invoice: result.invoice || null,
+          paymentMethod: selectedMethod,
         });
         setStep(result.status === 'payment_sent' ? 'pending' : 'payment');
       }
@@ -176,10 +231,26 @@ export default function BuyView({
     }
   };
 
-  const name = brandUserText(lang === 'ar' ? offer.name_ar : offer.name_en);
+  const name = getOfferDisplayName(offer, lang, { game, games, relatedOffers: offers });
   const regionLabel = game?.region_label || offer?.region || null;
   const gameName = brandUserText(lang === 'ar' ? game.name_ar : game.name_en);
   const purchaseSubtitle = regionLabel ? `${gameName} (${regionLabel}) • ${name}` : `${gameName} • ${name}`;
+
+  const activePaymentMethod = activeOrder?.paymentMethod || selectedMethod;
+  const activeIsApiWallet = isApiWalletMethod(activePaymentMethod, paymentConfig);
+  const activePaymentDisplay = getManualPaymentDisplay(paymentConfig, activePaymentMethod);
+  const activeMethodLabel = t[activePaymentDisplay.methodLabelKey] || activePaymentMethod;
+
+  const handleInvoicePaid = async () => {
+    const orderId = activeOrder?.orderId;
+    if (!orderId) return;
+    try {
+      await onOrderPaid?.(orderId);
+    } catch {
+      /* fulfillment errors surfaced elsewhere */
+    }
+    navigate(`/success?orderId=${orderId}`);
+  };
 
   if (step === 'payment' || step === 'pending') {
     return (
@@ -194,8 +265,8 @@ export default function BuyView({
 
         <div className="card p-8">
           <div className="mb-6 text-center">
-            <div className="text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">{methodLabel}</div>
-            <h1 className="text-2xl font-black">{formatMessage(t.completeWalletPayment, { method: methodLabel })}</h1>
+            <div className="text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">{activeMethodLabel}</div>
+            <h1 className="text-2xl font-black">{formatMessage(t.completeWalletPayment, { method: activeMethodLabel })}</h1>
             <p className="mt-1 text-[var(--text-sec)]">{purchaseSubtitle}</p>
           </div>
 
@@ -204,69 +275,86 @@ export default function BuyView({
             <div className="text-4xl font-black font-mono text-[var(--accent)]">
               ${activeOrder?.total != null ? parseFloat(activeOrder.total).toFixed(2) : total}
             </div>
-            <div className="text-xs text-[var(--text-sec)] mt-1">{paymentDisplay.merchantName}</div>
-          </div>
-
-          <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-5 text-center mb-5">
-            <div className="flex items-center justify-center gap-2 text-green-400 text-sm font-semibold mb-4">
-              <QrCode className="w-4 h-4" />
-              {methodLabel}
-            </div>
-
-            {paymentDisplay.qrImageUrl ? (
-              <img
-                src={paymentDisplay.qrImageUrl}
-                alt=""
-                className="mx-auto max-w-[220px] w-full rounded-xl border border-[var(--border)] bg-white p-2"
-              />
-            ) : (
-              <div className="py-10 text-sm text-[var(--text-muted)]">{t.qrNotConfigured}</div>
-            )}
-
-            {paymentDisplay.payCode && (
-              <div className="mt-4">
-                <div className="text-xs text-[var(--text-muted)] mb-1">
-                  {t.shamcashPayCodeLabel}
-                </div>
-                <div className="font-mono text-lg tracking-wide break-all text-[var(--text-primary)] bg-black/30 rounded-xl px-4 py-3">
-                  {paymentDisplay.payCode}
-                </div>
-              </div>
+            {!activeIsApiWallet && (
+              <div className="text-xs text-[var(--text-sec)] mt-1">{activePaymentDisplay.merchantName}</div>
             )}
           </div>
 
-          <div className="rounded-2xl border border-[var(--border)] bg-black/40 p-4 text-center mb-5">
-            <div className="text-green-400 text-xs mb-1 uppercase tracking-wider">
-              {t.paymentReference}
-            </div>
-            <div className="font-mono text-lg tracking-wider">{activeOrder?.reference || '—'}</div>
-            <p className="text-xs text-[var(--text-muted)] mt-2">
-              {t.includeReferenceNote}
-            </p>
-          </div>
-
-          {step === 'payment' ? (
-            <button
-              type="button"
-              onClick={confirmPaymentSent}
-              disabled={isProcessing}
-              className="btn btn-primary w-full py-4 font-bold flex items-center justify-center gap-2"
-            >
-              {isProcessing ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> {t.processing}</>
-              ) : (
-                t.confirmPaymentSent
-              )}
-            </button>
+          {activeIsApiWallet && activeOrder?.invoice ? (
+            <SamInvoicePaymentPanel
+              t={t}
+              lang={lang}
+              total={activeOrder.total}
+              methodLabel={activeMethodLabel}
+              invoice={activeOrder.invoice}
+              onPaid={handleInvoicePaid}
+              onExpired={() => { setStep('details'); setActiveOrder(null); }}
+              onNotify={onNotify}
+            />
           ) : (
-            <div className="text-center py-4 rounded-2xl border border-amber-500/30 bg-amber-500/10">
-              <Clock className="w-8 h-8 mx-auto text-amber-300 mb-2" />
-              <div className="font-bold text-amber-100">{t.awaitingAdminApproval}</div>
-              <p className="text-xs text-[var(--text-sec)] mt-2 max-w-sm mx-auto">
-                {t.orderPendingDesc}
-              </p>
-              <CheckCircle className="w-5 h-5 mx-auto text-emerald-400 mt-3" />
-            </div>
+            <>
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-5 text-center mb-5">
+                <div className="flex items-center justify-center gap-2 text-green-400 text-sm font-semibold mb-4">
+                  <QrCode className="w-4 h-4" />
+                  {activeMethodLabel}
+                </div>
+
+                {activePaymentDisplay.qrImageUrl ? (
+                  <img
+                    src={activePaymentDisplay.qrImageUrl}
+                    alt=""
+                    className="mx-auto max-w-[220px] w-full rounded-xl border border-[var(--border)] bg-white p-2"
+                  />
+                ) : (
+                  <div className="py-10 text-sm text-[var(--text-muted)]">{t.qrNotConfigured}</div>
+                )}
+
+                {activePaymentDisplay.payCode && (
+                  <div className="mt-4">
+                    <div className="text-xs text-[var(--text-muted)] mb-1">
+                      {t.shamcashPayCodeLabel}
+                    </div>
+                    <div className="font-mono text-lg tracking-wide break-all text-[var(--text-primary)] bg-black/30 rounded-xl px-4 py-3">
+                      {activePaymentDisplay.payCode}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-[var(--border)] bg-black/40 p-4 text-center mb-5">
+                <div className="text-green-400 text-xs mb-1 uppercase tracking-wider">
+                  {t.paymentReference}
+                </div>
+                <div className="font-mono text-lg tracking-wider">{activeOrder?.reference || '—'}</div>
+                <p className="text-xs text-[var(--text-muted)] mt-2">
+                  {formatMessage(t.includeReferenceNoteMethod, { method: activeMethodLabel })}
+                </p>
+              </div>
+
+              {step === 'payment' ? (
+                <button
+                  type="button"
+                  onClick={confirmPaymentSent}
+                  disabled={isProcessing}
+                  className="btn btn-primary w-full py-4 font-bold flex items-center justify-center gap-2"
+                >
+                  {isProcessing ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> {t.processing}</>
+                  ) : (
+                    t.confirmPaymentSent
+                  )}
+                </button>
+              ) : (
+                <div className="text-center py-4 rounded-2xl border border-amber-500/30 bg-amber-500/10">
+                  <Clock className="w-8 h-8 mx-auto text-amber-300 mb-2" />
+                  <div className="font-bold text-amber-100">{t.awaitingAdminApproval}</div>
+                  <p className="text-xs text-[var(--text-sec)] mt-2 max-w-sm mx-auto">
+                    {t.orderPendingDesc}
+                  </p>
+                  <CheckCircle className="w-5 h-5 mx-auto text-emerald-400 mt-3" />
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -363,6 +451,9 @@ export default function BuyView({
                 placeholder={t.enterUid}
                 className="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 text-lg font-mono focus:border-[var(--accent)] outline-none"
               />
+              {savedGamePlayer.uid && (
+                <p className="text-[10px] text-[var(--text-muted)] mt-1.5">{t.gameUidAutofillHint}</p>
+              )}
             </div>
           )}
 
@@ -476,9 +567,14 @@ export default function BuyView({
           )}
         </button>
 
-        {isManualWallet && (
+        {isManualWallet && !isApiWallet && (
           <div className="text-center text-[10px] mt-4 text-[var(--text-muted)]">
             {t.orderManualNote}
+          </div>
+        )}
+        {isApiWallet && (
+          <div className="text-center text-[10px] mt-4 text-[var(--text-muted)]">
+            {t.samInvoiceCheckoutNote}
           </div>
         )}
         {!isManualWallet && (

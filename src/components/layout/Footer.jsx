@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import EchoLogo from '../ui/EchoLogo';
 import SocialLinkIcon from '../social/SocialLinkIcon';
-import { APP_VERSION } from '../../lib/buildInfo';
+import { APP_VERSION, DEVELOPER_PAGE_PATH } from '../../lib/buildInfo';
 import { followUsOnLabel, formatMessage } from '../../lib/i18n';
 import { LINKTREE_PATH, SOCIAL_LINKS } from '../../lib/socialLinks';
 
@@ -87,7 +87,15 @@ export default function Footer({ lang = 'en', t = {} }) {
         </div>
 
         <div className="mt-10 pt-6 border-t border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-y-3 text-xs text-[var(--text-muted)]">
-          <p>{copyright}</p>
+          <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3">
+            <p>{copyright}</p>
+            <Link
+              to={DEVELOPER_PAGE_PATH}
+              className="inline-flex items-center rounded-full border border-[var(--border)]/50 bg-[var(--bg-surface)]/30 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-[var(--text-muted)] hover:border-[var(--accent)]/40 hover:text-[var(--accent)] transition-colors"
+            >
+              {t.footerCodedByGh}
+            </Link>
+          </div>
           <div className="flex items-center gap-x-5">
             <Link to="/privacy" className="hover:text-[var(--text-secondary)] transition-colors">{t.footerLinkPrivacy}</Link>
             <Link to="/terms" className="hover:text-[var(--text-secondary)] transition-colors">{t.footerLinkTerms}</Link>

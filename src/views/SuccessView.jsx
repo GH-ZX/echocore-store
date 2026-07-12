@@ -1,12 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Copy, Check, Loader2, Receipt, KeyRound, UserRound } from 'lucide-react';
+import {
+  Copy,
+  Check,
+  Loader2,
+  Receipt,
+  KeyRound,
+  UserRound,
+  Clock,
+  XCircle,
+  AlertTriangle,
+  Gift,
+} from 'lucide-react';
 import { supabase } from '../lib/supabase';
-
-function shortOrderId(id) {
-  if (!id) return '';
-  return id.slice(0, 8).toUpperCase();
-}
+import {
+  formatOrderDisplayId,
+  extractDeliveryCodes,
+  getOrderReceiptPresentation,
+  getOrderStatusLabel,
+  shouldTriggerFulfillment,
+  isOrderPaid,
+} from '../lib/orderReceipt';
 
 async function copyText(text) {
   if (!text) return false;
@@ -18,13 +32,49 @@ async function copyText(text) {
   }
 }
 
-export default function SuccessView({ navigate, games: _games = [], t = {}, lang = 'ar' }) {
+const TONE_STYLES = {
+  success: {
+    card: 'border-emerald-500/20 bg-emerald-500/5',
+    iconWrap: 'bg-emerald-500/15 text-emerald-400',
+    label: 'text-emerald-400/90',
+  },
+  warning: {
+    card: 'border-amber-500/25 bg-amber-500/5',
+    iconWrap: 'bg-amber-500/15 text-amber-300',
+    label: 'text-amber-300/90',
+  },
+  danger: {
+    card: 'border-red-500/25 bg-red-500/5',
+    iconWrap: 'bg-red-500/15 text-red-300',
+    label: 'text-red-300/90',
+  },
+  info: {
+    card: 'border-[var(--border)] bg-[var(--bg-surface)]/40',
+    iconWrap: 'bg-[var(--accent)]/15 text-[var(--accent)]',
+    label: 'text-[var(--text-muted)]',
+  },
+};
+
+function HeaderIcon({ tone, fulfillmentFailed }) {
+  if (tone === 'danger') return <XCircle className="w-7 h-7" strokeWidth={2} />;
+  if (tone === 'warning') return <Clock className="w-7 h-7" strokeWidth={2} />;
+  if (fulfillmentFailed) return <AlertTriangle className="w-7 h-7" strokeWidth={2} />;
+  return <Receipt className="w-7 h-7" strokeWidth={2} />;
+}
+
+export default function SuccessView({
+  navigate,
+  t = {},
+  lang = 'ar',
+  onFulfillOrder,
+}) {
   const [searchParams] = useSearchParams();
   const orderId = searchParams.get('orderId');
   const [orderDetails, setOrderDetails] = useState(null);
   const [orderItems, setOrderItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [copiedKey, setCopiedKey] = useState(null);
+  const fulfillStarted = useRef(false);
 
   const loadOrder = useCallback(async () => {
     if (!orderId) return null;
@@ -33,7 +83,7 @@ export default function SuccessView({ navigate, games: _games = [], t = {}, lang
       .from('orders')
       .select('*')
       .eq('id', orderId)
-      .single();
+      .maybeSingle();
 
     const { data: items } = await supabase
       .from('order_items')
@@ -59,11 +109,12 @@ export default function SuccessView({ navigate, games: _games = [], t = {}, lang
         const result = await loadOrder();
         if (cancelled || !result?.order) return;
 
-        const status = result.order.fulfillment_status;
-        const codes = (result.items || []).flatMap((item) => (
-          Array.isArray(item.delivery_items) ? item.delivery_items : []
-        ));
-        const shouldPoll = status === 'fulfilling' && codes.length === 0;
+        const codes = extractDeliveryCodes(result.items);
+        const fs = result.order.fulfillment_status;
+        const shouldPoll = isOrderPaid(result.order)
+          && (fs === 'fulfilling' || (fs === 'pending' && codes.length === 0))
+          && codes.length === 0
+          && !result.items.some((item) => item.player_uid);
 
         if (shouldPoll) {
           pollTimer = setTimeout(run, 3000);
@@ -84,6 +135,19 @@ export default function SuccessView({ navigate, games: _games = [], t = {}, lang
     };
   }, [orderId, loadOrder]);
 
+  useEffect(() => {
+    if (!orderDetails || !orderId || fulfillStarted.current) return;
+    if (!shouldTriggerFulfillment(orderDetails) || !onFulfillOrder) return;
+
+    fulfillStarted.current = true;
+    onFulfillOrder(orderId)
+      .then(() => loadOrder())
+      .catch((err) => {
+        console.error('Order fulfillment:', err);
+        fulfillStarted.current = false;
+      });
+  }, [orderDetails, orderId, onFulfillOrder, loadOrder]);
+
   const handleCopy = async (text, key) => {
     const ok = await copyText(text);
     if (!ok) return;
@@ -103,8 +167,10 @@ export default function SuccessView({ navigate, games: _games = [], t = {}, lang
   if (!orderDetails) {
     return (
       <div className="max-w-3xl mx-auto p-6 text-center">
-        <p className="text-xl text-[var(--text-sec)]">{t.orderNotFound || (lang === 'ar' ? 'الطلب غير موجود.' : 'Order not found.')}</p>
-        <button type="button" onClick={() => navigate('/')} className="btn btn-secondary mt-4">{t.backToHome}</button>
+        <p className="text-xl text-[var(--text-sec)]">{t.orderNotFound}</p>
+        <button type="button" onClick={() => navigate('/')} className="btn btn-secondary mt-4">
+          {t.backToHome}
+        </button>
       </div>
     );
   }
@@ -113,56 +179,88 @@ export default function SuccessView({ navigate, games: _games = [], t = {}, lang
   const playerUid = firstItem.player_uid;
   const playerServer = firstItem.player_server;
   const hasUid = !!playerUid;
-
-  const deliveryCodes = orderItems.flatMap((item) => {
-    if (!item.delivery_items) return [];
-    return Array.isArray(item.delivery_items) ? item.delivery_items : [];
-  });
+  const deliveryCodes = extractDeliveryCodes(orderItems);
   const hasCodes = deliveryCodes.length > 0;
-  const isArabic = lang === 'ar';
-  const fulfillmentStatus = orderDetails.fulfillment_status;
-  const isFulfilling = fulfillmentStatus === 'fulfilling' && !hasCodes && !hasUid;
+  const fulfillmentStatus = orderDetails.fulfillment_status || 'pending';
+  const presentation = getOrderReceiptPresentation(orderDetails, t);
+  const tone = presentation.tone;
+  const toneStyle = TONE_STYLES[tone] || TONE_STYLES.info;
+  const fulfillmentFailed = isOrderPaid(orderDetails) && fulfillmentStatus === 'failed';
+  const isPreparingCodes = isOrderPaid(orderDetails)
+    && !hasCodes
+    && !hasUid
+    && (fulfillmentStatus === 'fulfilling' || fulfillmentStatus === 'pending');
+  const showTopupDetails = isOrderPaid(orderDetails) && hasUid;
   const allCodesText = deliveryCodes.join('\n');
 
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 animate-fade-in">
-      <div className="card p-6 sm:p-8 mb-6 border border-emerald-500/20 bg-emerald-500/5">
+      <div className={`card p-6 sm:p-8 mb-6 border ${toneStyle.card}`}>
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 flex-shrink-0">
-            <Receipt className="w-7 h-7" strokeWidth={2} />
+          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 ${toneStyle.iconWrap}`}>
+            <HeaderIcon tone={tone} fulfillmentFailed={fulfillmentFailed} />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs uppercase tracking-wider text-emerald-400/90 font-bold mb-1">
-              {isArabic ? 'إيصال الشراء' : 'Purchase receipt'}
+            <p className={`text-xs uppercase tracking-wider font-bold mb-1 ${toneStyle.label}`}>
+              {t.orderReceiptLabel}
             </p>
-            <h1 className="text-2xl sm:text-3xl font-black">{t.successMsg}</h1>
-            <p className="text-[var(--text-sec)] text-sm mt-1">
-              {isArabic
-                ? `رقم الطلب #${shortOrderId(orderDetails.id)} — تم حفظ طلبك بنجاح.`
-                : `Order #${shortOrderId(orderDetails.id)} — your order was saved successfully.`}
+            <h1 className="text-2xl sm:text-3xl font-black">{presentation.title}</h1>
+            <p className="text-[var(--text-sec)] text-sm mt-1">{presentation.subtitle}</p>
+            <p className="text-xs text-[var(--text-muted)] mt-2 font-mono">
+              #{formatOrderDisplayId(orderDetails)}
             </p>
           </div>
         </div>
       </div>
 
+      {orderDetails.payment_method === 'admin_gift' && orderDetails.gift_message && (
+        <div className="card p-6 mb-6 border border-pink-500/25 bg-gradient-to-br from-pink-500/10 via-[var(--bg-surface)] to-violet-500/5">
+          <div className="flex items-start gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-pink-500/15 text-pink-300 flex items-center justify-center shrink-0">
+              <Gift className="w-6 h-6" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs uppercase tracking-wider font-bold text-pink-200/80 mb-1">
+                {t.giftMessageLabel}
+              </div>
+              <p className="text-base sm:text-lg font-semibold leading-relaxed text-white/95 whitespace-pre-wrap">
+                {orderDetails.gift_message}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="card p-6 mb-6">
         <h2 className="font-bold text-lg mb-4">{t.orderInfo}</h2>
         <div className="grid sm:grid-cols-2 gap-3 text-sm">
           <div className="rounded-xl border border-[var(--border)] p-3">
-            <div className="text-[var(--text-muted)] text-xs mb-1">{isArabic ? 'رقم الطلب' : 'Order ID'}</div>
+            <div className="text-[var(--text-muted)] text-xs mb-1">{t.orderIdLabel}</div>
             <div className="font-mono text-xs break-all">{orderDetails.id}</div>
           </div>
           <div className="rounded-xl border border-[var(--border)] p-3">
             <div className="text-[var(--text-muted)] text-xs mb-1">{t.total}</div>
-            <div className="font-bold text-lg text-[var(--accent)]">${parseFloat(orderDetails.total).toFixed(2)}</div>
+            <div className="font-bold text-lg text-[var(--accent)]">
+              ${parseFloat(orderDetails.total).toFixed(2)}
+            </div>
           </div>
           <div className="rounded-xl border border-[var(--border)] p-3">
-            <div className="text-[var(--text-muted)] text-xs mb-1">{isArabic ? 'طريقة الدفع' : 'Payment'}</div>
-            <div>{orderDetails.payment_method === 'balance' ? (t.payFromBalance || 'Balance') : orderDetails.payment_method}</div>
+            <div className="text-[var(--text-muted)] text-xs mb-1">{t.orderPaymentMethodLabel}</div>
+            <div>
+              {orderDetails.payment_method === 'balance'
+                ? t.payFromBalance
+                : orderDetails.payment_method === 'admin_gift'
+                  ? t.orderPaymentGift
+                  : orderDetails.payment_method}
+            </div>
           </div>
           <div className="rounded-xl border border-[var(--border)] p-3">
+            <div className="text-[var(--text-muted)] text-xs mb-1">{t.orderStatusLabel}</div>
+            <div>{getOrderStatusLabel(orderDetails.status, t)}</div>
+          </div>
+          <div className="rounded-xl border border-[var(--border)] p-3 sm:col-span-2">
             <div className="text-[var(--text-muted)] text-xs mb-1">{t.date}</div>
-            <div>{new Date(orderDetails.created_at).toLocaleString()}</div>
+            <div>{new Date(orderDetails.created_at).toLocaleString(lang === 'ar' ? 'ar-SY' : 'en-US')}</div>
           </div>
         </div>
       </div>
@@ -172,9 +270,14 @@ export default function SuccessView({ navigate, games: _games = [], t = {}, lang
         {orderItems.length > 0 ? (
           <div className="space-y-2">
             {orderItems.map((item) => (
-              <div key={item.id || `${item.name_snapshot}-${item.price}`} className="flex justify-between text-sm py-2 border-b border-[var(--border)] last:border-0">
+              <div
+                key={item.id || `${item.name_snapshot}-${item.price}`}
+                className="flex justify-between text-sm py-2 border-b border-[var(--border)] last:border-0"
+              >
                 <span>{item.name_snapshot}</span>
-                <span className="font-mono">${parseFloat(item.price).toFixed(2)} × {item.quantity || 1}</span>
+                <span className="font-mono">
+                  ${parseFloat(item.price).toFixed(2)} × {item.quantity || 1}
+                </span>
               </div>
             ))}
           </div>
@@ -196,9 +299,7 @@ export default function SuccessView({ navigate, games: _games = [], t = {}, lang
                 onClick={() => handleCopy(allCodesText, 'all')}
                 className="btn btn-secondary text-xs py-2 px-3"
               >
-                {copiedKey === 'all'
-                  ? (isArabic ? 'تم النسخ' : 'Copied')
-                  : (isArabic ? 'نسخ الكل' : 'Copy all')}
+                {copiedKey === 'all' ? t.copied : t.copyAllCodes}
               </button>
             )}
           </div>
@@ -206,15 +307,21 @@ export default function SuccessView({ navigate, games: _games = [], t = {}, lang
             {deliveryCodes.map((code, idx) => (
               <div key={`${code}-${idx}`} className="bg-[var(--bg-primary)] p-4 rounded-xl flex items-center gap-3">
                 <div className="flex-1 min-w-0 text-center sm:text-left">
-                  <div className="text-xl sm:text-2xl font-mono tracking-wide text-[var(--accent)] break-all">{code}</div>
+                  <div className="text-xl sm:text-2xl font-mono tracking-wide text-[var(--accent)] break-all">
+                    {code}
+                  </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => handleCopy(code, `code-${idx}`)}
                   className="header-btn header-btn-icon flex-shrink-0"
-                  title={isArabic ? 'نسخ' : 'Copy'}
+                  title={t.copyCode}
                 >
-                  {copiedKey === `code-${idx}` ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  {copiedKey === `code-${idx}` ? (
+                    <Check className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <Copy className="w-4 h-4" />
+                  )}
                 </button>
               </div>
             ))}
@@ -223,7 +330,7 @@ export default function SuccessView({ navigate, games: _games = [], t = {}, lang
         </div>
       )}
 
-      {hasUid && (
+      {showTopupDetails && (
         <div className="card p-6 mb-6 border border-emerald-500/25 bg-emerald-500/5">
           <h2 className="font-bold text-lg mb-3 flex items-center gap-2 text-emerald-400">
             <UserRound className="w-5 h-5" />
@@ -246,24 +353,22 @@ export default function SuccessView({ navigate, games: _games = [], t = {}, lang
         </div>
       )}
 
-      {isFulfilling && (
+      {isPreparingCodes && (
         <div className="card p-6 mb-6 text-center text-[var(--text-sec)]">
           <Loader2 className="w-6 h-6 animate-spin text-[var(--accent)] mx-auto mb-2" />
-          {isArabic ? 'جاري تجهيز الكود — سيتم التحديث تلقائياً.' : 'Preparing your code — updating automatically.'}
+          <p>{t.orderPreparingCodes}</p>
         </div>
       )}
 
-      {!hasUid && !hasCodes && fulfillmentStatus === 'failed' && (
+      {fulfillmentFailed && (
         <div className="card p-6 mb-6 text-center border border-red-500/30 bg-red-500/5 text-red-300">
-          {isArabic
-            ? 'تعذر تجهيز الطلب تلقائياً. تواصل مع الدعم مع رقم الطلب أعلاه.'
-            : 'Auto-fulfillment failed. Contact support with your order ID above.'}
+          <p>{t.orderFulfillmentFailedSupport}</p>
         </div>
       )}
 
       <div className="flex flex-col sm:flex-row gap-3 justify-center">
         <button type="button" onClick={() => navigate('/profile')} className="btn btn-secondary px-6 py-3">
-          {isArabic ? 'طلباتي' : 'My orders'}
+          {t.myOrdersLink}
         </button>
         <button type="button" onClick={() => navigate('/')} className="btn btn-primary px-8 py-3">
           {t.backToHomeSuccess || t.backToHome}

@@ -8,27 +8,39 @@ import {
   markPasswordRecoveryPending,
 } from './lib/auth';
 import { supabase, resolveUserData } from './lib/supabase';
+import { fetchAdminProfileSummaries } from './lib/adminModeration';
 import { createOrderAtomic, confirmOrderPayment, rejectOrderPayment } from './lib/orders';
+import { adminGiftOrder } from './lib/adminGifts';
+import { mergeGamePlayerUidIntoProfile } from './lib/gamePlayerUid';
 import { fulfillOrderG2bulk } from './lib/g2bulk';
+import { createOrderInvoice } from './lib/samApi';
+import { isApiWalletMode, isManualWalletMethod } from './lib/paymentMethods';
 import {
-  ensureCatalogItems,
-  fetchLiveFullCatalog,
-  isLiveCatalogId,
+  fetchLiveCatalogForSelection,
   mergeCatalogRows,
 } from './lib/liveCatalog';
+import { refreshGameRegionOffers } from './lib/catalogOffers';
+import { resolveOffersForCheckout } from './lib/catalogPurchase';
 import { syncCartWithOffers, pickCartSnapshot, cartsAreEquivalent, getCartLineKey } from './lib/cartUtils';
 import ScrollToTop from './components/routing/ScrollToTop';
 import AppRoutes from './components/routing/AppRoutes';
 import LangSwitchOverlay from './components/routing/LangSwitchOverlay';
+import { getAdminGiftPath } from './lib/adminRoutes';
+import { getOfferOrderNameSnapshot } from './lib/offerDisplay';
 import { getGameOfferBuyPath, getGameOfferPath } from './lib/offerRoutes';
 import { resolveStorefrontGame } from './lib/gameRegions';
 import { fetchAllSupabaseRows } from './lib/supabaseQuery';
 import { fetchPaymentMethods } from './lib/storeSettings';
+import { fetchSiteStatus, isLoginBlockedDuringMaintenance } from './lib/siteStatus';
+import MaintenanceBanner from './components/layout/MaintenanceBanner';
+import { isUserBanned } from './lib/userBan';
+import { resetSupplierWalletsStore } from './lib/adminSupplierWalletsStore';
 import {
   filterGamesByPullSelection,
   filterOffersByPullSelection,
   filterLiveCatalog,
   normalizePullSelection,
+  syncedPullSelection,
 } from './lib/pullCatalogUtils';
 import { applyTheme, fetchSiteTheme, normalizeThemeOverrides } from './lib/theme';
 import { DEFAULT_HOME_LAYOUT, fetchHomeLayout, normalizeHomeLayout } from './lib/homeLayout';
@@ -39,6 +51,7 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
   clearAllNotifications,
+  dismissNotification,
   subscribeToNotifications,
 } from './lib/notifications';
 import {
@@ -103,6 +116,14 @@ export default function App() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [siteStatus, setSiteStatus] = useState({
+    maintenanceEnabled: false,
+    maintenanceMessageAr: '',
+    maintenanceMessageEn: '',
+    maintenanceAllowAdmins: true,
+    requireVerifiedAccounts: false,
+  });
+  const [maintenanceBannerDismissed, setMaintenanceBannerDismissed] = useState(false);
   const toastTimerRef = useRef(null);
   const notificationsFetchGenRef = useRef(0);
   const [flyingItems, setFlyingItems] = useState([]);
@@ -189,11 +210,29 @@ export default function App() {
     } catch (err) {
       console.error('Failed to clear notifications:', err);
       showToast(
-        lang === 'ar' ? 'تعذر مسح الإشعارات' : 'Could not clear notifications',
+        translations[lang].clearNotificationsFailed,
         'error',
       );
     }
   }, [lang, showToast]);
+
+  const handleNotificationDismiss = useCallback(async (notificationId) => {
+    const item = notifications.find((entry) => entry.id === notificationId);
+    try {
+      const removed = await dismissNotification(notificationId);
+      if (!removed) return;
+      setNotifications((prev) => prev.filter((entry) => entry.id !== notificationId));
+      if (item && !item.read_at) {
+        setUnreadCount((count) => Math.max(0, count - 1));
+      }
+    } catch (err) {
+      console.error('Failed to dismiss notification:', err);
+      showToast(
+        translations[lang].dismissNotificationFailed,
+        'error',
+      );
+    }
+  }, [lang, notifications, showToast]);
 
   const handleNotificationNavigate = useCallback((dest) => {
     if (dest?.state) {
@@ -264,8 +303,20 @@ export default function App() {
 
   const openBuyOffer = useCallback((offer) => {
     if (!offer) return;
+    if (user?.role === 'admin') {
+      const game = games.find((g) => g.id === offer.game_id);
+      if (game) {
+        navigate(getAdminGiftPath({
+          offerId: offer.id,
+          returnTo: getGameOfferPath(offer, games),
+        }));
+      } else {
+        showToast(t.adminCannotPurchase, 'error');
+      }
+      return;
+    }
     navigate(getGameOfferBuyPath(offer, games));
-  }, [games, navigate]);
+  }, [games, navigate, user?.role, showToast, t.adminCannotPurchase]);
 
   const toggleLanguage = async () => {
     if (langSwitching) return;
@@ -359,22 +410,30 @@ export default function App() {
         return;
       }
 
-      // Fetch user profiles for the orders (reliable separate query)
       let ordersWithUsers = ordersData || [];
       if (ordersWithUsers.length > 0) {
-        const userIds = [...new Set(ordersWithUsers.map(o => o.user_id).filter(Boolean))];
+        const userIds = [...new Set(ordersWithUsers.map((o) => o.user_id).filter(Boolean))];
         if (userIds.length > 0) {
-          const { data: profilesData } = await supabase
-            .from('profiles')
-            .select('id, name')
-            .in('id', userIds);
-
-          if (profilesData) {
-            const profileMap = Object.fromEntries(profilesData.map(p => [p.id, p]));
-            ordersWithUsers = ordersWithUsers.map(order => ({
+          try {
+            const profilesData = await fetchAdminProfileSummaries(userIds);
+            const profileMap = Object.fromEntries(profilesData.map((p) => [p.id, p]));
+            ordersWithUsers = ordersWithUsers.map((order) => ({
               ...order,
-              profiles: profileMap[order.user_id] || null
+              profiles: profileMap[order.user_id] || null,
             }));
+          } catch (profileErr) {
+            console.error('Failed to load order customer profiles:', profileErr);
+            const { data: profilesData } = await supabase
+              .from('profiles')
+              .select('id, username, name')
+              .in('id', userIds);
+            if (profilesData) {
+              const profileMap = Object.fromEntries(profilesData.map((p) => [p.id, p]));
+              ordersWithUsers = ordersWithUsers.map((order) => ({
+                ...order,
+                profiles: profileMap[order.user_id] || null,
+              }));
+            }
           }
         }
       }
@@ -396,6 +455,14 @@ export default function App() {
   // ============================================
   // REAL AUTH WITH SUPABASE
   // ============================================
+  const rejectMaintenanceLogin = useCallback(async (userData) => {
+    if (isLoginBlockedDuringMaintenance(siteStatus, userData)) {
+      await supabase.auth.signOut();
+      throw new Error(t.maintenanceLoginBlocked);
+    }
+    return userData;
+  }, [siteStatus, t.maintenanceLoginBlocked]);
+
   const handleAuthLogin = async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
@@ -412,11 +479,15 @@ export default function App() {
       throw new Error('Failed to load user profile');
     }
 
-    return userData;
+    return rejectMaintenanceLogin(userData);
   };
 
   // Signup helper (used by LoginView)
   const handleAuthSignup = async (email, password, name) => {
+    if (siteStatus?.maintenanceEnabled) {
+      throw new Error(t.maintenanceSignupBlocked);
+    }
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -437,6 +508,10 @@ export default function App() {
       // log the user in right away
       if (data.session) {
         const userData = await resolveUserData(data.user, { createIfMissing: true });
+        if (!userData) {
+          throw new Error(t.profileLoadFailed);
+        }
+        await rejectMaintenanceLogin(userData);
         return { success: true, autoLogin: true, userData };
       }
     }
@@ -452,8 +527,9 @@ export default function App() {
   // ============================================
   const submitOrder = async (currentCart, paymentMethod) => {
     if (!user?.id) throw new Error('Not logged in');
+    if (user?.role === 'admin') throw new Error(t.adminCannotPurchase);
 
-    const preparedCart = await resolveOffersForCheckout(currentCart);
+    const preparedCart = await resolveCheckoutOffers(currentCart);
     const { items: syncedCart, removedCount } = syncCartWithOffers(preparedCart, offers.length ? offers : preparedCart);
     if (syncedCart.length === 0) {
       throw new Error(lang === 'ar' ? 'السلة فارغة أو العروض لم تعد متاحة' : 'Cart is empty or offers are no longer available');
@@ -468,7 +544,7 @@ export default function App() {
 
     const items = syncedCart.map((item) => ({
       offer_id: item.id,
-      name_snapshot: lang === 'ar' ? item.name_ar : item.name_en,
+      name_snapshot: getOfferOrderNameSnapshot(item, lang, games, offers),
       price: parseFloat(item.price),
       quantity: 1
     }));
@@ -485,11 +561,25 @@ export default function App() {
     }
 
     if (data.status === 'pending_payment' || data.status === 'payment_sent') {
-      return {
+      const pending = {
         orderId: data.orderId,
         status: data.status,
         reference: data.reference || null,
       };
+
+      if (
+        isManualWalletMethod(paymentMethod)
+        && isApiWalletMode(paymentConfig)
+        && data.status === 'pending_payment'
+      ) {
+        const invoice = await createOrderInvoice({
+          orderId: data.orderId,
+          paymentMethod,
+        });
+        return { ...pending, invoice };
+      }
+
+      return pending;
     }
 
     if (data.status === 'completed' && data.orderId) {
@@ -505,6 +595,19 @@ export default function App() {
     }
   };
 
+  const handleAdminGiftOrder = async (params) => {
+    const result = await adminGiftOrder(params);
+    if (result?.orderId) {
+      try {
+        await tryFulfillOrder(result.orderId);
+      } catch (err) {
+        console.error('Gift fulfillment failed:', err);
+      }
+      if (user?.role === 'admin') fetchOrders();
+    }
+    return result;
+  };
+
   const handleDevBalanceCredited = (result) => {
     if (result?.userId === user?.id && result?.newBalance != null) {
       setUser((prev) => (prev ? { ...prev, balance: result.newBalance } : prev));
@@ -517,9 +620,10 @@ export default function App() {
   // ============================================
   const submitPurchase = async (offer, paymentMethod, playerInfo = {}) => {
     if (!user?.id) throw new Error('Not logged in');
+    if (user?.role === 'admin') throw new Error(t.adminCannotPurchase);
     if (!offer) throw new Error('No offer');
 
-    const [resolvedOffer] = await resolveOffersForCheckout([offer]);
+    const [resolvedOffer] = await resolveCheckoutOffers([offer]);
     offer = resolvedOffer || offer;
 
     const amount = parseFloat(offer.price);
@@ -527,7 +631,7 @@ export default function App() {
 
     const items = [{
       offer_id: offer.id,
-      name_snapshot: lang === 'ar' ? offer.name_ar : offer.name_en,
+      name_snapshot: getOfferOrderNameSnapshot(offer, lang, games, offers),
       price: amount,
       quantity: 1,
       player_uid: player_uid || null,
@@ -541,16 +645,39 @@ export default function App() {
       items,
     });
 
+    if (player_uid) {
+      const purchaseGame = games.find((g) => g.id === offer.game_id);
+      if (purchaseGame) {
+        setUser((prev) => (prev
+          ? mergeGamePlayerUidIntoProfile(prev, purchaseGame, playerInfo)
+          : prev));
+      }
+    }
+
     if (paymentMethod === 'balance' && data?.newBalance != null) {
       setUser(prev => prev ? { ...prev, balance: data.newBalance } : prev);
     }
 
     if (data.status === 'pending_payment' || data.status === 'payment_sent') {
-      return {
+      const pending = {
         orderId: data.orderId,
         status: data.status,
         reference: data.reference || null,
       };
+
+      if (
+        isManualWalletMethod(paymentMethod)
+        && isApiWalletMode(paymentConfig)
+        && data.status === 'pending_payment'
+      ) {
+        const invoice = await createOrderInvoice({
+          orderId: data.orderId,
+          paymentMethod,
+        });
+        return { ...pending, invoice };
+      }
+
+      return pending;
     }
 
     if (data.status === 'completed' && data.orderId) {
@@ -1011,7 +1138,7 @@ export default function App() {
   const loadLiveCatalog = async (pullSelection = null) => {
     setLoadingGames(true);
     try {
-      const catalog = await fetchLiveFullCatalog();
+      const catalog = await fetchLiveCatalogForSelection(pull);
       const pull = normalizePullSelection(pullSelection || {});
       const filtered = filterLiveCatalog(catalog, pull);
       setGames(filtered.games || []);
@@ -1082,19 +1209,12 @@ export default function App() {
           }
           return pageQuery.order('created_at', { ascending: true });
         }),
-        fetchLiveFullCatalog(),
+        fetchLiveCatalogForSelection(pull),
       ]);
 
-      const syncedGames = filterGamesByPullSelection(gamesData || [], {
-        ...pull,
-        topupLiveBaseKeys: [],
-        topupBaseKeys: pull.topupSyncBaseKeys,
-      });
-      const syncedOffers = filterOffersByPullSelection(offersData || [], syncedGames, {
-        ...pull,
-        topupLiveBaseKeys: [],
-        topupBaseKeys: pull.topupSyncBaseKeys,
-      });
+      const syncedPull = syncedPullSelection(pull);
+      const syncedGames = filterGamesByPullSelection(gamesData || [], syncedPull);
+      const syncedOffers = filterOffersByPullSelection(offersData || [], syncedGames, syncedPull);
       const liveFiltered = filterLiveCatalog(liveCatalog, pull);
 
       setGames(sortGamesByCarousel(mergeCatalogRows(syncedGames, liveFiltered.games)));
@@ -1113,22 +1233,25 @@ export default function App() {
     setOffers((prev) => mergeCatalogRows(prev, groupOffers));
   }, []);
 
-  const resolveOffersForCheckout = async (items = []) => {
-    const list = Array.isArray(items) ? items : [items];
-    const liveItems = list.filter((item) => isLiveCatalogId(item?.id));
-    if (liveItems.length === 0) return list;
+  const handleRegionCatalogRefresh = useCallback(async (variant, storefrontGame) => {
+    const result = await refreshGameRegionOffers({
+      variant,
+      storefrontGame,
+      catalogMode: paymentConfig.g2bulkCatalogMode || 'sync',
+    });
+    if (!result) return;
+    if (result.parent || result.games) {
+      handleLiveCatalogUpdate(result);
+      return;
+    }
+    if (result.offers) {
+      setOffers((prev) => mergeCatalogRows(prev, result.offers));
+    }
+  }, [paymentConfig.g2bulkCatalogMode, handleLiveCatalogUpdate]);
 
-    const idMap = await ensureCatalogItems(liveItems);
-    const resolved = await Promise.all(list.map(async (item) => {
-      const dbId = idMap.get(item.id);
-      if (!dbId) return item;
-      const { data } = await supabase.from('offers').select('*').eq('id', dbId).maybeSingle();
-      return data || { ...item, id: dbId };
-    }));
-
-    setOffers((prev) => mergeCatalogRows(prev, resolved));
-    return resolved;
-  };
+  const resolveCheckoutOffers = async (items = []) => resolveOffersForCheckout(items, {
+    onOffersMerged: (merge) => setOffers(merge),
+  });
 
   const refreshCatalog = async (catalogOnly) => {
     const config = await fetchPaymentMethods();
@@ -1172,8 +1295,24 @@ export default function App() {
         refreshSiteTheme(),
         refreshHomeLayout(),
         refreshReviews(),
+        fetchSiteStatus().then(setSiteStatus).catch(() => {}),
       ]);
     })();
+  }, []);
+
+  useEffect(() => {
+    const refreshStatus = () => {
+      fetchSiteStatus()
+        .then((status) => {
+          setSiteStatus(status);
+          if (!status?.maintenanceEnabled) {
+            setMaintenanceBannerDismissed(false);
+          }
+        })
+        .catch(() => {});
+    };
+    const intervalId = setInterval(refreshStatus, 60000);
+    return () => clearInterval(intervalId);
   }, []);
 
   // Persist cart (simple universal localStorage)
@@ -1206,9 +1345,17 @@ export default function App() {
 
     refreshNotifications(user.id);
 
-    const unsubscribe = subscribeToNotifications(user.id, (newItem) => {
+    const unsubscribe = subscribeToNotifications(user.id, async (newItem) => {
       setNotifications((prev) => [newItem, ...prev].slice(0, 30));
       setUnreadCount((count) => count + 1);
+      if (newItem?.type === 'account_banned') {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        const refreshed = await resolveUserData(authUser);
+        if (refreshed) {
+          setUser(refreshed);
+          navigate('/banned');
+        }
+      }
     });
 
     const pollId = setInterval(() => {
@@ -1290,14 +1437,23 @@ export default function App() {
   const resolveUserAfterAuth = async (authUser) => {
     const userData = await resolveUserData(authUser, { createIfMissing: true });
     if (!userData) {
-      throw new Error(lang === 'ar' ? 'تعذر تحميل الملف الشخصي' : 'Failed to load user profile');
+      throw new Error(t.profileLoadFailed);
     }
-    return userData;
+    return rejectMaintenanceLogin(userData);
   };
 
   const handleLoginSuccess = (userData, redirectTo = '/') => {
+    if (isLoginBlockedDuringMaintenance(siteStatus, userData)) {
+      supabase.auth.signOut();
+      showToast(t.maintenanceLoginBlocked, 'error');
+      return;
+    }
     lastSyncedUserIdRef.current = userData.id;
     setUser(userData);
+    if (isUserBanned(userData)) {
+      navigate('/banned');
+      return;
+    }
     const destination = typeof redirectTo === 'string' && redirectTo.startsWith('/') ? redirectTo : '/';
     navigate(destination);
     // Only show login toast once per actual login action
@@ -1311,6 +1467,7 @@ export default function App() {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     lastSyncedUserIdRef.current = null;
+    resetSupplierWalletsStore();
     setUser(null);
     navigate('/');
   };
@@ -1322,15 +1479,19 @@ export default function App() {
 
   const handleCheckoutComplete = async (orderResult) => {
     setCart([]);
-    if (orderResult?.orderId) {
-      navigate(`/success?orderId=${orderResult.orderId}`);
-    } else {
+    if (!orderResult?.orderId) {
       navigate('/');
+      return;
     }
-    const msg = orderResult?.orderId 
-      ? `${t.successMsg} #${orderResult.orderId.slice(0, 8)}` 
-      : t.successMsg;
-    showNotification(msg);
+
+    if (orderResult.status === 'completed') {
+      await tryFulfillOrder(orderResult.orderId);
+      navigate(`/success?orderId=${orderResult.orderId}`);
+      showNotification(`${t.successMsg} #${orderResult.orderId.slice(0, 8)}`);
+      return;
+    }
+
+    navigate('/profile');
   };
 
   return (
@@ -1366,9 +1527,19 @@ export default function App() {
         onNotificationMarkRead={handleNotificationMarkRead}
         onNotificationsMarkAllRead={handleNotificationsMarkAllRead}
         onNotificationsClearAll={handleNotificationsClearAll}
+        onNotificationDismiss={handleNotificationDismiss}
         onNotificationNavigate={handleNotificationNavigate}
         onOpenNotificationsInbox={() => navigate('/notifications')}
         hasSaleOffers={hasSaleOffers}
+      />
+
+      <MaintenanceBanner
+        t={t}
+        lang={lang}
+        siteStatus={siteStatus}
+        user={user}
+        dismissed={maintenanceBannerDismissed}
+        onDismiss={() => setMaintenanceBannerDismissed(true)}
       />
 
       <motion.div
@@ -1410,6 +1581,8 @@ export default function App() {
           paymentConfig={paymentConfig}
           submitPurchase={submitPurchase}
           submitOrder={submitOrder}
+          onOrderPaid={tryFulfillOrder}
+          onFulfillOrder={tryFulfillOrder}
           handleCheckoutComplete={handleCheckoutComplete}
           showToast={showToast}
           handleAuthLogin={handleAuthLogin}
@@ -1420,6 +1593,7 @@ export default function App() {
           updateGame={updateGame}
           deleteGame={deleteGame}
           handleLiveCatalogUpdate={handleLiveCatalogUpdate}
+          handleRegionCatalogRefresh={handleRegionCatalogRefresh}
           notifications={notifications}
           unreadCount={unreadCount}
           notificationsLoading={notificationsLoading}
@@ -1427,6 +1601,7 @@ export default function App() {
           handleNotificationMarkRead={handleNotificationMarkRead}
           handleNotificationsMarkAllRead={handleNotificationsMarkAllRead}
           handleNotificationsClearAll={handleNotificationsClearAll}
+          handleNotificationDismiss={handleNotificationDismiss}
           handleNotificationNavigate={handleNotificationNavigate}
           handleLogout={handleLogout}
           updateUserProfile={updateUserProfile}
@@ -1445,11 +1620,13 @@ export default function App() {
           handleRejectOrder={handleRejectOrder}
           handleDevBalanceCredited={handleDevBalanceCredited}
           handlePreviewHomepage={handlePreviewHomepage}
+          handleAdminGiftOrder={handleAdminGiftOrder}
           setAdminEditOffer={setAdminEditOffer}
           setAdminEditGame={setAdminEditGame}
           setAdminCarouselOpen={setAdminCarouselOpen}
           setAdminCarouselPickerOpen={setAdminCarouselPickerOpen}
           moveCarouselGame={moveCarouselGame}
+          siteStatus={siteStatus}
         />
       </main>
 

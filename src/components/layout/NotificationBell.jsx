@@ -1,31 +1,15 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Bell, CheckCheck, Loader2, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ConfirmDialog from '../ui/ConfirmDialog';
+import InboxNotificationRow from '../notifications/InboxNotificationRow';
 import {
   formatNotification,
   getNotificationDestination,
 } from '../../lib/notifications';
+import { formatMessage } from '../../lib/i18n';
 import { useHeaderDropdownPosition } from '../../hooks/useHeaderDropdownPosition';
-
-function relativeTime(dateStr, lang) {
-  if (!dateStr) return '';
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return lang === 'ar' ? 'الآن' : 'Just now';
-  if (mins < 60) return lang === 'ar' ? `منذ ${mins} د` : `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return lang === 'ar' ? `منذ ${hours} س` : `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return lang === 'ar' ? `منذ ${days} ي` : `${days}d ago`;
-}
-
-const toneClasses = {
-  warning: 'border-amber-500/25 bg-amber-500/8',
-  success: 'border-emerald-500/25 bg-emerald-500/8',
-  danger: 'border-red-500/25 bg-red-500/8',
-  info: 'border-sky-500/20 bg-sky-500/6',
-};
 
 export default function NotificationBell({
   t = {},
@@ -40,11 +24,15 @@ export default function NotificationBell({
   onMarkRead = () => {},
   onMarkAllRead = () => {},
   onClearAll = () => {},
+  onDismiss = () => {},
   onNavigate = () => {},
   onViewAllInbox = () => {},
 }) {
   const triggerRef = useRef(null);
   const panelRef = useRef(null);
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [dismissingId, setDismissingId] = useState(null);
   const { coords, updatePosition } = useHeaderDropdownPosition(triggerRef, open, {
     align: 'end',
     gap: 8,
@@ -75,15 +63,35 @@ export default function NotificationBell({
     onNavigate(dest);
   };
 
-  const handleClearAll = async (event) => {
+  const handleClearAll = (event) => {
     event.stopPropagation();
-    await onClearAll();
+    setConfirmClearOpen(true);
   };
+
+  const handleConfirmClear = useCallback(async () => {
+    setClearing(true);
+    try {
+      await onClearAll();
+      setConfirmClearOpen(false);
+    } finally {
+      setClearing(false);
+    }
+  }, [onClearAll]);
 
   const handleMarkAllRead = async (event) => {
     event.stopPropagation();
     await onMarkAllRead();
   };
+
+  const handleDismiss = useCallback(async (item) => {
+    if (!item?.id || dismissingId) return;
+    setDismissingId(item.id);
+    try {
+      await onDismiss(item.id);
+    } finally {
+      setDismissingId(null);
+    }
+  }, [dismissingId, onDismiss]);
 
   const dropdownPanel = typeof document !== 'undefined'
     ? createPortal(
@@ -108,11 +116,11 @@ export default function NotificationBell({
             <div className="header-notif-head">
               <div>
                 <div className="text-sm font-bold text-[var(--text-primary)]">
-                  {t.notifications || (lang === 'ar' ? 'الإشعارات' : 'Notifications')}
+                  {t.notifications}
                 </div>
                 {unreadCount > 0 && (
                   <div className="text-[10px] text-[var(--text-muted)]">
-                    {applyUnreadLabel(t, lang, unreadCount)}
+                    {formatMessage(t.unreadNotifications, { count: unreadCount })}
                   </div>
                 )}
               </div>
@@ -122,7 +130,7 @@ export default function NotificationBell({
                     type="button"
                     onClick={handleMarkAllRead}
                     className="header-notif-action-btn"
-                    title={t.markAllRead || (lang === 'ar' ? 'تعليم الكل كمقروء' : 'Mark all read')}
+                    title={t.markAllRead}
                   >
                     <CheckCheck className="w-3.5 h-3.5" strokeWidth={2} />
                   </button>
@@ -132,7 +140,7 @@ export default function NotificationBell({
                     type="button"
                     onClick={handleClearAll}
                     className="header-notif-action-btn header-notif-action-btn--danger"
-                    title={t.clearNotifications || (lang === 'ar' ? 'مسح الإشعارات' : 'Clear all')}
+                    title={t.clearNotifications}
                   >
                     <Trash2 className="w-3.5 h-3.5" strokeWidth={2} />
                   </button>
@@ -149,36 +157,23 @@ export default function NotificationBell({
                 <div className="header-notif-empty">
                   <Bell className="w-6 h-6 mx-auto mb-2 opacity-40" strokeWidth={1.5} />
                   <div className="text-xs text-[var(--text-muted)]">
-                    {t.noNotifications || (lang === 'ar' ? 'لا توجد إشعارات بعد' : 'No notifications yet')}
+                    {t.noNotifications}
                   </div>
                 </div>
               ) : (
                 notifications.map((item) => {
                   const formatted = formatNotification(item, t, lang);
-                  const unread = !item.read_at;
                   return (
-                    <button
+                    <InboxNotificationRow
                       key={item.id}
-                      type="button"
-                      role="menuitem"
-                      onClick={() => handleOpenItem(item)}
-                      className={`header-notif-item ${unread ? 'header-notif-item--unread' : ''} ${toneClasses[formatted.tone] || toneClasses.info}`}
-                    >
-                      <div className="flex items-start justify-between gap-2 w-full">
-                        <div className="min-w-0 text-left">
-                          <div className="text-xs font-bold text-[var(--text-primary)] leading-snug">
-                            {formatted.title}
-                          </div>
-                          <div className="text-[11px] text-[var(--text-sec)] mt-0.5 leading-snug line-clamp-3">
-                            {formatted.body}
-                          </div>
-                        </div>
-                        {unread && <span className="header-notif-dot flex-shrink-0" aria-hidden="true" />}
-                      </div>
-                      <div className="text-[10px] text-[var(--text-muted)] mt-1.5 text-left">
-                        {relativeTime(item.created_at, lang)}
-                      </div>
-                    </button>
+                      item={item}
+                      formatted={formatted}
+                      t={t}
+                      variant="dropdown"
+                      onOpen={handleOpenItem}
+                      onDismiss={handleDismiss}
+                      dismissing={dismissingId === item.id}
+                    />
                   );
                 })
               )}
@@ -225,11 +220,16 @@ export default function NotificationBell({
         )}
       </button>
       {dropdownPanel}
+      <ConfirmDialog
+        open={confirmClearOpen}
+        title={t.inboxClearConfirmTitle}
+        message={t.inboxClearConfirmMessage}
+        confirmLabel={t.clearNotifications}
+        cancelLabel={t.cancel}
+        loading={clearing}
+        onConfirm={handleConfirmClear}
+        onCancel={() => !clearing && setConfirmClearOpen(false)}
+      />
     </div>
   );
-}
-
-function applyUnreadLabel(t, lang, count) {
-  const template = t.unreadNotifications || (lang === 'ar' ? '{count} غير مقروء' : '{count} unread');
-  return template.replace('{count}', String(count));
 }

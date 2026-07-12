@@ -89,6 +89,91 @@ function buildWebhookUrl(supabaseUrl: string, token: string) {
   return `${base}?token=${encodeURIComponent(token)}`;
 }
 
+const ADMIN_ACTIONS = new Set([
+  'getSettings',
+  'saveSettings',
+  'listWallets',
+  'getBalance',
+  'getAllWalletBalances',
+]);
+
+const USER_ACTIONS = new Set(['createInvoice', 'verifyInvoice', 'getInvoiceStatus']);
+
+function paymentMethodToSam(method: string) {
+  if (method === 'SyriatelCash') return 'syriatel';
+  return 'shamcash';
+}
+
+async function completeEntityAfterPaid(
+  serviceClient: ReturnType<typeof createClient>,
+  row: Record<string, unknown>,
+) {
+  if (!row.entity_id) return null;
+
+  if (row.entity_type === 'order') {
+    const { data, error } = await serviceClient.rpc('complete_order_from_sam_invoice', {
+      p_sam_invoice_id: row.sam_invoice_id,
+    });
+
+    if (error) {
+      console.error('complete_order_from_sam_invoice:', error.message);
+      return { error: error.message };
+    }
+
+    return data;
+  }
+
+  if (row.entity_type === 'recharge') {
+    const { data, error } = await serviceClient.rpc('complete_recharge_from_sam_invoice', {
+      p_sam_invoice_id: row.sam_invoice_id,
+    });
+
+    if (error) {
+      console.error('complete_recharge_from_sam_invoice:', error.message);
+      return { error: error.message };
+    }
+
+    return data;
+  }
+
+  return null;
+}
+
+async function cancelEntityAfterExpired(
+  serviceClient: ReturnType<typeof createClient>,
+  row: Record<string, unknown>,
+) {
+  if (!row.entity_id) return null;
+
+  if (row.entity_type === 'order') {
+    const { data, error } = await serviceClient.rpc('cancel_order_from_sam_invoice', {
+      p_sam_invoice_id: row.sam_invoice_id,
+    });
+
+    if (error) {
+      console.error('cancel_order_from_sam_invoice:', error.message);
+      return { error: error.message };
+    }
+
+    return data;
+  }
+
+  if (row.entity_type === 'recharge') {
+    const { data, error } = await serviceClient.rpc('cancel_recharge_from_sam_invoice', {
+      p_sam_invoice_id: row.sam_invoice_id,
+    });
+
+    if (error) {
+      console.error('cancel_recharge_from_sam_invoice:', error.message);
+      return { error: error.message };
+    }
+
+    return data;
+  }
+
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -166,7 +251,9 @@ Deno.serve(async (req) => {
         })
         .eq('id', row.id);
 
-      return jsonResponse({ success: true, status: 'paid' });
+      const completion = await completeEntityAfterPaid(serviceClient, row as Record<string, unknown>);
+
+      return jsonResponse({ success: true, status: 'paid', completion });
     }
 
     if (event === 'invoice.expired') {
@@ -183,7 +270,9 @@ Deno.serve(async (req) => {
         })
         .eq('id', row.id);
 
-      return jsonResponse({ success: true, status: 'expired' });
+      const cancellation = await cancelEntityAfterExpired(serviceClient, row as Record<string, unknown>);
+
+      return jsonResponse({ success: true, status: 'expired', cancellation });
     }
 
     return jsonResponse({ success: false, message: 'Unsupported webhook event' }, 400);
@@ -194,9 +283,335 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, message: 'Unauthorized' }, 401);
   }
   const userId = authData.user.id;
+  const userIsAdmin = await isAdmin(userClient, userId);
 
-  if (!(await isAdmin(userClient, userId))) {
+  if (ADMIN_ACTIONS.has(action) && !userIsAdmin) {
     return jsonResponse({ success: false, message: 'Admin only' }, 403);
+  }
+
+  if (!ADMIN_ACTIONS.has(action) && !USER_ACTIONS.has(action)) {
+    return jsonResponse({ success: false, message: `Unknown action: ${action}` }, 400);
+  }
+
+  if (USER_ACTIONS.has(action)) {
+    const apiKey = await resolveSamApiKey(serviceClient);
+    if (!apiKey) {
+      return jsonResponse({ success: false, message: 'Sam API key not configured' }, 400);
+    }
+
+    if (action === 'createInvoice') {
+      const entityType = String(body.entityType || '');
+      const entityId = String(body.entityId || '');
+      const paymentMethod = String(body.paymentMethod || 'ShamCash');
+
+      if (!entityType || !entityId) {
+        return jsonResponse({ success: false, message: 'entityType and entityId required' }, 400);
+      }
+      if (entityType !== 'order' && entityType !== 'recharge') {
+        return jsonResponse({ success: false, message: 'Unsupported entity type' }, 400);
+      }
+      if (paymentMethod !== 'ShamCash' && paymentMethod !== 'SyriatelCash') {
+        return jsonResponse({ success: false, message: 'Invalid payment method' }, 400);
+      }
+
+      let invoiceAmount: number | string = 0;
+
+      if (entityType === 'order') {
+        const { data: order } = await serviceClient
+          .from('orders')
+          .select('id, user_id, total, status, payment_method')
+          .eq('id', entityId)
+          .maybeSingle();
+
+        if (!order || order.user_id !== userId) {
+          return jsonResponse({ success: false, message: 'Order not found' }, 404);
+        }
+        if (order.status !== 'pending_payment') {
+          return jsonResponse({ success: false, message: 'Order is not awaiting payment' }, 400);
+        }
+        if (order.payment_method !== paymentMethod) {
+          return jsonResponse({ success: false, message: 'Payment method mismatch' }, 400);
+        }
+
+        invoiceAmount = order.total;
+      } else {
+        const { data: recharge } = await serviceClient
+          .from('recharge_requests')
+          .select('id, user_id, amount, status, payment_method')
+          .eq('id', entityId)
+          .maybeSingle();
+
+        if (!recharge || recharge.user_id !== userId) {
+          return jsonResponse({ success: false, message: 'Recharge request not found' }, 404);
+        }
+        if (recharge.status !== 'pending') {
+          return jsonResponse({ success: false, message: 'Recharge request is not awaiting payment' }, 400);
+        }
+        if (recharge.payment_method !== paymentMethod) {
+          return jsonResponse({ success: false, message: 'Payment method mismatch' }, 400);
+        }
+
+        invoiceAmount = recharge.amount;
+      }
+
+      const { data: existing } = await serviceClient
+        .from('sam_invoices')
+        .select('*')
+        .eq('entity_type', entityType)
+        .eq('entity_id', entityId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existing?.payment_url && existing?.sam_invoice_id) {
+        return jsonResponse({
+          success: true,
+          invoice: {
+            samInvoiceId: existing.sam_invoice_id,
+            paymentUrl: existing.payment_url,
+            expiresAt: existing.expires_at,
+            amount: existing.amount,
+            currency: existing.currency,
+            status: existing.status,
+          },
+        });
+      }
+
+      const { data: settings } = await serviceClient
+        .from('store_settings')
+        .select(
+          'sam_wallet_mode, sam_api_enabled, sam_invoice_currency, sam_shamcash_wallet_identifier, sam_syriatel_wallet_identifier, sam_webhook_secret',
+        )
+        .eq('id', 1)
+        .maybeSingle();
+
+      if (!settings || settings.sam_wallet_mode !== 'api' || !settings.sam_api_enabled) {
+        return jsonResponse({ success: false, message: 'Sam API wallet mode is not enabled' }, 400);
+      }
+
+      const samMethod = paymentMethodToSam(paymentMethod);
+      const identifier = samMethod === 'syriatel'
+        ? String(settings.sam_syriatel_wallet_identifier || '').trim()
+        : String(settings.sam_shamcash_wallet_identifier || '').trim();
+      const currency = String(settings.sam_invoice_currency || 'USD');
+      const webhookSecret = await resolveWebhookSecret(serviceClient);
+
+      if (!identifier || !webhookSecret) {
+        return jsonResponse({ success: false, message: 'Sam API receiving wallet not configured' }, 400);
+      }
+
+      const amountStr = Number(invoiceAmount).toFixed(2);
+      const webhookUrl = buildWebhookUrl(supabaseUrl, webhookSecret);
+
+      const { res, data } = await samFetch(apiKey, '/v1/invoices', {
+        method: 'POST',
+        body: JSON.stringify({
+          method: samMethod,
+          identifier,
+          amount: amountStr,
+          currency,
+          webhookUrl,
+        }),
+      });
+
+      if (!res.ok) {
+        return jsonResponse({ success: false, message: samErrorMessage(data, 'Failed to create invoice') }, res.status);
+      }
+
+      const samInvoiceId = String(data.invoiceId || '');
+      const paymentUrl = String(data.paymentUrl || '');
+      const expiresAt = typeof data.expiresAt === 'string' ? data.expiresAt : null;
+
+      if (!samInvoiceId || !paymentUrl) {
+        return jsonResponse({ success: false, message: 'Invalid invoice response from Sam API' }, 502);
+      }
+
+      const { error: insertError } = await serviceClient.from('sam_invoices').insert({
+        user_id: userId,
+        entity_type: entityType,
+        entity_id: entityId,
+        sam_invoice_id: samInvoiceId,
+        payment_url: paymentUrl,
+        amount: invoiceAmount,
+        currency,
+        method: samMethod,
+        status: 'pending',
+        expires_at: expiresAt,
+      });
+
+      if (insertError) {
+        return jsonResponse({ success: false, message: insertError.message }, 400);
+      }
+
+      return jsonResponse({
+        success: true,
+        invoice: {
+          samInvoiceId,
+          paymentUrl,
+          expiresAt,
+          amount: invoiceAmount,
+          currency,
+          status: 'pending',
+        },
+      });
+    }
+
+    if (action === 'verifyInvoice') {
+      const samInvoiceId = String(body.samInvoiceId || '').trim();
+      const transactionRef = String(body.transactionRef || '').trim();
+
+      if (!samInvoiceId || !transactionRef) {
+        return jsonResponse({ success: false, message: 'samInvoiceId and transactionRef required' }, 400);
+      }
+
+      const { data: row } = await serviceClient
+        .from('sam_invoices')
+        .select('*')
+        .eq('sam_invoice_id', samInvoiceId)
+        .maybeSingle();
+
+      if (!row || row.user_id !== userId) {
+        return jsonResponse({ success: false, message: 'Invoice not found' }, 404);
+      }
+
+      if (row.status === 'paid') {
+        const completion = await completeEntityAfterPaid(serviceClient, row as Record<string, unknown>);
+        return jsonResponse({ success: true, verified: true, status: 'paid', completion });
+      }
+
+      if (row.status === 'expired') {
+        return jsonResponse({ success: false, message: 'EXPIRED: Invoice expired', code: 'EXPIRED' }, 410);
+      }
+
+      const { res, data } = await samFetch(apiKey, `/pay/${encodeURIComponent(samInvoiceId)}/verify`, {
+        method: 'POST',
+        body: JSON.stringify({ transactionRef }),
+      });
+
+      if (res.status === 410) {
+        await serviceClient
+          .from('sam_invoices')
+          .update({ status: 'expired', updated_at: new Date().toISOString() })
+          .eq('id', row.id);
+        await cancelEntityAfterExpired(serviceClient, row as Record<string, unknown>);
+        return jsonResponse({ success: false, message: 'EXPIRED: Invoice expired', code: 'EXPIRED' }, 410);
+      }
+
+      if (!res.ok) {
+        return jsonResponse({ success: false, message: samErrorMessage(data, 'Verification failed') }, res.status);
+      }
+
+      const verified = data.verified === true;
+      if (!verified) {
+        return jsonResponse({
+          success: true,
+          verified: false,
+          message: typeof data.message === 'string' ? data.message : 'Payment not found',
+        });
+      }
+
+      await serviceClient
+        .from('sam_invoices')
+        .update({
+          status: 'paid',
+          transaction_ref: transactionRef,
+          paid_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.id);
+
+      const completion = await completeEntityAfterPaid(serviceClient, {
+        ...row,
+        transaction_ref: transactionRef,
+      } as Record<string, unknown>);
+
+      return jsonResponse({ success: true, verified: true, status: 'paid', completion });
+    }
+
+    if (action === 'getInvoiceStatus') {
+      const samInvoiceId = String(body.samInvoiceId || '').trim();
+      if (!samInvoiceId) {
+        return jsonResponse({ success: false, message: 'samInvoiceId required' }, 400);
+      }
+
+      const { data: row } = await serviceClient
+        .from('sam_invoices')
+        .select('*')
+        .eq('sam_invoice_id', samInvoiceId)
+        .maybeSingle();
+
+      if (!row || row.user_id !== userId) {
+        return jsonResponse({ success: false, message: 'Invoice not found' }, 404);
+      }
+
+      if (row.status === 'pending') {
+        const { res, data } = await samFetch(apiKey, `/pay/${encodeURIComponent(samInvoiceId)}`);
+        if (res.ok && data.status === 'paid') {
+          await serviceClient
+            .from('sam_invoices')
+            .update({
+              status: 'paid',
+              paid_at: typeof data.paidAt === 'string' ? data.paidAt : new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', row.id);
+
+          const completion = await completeEntityAfterPaid(serviceClient, {
+            ...row,
+            status: 'paid',
+          } as Record<string, unknown>);
+
+          return jsonResponse({ success: true, status: 'paid', completion });
+        }
+        if (res.status === 410 || data.status === 'expired' || data.code === 'EXPIRED') {
+          await serviceClient
+            .from('sam_invoices')
+            .update({ status: 'expired', updated_at: new Date().toISOString() })
+            .eq('id', row.id);
+          await cancelEntityAfterExpired(serviceClient, row as Record<string, unknown>);
+          return jsonResponse({ success: true, status: 'expired' });
+        }
+      }
+
+      let completion: unknown = null;
+      if (row.status === 'paid') {
+        completion = await completeEntityAfterPaid(serviceClient, row as Record<string, unknown>);
+      }
+
+      let orderStatus: string | null = null;
+      let rechargeStatus: string | null = null;
+
+      if (row.entity_type === 'order' && row.entity_id) {
+        const { data: order } = await serviceClient
+          .from('orders')
+          .select('status')
+          .eq('id', row.entity_id)
+          .maybeSingle();
+        orderStatus = (order?.status as string) || null;
+      }
+
+      if (row.entity_type === 'recharge' && row.entity_id) {
+        const { data: recharge } = await serviceClient
+          .from('recharge_requests')
+          .select('status')
+          .eq('id', row.entity_id)
+          .maybeSingle();
+        rechargeStatus = (recharge?.status as string) || null;
+      }
+
+      return jsonResponse({
+        success: true,
+        status: row.status,
+        orderStatus,
+        rechargeStatus,
+        completion,
+        expiresAt: row.expires_at,
+        paymentUrl: row.payment_url,
+      });
+    }
+
+    return jsonResponse({ success: false, message: `Unknown action: ${action}` }, 400);
   }
 
   if (action === 'getSettings') {

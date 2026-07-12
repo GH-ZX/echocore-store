@@ -1,28 +1,19 @@
-import { useEffect, useCallback } from 'react';
-import { Bell, CheckCheck, Trash2, Loader2, Inbox } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Bell, CheckCheck, Inbox, Loader2, Trash2 } from 'lucide-react';
+import ConfirmDialog from '../components/ui/ConfirmDialog';
+import InboxNotificationRow from '../components/notifications/InboxNotificationRow';
 import {
   formatNotification,
   getNotificationDestination,
 } from '../lib/notifications';
-
-function relativeTime(dateStr, lang) {
-  if (!dateStr) return '';
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return lang === 'ar' ? 'الآن' : 'Just now';
-  if (mins < 60) return lang === 'ar' ? `منذ ${mins} د` : `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return lang === 'ar' ? `منذ ${hours} س` : `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return lang === 'ar' ? `منذ ${days} ي` : `${days}d ago`;
-}
-
-const toneClasses = {
-  warning: 'border-amber-500/30 bg-amber-500/8',
-  success: 'border-emerald-500/30 bg-emerald-500/8',
-  danger: 'border-red-500/30 bg-red-500/8',
-  info: 'border-sky-500/25 bg-sky-500/6',
-};
+import {
+  INBOX_FILTER_IDS,
+  countInboxFilterMatches,
+  filterInboxNotifications,
+  getInboxEmptyMessageKey,
+  getInboxFilterOptions,
+} from '../lib/inboxFilters';
+import { formatMessage } from '../lib/i18n';
 
 export default function NotificationsView({
   t = {},
@@ -35,26 +26,70 @@ export default function NotificationsView({
   onMarkRead,
   onMarkAllRead,
   onClearAll,
+  onDismiss,
   onNavigate,
 }) {
-  const isAr = lang === 'ar';
+  const [activeFilter, setActiveFilter] = useState(INBOX_FILTER_IDS.ALL);
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [dismissingId, setDismissingId] = useState(null);
 
   useEffect(() => {
     onRefresh?.();
   }, [user?.id, onRefresh]);
 
+  const filterOptions = useMemo(
+    () => getInboxFilterOptions(t, user?.role),
+    [t, user?.role],
+  );
+
+  const filteredNotifications = useMemo(
+    () => filterInboxNotifications(notifications, activeFilter),
+    [notifications, activeFilter],
+  );
+
+  const filteredUnreadCount = useMemo(
+    () => countInboxFilterMatches(notifications, INBOX_FILTER_IDS.UNREAD),
+    [notifications],
+  );
+
   const handleOpenItem = useCallback(async (item) => {
     const formatted = formatNotification(item, t, lang);
     const dest = getNotificationDestination(item, formatted, user?.role);
     if (!item.read_at) {
-      await onMarkRead(item.id);
+      await onMarkRead?.(item.id);
     }
-    onNavigate(dest);
+    onNavigate?.(dest);
   }, [lang, onMarkRead, onNavigate, t, user?.role]);
+
+  const handleDismiss = useCallback(async (item) => {
+    if (!item?.id || dismissingId) return;
+    setDismissingId(item.id);
+    try {
+      await onDismiss?.(item.id);
+    } finally {
+      setDismissingId(null);
+    }
+  }, [dismissingId, onDismiss]);
+
+  const handleConfirmClear = useCallback(async () => {
+    setClearing(true);
+    try {
+      await onClearAll?.();
+      setConfirmClearOpen(false);
+    } finally {
+      setClearing(false);
+    }
+  }, [onClearAll]);
+
+  const emptyMessageKey = getInboxEmptyMessageKey(activeFilter);
+  const showMarkAllRead = filteredUnreadCount > 0
+    && (activeFilter === INBOX_FILTER_IDS.ALL || activeFilter === INBOX_FILTER_IDS.UNREAD);
+  const showClearAll = notifications.length > 0;
 
   return (
     <div className="max-w-2xl mx-auto px-2 sm:px-0 animate-fade-in">
-      <div className="card p-6 sm:p-8 mb-6">
+      <div className="card p-6 sm:p-8 mb-4">
         <div className="flex items-start gap-4">
           <div className="w-12 h-12 rounded-2xl bg-[var(--accent)]/15 flex items-center justify-center text-[var(--accent)] flex-shrink-0">
             <Inbox className="w-6 h-6" strokeWidth={2} />
@@ -64,87 +99,116 @@ export default function NotificationsView({
               {t.siteInboxTitle}
             </h1>
             <p className="text-sm text-[var(--text-sec)] mt-1">
-              {t.siteInboxDesc || (isAr
-                ? 'كل تحديثات حسابك هنا — مشتريات، شحن، وأكواد الاسترداد. لا بريد خارجي.'
-                : 'All account updates live here — purchases, recharges, and redeem codes. No external email.')}
+              {t.siteInboxDesc}
             </p>
+            {notifications.length > 0 && (
+              <p className="text-xs text-[var(--text-muted)] mt-2">
+                {formatMessage(t.inboxShowingCount, {
+                  shown: filteredNotifications.length,
+                  total: notifications.length,
+                })}
+                {unreadCount > 0 && (
+                  <>
+                    {' · '}
+                    {formatMessage(t.unreadNotifications, { count: unreadCount })}
+                  </>
+                )}
+              </p>
+            )}
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 mt-5">
-          {unreadCount > 0 && (
-            <button
-              type="button"
-              onClick={onMarkAllRead}
-              className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5"
-            >
-              <CheckCheck className="w-3.5 h-3.5" />
-              {t.markAllRead}
-            </button>
-          )}
-          {notifications.length > 0 && (
-            <button
-              type="button"
-              onClick={onClearAll}
-              className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              {t.clearNotifications}
-            </button>
-          )}
+        <div className="inbox-filter-bar mt-5" role="tablist" aria-label={t.inboxFilterLabel}>
+          {filterOptions.map((option) => {
+            const count = countInboxFilterMatches(notifications, option.id);
+            const active = activeFilter === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setActiveFilter(option.id)}
+                className={`inbox-filter-chip ${active ? 'inbox-filter-chip--active' : ''}`}
+              >
+                <span>{option.label}</span>
+                {count > 0 && (
+                  <span className="inbox-filter-chip-count">{count}</span>
+                )}
+              </button>
+            );
+          })}
         </div>
+
+        {(showMarkAllRead || showClearAll) && (
+          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-[var(--border)]">
+            {showMarkAllRead && (
+              <button
+                type="button"
+                onClick={onMarkAllRead}
+                className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5"
+              >
+                <CheckCheck className="w-3.5 h-3.5" />
+                {t.markAllRead}
+              </button>
+            )}
+            {showClearAll && (
+              <button
+                type="button"
+                onClick={() => setConfirmClearOpen(true)}
+                className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {t.clearNotifications}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {loading && notifications.length === 0 ? (
         <div className="card p-12 text-center">
           <Loader2 className="w-8 h-8 animate-spin text-[var(--accent)] mx-auto" />
         </div>
-      ) : notifications.length === 0 ? (
+      ) : filteredNotifications.length === 0 ? (
         <div className="card p-12 text-center text-[var(--text-sec)]">
           <Bell className="w-10 h-10 mx-auto mb-3 opacity-35" strokeWidth={1.5} />
-          <p>{t.noNotifications}</p>
+          <p>{t[emptyMessageKey] || t.noNotifications}</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {notifications.map((item) => {
+          {filteredNotifications.map((item) => {
             const formatted = formatNotification(item, t, lang);
-            const unread = !item.read_at;
             return (
-              <button
+              <InboxNotificationRow
                 key={item.id}
-                type="button"
-                onClick={() => handleOpenItem(item)}
-                className={`card w-full text-left p-4 sm:p-5 transition-colors hover:border-[var(--accent)]/35 border ${
-                  toneClasses[formatted.tone] || toneClasses.info
-                } ${unread ? 'ring-1 ring-[var(--accent)]/20' : ''}`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-bold text-[var(--text-primary)]">
-                      {formatted.title}
-                    </div>
-                    <div className="text-sm text-[var(--text-sec)] mt-1 leading-relaxed">
-                      {formatted.body}
-                    </div>
-                    <div className="text-xs text-[var(--text-muted)] mt-2">
-                      {relativeTime(item.created_at, lang)}
-                    </div>
-                  </div>
-                  {unread && (
-                    <span className="header-notif-dot flex-shrink-0 mt-1" aria-hidden="true" />
-                  )}
-                </div>
-              </button>
+                item={item}
+                formatted={formatted}
+                t={t}
+                variant="page"
+                onOpen={handleOpenItem}
+                onDismiss={handleDismiss}
+                dismissing={dismissingId === item.id}
+              />
             );
           })}
         </div>
       )}
 
       <p className="text-xs text-center text-[var(--text-muted)] mt-6 pb-4">
-        {t.siteInboxRetention || (isAr
-          ? 'تُحذف الإشعارات المقروءة بعد 14 يوماً. الحد الأقصى 40 إشعاراً.'
-          : 'Read notifications are removed after 14 days. Max 40 kept.')}
+        {t.siteInboxRetention}
       </p>
+
+      <ConfirmDialog
+        open={confirmClearOpen}
+        title={t.inboxClearConfirmTitle}
+        message={t.inboxClearConfirmMessage}
+        confirmLabel={t.clearNotifications}
+        cancelLabel={t.cancel}
+        loading={clearing}
+        onConfirm={handleConfirmClear}
+        onCancel={() => !clearing && setConfirmClearOpen(false)}
+      />
     </div>
   );
 }

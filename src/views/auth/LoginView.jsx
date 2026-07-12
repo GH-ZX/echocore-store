@@ -13,6 +13,9 @@ import {
   isPasswordRecoveryPending,
   isPasswordRecoveryUrl,
   markPasswordRecoveryPending,
+  validatePasswordLength,
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_MAX_LENGTH,
 } from '../../lib/auth';
 
 function GoogleIcon() {
@@ -28,11 +31,13 @@ function GoogleIcon() {
 
 export default function LoginView({
   t,
+  siteStatus,
   handleAuthLogin,
   handleAuthSignup,
   onLoginSuccess,
   resolveUserAfterAuth,
 }) {
+  const maintenanceOn = !!siteStatus?.maintenanceEnabled;
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const redirectTo = typeof location.state?.from === 'string' ? location.state.from : '/';
@@ -84,6 +89,13 @@ export default function LoginView({
     setSuccessMsg('');
   };
 
+  const assertPasswordLength = (value) => {
+    const result = validatePasswordLength(value);
+    if (!result.valid) {
+      throw new Error(result.code === 'too_long' ? t.passwordMaxLength : t.passwordLengthRange);
+    }
+  };
+
   const finishAuth = async (authUser) => {
     const userData = await resolveUserAfterAuth(authUser);
     onLoginSuccess(userData, redirectTo);
@@ -107,6 +119,7 @@ export default function LoginView({
 
     try {
       if (mode === 'signup') {
+        assertPasswordLength(password);
         if (password !== confirmPassword) {
           throw new Error(t.passwordMismatch);
         }
@@ -127,9 +140,7 @@ export default function LoginView({
       }
 
       if (mode === 'recovery') {
-        if (password.length < 6) {
-          throw new Error(t.passwordMinLength);
-        }
+        assertPasswordLength(password);
         if (password !== confirmPassword) {
           throw new Error(t.passwordMismatch);
         }
@@ -161,6 +172,10 @@ export default function LoginView({
         setOtpSent(true);
         setSuccessMsg(t.otpSentNotice);
         return;
+      }
+
+      if (mode === 'login' && loginMethod === 'password') {
+        assertPasswordLength(password);
       }
 
       const userData = await handleAuthLogin(email, password);
@@ -207,6 +222,13 @@ export default function LoginView({
           <h2 className="text-2xl sm:text-3xl font-black mb-1">{title()}</h2>
           <p className="text-[var(--text-sec)] text-sm">{subtitle()}</p>
         </div>
+
+        {maintenanceOn && (
+          <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+            <div className="font-bold text-amber-50 mb-1">{t.maintenanceLoginPageTitle}</div>
+            <p className="leading-relaxed">{t.maintenanceLoginPageDesc}</p>
+          </div>
+        )}
 
         {showGoogle && (
           <>
@@ -348,7 +370,8 @@ export default function LoginView({
               <input
                 type="password"
                 required
-                minLength={6}
+                minLength={PASSWORD_MIN_LENGTH}
+                maxLength={PASSWORD_MAX_LENGTH}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="input w-full"
@@ -365,7 +388,8 @@ export default function LoginView({
               <input
                 type="password"
                 required
-                minLength={6}
+                minLength={PASSWORD_MIN_LENGTH}
+                maxLength={PASSWORD_MAX_LENGTH}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 className="input w-full"
@@ -382,7 +406,8 @@ export default function LoginView({
               <input
                 type="password"
                 required
-                minLength={6}
+                minLength={PASSWORD_MIN_LENGTH}
+                maxLength={PASSWORD_MAX_LENGTH}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 className="input w-full"

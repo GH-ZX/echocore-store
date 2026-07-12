@@ -604,9 +604,39 @@ When you provide the API key, implementation can follow this plan:
 Store in Supabase `store_settings` or env (server-only):
 
 - `g2bulk_api_key` — never in frontend
-- `g2bulk_markup_percent` — margin over `unit_price` / `amount`
+- `g2bulk_markup_percent` — margin over `unit_price` / `amount` (default 15%)
+- `g2bulk_charm_pricing_enabled` — optional tiered endings after markup (see below)
 - `g2bulk_webhook_secret` — optional verify callback origin
 - `g2bulk_enabled` — toggle
+
+#### Storefront pricing (EchoCore)
+
+Two separate amounts — do not confuse them:
+
+| Amount | Field | Charged when |
+|--------|-------|--------------|
+| **Customer price** | `offers.price` | Customer pays (balance, checkout, Sam invoice) |
+| **Supplier cost** | `offers.g2bulk_cost_usd` | G2Bulk debits **your G2Bulk wallet** on fulfill |
+
+Flow:
+
+1. Sync reads G2Bulk `amount` / `unit_price` → `g2bulk_cost_usd`
+2. `price = markup(cost)`; if charm enabled → tiered round-up → stored as `offers.price`
+3. `create_order_atomic` verifies `offers.price` server-side
+4. Fulfill calls G2Bulk with `catalogue_name` / `product_id` only — **no retail price sent**
+
+**Charm pricing** (`charmPricing.ts` / `src/lib/charmPricing.js`) — gentle tiers per dollar:
+
+| After markup | Rounds up to |
+|--------------|--------------|
+| e.g. `0.43` | `0.49` |
+| e.g. `1.25` | `1.49` |
+| e.g. `1.68` | `1.89` |
+| e.g. `0.85` | `0.99` |
+
+Admin: enable toggle → **Apply charm prices** (`applyCharmPricing` edge action) to refresh synced offers.
+
+**Admin UI:** supplier cost badge (`AdminOfferCostBadge`) shows `g2bulk_cost_usd` next to retail price.
 
 ### 2. Product types → G2Bulk endpoints
 
@@ -644,7 +674,9 @@ Before checkout, proxy `POST /v1/games/checkPlayerId` so buyer sees in-game name
 
 ### 6. Pricing sync (optional cron)
 
-Periodic job: fetch catalogue/products, apply markup, update offer prices in Supabase.
+Periodic job: fetch catalogue/products, apply markup (+ charm if enabled), update `offers.price` and `g2bulk_cost_usd` in Supabase.
+
+SQL: `g2bulk_charm_pricing_enabled` column + `save_g2bulk_settings` — in `supabase_echocore_full.sql` or `supabase_charm_pricing_migration.sql` for existing DBs.
 
 ---
 
@@ -688,16 +720,19 @@ curl https://api.g2bulk.com/api/v2 -d key=$KEY -d action=balance
 
 ---
 
-## Implementation files (planned)
-
-When ready to implement, likely touch:
+## Implementation files
 
 | File | Purpose |
 |------|---------|
-| `src/lib/g2bulkApi.js` | Typed client wrapper (server/proxy only) |
-| `supabase/functions/g2bulk-*/` | Edge functions for purchase, webhook, validate |
-| `supabase_echocore_full.sql` §07–§13 | G2Bulk schema + settings |
-| `src/components/admin/AdminG2BulkSettings.jsx` | Key + markup config |
+| `supabase/functions/g2bulk/index.ts` | Sync, check, fulfill, `applyCharmPricing` |
+| `supabase/functions/g2bulk/charmPricing.ts` | Markup + tiered charm endings |
+| `supabase/functions/g2bulk/gameCurrency.ts` | Pack currency at sync |
+| `src/lib/g2bulk.js` | Frontend invoke wrapper |
+| `src/lib/charmPricing.js` | Client charm preview (admin settings) |
+| `src/lib/offerCost.js` | Wholesale cost helpers |
+| `supabase_echocore_full.sql` §07–§13 | G2Bulk schema + charm toggle |
+| `src/components/admin/AdminG2BulkSettings.jsx` | Key, markup, charm, sync |
+| `src/components/admin/AdminOfferCostBadge.jsx` | Admin supplier-cost badge |
 | `BuyView.jsx` | Player validation via proxy |
 
 ---

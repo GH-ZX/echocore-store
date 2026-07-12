@@ -28,10 +28,8 @@ import {
   X,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import G2bulkWalletCard from '../../components/ui/G2bulkWalletCard';
-import SamWalletBalancesCard from '../../components/ui/SamWalletBalancesCard';
-import { useAdminG2bulkWallet } from '../../hooks/useAdminG2bulkWallet';
-import { useAdminSamWallets } from '../../hooks/useAdminSamWallets';
+import AdminSupplierWalletsCard from '../../components/ui/AdminSupplierWalletsCard';
+import { useAdminSupplierWallets } from '../../hooks/useAdminSupplierWallets';
 import ProfileAvatar from '../../components/profile/ProfileAvatar';
 import {
   uploadProfileAvatar,
@@ -41,6 +39,18 @@ import {
   PROFILE_CORE_SELECT,
   emptyProfileValue,
 } from '../../lib/profile';
+import { getOrderStatusLabel } from '../../lib/orderReceipt';
+import { formatMessage } from '../../lib/i18n';
+import {
+  canChangeUsername,
+  formatProfileUsername,
+  getProfileUsername,
+  getUsernameCooldownEndsAt,
+  normalizeUsernameInput,
+  profileNamesDiffer,
+  validateUsername,
+} from '../../lib/username';
+import { changeUsername, getUsernameErrorMessage } from '../../lib/usernameChange';
 
 function formatDate(dateStr, lang) {
   if (!dateStr) return '—';
@@ -80,6 +90,7 @@ export default function ProfileView({
   const [editingProfile, setEditingProfile] = useState(searchParams.get('edit') === '1');
 
   const [nameDraft, setNameDraft] = useState(user?.name || '');
+  const [usernameDraft, setUsernameDraft] = useState(user?.username || '');
   const [bioDraft, setBioDraft] = useState('');
   const [phoneDraft, setPhoneDraft] = useState('');
   const [countryDraft, setCountryDraft] = useState('');
@@ -98,17 +109,25 @@ export default function ProfileView({
   const notSetLabel = t.notSet;
 
   const isAdmin = user?.role === 'admin';
-  const { wallet: g2bulkWallet, loading: g2bulkLoading, error: g2bulkError, refresh: refreshG2bulk } = useAdminG2bulkWallet(isAdmin);
   const {
-    wallets: samWallets,
-    loading: samLoading,
-    error: samError,
-    notConfigured: samNotConfigured,
-    refresh: refreshSamWallets,
-  } = useAdminSamWallets(isAdmin);
+    g2bulkWallet,
+    g2bulkError,
+    g2bulkFetched,
+    samWallets,
+    samError,
+    samNotConfigured,
+    samFetched,
+    loading: supplierWalletsLoading,
+    idle: supplierWalletsIdle,
+    refresh: refreshSupplierWallets,
+  } = useAdminSupplierWallets(isAdmin, {
+    fetchOnMount: false,
+    pollIntervalMs: 3 * 60 * 1000,
+  });
 
   const syncFormFromProfile = (profile, currentUser) => {
     setNameDraft(profile?.name || currentUser?.name || '');
+    setUsernameDraft(getProfileUsername(profile) || getProfileUsername(currentUser) || '');
     setBioDraft(profile?.bio || currentUser?.bio || '');
     setPhoneDraft(profile?.phone || currentUser?.phone || '');
     setCountryDraft(profile?.country || currentUser?.country || '');
@@ -197,7 +216,9 @@ export default function ProfileView({
 
   const balance = profileMeta?.balance ?? user?.balance ?? 0;
   const totalSpent = useMemo(
-    () => userOrders.reduce((sum, o) => sum + parseFloat(o.total || 0), 0),
+    () => userOrders
+      .filter((o) => o.status === 'completed')
+      .reduce((sum, o) => sum + parseFloat(o.total || 0), 0),
     [userOrders],
   );
   const totalRecharges = useMemo(
@@ -207,6 +228,10 @@ export default function ProfileView({
 
   const savedProfile = profileMeta || user || {};
   const savedName = savedProfile.name || user?.name || '';
+  const savedUsername = getProfileUsername(savedProfile) || getProfileUsername(user);
+  const usernameChangedAt = profileMeta?.username_changed_at || user?.username_changed_at || null;
+  const usernameChangeAllowed = canChangeUsername(usernameChangedAt);
+  const usernameCooldownEndsAt = getUsernameCooldownEndsAt(usernameChangedAt);
   const savedBio = savedProfile.bio || '';
   const savedPhone = savedProfile.phone || '';
   const savedCountry = savedProfile.country || '';
@@ -225,6 +250,12 @@ export default function ProfileView({
   const accountTypeLabel = isAdmin ? t.profileRoleAdmin : t.profileRolePlayer;
 
   const profileDetails = useMemo(() => [
+    ...(savedUsername ? [{
+      key: 'username',
+      label: t.profileUsername,
+      icon: AtSign,
+      value: formatProfileUsername(savedUsername),
+    }] : []),
     { key: 'bio', label: t.profileBio, icon: Sparkles, value: formatDetail(savedBio) },
     { key: 'phone', label: t.profilePhone, icon: Phone, value: formatDetail(savedPhone) },
     { key: 'country', label: t.profileCountry, icon: MapPin, value: formatDetail(savedCountry) },
@@ -233,10 +264,11 @@ export default function ProfileView({
     { key: 'player_uid', label: t.profileDefaultUid, icon: Hash, value: formatDetail(savedPlayerUid) },
     { key: 'member_since', label: t.memberSince, icon: Calendar, value: memberSince },
     { key: 'account_type', label: t.accountType, icon: ShieldCheck, value: accountTypeLabel },
-  ], [savedBio, savedPhone, savedCountry, savedFavoriteGame, savedDiscord, savedPlayerUid, memberSince, accountTypeLabel, t, formatDetail]);
+  ], [savedUsername, savedBio, savedPhone, savedCountry, savedFavoriteGame, savedDiscord, savedPlayerUid, memberSince, accountTypeLabel, t, formatDetail]);
 
   const isDirty = useMemo(() => {
     const base = {
+      username: getProfileUsername(profileMeta) || getProfileUsername(user) || '',
       name: profileMeta?.name || user?.name || '',
       bio: profileMeta?.bio || user?.bio || '',
       phone: profileMeta?.phone || user?.phone || '',
@@ -247,7 +279,8 @@ export default function ProfileView({
     };
     const baseAvatar = profileMeta?.avatar_url || user?.avatar_url || '';
     return (
-      nameDraft.trim() !== base.name.trim()
+      normalizeUsernameInput(usernameDraft) !== base.username
+      || nameDraft.trim() !== base.name.trim()
       || bioDraft.trim() !== base.bio.trim()
       || phoneDraft.trim() !== base.phone.trim()
       || countryDraft.trim() !== base.country.trim()
@@ -257,7 +290,7 @@ export default function ProfileView({
       || !!pendingAvatarFile
       || (removeAvatar && !!baseAvatar)
     );
-  }, [nameDraft, bioDraft, phoneDraft, countryDraft, favoriteGameDraft, discordDraft, playerUidDraft, pendingAvatarFile, removeAvatar, profileMeta, user]);
+  }, [usernameDraft, nameDraft, bioDraft, phoneDraft, countryDraft, favoriteGameDraft, discordDraft, playerUidDraft, pendingAvatarFile, removeAvatar, profileMeta, user]);
 
   const handleAvatarPick = (file) => {
     if (!file) return;
@@ -327,12 +360,41 @@ export default function ProfileView({
     setProfileSuccess('');
 
     try {
+      const nextUsername = normalizeUsernameInput(usernameDraft);
+      const usernameDirty = nextUsername !== savedUsername;
+
+      if (usernameDirty) {
+        if (!usernameChangeAllowed) {
+          const retryDate = usernameCooldownEndsAt
+            ? formatDateTime(usernameCooldownEndsAt.toISOString(), lang)
+            : '—';
+          setProfileError(formatMessage(t.usernameCooldown, { date: retryDate }));
+          setSavingProfile(false);
+          return;
+        }
+        const usernameCheck = validateUsername(nextUsername);
+        if (!usernameCheck.ok) {
+          setProfileError(getUsernameErrorMessage(usernameCheck.code, t));
+          setSavingProfile(false);
+          return;
+        }
+      }
+
       let nextAvatarUrl = avatarUrl;
 
       if (pendingAvatarFile) {
         nextAvatarUrl = await uploadProfileAvatar(user.id, pendingAvatarFile);
       } else if (removeAvatar) {
         nextAvatarUrl = null;
+      }
+
+      let usernamePatch = {};
+      if (usernameDirty) {
+        const usernameResult = await changeUsername(nextUsername);
+        usernamePatch = {
+          username: usernameResult?.username || nextUsername,
+          username_changed_at: usernameResult?.username_changed_at || new Date().toISOString(),
+        };
       }
 
       const updated = await updateUserProfileRecord(user.id, {
@@ -346,7 +408,7 @@ export default function ProfileView({
         avatar_url: nextAvatarUrl,
       });
 
-      setProfileMeta((prev) => ({ ...prev, ...updated }));
+      setProfileMeta((prev) => ({ ...prev, ...updated, ...usernamePatch }));
       syncFormFromProfile(updated, user);
       setPendingAvatarFile(null);
       setRemoveAvatar(false);
@@ -355,6 +417,10 @@ export default function ProfileView({
 
       await onUpdateProfile?.({
         name: updated.name,
+        ...(usernamePatch.username ? {
+          username: usernamePatch.username,
+          username_changed_at: usernamePatch.username_changed_at,
+        } : {}),
         bio: updated.bio || '',
         phone: updated.phone || '',
         country: updated.country || '',
@@ -364,7 +430,7 @@ export default function ProfileView({
         avatar_url: updated.avatar_url || '',
       });
 
-      setProfileSuccess(t.profileSaved);
+      setProfileSuccess(usernameDirty ? t.usernameChangedSuccess : t.profileSaved);
       setEditingProfile(false);
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev);
@@ -372,7 +438,7 @@ export default function ProfileView({
         return next;
       }, { replace: true });
     } catch (err) {
-      setProfileError(err.message || t.profileSaveFailed);
+      setProfileError(getUsernameErrorMessage(err.message, t) || err.message || t.profileSaveFailed);
     } finally {
       setSavingProfile(false);
     }
@@ -397,6 +463,14 @@ export default function ProfileView({
     return method || '—';
   };
 
+  const orderStatusClass = (status) => {
+    if (status === 'completed') return 'text-emerald-400';
+    if (status === 'payment_sent') return 'text-amber-300';
+    if (status === 'pending_payment') return 'text-amber-400';
+    if (status === 'cancelled') return 'text-red-400';
+    return 'text-[var(--text-muted)]';
+  };
+
   if (!user) return null;
 
   return (
@@ -416,6 +490,14 @@ export default function ProfileView({
                 {t.profileTitle}
               </p>
               <h1 className="text-xl sm:text-2xl md:text-3xl font-black truncate">{heroName}</h1>
+              {savedUsername && (
+                <p className="text-sm font-mono text-[var(--accent)] mt-1 truncate">
+                  {formatProfileUsername(savedUsername)}
+                </p>
+              )}
+              {profileNamesDiffer(savedProfile) && (
+                <p className="text-xs text-[var(--text-muted)] mt-0.5 truncate">{savedName}</p>
+              )}
               <p className="flex items-center gap-1.5 mt-2 text-sm text-[var(--text-sec)] min-w-0">
                 <Mail className="w-3.5 h-3.5 flex-shrink-0 text-[var(--accent)]/70" />
                 <span className="truncate">{user.email}</span>
@@ -435,29 +517,24 @@ export default function ProfileView({
 
           <div className="w-full lg:w-auto lg:min-w-[280px] space-y-4">
             {isAdmin ? (
-              <>
-                <G2bulkWalletCard
-                  balance={g2bulkWallet?.balance ?? 0}
-                  username={g2bulkWallet?.username}
-                  loading={g2bulkLoading}
-                  error={g2bulkError}
-                  lang={lang}
-                  onRefresh={refreshG2bulk}
-                  onManage={() => navigate('/dashboard')}
-                  manageLabel={t.g2bulkDashboard}
-                />
-                <SamWalletBalancesCard
-                  wallets={samWallets}
-                  loading={samLoading}
-                  error={samError}
-                  notConfigured={samNotConfigured}
-                  lang={lang}
-                  t={t}
-                  onRefresh={refreshSamWallets}
-                  onManage={() => navigate('/dashboard/payments')}
-                  manageLabel={t.samWalletManage}
-                />
-              </>
+              <AdminSupplierWalletsCard
+                t={t}
+                variant="card"
+                g2bulkBalance={g2bulkWallet?.balance ?? 0}
+                g2bulkUsername={g2bulkWallet?.username}
+                g2bulkError={g2bulkError}
+                g2bulkFetched={g2bulkFetched}
+                samWallets={samWallets}
+                samError={samError}
+                samNotConfigured={samNotConfigured}
+                samFetched={samFetched}
+                loading={supplierWalletsLoading}
+                idle={supplierWalletsIdle}
+                idleHint={t.walletRefreshHint}
+                onRefresh={refreshSupplierWallets}
+                onOpenDashboard={() => navigate('/dashboard')}
+                onOpenPayments={() => navigate('/dashboard/payments')}
+              />
             ) : (
               <div className="profile-balance-panel">
                 <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">
@@ -589,6 +666,34 @@ export default function ProfileView({
           </div>
 
           <div className="space-y-4">
+            <div>
+              <label className="profile-field-label" htmlFor="profile-username">
+                {t.profileUsername}
+              </label>
+              <div className="relative">
+                <span className="absolute inset-y-0 start-3 flex items-center text-[var(--text-muted)] font-mono text-sm pointer-events-none">@</span>
+                <input
+                  id="profile-username"
+                  type="text"
+                  value={usernameDraft}
+                  onChange={(e) => setUsernameDraft(normalizeUsernameInput(e.target.value))}
+                  maxLength={20}
+                  disabled={!usernameChangeAllowed || savingProfile}
+                  className="profile-field-input font-mono ps-7 disabled:opacity-60"
+                  placeholder={t.profileUsernamePlaceholder}
+                  autoComplete="username"
+                  spellCheck={false}
+                />
+              </div>
+              <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                {!usernameChangeAllowed && usernameCooldownEndsAt
+                  ? formatMessage(t.usernameCooldown, {
+                    date: formatDateTime(usernameCooldownEndsAt.toISOString(), lang),
+                  })
+                  : t.profileUsernameHelp}
+              </p>
+            </div>
+
             <div>
               <label className="profile-field-label" htmlFor="profile-name">
                 {t.displayName}
@@ -727,7 +832,7 @@ export default function ProfileView({
         {(isAdmin ? [
           { icon: ShoppingBag, label: t.totalOrders, value: userOrders.length, color: 'text-blue-400' },
           { icon: Receipt, label: t.totalSpent, value: `$${totalSpent.toFixed(2)}`, color: 'text-[var(--accent)]' },
-          { icon: Wallet, label: t.g2bulkBalance, value: g2bulkLoading ? '…' : (g2bulkWallet ? `$${g2bulkWallet.balance.toFixed(2)}` : '—'), color: 'text-emerald-400' },
+          { icon: Wallet, label: t.g2bulkBalance, value: supplierWalletsLoading ? '…' : (g2bulkWallet ? `$${g2bulkWallet.balance.toFixed(2)}` : '—'), color: 'text-emerald-400' },
           { icon: UserRound, label: t.accountType, value: t.profileRoleAdmin, color: 'text-violet-400' },
         ] : [
           { icon: ShoppingBag, label: t.totalOrders, value: userOrders.length, color: 'text-blue-400' },
@@ -808,6 +913,9 @@ export default function ProfileView({
                         </div>
                         <div className="text-right flex-shrink-0">
                           <p className="font-black text-[var(--accent)]">${parseFloat(order.total).toFixed(2)}</p>
+                          <p className={`text-[10px] mt-0.5 font-semibold ${orderStatusClass(order.status)}`}>
+                            {getOrderStatusLabel(order.status, t)}
+                          </p>
                           <p className="text-[10px] text-[var(--text-muted)] mt-0.5">{paymentLabel(order.payment_method)}</p>
                         </div>
                       </div>

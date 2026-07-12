@@ -62,12 +62,24 @@ export const PAYMENT_METHOD_DEFS = {
   },
 };
 
-function walletMode(paymentConfig) {
+export function getWalletMode(paymentConfig = {}) {
   return paymentConfig.walletMode === 'api' ? 'api' : 'manual';
+}
+
+function walletMode(paymentConfig) {
+  return getWalletMode(paymentConfig);
+}
+
+export function isApiWalletMode(paymentConfig = {}) {
+  return getWalletMode(paymentConfig) === 'api';
 }
 
 export function isManualWalletMethod(methodId) {
   return MANUAL_WALLET_METHODS.includes(methodId);
+}
+
+export function isApiWalletMethod(methodId, paymentConfig = {}) {
+  return isManualWalletMethod(methodId) && isApiWalletMode(paymentConfig);
 }
 
 export function isPaymentMethodReady(methodId, paymentConfig = {}) {
@@ -140,14 +152,28 @@ export function buildPaymentMethods(t, lang, paymentConfig = {}, options = {}) {
     });
   }
 
+  const isApiMode = isApiWalletMode(paymentConfig);
+
   if (enabled.shamcash) {
     const def = PAYMENT_METHOD_DEFS.ShamCash;
-    methods.push({ ...def, name: label(def), desc: desc(def), disabled: false });
+    methods.push({
+      ...def,
+      name: label(def),
+      desc: desc(def),
+      disabled: false,
+      manualOnlyKey: isApiMode ? null : def.manualOnlyKey,
+    });
   }
 
   if (enabled.syriatel) {
     const def = PAYMENT_METHOD_DEFS.SyriatelCash;
-    methods.push({ ...def, name: label(def), desc: desc(def), disabled: false });
+    methods.push({
+      ...def,
+      name: label(def),
+      desc: desc(def),
+      disabled: false,
+      manualOnlyKey: isApiMode ? null : def.manualOnlyKey,
+    });
   }
 
   if (enabled.binance) {

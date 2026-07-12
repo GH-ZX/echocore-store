@@ -13,7 +13,9 @@ import {
   g2bulkGetMe,
   syncG2bulkCatalog,
   clearG2bulkSyncedCatalog,
+  applyG2bulkCharmPricing,
 } from '../../lib/g2bulk';
+import { applyCharmPricing } from '../../lib/charmPricing';
 import { countPullSelection, normalizePullSelection } from '../../lib/pullCatalogUtils';
 import { formatMessage } from '../../lib/i18n';
 
@@ -79,17 +81,18 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [pullPanelOpen, setPullPanelOpen] = useState(false);
   const [syncProgress, setSyncProgress] = useState(null);
-  const [includeVouchers, setIncludeVouchers] = useState(true);
   const syncAbortRef = useRef(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [testResult, setTestResult] = useState(null);
   const [syncResult, setSyncResult] = useState(null);
   const [pullSelection, setPullSelection] = useState(normalizePullSelection());
+  const [applyingCharm, setApplyingCharm] = useState(false);
 
   const [form, setForm] = useState({
     g2bulk_enabled: false,
     g2bulk_markup_percent: 15,
+    g2bulk_charm_pricing_enabled: false,
     g2bulk_catalog_only: true,
     g2bulk_catalog_mode: 'sync',
     g2bulk_auto_sync_enabled: true,
@@ -112,6 +115,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
       setForm({
         g2bulk_enabled: data.g2bulk_enabled ?? false,
         g2bulk_markup_percent: data.g2bulk_markup_percent ?? 15,
+        g2bulk_charm_pricing_enabled: data.g2bulk_charm_pricing_enabled ?? false,
         g2bulk_catalog_only: data.g2bulk_catalog_only ?? true,
         g2bulk_catalog_mode: data.g2bulk_catalog_mode || 'sync',
         g2bulk_auto_sync_enabled: data.g2bulk_auto_sync_enabled ?? true,
@@ -138,6 +142,30 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     load();
   }, [load]);
 
+  const charmPreview = useMemo(() => {
+    const markedSamples = [0.43, 0.85, 1.25, 1.68];
+    return markedSamples.map((plain) => ({
+      plain,
+      charm: applyCharmPricing(plain),
+    }));
+  }, []);
+
+  const handleApplyCharmPricing = async () => {
+    setApplyingCharm(true);
+    setError('');
+    setSuccess('');
+    try {
+      const result = await applyG2bulkCharmPricing();
+      setSuccess(formatMessage(t.g2bulkCharmPricingApplied, { count: result.updated ?? 0 }));
+      await onCatalogSynced?.(form.g2bulk_catalog_only);
+      setTimeout(() => setSuccess(''), 4000);
+    } catch (err) {
+      setError(err.message || t.g2bulkCharmPricingFailed);
+    } finally {
+      setApplyingCharm(false);
+    }
+  };
+
   const scheduleLabel = useMemo(() => {
     const hour = HOUR_OPTIONS.find((h) => h.value === Number(form.g2bulk_auto_sync_hour))?.label
       || `${form.g2bulk_auto_sync_hour}:00`;
@@ -151,6 +179,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     await saveG2bulkSettings({
       enabled: payload.g2bulk_enabled,
       markupPercent: parseFloat(payload.g2bulk_markup_percent) || 15,
+      charmPricingEnabled: !!payload.g2bulk_charm_pricing_enabled,
       catalogOnly: payload.g2bulk_catalog_only,
       catalogMode: payload.g2bulk_catalog_mode,
       autoSyncEnabled: payload.g2bulk_auto_sync_enabled,
@@ -204,15 +233,32 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     syncAbortRef.current?.abort();
   };
 
+  const handlePullSelectionLoaded = useCallback((selection, catalogMode) => {
+    setPullSelection(normalizePullSelection(selection || {}));
+    if (catalogMode) {
+      setForm((prev) => ({ ...prev, g2bulk_catalog_mode: catalogMode }));
+    }
+  }, []);
+
+  const handlePullSelectionSaved = useCallback((selection, catalogMode) => {
+    setPullSelection(normalizePullSelection(selection || {}));
+    if (catalogMode) {
+      setForm((prev) => ({ ...prev, g2bulk_catalog_mode: catalogMode }));
+    }
+    setSuccess(t.g2bulkPullSelectionSaved);
+    onCatalogSynced?.(form.g2bulk_catalog_only);
+    setTimeout(() => setSuccess(''), 3000);
+  }, [t.g2bulkPullSelectionSaved, onCatalogSynced, form.g2bulk_catalog_only]);
+
   const pullCounts = useMemo(
-    () => countPullSelection(pullSelection, { includeGiftCards: includeVouchers }),
-    [pullSelection, includeVouchers],
+    () => countPullSelection(pullSelection),
+    [pullSelection],
   );
 
   const catalogNeverSynced = !form.g2bulk_last_sync_at;
   const hasAnyPullSelection = pullCounts.total > 0;
   const hasSyncableSelection = (
-    pullCounts.syncGames + pullCounts.accounts + pullCounts.giftCards
+    pullCounts.syncGames + pullCounts.syncVouchers
   ) > 0;
 
   const catalogStatus = useMemo(() => {
@@ -293,7 +339,6 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
       }
 
       const result = await syncG2bulkCatalog({
-        includeVouchers,
         hideManual: true,
         signal: controller.signal,
         onProgress: (progress) => setSyncProgress(progress),
@@ -454,6 +499,36 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
               className="input w-full max-w-[120px]"
             />
           </div>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]/30 px-4 py-3 space-y-3 max-w-xl">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!form.g2bulk_charm_pricing_enabled}
+                onChange={(e) => setForm((p) => ({ ...p, g2bulk_charm_pricing_enabled: e.target.checked }))}
+                className="rounded border-[var(--border)] mt-0.5"
+              />
+              <span className="text-sm leading-relaxed">
+                <span className="font-medium text-[var(--text-primary)] block">{t.g2bulkCharmPricing}</span>
+                <span className="text-[var(--text-muted)]">{t.g2bulkCharmPricingHelp}</span>
+              </span>
+            </label>
+            <div className="text-xs text-[var(--text-sec)] space-y-1 font-mono">
+              {charmPreview.map((row) => (
+                <div key={row.plain}>
+                  ${row.plain.toFixed(2)} → ${row.charm.toFixed(2)}
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={handleApplyCharmPricing}
+              disabled={applyingCharm || saving}
+              className="btn btn-secondary text-sm inline-flex items-center gap-2"
+            >
+              {applyingCharm ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              {t.g2bulkApplyCharmPricing}
+            </button>
+          </div>
           <div>
             <label className="block text-sm font-medium mb-1.5">
               {t.g2bulkCatalogSource}
@@ -537,40 +612,58 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
                   {catalogStatus === 'synced' && t.g2bulkSelectionSynced}
                   {catalogStatus === 'syncing' && t.g2bulkSyncing}
                 </div>
-                <div className="text-xs text-[var(--text-muted)] mt-1 space-y-0.5">
+                <div className="text-xs text-[var(--text-muted)] mt-1 space-y-1">
                   {hasAnyPullSelection && (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)]/30 px-3 py-2">
+                        <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-sec)]">
+                          {t.g2bulkLaneTopups}
+                        </div>
+                        <div className="mt-0.5 text-sm text-[var(--text-primary)] font-semibold">
+                          {pullCounts.games} {t.g2bulkGamesUnit}
+                        </div>
+                        <div className="text-[11px]">
+                          {pullCounts.syncGames} {t.g2bulkSyncedUnit}
+                          {' · '}
+                          {pullCounts.liveGames} {t.g2bulkLiveUnit}
+                          {pullCounts.carousel > 0 && (
+                            <>
+                              {' · '}
+                              {pullCounts.carousel} {t.g2bulkCarouselUnit}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)]/30 px-3 py-2">
+                        <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-sec)]">
+                          {t.g2bulkLaneVouchers}
+                        </div>
+                        <div className="mt-0.5 text-sm text-[var(--text-primary)] font-semibold">
+                          {pullCounts.vouchers} {t.g2bulkVouchersUnit}
+                        </div>
+                        <div className="text-[11px]">
+                          {pullCounts.platformVouchers} {t.g2bulkVoucherPlatformUnit}
+                          {pullCounts.gameVouchers > 0 && (
+                            <>
+                              {' · '}
+                              {pullCounts.gameVouchers} {t.g2bulkVoucherGameUnit}
+                            </>
+                          )}
+                          {' · '}
+                          {pullCounts.syncVouchers} {t.g2bulkSyncedUnit}
+                          {' · '}
+                          {pullCounts.liveVouchers} {t.g2bulkLiveUnit}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {hasAnyPullSelection && form.g2bulk_catalog_mode && (
                     <div>
-                      {t.g2bulkSelected}{' '}
-                      {pullCounts.games} {t.g2bulkGamesUnit}
-                      {' ('}
-                      {pullCounts.syncGames} {t.g2bulkSyncedUnit}
-                      {' · '}
-                      {pullCounts.liveGames} {t.g2bulkLiveUnit}
-                      {')'}
-                      {' · '}
-                      {pullCounts.accounts} {t.g2bulkAccountsUnit}
-                      {includeVouchers && (
-                        <>
-                          {' · '}
-                          {pullCounts.giftCards} {t.g2bulkGiftCardsUnit}
-                        </>
-                      )}
-                      {pullCounts.carousel > 0 && (
-                        <>
-                          {' · '}
-                          {pullCounts.carousel} {t.g2bulkCarouselUnit}
-                        </>
-                      )}
-                      {form.g2bulk_catalog_mode && (
-                        <>
-                          {' · '}
-                          {form.g2bulk_catalog_mode === 'hybrid'
-                            ? t.g2bulkHybridMode
-                            : form.g2bulk_catalog_mode === 'live'
-                              ? t.g2bulkLiveMode
-                              : t.g2bulkSyncMode}
-                        </>
-                      )}
+                      {form.g2bulk_catalog_mode === 'hybrid'
+                        ? t.g2bulkHybridMode
+                        : form.g2bulk_catalog_mode === 'live'
+                          ? t.g2bulkLiveMode
+                          : t.g2bulkSyncMode}
                     </div>
                   )}
                   {form.g2bulk_last_sync_at && (
@@ -595,21 +688,9 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
             <li>{t.g2bulkSyncStep2}</li>
             <li>{t.g2bulkSyncStep3}</li>
             <li>{t.g2bulkSyncStep4}</li>
+            <li>{t.g2bulkSyncStep5}</li>
           </ul>
         </div>
-
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={includeVouchers}
-            onChange={(e) => setIncludeVouchers(e.target.checked)}
-            className="rounded border-[var(--border)]"
-            disabled={syncing || clearing}
-          />
-          <span className="text-sm">
-            {t.g2bulkIncludeVouchers}
-          </span>
-        </label>
 
         <div className="flex flex-wrap gap-3">
           <button
@@ -769,24 +850,10 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
       <G2bulkPullPanel
         open={pullPanelOpen}
         onClose={() => setPullPanelOpen(false)}
-        lang={lang}
-        includeGiftCards={includeVouchers}
+        t={t}
         initialSelection={pullSelection}
-        onLoaded={(selection, catalogMode) => {
-          setPullSelection(normalizePullSelection(selection || {}));
-          if (catalogMode) {
-            setForm((prev) => ({ ...prev, g2bulk_catalog_mode: catalogMode }));
-          }
-        }}
-        onSaved={(selection, catalogMode) => {
-          setPullSelection(normalizePullSelection(selection || {}));
-          if (catalogMode) {
-            setForm((prev) => ({ ...prev, g2bulk_catalog_mode: catalogMode }));
-          }
-          setSuccess(t.g2bulkPullSelectionSaved);
-          onCatalogSynced?.(form.g2bulk_catalog_only);
-          setTimeout(() => setSuccess(''), 3000);
-        }}
+        onLoaded={handlePullSelectionLoaded}
+        onSaved={handlePullSelectionSaved}
       />
 
       <ConfirmDialog

@@ -6,12 +6,19 @@ import {
 } from './gameRegions';
 import {
   CATALOG_SEGMENTS,
+  VOUCHER_UI_TAGS,
   getGameCatalogSegment,
   isGiftCardGame,
   isGamingAccountGame,
 } from './catalogSegments';
 
-export { CATALOG_SEGMENTS, getGameCatalogSegment, isGiftCardGame, isGamingAccountGame };
+export {
+  CATALOG_SEGMENTS,
+  VOUCHER_UI_TAGS,
+  getGameCatalogSegment,
+  isGiftCardGame,
+  isGamingAccountGame,
+};
 
 export function isVoucherGame(game) {
   return !!game && game.redemption_method === 'redeem_code';
@@ -28,12 +35,27 @@ export function getVoucherGames(games = []) {
   return getStorefrontVoucherGames(games);
 }
 
+/** All G2Bulk voucher categories (gift cards + platform brands) — single storefront lane */
+export function getCatalogVoucherGames(games = []) {
+  return getStorefrontVoucherGames(games);
+}
+
 export function getGiftCardGames(games = []) {
   return getStorefrontVoucherGames(games).filter((game) => isGiftCardGame(game));
 }
 
 export function getGamingAccountGames(games = []) {
   return getStorefrontVoucherGames(games).filter((game) => isGamingAccountGame(game));
+}
+
+export function filterVoucherGamesBySegment(games = [], filter = 'all') {
+  if (filter === 'platform') {
+    return games.filter((game) => isGamingAccountGame(game));
+  }
+  if (filter === 'game') {
+    return games.filter((game) => isGiftCardGame(game));
+  }
+  return games;
 }
 
 export function getTopupGames(games = []) {
@@ -96,8 +118,8 @@ export function offerBelongsToCatalog(offer, games = [], {
   if (isVoucherGame(game)) {
     if (!vouchers) return false;
     const segment = getGameCatalogSegment(game);
-    if (segment === CATALOG_SEGMENTS.gamingAccount) return gamingAccounts;
-    if (segment === CATALOG_SEGMENTS.giftCard) return giftCards;
+    if (segment === VOUCHER_UI_TAGS.gamingAccount) return gamingAccounts;
+    if (segment === VOUCHER_UI_TAGS.giftCard) return giftCards;
     return vouchers;
   }
   return topups;

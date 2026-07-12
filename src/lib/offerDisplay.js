@@ -1,4 +1,13 @@
 import { brandUserText } from './branding';
+import {
+  extractCurrencySuffixFromName,
+  formatPackNameWithCurrency,
+  getScopedOffersForGame,
+  isGenericCurrencyLabel,
+  isNumericOnlyPackName,
+  lookupGameCurrencyLabel,
+} from './gameCurrency';
+import { getDisplayGameForOffer, getFulfillmentGameForOffer } from './gameRegions';
 
 export function formatPrice(value) {
   const num = Number.parseFloat(value);
@@ -13,9 +22,86 @@ export function getOfferDiscount(offer) {
   return Math.round((1 - price / original) * 100);
 }
 
-export function getOfferDisplayName(offer, lang = 'ar') {
+function getRawOfferName(offer, lang = 'ar') {
   const raw = lang === 'ar' ? offer?.name_ar : offer?.name_en;
   return brandUserText(raw || offer?.name_en || offer?.name_ar || '');
+}
+
+function collectOfferNameCandidates(offer) {
+  return [
+    offer?.g2bulk_catalogue_name,
+    offer?.name_en,
+    offer?.name_ar,
+  ].filter(Boolean);
+}
+
+export function getOfferPackAmount(offer) {
+  if (offer?.amount != null && offer.amount !== '') {
+    const parsed = Number.parseFloat(offer.amount);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  for (const name of collectOfferNameCandidates(offer)) {
+    const match = String(name).trim().match(/^([\d,]+(?:\.\d+)?)/);
+    if (!match) continue;
+    const parsed = Number.parseFloat(match[1].replace(/,/g, ''));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return null;
+}
+
+export function formatOfferPackLabel(offer, game = null, lang = 'ar', relatedOffers = [], games = []) {
+  const rawName = getRawOfferName(offer, lang);
+  if (!rawName) return '';
+
+  const suffix = extractCurrencySuffixFromName(rawName);
+  if (suffix && !isGenericCurrencyLabel(suffix)) return rawName;
+
+  const fulfillmentGame = game || getFulfillmentGameForOffer(offer, games);
+  const currency = lookupGameCurrencyLabel(fulfillmentGame, games, relatedOffers, offer);
+  return formatPackNameWithCurrency(rawName, currency);
+}
+
+function resolveOfferDisplayContext(context) {
+  if (!context) {
+    return { game: null, games: [], relatedOffers: [] };
+  }
+  if (typeof context === 'object' && ('game' in context || 'games' in context || 'relatedOffers' in context)) {
+    return {
+      game: context.game || null,
+      games: context.games || [],
+      relatedOffers: context.relatedOffers || [],
+    };
+  }
+  return { game: context, games: [], relatedOffers: [] };
+}
+
+export function getOfferDisplayName(offer, lang = 'ar', context = null) {
+  const { game, games, relatedOffers } = resolveOfferDisplayContext(context);
+  const fulfillmentGame = game || getFulfillmentGameForOffer(offer, games);
+  const scopedOffers = getScopedOffersForGame(fulfillmentGame, games, relatedOffers);
+  return formatOfferPackLabel(offer, fulfillmentGame, lang, scopedOffers, games);
+}
+
+export function getOfferOrderNameSnapshot(offer, lang = 'ar', games = [], offers = []) {
+  return getOfferDisplayName(offer, lang, {
+    game: getFulfillmentGameForOffer(offer, games),
+    games,
+    relatedOffers: offers,
+  });
+}
+
+export function getOfferCatalogOptionLabel(offer, games = [], lang = 'ar', relatedOffers = []) {
+  const fulfillmentGame = games.find((row) => row.id === offer?.game_id) || null;
+  const storefrontGame = getDisplayGameForOffer(offer, games) || fulfillmentGame;
+  const pack = getOfferDisplayName(offer, lang, {
+    game: fulfillmentGame,
+    games,
+    relatedOffers,
+  });
+  const gameName = getGameDisplayName(storefrontGame || fulfillmentGame, lang);
+  return gameName ? `${gameName} — ${pack}` : pack;
 }
 
 export function getGameDisplayName(game, lang = 'ar') {
@@ -66,3 +152,5 @@ export function getRedemptionSteps(game, _t = {}, lang = 'ar') {
     ? ['أكمل الشراء', 'استخدم الكود أو UID من إيصال الطلب', 'استلم الشحن فوراً بعد التأكيد']
     : ['Complete your purchase', 'Use the code or UID from your order receipt', 'Receive delivery right after confirmation'];
 }
+
+export { isNumericOnlyPackName, isGenericCurrencyLabel };

@@ -1,12 +1,14 @@
 import {
   ShoppingCart, User, LogOut, Globe, ShieldCheck, Search, X, Menu,
-  Loader2, Wallet, ChevronDown, ChevronRight, Zap, ArrowRight, Smartphone,
+  Loader2, Wallet, ChevronDown, ChevronRight, ArrowRight,
+  Inbox,
 } from 'lucide-react';
-import G2bulkWalletCard from '../ui/G2bulkWalletCard';
-import SamWalletBalancesCard from '../ui/SamWalletBalancesCard';
-import { useAdminG2bulkWallet } from '../../hooks/useAdminG2bulkWallet';
-import { useAdminSamWallets } from '../../hooks/useAdminSamWallets';
-import { getSamAccountLabel } from '../../lib/samWalletFormat';
+import {
+  formatProfileUsername,
+  getProfileUsername,
+} from '../../lib/username';
+import AdminSupplierWalletsCard from '../ui/AdminSupplierWalletsCard';
+import { useAdminSupplierWallets } from '../../hooks/useAdminSupplierWallets';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
@@ -55,6 +57,7 @@ export default function Header({
   onNotificationMarkRead = () => {},
   onNotificationsMarkAllRead = () => {},
   onNotificationsClearAll = () => {},
+  onNotificationDismiss = () => {},
   onNotificationNavigate = () => {},
   onOpenNotificationsInbox = () => {},
   hasSaleOffers = true,
@@ -71,21 +74,26 @@ export default function Header({
   const mobileSearchInputRef = useRef(null);
   const profileTriggerRef = useRef(null);
   const profilePanelRef = useRef(null);
+  const menuRef = useRef(null);
+  const isAdmin = user?.role === 'admin';
   const { coords: profileCoords, updatePosition: updateProfilePosition } = useHeaderDropdownPosition(
     profileTriggerRef,
     profileOpen,
-    { align: 'end', width: 280 },
+    { align: 'end', width: isAdmin ? 332 : 300 },
   );
-  const menuRef = useRef(null);
-  const isAdmin = user?.role === 'admin';
-  const { wallet: g2bulkWallet, loading: g2bulkLoading } = useAdminG2bulkWallet(isAdmin);
   const {
-    wallets: samWallets,
-    loading: samLoading,
-    error: samError,
-    notConfigured: samNotConfigured,
-  } = useAdminSamWallets(isAdmin);
-  const samAccountLabel = getSamAccountLabel(samWallets, t.samWalletTitle);
+    g2bulkWallet,
+    g2bulkError,
+    g2bulkFetched,
+    samWallets,
+    samError,
+    samNotConfigured,
+    samFetched,
+    loading: supplierWalletsLoading,
+    idle: supplierWalletsIdle,
+  } = useAdminSupplierWallets(isAdmin, { fetchOnMount: true, pollIntervalMs: 0 });
+  const profileUsername = getProfileUsername(user);
+  const profileUsernameLabel = profileUsername ? formatProfileUsername(profileUsername) : '';
 
   const closeAll = useCallback(() => {
     setIsMenuOpen(false);
@@ -277,6 +285,7 @@ export default function Header({
       onMarkRead={onNotificationMarkRead}
       onMarkAllRead={onNotificationsMarkAllRead}
       onClearAll={onNotificationsClearAll}
+      onDismiss={onNotificationDismiss}
       onNavigate={handleBellNavigate}
       onViewAllInbox={onOpenNotificationsInbox}
     />
@@ -332,6 +341,9 @@ export default function Header({
             />
             <div className="header-profile-dd-head-text">
               <span className="header-profile-dd-head-name">{user.name}</span>
+              {profileUsernameLabel ? (
+                <span className="header-profile-dd-head-username">{profileUsernameLabel}</span>
+              ) : null}
               <span className="header-profile-dd-head-email">{user.email}</span>
             </div>
             <ChevronRight className="header-profile-dd-head-arrow" strokeWidth={2} aria-hidden="true" />
@@ -339,58 +351,23 @@ export default function Header({
 
           <div className="header-profile-dd-body">
             {isAdmin ? (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => handleNav('/dashboard')}
-                className="header-profile-dd-balance"
-              >
-                <span className="header-profile-dd-balance-icon" aria-hidden="true">
-                  <Zap strokeWidth={2} />
-                </span>
-                <span className="header-profile-dd-balance-copy">
-                  <span className="header-profile-dd-balance-label">
-                    {t.g2bulkWallet}
-                  </span>
-                  <span className="header-profile-dd-balance-hint">
-                    {t.viewInDashboard}
-                  </span>
-                </span>
-                <G2bulkWalletCard
-                  compact
-                  lang={lang}
-                  balance={g2bulkWallet?.balance ?? 0}
-                  loading={g2bulkLoading}
-                />
-              </button>
-            ) : null}
-            {isAdmin ? (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => handleNav('/dashboard/payments')}
-                className="header-profile-dd-balance"
-              >
-                <span className="header-profile-dd-balance-icon" aria-hidden="true">
-                  <Smartphone strokeWidth={2} />
-                </span>
-                <span className="header-profile-dd-balance-copy">
-                  <span className="header-profile-dd-balance-label">
-                    {samAccountLabel}
-                  </span>
-                  <span className="header-profile-dd-balance-hint">
-                    {t.viewInPayments}
-                  </span>
-                </span>
-                <SamWalletBalancesCard
-                  compact
+              <div className="header-profile-dd-supplier" role="presentation">
+                <AdminSupplierWalletsCard
                   t={t}
-                  wallets={samWallets}
-                  loading={samLoading}
-                  error={samError}
-                  notConfigured={samNotConfigured}
+                  variant="dropdown"
+                  g2bulkBalance={g2bulkWallet?.balance ?? 0}
+                  g2bulkError={g2bulkError}
+                  g2bulkFetched={g2bulkFetched}
+                  samWallets={samWallets}
+                  samError={samError}
+                  samNotConfigured={samNotConfigured}
+                  samFetched={samFetched}
+                  loading={supplierWalletsLoading}
+                  idle={supplierWalletsIdle}
+                  onOpenDashboard={() => handleNav('/dashboard')}
+                  onOpenPayments={() => handleNav('/dashboard/payments')}
                 />
-              </button>
+              </div>
             ) : (
               <button
                 type="button"
@@ -412,6 +389,16 @@ export default function Header({
                 <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
               </button>
             )}
+
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => handleNav('/notifications')}
+              className="header-profile-dd-item"
+            >
+              <Inbox className="w-4 h-4" strokeWidth={2} />
+              {t.siteInboxTitle}
+            </button>
 
             {user?.role === 'admin' && (
               <button
@@ -644,38 +631,23 @@ export default function Header({
                   {user ? (
                     <div className="header-mobile-account">
                       {isAdmin ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => handleNav('/dashboard')}
-                            className="header-mobile-action"
-                          >
-                            <Zap className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
-                            <span>{t.g2bulkWallet}</span>
-                            <G2bulkWalletCard
-                              compact
-                              lang={lang}
-                              balance={g2bulkWallet?.balance ?? 0}
-                              loading={g2bulkLoading}
-                            />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleNav('/dashboard/payments')}
-                            className="header-mobile-action"
-                          >
-                            <Smartphone className="w-4 h-4 text-emerald-300" strokeWidth={2} />
-                            <span>{samAccountLabel}</span>
-                            <SamWalletBalancesCard
-                              compact
-                              t={t}
-                              wallets={samWallets}
-                              loading={samLoading}
-                              error={samError}
-                              notConfigured={samNotConfigured}
-                            />
-                          </button>
-                        </>
+                        <div className="header-mobile-supplier">
+                          <AdminSupplierWalletsCard
+                            t={t}
+                            variant="compact"
+                            g2bulkBalance={g2bulkWallet?.balance ?? 0}
+                            g2bulkError={g2bulkError}
+                            g2bulkFetched={g2bulkFetched}
+                            samWallets={samWallets}
+                            samError={samError}
+                            samNotConfigured={samNotConfigured}
+                            samFetched={samFetched}
+                            loading={supplierWalletsLoading}
+                            idle={supplierWalletsIdle}
+                            onOpenDashboard={() => handleNav('/dashboard')}
+                            onOpenPayments={() => handleNav('/dashboard/payments')}
+                          />
+                        </div>
                       ) : (
                         <button
                           type="button"
