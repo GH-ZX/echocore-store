@@ -15,15 +15,19 @@ export default defineConfig(({ command, mode }) => {
       sourcemap: false,
       target: 'es2020',
       cssMinify: true,
+      chunkSizeWarningLimit: 1000,
       rollupOptions: {
         output: {
           manualChunks(id) {
             if (id.includes('node_modules')) {
-              if (id.includes('react-dom') || id.includes('react-router')) {
+              if (id.includes('react-router-dom') || id.includes('react-router')) {
+                return 'vendor-router'
+              }
+              if (id.includes('react-dom') || id.includes('/react/')) {
                 return 'vendor-react'
               }
-              if (id.includes('/react/')) {
-                return 'vendor-react'
+              if (id.includes('@base-ui') || id.includes('@radix-ui')) {
+                return 'vendor-ui'
               }
               if (id.includes('framer-motion')) {
                 return 'vendor-motion'
