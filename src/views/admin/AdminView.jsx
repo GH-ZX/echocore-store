@@ -5,6 +5,8 @@ import { Trash2, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet
 import { supabase } from '../../lib/supabase';
 import { uploadImage } from '../../lib/uploadImage';
 import { getCatalogOfferStats } from '../../lib/catalogUtils';
+import SamWalletBalancesCard from '../../components/ui/SamWalletBalancesCard';
+import { useAdminSamWallets } from '../../hooks/useAdminSamWallets';
 import AdminExistingGamesList from '../../components/admin/AdminExistingGamesList';
 import AdminGameEditModal from '../../components/admin/AdminGameEditModal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
@@ -414,6 +416,14 @@ export default function AdminView({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const {
+    wallets: samWallets,
+    loading: samLoading,
+    error: samError,
+    notConfigured: samNotConfigured,
+    refresh: refreshSamWallets,
+  } = useAdminSamWallets(true);
+
   const catalogStats = useMemo(
     () => getCatalogOfferStats(offers, games),
     [offers, games],
@@ -489,6 +499,18 @@ export default function AdminView({
       {/* OVERVIEW TAB */}
       {activeTab === 'overview' && (
         <div className="space-y-8">
+          <SamWalletBalancesCard
+            wallets={samWallets}
+            loading={samLoading}
+            error={samError}
+            notConfigured={samNotConfigured}
+            lang={lang}
+            t={t}
+            onRefresh={refreshSamWallets}
+            onManage={() => setAdminTab('payments')}
+            manageLabel={t.samWalletManage}
+          />
+
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="dash-stat-card card p-4 sm:p-6">

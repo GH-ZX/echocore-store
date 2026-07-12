@@ -70,3 +70,8 @@ export async function getSamWalletBalance(provider, identifier) {
   const data = await invokeSamApi({ action: 'getBalance', provider, identifier });
   return data.balances || [];
 }
+
+export async function fetchAllSamWalletBalances() {
+  const data = await invokeSamApi({ action: 'getAllWalletBalances' });
+  return { wallets: data.wallets || [] };
+}

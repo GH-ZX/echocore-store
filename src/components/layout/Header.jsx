@@ -1,9 +1,11 @@
 import {
   ShoppingCart, User, LogOut, Globe, ShieldCheck, Search, X, Menu,
-  Loader2, Wallet, ChevronDown, ChevronRight, Zap, ArrowRight,
+  Loader2, Wallet, ChevronDown, ChevronRight, Zap, ArrowRight, Smartphone,
 } from 'lucide-react';
 import G2bulkWalletCard from '../ui/G2bulkWalletCard';
+import SamWalletBalancesCard from '../ui/SamWalletBalancesCard';
 import { useAdminG2bulkWallet } from '../../hooks/useAdminG2bulkWallet';
+import { useAdminSamWallets } from '../../hooks/useAdminSamWallets';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
@@ -76,6 +78,12 @@ export default function Header({
   const menuRef = useRef(null);
   const isAdmin = user?.role === 'admin';
   const { wallet: g2bulkWallet, loading: g2bulkLoading } = useAdminG2bulkWallet(isAdmin);
+  const {
+    wallets: samWallets,
+    loading: samLoading,
+    error: samError,
+    notConfigured: samNotConfigured,
+  } = useAdminSamWallets(isAdmin);
 
   const closeAll = useCallback(() => {
     setIsMenuOpen(false);
@@ -353,6 +361,35 @@ export default function Header({
                   loading={g2bulkLoading}
                 />
               </button>
+            ) : null}
+            {isAdmin ? (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => handleNav('/dashboard/payments')}
+                className="header-profile-dd-balance"
+              >
+                <span className="header-profile-dd-balance-icon" aria-hidden="true">
+                  <Smartphone strokeWidth={2} />
+                </span>
+                <span className="header-profile-dd-balance-copy">
+                  <span className="header-profile-dd-balance-label">
+                    {t.samWalletTitle}
+                  </span>
+                  <span className="header-profile-dd-balance-hint">
+                    {t.viewInPayments}
+                  </span>
+                </span>
+                <SamWalletBalancesCard
+                  compact
+                  lang={lang}
+                  t={t}
+                  wallets={samWallets}
+                  loading={samLoading}
+                  error={samError}
+                  notConfigured={samNotConfigured}
+                />
+              </button>
             ) : (
               <button
                 type="button"
@@ -606,20 +643,39 @@ export default function Header({
                   {user ? (
                     <div className="header-mobile-account">
                       {isAdmin ? (
-                        <button
-                          type="button"
-                          onClick={() => handleNav('/dashboard')}
-                          className="header-mobile-action"
-                        >
-                          <Zap className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
-                          <span>{t.g2bulkWallet}</span>
-                          <G2bulkWalletCard
-                            compact
-                            lang={lang}
-                            balance={g2bulkWallet?.balance ?? 0}
-                            loading={g2bulkLoading}
-                          />
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleNav('/dashboard')}
+                            className="header-mobile-action"
+                          >
+                            <Zap className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
+                            <span>{t.g2bulkWallet}</span>
+                            <G2bulkWalletCard
+                              compact
+                              lang={lang}
+                              balance={g2bulkWallet?.balance ?? 0}
+                              loading={g2bulkLoading}
+                            />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleNav('/dashboard/payments')}
+                            className="header-mobile-action"
+                          >
+                            <Smartphone className="w-4 h-4 text-emerald-300" strokeWidth={2} />
+                            <span>{t.samWalletTitle}</span>
+                            <SamWalletBalancesCard
+                              compact
+                              lang={lang}
+                              t={t}
+                              wallets={samWallets}
+                              loading={samLoading}
+                              error={samError}
+                              notConfigured={samNotConfigured}
+                            />
+                          </button>
+                        </>
                       ) : (
                         <button
                           type="button"

@@ -717,6 +717,84 @@ html, body {
   color: transparent;
 }
 
+.sam-wallet-card {
+  box-shadow: 0 0 40px color-mix(in srgb, #34d399 10%, transparent);
+}
+
+.sam-wallet-balance-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.sam-wallet-balance-cell {
+  padding: 0.625rem 0.5rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-primary) 80%, transparent);
+  text-align: center;
+}
+
+.sam-wallet-balance-currency {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.sam-wallet-balance-amount {
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.sam-wallet-provider-block + .sam-wallet-provider-block {
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.sam-wallet-compact-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2rem;
+  max-width: 11.5rem;
+  text-align: end;
+}
+
+.sam-wallet-compact-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+}
+
+.sam-wallet-compact-provider {
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sam-wallet-compact-amounts {
+  font-size: 0.625rem;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+
+.sam-wallet-compact-currency {
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.sam-wallet-compact-sep {
+  margin: 0 0.2rem;
+  color: var(--text-muted);
+}
+
 .home-games-preview-stage {
   position: relative;
 }

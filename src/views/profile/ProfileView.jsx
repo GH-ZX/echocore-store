@@ -29,7 +29,9 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import G2bulkWalletCard from '../../components/ui/G2bulkWalletCard';
+import SamWalletBalancesCard from '../../components/ui/SamWalletBalancesCard';
 import { useAdminG2bulkWallet } from '../../hooks/useAdminG2bulkWallet';
+import { useAdminSamWallets } from '../../hooks/useAdminSamWallets';
 import ProfileAvatar from '../../components/profile/ProfileAvatar';
 import {
   uploadProfileAvatar,
@@ -97,6 +99,13 @@ export default function ProfileView({
 
   const isAdmin = user?.role === 'admin';
   const { wallet: g2bulkWallet, loading: g2bulkLoading, error: g2bulkError, refresh: refreshG2bulk } = useAdminG2bulkWallet(isAdmin);
+  const {
+    wallets: samWallets,
+    loading: samLoading,
+    error: samError,
+    notConfigured: samNotConfigured,
+    refresh: refreshSamWallets,
+  } = useAdminSamWallets(isAdmin);
 
   const syncFormFromProfile = (profile, currentUser) => {
     setNameDraft(profile?.name || currentUser?.name || '');
@@ -424,18 +433,31 @@ export default function ProfileView({
             </div>
           </div>
 
-          <div className="w-full lg:w-auto lg:min-w-[240px]">
+          <div className="w-full lg:w-auto lg:min-w-[280px] space-y-4">
             {isAdmin ? (
-              <G2bulkWalletCard
-                balance={g2bulkWallet?.balance ?? 0}
-                username={g2bulkWallet?.username}
-                loading={g2bulkLoading}
-                error={g2bulkError}
-                lang={lang}
-                onRefresh={refreshG2bulk}
-                onManage={() => navigate('/dashboard')}
-                manageLabel={t.g2bulkDashboard}
-              />
+              <>
+                <G2bulkWalletCard
+                  balance={g2bulkWallet?.balance ?? 0}
+                  username={g2bulkWallet?.username}
+                  loading={g2bulkLoading}
+                  error={g2bulkError}
+                  lang={lang}
+                  onRefresh={refreshG2bulk}
+                  onManage={() => navigate('/dashboard')}
+                  manageLabel={t.g2bulkDashboard}
+                />
+                <SamWalletBalancesCard
+                  wallets={samWallets}
+                  loading={samLoading}
+                  error={samError}
+                  notConfigured={samNotConfigured}
+                  lang={lang}
+                  t={t}
+                  onRefresh={refreshSamWallets}
+                  onManage={() => navigate('/dashboard/payments')}
+                  manageLabel={t.samWalletManage}
+                />
+              </>
             ) : (
               <div className="profile-balance-panel">
                 <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">

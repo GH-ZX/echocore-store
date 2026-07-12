@@ -284,5 +284,53 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: true, balances: data });
   }
 
+  if (action === 'getAllWalletBalances') {
+    const { res, data } = await samFetch(apiKey, '/v1/wallets');
+    if (!res.ok) {
+      return jsonResponse({ success: false, message: samErrorMessage(data, 'Failed to list wallets') }, res.status);
+    }
+
+    const walletList = Array.isArray(data) ? data : [];
+    const results: Json[] = [];
+
+    for (const wallet of walletList) {
+      const row = wallet as Record<string, unknown>;
+      const provider = row.provider === 'syriatel' ? 'syriatel' : 'shamcash';
+      const identifier = String(
+        row.walletAddress || row.phone || row.cashCode || row.accountNumber || row.id || '',
+      ).trim();
+
+      if (!identifier) {
+        results.push({
+          id: row.id,
+          provider,
+          providerDisplayName: row.providerDisplayName || provider,
+          label: row.label,
+          identifier: null,
+          balances: [],
+          error: 'Missing wallet identifier',
+        });
+        continue;
+      }
+
+      const { res: balRes, data: balData } = await samFetch(
+        apiKey,
+        `/v1/wallets/${provider}/${encodeURIComponent(identifier)}/balance`,
+      );
+
+      results.push({
+        id: row.id,
+        provider,
+        providerDisplayName: row.providerDisplayName || provider,
+        label: row.label,
+        identifier,
+        balances: balRes.ok && Array.isArray(balData) ? balData : [],
+        error: balRes.ok ? null : samErrorMessage(balData as Json, 'Failed to read balance'),
+      });
+    }
+
+    return jsonResponse({ success: true, wallets: results });
+  }
+
   return jsonResponse({ success: false, message: `Unknown action: ${action}` }, 400);
 });
