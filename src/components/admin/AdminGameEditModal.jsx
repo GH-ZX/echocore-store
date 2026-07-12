@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { uploadImage } from '../../lib/uploadImage';
 import ConfirmDialog from '../ui/ConfirmDialog';
+import Modal from '../ui/Modal';
 import ImageFocusPicker from './ImageFocusPicker';
 import GameImageSearch from './GameImageSearch';
 
@@ -135,14 +136,10 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
     }
   };
 
-  if (!game) return null;
-
   return (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
-      <div className="relative w-full sm:max-w-xl max-h-[92dvh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-2xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3">
-          <h2 className="text-lg font-bold">
+    <Modal open={!!game} onClose={onClose} size="xl" zIndex={100} ariaLabelledBy="admin-game-edit-title">
+        <div className="modal-panel__header">
+          <h2 id="admin-game-edit-title" className="text-lg font-bold">
             {isNew ? (t.addGame || 'Add Game') : (t.editGame || 'Edit Game')}
           </h2>
           <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-white/5" aria-label="Close">
@@ -298,8 +295,6 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
             </div>
           </div>
         </form>
-      </div>
-
-    </div>
+    </Modal>
   );
 }

@@ -1,4 +1,5 @@
 import { g2bulkGetMe } from './g2bulk';
+import { normalizeG2bulkWallet } from './g2bulkWalletFormat';
 import { fetchAllSamWalletBalances } from './samApi';
 import { normalizeSamBalances } from './samWalletFormat';
 
@@ -80,12 +81,7 @@ export async function fetchAdminSupplierWalletsSnapshot() {
   snapshot.fetchedAt = Date.now();
 
   if (g2Result.status === 'fulfilled') {
-    const me = g2Result.value;
-    snapshot.g2bulk = {
-      balance: Number(me?.balance) || 0,
-      username: me?.username || me?.first_name || '',
-      userId: me?.user_id ?? null,
-    };
+    snapshot.g2bulk = normalizeG2bulkWallet(g2Result.value);
   } else {
     snapshot.g2bulkError = g2Result.reason?.message || 'Failed to load G2Bulk wallet';
   }

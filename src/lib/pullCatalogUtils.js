@@ -294,6 +294,54 @@ export function selectionSetsFromPayload(payload = {}, catalog = null) {
   return sets;
 }
 
+export function normalizeCatalogMode(mode) {
+  return mode === 'live' ? 'live' : 'sync';
+}
+
+export function catalogModeSelectionKeys(catalogMode = 'sync') {
+  if (normalizeCatalogMode(catalogMode) === 'live') {
+    return {
+      topup: 'topupLiveBaseKeys',
+      account: 'accountLiveCategoryIds',
+      gift: 'giftLiveCategoryIds',
+    };
+  }
+  return {
+    topup: 'topupSyncBaseKeys',
+    account: 'accountSyncCategoryIds',
+    gift: 'giftSyncCategoryIds',
+  };
+}
+
+/** Persist only the active catalog lane — sync and live are mutually exclusive. */
+export function selectionPayloadForCatalogMode(selection, catalogMode = 'sync') {
+  const payload = selectionPayloadFromSets(selection);
+  const mode = normalizeCatalogMode(catalogMode);
+
+  if (mode === 'live') {
+    return {
+      ...payload,
+      topupSyncBaseKeys: [],
+      accountSyncCategoryIds: [],
+      giftSyncCategoryIds: [],
+      carouselBaseKeys: [],
+      topupBaseKeys: [...payload.topupLiveBaseKeys],
+      accountCategoryIds: [...payload.accountLiveCategoryIds],
+      giftCategoryIds: [...payload.giftLiveCategoryIds],
+    };
+  }
+
+  return {
+    ...payload,
+    topupLiveBaseKeys: [],
+    accountLiveCategoryIds: [],
+    giftLiveCategoryIds: [],
+    topupBaseKeys: [...payload.topupSyncBaseKeys],
+    accountCategoryIds: [...payload.accountSyncCategoryIds],
+    giftCategoryIds: [...payload.giftSyncCategoryIds],
+  };
+}
+
 export function selectionPayloadFromSets(selection) {
   const accountCategoryIds = [...new Set([
     ...selection.accountSyncCategoryIds,
@@ -333,7 +381,8 @@ export function syncedPullSelection(pull = {}) {
 }
 
 /** Ensure catalog rows already in the store appear selected in the pull panel */
-export function applySyncedCatalogToSelection(catalog = {}, selection) {
+export function applySyncedCatalogToSelection(catalog = {}, selection, catalogMode = 'sync') {
+  const lane = catalogModeSelectionKeys(catalogMode);
   const next = {
     topupSyncBaseKeys: new Set(selection.topupSyncBaseKeys),
     topupLiveBaseKeys: new Set(selection.topupLiveBaseKeys),
@@ -347,24 +396,24 @@ export function applySyncedCatalogToSelection(catalog = {}, selection) {
   (catalog.games || []).forEach((item) => {
     if (!item?.synced || !item.baseKey) return;
     const key = String(item.baseKey).trim();
-    if (!next.topupSyncBaseKeys.has(key) && !next.topupLiveBaseKeys.has(key)) {
-      next.topupSyncBaseKeys.add(key);
+    if (!next[lane.topup].has(key)) {
+      next[lane.topup].add(key);
     }
   });
 
   (catalog.accounts || []).forEach((item) => {
     if (!item?.synced || item.categoryId == null) return;
     const categoryId = Number(item.categoryId);
-    if (!next.accountSyncCategoryIds.has(categoryId) && !next.accountLiveCategoryIds.has(categoryId)) {
-      next.accountSyncCategoryIds.add(categoryId);
+    if (!next[lane.account].has(categoryId)) {
+      next[lane.account].add(categoryId);
     }
   });
 
   (catalog.giftCards || []).forEach((item) => {
     if (!item?.synced || item.categoryId == null) return;
     const categoryId = Number(item.categoryId);
-    if (!next.giftSyncCategoryIds.has(categoryId) && !next.giftLiveCategoryIds.has(categoryId)) {
-      next.giftSyncCategoryIds.add(categoryId);
+    if (!next[lane.gift].has(categoryId)) {
+      next[lane.gift].add(categoryId);
     }
   });
 

@@ -2,6 +2,7 @@ import { Trash2 } from 'lucide-react';
 import { getCartLineKey } from '../lib/cartUtils';
 import { brandUserText } from '../lib/branding';
 import { getOfferDisplayName } from '../lib/offerDisplay';
+import { cartRequiresPlayerUid } from '../lib/catalogUtils';
 
 export default function CartView({
   t,
@@ -15,6 +16,7 @@ export default function CartView({
   priceUpdated = false,
 }) {
   const isAr = lang === 'ar';
+  const uidBlocked = cartRequiresPlayerUid(cart, games);
 
   return (
     <div className="max-w-5xl mx-auto mt-4 sm:mt-6 px-2 animate-fade-in">
@@ -66,7 +68,16 @@ export default function CartView({
               <div className="text-3xl font-black text-[var(--accent)]">${getCartTotal()}</div>
             </div>
 
-            <button onClick={onCheckout} className="btn btn-primary w-full py-4 text-lg">
+            {uidBlocked && (
+              <p className="text-sm text-amber-200/90 bg-amber-500/10 border border-amber-500/25 rounded-xl px-3 py-2 mb-3">
+                {t.cartUidCheckoutBlocked}
+              </p>
+            )}
+            <button
+              onClick={onCheckout}
+              disabled={uidBlocked}
+              className="btn btn-primary w-full py-4 text-lg disabled:opacity-50 disabled:pointer-events-none"
+            >
               {t.checkout}
             </button>
             <div className="text-xs text-center text-[var(--text-muted)] mt-3">

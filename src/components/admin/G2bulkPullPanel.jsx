@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import Modal from '../ui/Modal';
 import {
   Loader2, Search, CheckSquare, Square, LayoutGrid, Save, X,
   CloudDownload, RefreshCw,
@@ -14,8 +14,10 @@ import {
 import {
   alignSelectionSetsToCatalog,
   applySyncedCatalogToSelection,
+  catalogModeSelectionKeys,
   hasPullSelection,
-  selectionPayloadFromSets,
+  normalizeCatalogMode,
+  selectionPayloadForCatalogMode,
   selectionSetsFromPayload,
 } from '../../lib/pullCatalogUtils';
 
@@ -62,39 +64,6 @@ function SelectionIndicator({ checked, className = '' }) {
   );
 }
 
-function ModeToggle({ mode, onChange, t = {}, className = '' }) {
-  return (
-    <div
-      className={`inline-flex rounded-lg border border-[var(--border)] overflow-hidden shrink-0 ${className}`}
-      onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => e.stopPropagation()}
-    >
-      <button
-        type="button"
-        onClick={() => onChange('sync')}
-        className={`px-2.5 py-2 min-h-[40px] min-w-[3.25rem] text-[11px] font-semibold touch-manipulation transition-colors ${
-          mode === 'sync'
-            ? 'bg-[var(--accent)]/15 text-[var(--accent)]'
-            : 'bg-[var(--bg-primary)]/40 text-[var(--text-muted)]'
-        }`}
-      >
-        {t.g2bulkPullModeSynced}
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange('live')}
-        className={`px-2.5 py-2 min-h-[40px] min-w-[3.25rem] text-[11px] font-semibold touch-manipulation transition-colors border-l border-[var(--border)] ${
-          mode === 'live'
-            ? 'bg-[var(--accent)]/15 text-[var(--accent)]'
-            : 'bg-[var(--bg-primary)]/40 text-[var(--text-muted)]'
-        }`}
-      >
-        {t.g2bulkPullModeLive}
-      </button>
-    </div>
-  );
-}
-
 function CarouselToggle({ checked, onToggle, label, title, className = '' }) {
   return (
     <button
@@ -118,7 +87,11 @@ function CarouselToggle({ checked, onToggle, label, title, className = '' }) {
   );
 }
 
-function buildSelectionFromCatalog(data, catalog, { preserveUserEdits = false, currentSelection = null } = {}) {
+function buildSelectionFromCatalog(data, catalog, {
+  preserveUserEdits = false,
+  currentSelection = null,
+  catalogMode = 'sync',
+} = {}) {
   const effectiveSelection = (
     preserveUserEdits && currentSelection
       ? currentSelection
@@ -134,18 +107,24 @@ function buildSelectionFromCatalog(data, catalog, { preserveUserEdits = false, c
 
   return preserveUserEdits
     ? baseSets
-    : applySyncedCatalogToSelection(catalog, baseSets);
+    : applySyncedCatalogToSelection(catalog, baseSets, catalogMode);
 }
 
 export default function G2bulkPullPanel({
   open,
   onClose,
   t = {},
+  catalogMode = 'sync',
   initialSelection = null,
   onSaved,
   onLoaded,
   onSaveAndSync,
 }) {
+  const resolvedCatalogMode = normalizeCatalogMode(catalogMode);
+  const modeKeys = useMemo(
+    () => catalogModeSelectionKeys(resolvedCatalogMode),
+    [resolvedCatalogMode],
+  );
   const [phase, setPhase] = useState(PHASE.library);
   const [fetching, setFetching] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -200,16 +179,21 @@ export default function G2bulkPullPanel({
     const mergedSets = buildSelectionFromCatalog(data, nextCatalog, {
       preserveUserEdits,
       currentSelection: preserveUserEdits ? selectionRef.current : null,
+      catalogMode: resolvedCatalogMode,
     });
     setSelection(mergedSets);
 
     if (notifyParent) {
-      onLoadedRef.current?.(selectionPayloadFromSets(mergedSets), data.catalogMode, {
-        persisted: !!data.persisted,
-        fromDatabase: data.databaseSelection,
-      });
+      onLoadedRef.current?.(
+        selectionPayloadForCatalogMode(mergedSets, resolvedCatalogMode),
+        resolvedCatalogMode,
+        {
+          persisted: !!data.persisted,
+          fromDatabase: data.databaseSelection,
+        },
+      );
     }
-  }, []);
+  }, [resolvedCatalogMode]);
 
   const fetchLibrary = useCallback(async ({
     refresh = false,
@@ -274,15 +258,6 @@ export default function G2bulkPullPanel({
     });
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps -- fetch once per open
 
-  useEffect(() => {
-    if (!open) return undefined;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [open]);
-
   const voucherCatalogItems = useMemo(() => [
     ...catalog.accounts.map((item) => ({ ...item, voucherKind: 'account' })),
     ...catalog.giftCards.map((item) => ({ ...item, voucherKind: 'gift' })),
@@ -313,32 +288,15 @@ export default function G2bulkPullPanel({
     return voucherCatalogItems;
   }, [voucherCatalogItems, voucherFilter]);
 
-  const activeItems = useMemo(() => {
-    const list = activeTab === TABS.topups ? catalog.games : filteredVoucherItems;
-    const q = query.trim().toLowerCase();
-    const baseList = !q ? list : list.filter((item) => {
-      const name = String(item.baseName || item.title || '').toLowerCase();
-      return name.includes(q);
-    });
-
-    if (selectionFilter === 'selected') {
-      return baseList.filter((item) => isSelected(item));
-    }
-    if (selectionFilter === 'unselected') {
-      return baseList.filter((item) => !isSelected(item));
-    }
-    return baseList;
-  }, [activeTab, catalog.games, filteredVoucherItems, query, selectionFilter]);
-
-  const getVoucherSelectionKeys = (item) => (
-    item.voucherKind === 'account'
-      ? { sync: 'accountSyncCategoryIds', live: 'accountLiveCategoryIds' }
-      : { sync: 'giftSyncCategoryIds', live: 'giftLiveCategoryIds' }
+  const getVoucherLaneKey = (item) => (
+    item.voucherKind === 'account' ? modeKeys.account : modeKeys.gift
   );
 
-  const getItemKey = (item) => (
-    activeTab === TABS.topups ? item.baseKey : item.categoryId
-  );
+  const getItemKey = (item) => {
+    if (activeTab === TABS.topups) return String(item.baseKey || '').trim();
+    const categoryId = Number(item.categoryId);
+    return Number.isFinite(categoryId) ? categoryId : null;
+  };
 
   const cloneSelection = (prev) => ({
     topupSyncBaseKeys: new Set(prev.topupSyncBaseKeys),
@@ -350,34 +308,51 @@ export default function G2bulkPullPanel({
     carouselBaseKeys: new Set(prev.carouselBaseKeys),
   });
 
-  const isGameSelectedIn = (state, baseKey) => (
-    state.topupSyncBaseKeys.has(baseKey) || state.topupLiveBaseKeys.has(baseKey)
+  const isGameSelectedIn = (state, baseKey) => state[modeKeys.topup].has(baseKey);
+
+  const isVoucherSelectedIn = (state, item) => {
+    const laneKey = getVoucherLaneKey(item);
+    const categoryId = Number(item.categoryId);
+    return Number.isFinite(categoryId) && state[laneKey].has(categoryId);
+  };
+
+  const isItemSelectedIn = (state, item) => (
+    activeTab === TABS.topups
+      ? isGameSelectedIn(state, item.baseKey)
+      : isVoucherSelectedIn(state, item)
   );
 
-  const isGameSelected = (baseKey) => isGameSelectedIn(selection, baseKey);
+  const isSelected = (item) => isItemSelectedIn(selection, item);
 
-  const getGameModeIn = (state, baseKey) => (
-    state.topupLiveBaseKeys.has(baseKey) ? 'live' : 'sync'
-  );
+  const activeItems = useMemo(() => {
+    const list = activeTab === TABS.topups ? catalog.games : filteredVoucherItems;
+    const q = query.trim().toLowerCase();
+    const baseList = !q ? list : list.filter((item) => {
+      const name = String(item.baseName || item.title || '').toLowerCase();
+      return name.includes(q);
+    });
+
+    const isSelectedInList = (item) => {
+      if (activeTab === TABS.topups) {
+        const key = String(item.baseKey || '').trim();
+        return key ? selection[modeKeys.topup].has(key) : false;
+      }
+      const laneKey = item.voucherKind === 'account' ? modeKeys.account : modeKeys.gift;
+      const categoryId = Number(item.categoryId);
+      return Number.isFinite(categoryId) && selection[laneKey].has(categoryId);
+    };
+
+    if (selectionFilter === 'selected') {
+      return baseList.filter(isSelectedInList);
+    }
+    if (selectionFilter === 'unselected') {
+      return baseList.filter((item) => !isSelectedInList(item));
+    }
+    return baseList;
+  }, [activeTab, catalog.games, filteredVoucherItems, query, selectionFilter, selection, modeKeys]);
 
   const markSelectionEdited = () => {
     userEditedSelectionRef.current = true;
-  };
-
-  const isVoucherSelectedIn = (state, item) => {
-    const keys = getVoucherSelectionKeys(item);
-    const categoryId = getItemKey(item);
-    return state[keys.sync].has(categoryId) || state[keys.live].has(categoryId);
-  };
-
-  const getVoucherModeIn = (state, item) => {
-    const keys = getVoucherSelectionKeys(item);
-    return state[keys.live].has(getItemKey(item)) ? 'live' : 'sync';
-  };
-
-  const isSelected = (item) => {
-    if (activeTab === TABS.topups) return isGameSelected(item.baseKey);
-    return isVoucherSelectedIn(selection, item);
   };
 
   const toggleItem = (item) => {
@@ -387,12 +362,10 @@ export default function G2bulkPullPanel({
       setSelection((prev) => {
         const next = cloneSelection(prev);
         if (isGameSelectedIn(prev, key)) {
-          next.topupSyncBaseKeys.delete(key);
-          next.topupLiveBaseKeys.delete(key);
+          next[modeKeys.topup].delete(key);
           next.carouselBaseKeys.delete(key);
         } else {
-          next.topupSyncBaseKeys.add(key);
-          next.topupLiveBaseKeys.delete(key);
+          next[modeKeys.topup].add(key);
         }
         return next;
       });
@@ -400,59 +373,27 @@ export default function G2bulkPullPanel({
     }
 
     const itemKey = getItemKey(item);
-    const keys = getVoucherSelectionKeys(item);
+    if (itemKey == null) return;
+    const laneKey = getVoucherLaneKey(item);
     setSelection((prev) => {
       const next = cloneSelection(prev);
       if (isVoucherSelectedIn(prev, item)) {
-        next[keys.sync].delete(itemKey);
-        next[keys.live].delete(itemKey);
+        next[laneKey].delete(itemKey);
       } else {
-        next[keys.sync].add(itemKey);
-        next[keys.live].delete(itemKey);
-      }
-      return next;
-    });
-  };
-
-  const setVoucherMode = (item, mode) => {
-    markSelectionEdited();
-    const itemKey = getItemKey(item);
-    const keys = getVoucherSelectionKeys(item);
-    setSelection((prev) => {
-      const next = cloneSelection(prev);
-      next[keys.sync].delete(itemKey);
-      next[keys.live].delete(itemKey);
-      if (mode === 'live') next[keys.live].add(itemKey);
-      else next[keys.sync].add(itemKey);
-      return next;
-    });
-  };
-
-  const setGameMode = (item, mode) => {
-    markSelectionEdited();
-    const key = item.baseKey;
-    setSelection((prev) => {
-      const next = cloneSelection(prev);
-      next.topupSyncBaseKeys.delete(key);
-      next.topupLiveBaseKeys.delete(key);
-      if (mode === 'live') {
-        next.topupLiveBaseKeys.add(key);
-        next.carouselBaseKeys.delete(key);
-      } else {
-        next.topupSyncBaseKeys.add(key);
+        next[laneKey].add(itemKey);
       }
       return next;
     });
   };
 
   const toggleCarousel = (item) => {
+    if (resolvedCatalogMode !== 'sync') return;
     markSelectionEdited();
     const key = item.baseKey;
     setSelection((prev) => {
       const next = cloneSelection(prev);
-      if (!next.topupSyncBaseKeys.has(key)) {
-        next.topupSyncBaseKeys.add(key);
-        next.topupLiveBaseKeys.delete(key);
+      if (!next[modeKeys.topup].has(key)) {
+        next[modeKeys.topup].add(key);
       }
       if (next.carouselBaseKeys.has(key)) next.carouselBaseKeys.delete(key);
       else next.carouselBaseKeys.add(key);
@@ -466,15 +407,11 @@ export default function G2bulkPullPanel({
       const next = cloneSelection(prev);
       if (activeTab === TABS.topups) {
         activeItems.forEach((item) => {
-          next.topupSyncBaseKeys.add(item.baseKey);
-          next.topupLiveBaseKeys.delete(item.baseKey);
+          next[modeKeys.topup].add(item.baseKey);
         });
       } else {
         activeItems.forEach((item) => {
-          const keys = getVoucherSelectionKeys(item);
-          const itemKey = getItemKey(item);
-          next[keys.sync].add(itemKey);
-          next[keys.live].delete(itemKey);
+          next[getVoucherLaneKey(item)].add(getItemKey(item));
         });
       }
       return next;
@@ -487,16 +424,12 @@ export default function G2bulkPullPanel({
       const next = cloneSelection(prev);
       if (activeTab === TABS.topups) {
         activeItems.forEach((item) => {
-          next.topupSyncBaseKeys.delete(item.baseKey);
-          next.topupLiveBaseKeys.delete(item.baseKey);
+          next[modeKeys.topup].delete(item.baseKey);
           next.carouselBaseKeys.delete(item.baseKey);
         });
       } else {
         activeItems.forEach((item) => {
-          const keys = getVoucherSelectionKeys(item);
-          const itemKey = getItemKey(item);
-          next[keys.sync].delete(itemKey);
-          next[keys.live].delete(itemKey);
+          next[getVoucherLaneKey(item)].delete(getItemKey(item));
         });
       }
       return next;
@@ -504,32 +437,32 @@ export default function G2bulkPullPanel({
   };
 
   const selectedCounts = useMemo(() => {
-    const games = selection.topupSyncBaseKeys.size + selection.topupLiveBaseKeys.size;
-    const platform = selection.accountSyncCategoryIds.size + selection.accountLiveCategoryIds.size;
-    const gameVouchers = selection.giftSyncCategoryIds.size + selection.giftLiveCategoryIds.size;
-    const vouchers = platform + gameVouchers;
+    const games = selection[modeKeys.topup].size;
+    const platform = selection[modeKeys.account].size;
+    const gameVouchers = selection[modeKeys.gift].size;
     return {
       games,
-      syncGames: selection.topupSyncBaseKeys.size,
-      liveGames: selection.topupLiveBaseKeys.size,
-      vouchers,
+      vouchers: platform + gameVouchers,
       platformVouchers: platform,
       gameVouchers,
-      syncVouchers: selection.accountSyncCategoryIds.size + selection.giftSyncCategoryIds.size,
-      liveVouchers: selection.accountLiveCategoryIds.size + selection.giftLiveCategoryIds.size,
-      carousel: selection.carouselBaseKeys.size,
+      carousel: resolvedCatalogMode === 'sync' ? selection.carouselBaseKeys.size : 0,
     };
-  }, [selection]);
+  }, [selection, modeKeys, resolvedCatalogMode]);
+
+  const saveSelection = async () => {
+    const payload = selectionPayloadForCatalogMode(selection, resolvedCatalogMode);
+    const result = await saveG2bulkPullSelection(payload, resolvedCatalogMode);
+    onSavedRef.current?.(result.selection || payload, resolvedCatalogMode);
+    return result;
+  };
 
   const handleSave = async () => {
     setSaving(true);
     setError('');
     setSuccess('');
     try {
-      const payload = selectionPayloadFromSets(selection);
-      const result = await saveG2bulkPullSelection(payload);
+      await saveSelection();
       setSuccess(t.g2bulkPullSelectionSaved);
-      onSavedRef.current?.(result.selection || payload, result.catalogMode);
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err.message || t.g2bulkPullSaveFailed);
@@ -543,10 +476,8 @@ export default function G2bulkPullPanel({
     setError('');
     setSuccess('');
     try {
-      const payload = selectionPayloadFromSets(selection);
-      const result = await saveG2bulkPullSelection(payload);
-      onSavedRef.current?.(result.selection || payload, result.catalogMode);
-      await onSaveAndSyncRef.current?.(result.selection || payload, result.catalogMode);
+      const result = await saveSelection();
+      await onSaveAndSyncRef.current?.(result.selection || selectionPayloadForCatalogMode(selection, resolvedCatalogMode), resolvedCatalogMode);
       setSuccess(t.g2bulkPullSelectionSaved);
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
@@ -564,27 +495,25 @@ export default function G2bulkPullPanel({
 
   const showSelectPhase = phase === PHASE.select;
 
-  const panel = (
-    <div className="g2bulk-pull-panel fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6 touch-manipulation">
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/60 backdrop-blur-[2px] touch-manipulation"
-        aria-label={t.cancel}
-        onClick={onClose}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="g2bulk-pull-title"
-        className="g2bulk-pull-panel__dialog relative w-full max-w-3xl max-h-[min(85dvh,720px)] flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-2xl overflow-hidden"
-      >
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="2xl"
+      zIndex={200}
+      ariaLabelledBy="g2bulk-pull-title"
+      panelClassName="g2bulk-pull-panel__dialog flex flex-col overflow-hidden max-h-[min(85dvh,720px)] touch-manipulation"
+      scrollable={false}
+    >
         <div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-2.5 border-b border-[var(--border)] shrink-0">
           <div className="min-w-0">
             <h3 id="g2bulk-pull-title" className="text-base font-bold truncate">
               {showSelectPhase ? t.g2bulkPullChooseTitle : t.g2bulkPullFromApi}
             </h3>
             <p className="text-[11px] text-[var(--text-muted)] mt-0.5 hidden sm:block">
-              {showSelectPhase ? t.g2bulkPullDesc : t.g2bulkPullFetchingHint}
+              {showSelectPhase
+                ? (resolvedCatalogMode === 'live' ? t.g2bulkCatalogModeLiveHelp : t.g2bulkCatalogModeSyncHelp)
+                : t.g2bulkPullFetchingHint}
             </p>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
@@ -666,9 +595,6 @@ export default function G2bulkPullPanel({
                   );
                 })}
               </div>
-              <p className="text-[10px] text-[var(--text-muted)] hidden sm:block">
-                {t.g2bulkPullWorkflowHint}
-              </p>
             </div>
 
             {activeTab === TABS.vouchers && (
@@ -784,22 +710,20 @@ export default function G2bulkPullPanel({
               ) : (
                 <div className="space-y-1.5">
                   <div className="hidden sm:flex items-center gap-2 px-2 pb-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
-                    {activeTab === TABS.topups && (
+                    {activeTab === TABS.topups && resolvedCatalogMode === 'sync' && (
                       <span className="w-11 text-center shrink-0">{t.g2bulkPullCarousel}</span>
                     )}
                     <span className="flex-1">
                       {activeTab === TABS.topups ? t.g2bulkPullGameCol : t.g2bulkPullCategory}
                     </span>
-                    <span className="w-[6.5rem] text-center shrink-0">{t.g2bulkPullModeSynced}</span>
                     <span className="w-9 text-center shrink-0">{t.g2bulkPullPick}</span>
                   </div>
                   {activeItems.map((item) => {
                     const key = getItemKey(item);
                     const selected = isSelected(item);
-                    const itemMode = activeTab === TABS.topups
-                      ? getGameModeIn(selection, item.baseKey)
-                      : getVoucherModeIn(selection, item);
-                    const inCarousel = activeTab === TABS.topups && selection.carouselBaseKeys.has(item.baseKey);
+                    const inCarousel = activeTab === TABS.topups
+                      && resolvedCatalogMode === 'sync'
+                      && selection.carouselBaseKeys.has(item.baseKey);
                     const title = item.baseName || item.title;
                     const inStore = !!item.synced;
                     const voucherTag = item.voucherKind === 'account'
@@ -808,8 +732,8 @@ export default function G2bulkPullPanel({
                         ? t.g2bulkPullGameTag
                         : '';
                     const meta = activeTab === TABS.topups
-                      ? `${item.variantCount} ${t.g2bulkPullRegions}${inStore ? ` · ${t.g2bulkPullStoreBadge}` : ''}${selected && itemMode === 'live' ? ` · ${t.g2bulkPullModeLive}` : ''}${inCarousel ? ` · ${t.g2bulkPullCarousel}` : ''}`
-                      : `${item.productCount || 0} ${t.g2bulkPullProducts}${voucherTag ? ` · ${voucherTag}` : ''}${inStore ? ` · ${t.g2bulkPullStoreBadge}` : ''}${selected && itemMode === 'live' ? ` · ${t.g2bulkPullModeLive}` : ''}`;
+                      ? `${item.variantCount} ${t.g2bulkPullRegions}${inStore ? ` · ${t.g2bulkPullStoreBadge}` : ''}${inCarousel ? ` · ${t.g2bulkPullCarousel}` : ''}`
+                      : `${item.productCount || 0} ${t.g2bulkPullProducts}${voucherTag ? ` · ${voucherTag}` : ''}${inStore ? ` · ${t.g2bulkPullStoreBadge}` : ''}`;
 
                     return (
                       <div
@@ -832,12 +756,12 @@ export default function G2bulkPullPanel({
                               : 'border-[var(--border)] bg-[var(--bg-primary)]/25 active:bg-[var(--bg-primary)]/40'
                         }`}
                       >
-                        {activeTab === TABS.topups && (
+                        {activeTab === TABS.topups && resolvedCatalogMode === 'sync' && (
                           <div
                             className="w-11 shrink-0 flex justify-center pointer-events-auto"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            {selected && itemMode === 'sync' ? (
+                            {selected ? (
                               <CarouselToggle
                                 checked={inCarousel}
                                 onToggle={() => toggleCarousel(item)}
@@ -872,38 +796,8 @@ export default function G2bulkPullPanel({
                               )}
                             </div>
                             <div className="text-xs text-[var(--text-muted)] truncate">{meta}</div>
-                            {selected && (
-                              <div className="sm:hidden mt-2 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
-                                <ModeToggle
-                                  mode={itemMode}
-                                  onChange={(mode) => (
-                                    activeTab === TABS.topups
-                                      ? setGameMode(item, mode)
-                                      : setVoucherMode(item, mode)
-                                  )}
-                                  t={t}
-                                />
-                              </div>
-                            )}
                           </div>
                         </div>
-
-                        {selected && (
-                          <div
-                            className="hidden sm:block shrink-0 pointer-events-auto"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <ModeToggle
-                              mode={itemMode}
-                              onChange={(mode) => (
-                                activeTab === TABS.topups
-                                  ? setGameMode(item, mode)
-                                  : setVoucherMode(item, mode)
-                              )}
-                              t={t}
-                            />
-                          </div>
-                        )}
 
                         <SelectionIndicator checked={selected} className="w-9 h-9 shrink-0" />
                       </div>
@@ -945,7 +839,7 @@ export default function G2bulkPullPanel({
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   {t.g2bulkPullSave}
                 </button>
-                {onSaveAndSyncRef.current && (
+                {onSaveAndSync && resolvedCatalogMode === 'sync' && (
                   <button
                     type="button"
                     onClick={handleSaveAndSync}
@@ -960,9 +854,6 @@ export default function G2bulkPullPanel({
             </div>
           </>
         )}
-      </div>
-    </div>
+    </Modal>
   );
-
-  return createPortal(panel, document.body);
 }

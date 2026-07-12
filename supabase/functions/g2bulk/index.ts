@@ -97,16 +97,16 @@ function sleep(ms: number) {
 }
 
 async function resolveApiKeyRaw(serviceClient: ReturnType<typeof createClient>) {
-  const envKey = Deno.env.get('G2BULK_API_KEY')?.trim();
-  if (envKey) return envKey;
-
   const { data } = await serviceClient
     .from('store_settings')
     .select('g2bulk_api_key')
     .eq('id', 1)
     .maybeSingle();
 
-  return (data?.g2bulk_api_key as string | null)?.trim() || null;
+  const dbKey = (data?.g2bulk_api_key as string | null)?.trim() || null;
+  if (dbKey) return dbKey;
+
+  return Deno.env.get('G2BULK_API_KEY')?.trim() || null;
 }
 
 async function loadStoreSettingsRow(serviceClient: ReturnType<typeof createClient>) {
@@ -123,7 +123,10 @@ async function loadStoreSettingsRow(serviceClient: ReturnType<typeof createClien
 function buildSettingsEnvelope(row: Json | null | undefined, envKey: string | null | undefined) {
   const settingsRow = (row || {}) as Record<string, unknown>;
   const apiKey = String(settingsRow.g2bulk_api_key ?? '').trim();
-  const apiKeySource = envKey ? (apiKey ? 'both' : 'env') : (apiKey ? 'db' : 'none');
+  const envKeyTrimmed = String(envKey ?? '').trim();
+  const apiKeySource = apiKey
+    ? (envKeyTrimmed ? 'both' : 'db')
+    : (envKeyTrimmed ? 'env' : 'none');
 
   return {
     g2bulk_enabled: settingsRow.g2bulk_enabled === true,
@@ -138,11 +141,12 @@ function buildSettingsEnvelope(row: Json | null | undefined, envKey: string | nu
     g2bulk_auto_sync_hour: Number(settingsRow.g2bulk_auto_sync_hour ?? 5),
     g2bulk_auto_sync_timezone: String(settingsRow.g2bulk_auto_sync_timezone || 'Asia/Damascus'),
     g2bulk_pull_selection: settingsRow.g2bulk_pull_selection || {},
-    g2bulk_api_key_set: !!apiKey,
+    g2bulk_api_key_set: !!(apiKey || envKeyTrimmed),
     g2bulk_api_key_masked: apiKey
       ? (apiKey.length <= 8 ? '********' : `${apiKey.slice(0, 4)}…${apiKey.slice(-4)}`)
       : null,
     g2bulk_api_key_source: apiKeySource,
+    g2bulk_api_key_active_source: apiKey ? 'db' : (envKeyTrimmed ? 'env' : 'none'),
   };
 }
 
@@ -590,6 +594,107 @@ async function pollGameOrderStatus(apiKey: string, g2bulkOrderId: number) {
   return { ok: false as const, error: 'Top-up status polling timed out' };
 }
 
+function buildG2bulkCallbackUrl(supabaseUrl: string) {
+  return `${supabaseUrl.replace(/\/$/, '')}/functions/v1/g2bulk`;
+}
+
+type FulfillItemResult =
+  | { ok: true; skipped?: boolean; g2bulkOrderId?: string; deliveryItems?: string[]; metadata?: Json }
+  | { ok: false; error: string };
+
+async function fulfillG2bulkOrderItem(
+  apiKey: string,
+  orderId: string,
+  item: Json,
+  callbackUrl?: string | null,
+): Promise<FulfillItemResult> {
+  const offer = (item.offers || {}) as Json;
+  const game = (offer.games || {}) as Json;
+  const g2bulkType = (offer.g2bulk_type as string)
+    || (game.redemption_method === 'redeem_code' ? 'voucher' : 'topup');
+
+  const hasMapping = g2bulkType === 'voucher'
+    ? !!offer.g2bulk_product_id
+    : !!(game.g2bulk_game_code && (offer.g2bulk_catalogue_name || offer.name_en));
+
+  if (!hasMapping) {
+    return { ok: true, skipped: true, metadata: { reason: 'no_g2bulk_mapping' } };
+  }
+
+  const idempotencyKey = String(item.id || orderId);
+
+  if (g2bulkType === 'voucher') {
+    const productId = offer.g2bulk_product_id;
+    const { res, data } = await g2bulkFetch(
+      apiKey,
+      `/products/${productId}/purchase`,
+      { method: 'POST', body: JSON.stringify({ quantity: item.quantity || 1 }) },
+      idempotencyKey,
+    );
+
+    if (!res.ok || data.success === false) {
+      return { ok: false, error: (data.message as string) || 'Voucher purchase failed' };
+    }
+
+    let deliveryItems = Array.isArray(data.delivery_items) ? data.delivery_items as string[] : null;
+    const g2bulkOrderId = data.order_id;
+
+    if (!deliveryItems && data.status === 'PENDING' && g2bulkOrderId) {
+      const polled = await pollVoucherDelivery(apiKey, Number(g2bulkOrderId));
+      if (!polled.ok) return { ok: false, error: polled.error };
+      deliveryItems = polled.items;
+    }
+
+    return {
+      ok: true,
+      g2bulkOrderId: String(g2bulkOrderId ?? ''),
+      deliveryItems: deliveryItems || undefined,
+      metadata: { type: 'voucher', g2bulk: data },
+    };
+  }
+
+  const playerId = String(item.player_uid || '').trim();
+  if (!playerId) {
+    return { ok: false, error: 'Player ID is required for this top-up' };
+  }
+
+  const gameCode = game.g2bulk_game_code;
+  const catalogueName = offer.g2bulk_catalogue_name || offer.name_en;
+  const orderBody: Json = {
+    catalogue_name: catalogueName,
+    player_id: playerId,
+    server_id: item.player_server || undefined,
+    remark: `echocore-${orderId}`,
+  };
+  if (callbackUrl) orderBody.callback_url = callbackUrl;
+
+  const { res, data } = await g2bulkFetch(
+    apiKey,
+    `/games/${gameCode}/order`,
+    { method: 'POST', body: JSON.stringify(orderBody) },
+    idempotencyKey,
+  );
+
+  if (!res.ok || data.success === false) {
+    return { ok: false, error: (data.message as string) || 'Top-up order failed' };
+  }
+
+  const g2bulkOrderId = data.order?.order_id ?? data.order_id;
+  let finalStatus = String(data.order?.status || data.status || 'PENDING').toUpperCase();
+
+  if (finalStatus !== 'COMPLETED' && g2bulkOrderId) {
+    const polled = await pollGameOrderStatus(apiKey, Number(g2bulkOrderId));
+    if (!polled.ok) return { ok: false, error: polled.error };
+    finalStatus = 'COMPLETED';
+  }
+
+  return {
+    ok: true,
+    g2bulkOrderId: String(g2bulkOrderId ?? ''),
+    metadata: { type: 'topup', g2bulk: data, status: finalStatus },
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -623,8 +728,8 @@ Deno.serve(async (req) => {
     userId = authData.user.id;
   } else if (cronAuth && action !== 'syncCatalog' && action !== 'checkCatalog') {
     return jsonResponse({ success: false, message: 'Cron auth only allowed for syncCatalog/checkCatalog' }, 403);
-  } else if (serviceAuth && !['syncCatalog', 'checkCatalog'].includes(action)) {
-    return jsonResponse({ success: false, message: 'Service auth only allowed for syncCatalog/checkCatalog' }, 403);
+  } else if (serviceAuth && !['syncCatalog', 'checkCatalog', 'fulfillOrder'].includes(action)) {
+    return jsonResponse({ success: false, message: 'Service auth only allowed for syncCatalog/checkCatalog/fulfillOrder' }, 403);
   }
 
   const apiKey = await resolveApiKeyRaw(serviceClient);
@@ -809,7 +914,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, message: 'orderId required' }, 400);
     }
 
-    const admin = await isAdmin(userClient, userId!);
+    const admin = serviceAuth || (userId ? await isAdmin(userClient, userId) : false);
 
     const { data: order, error: orderError } = await serviceClient
       .from('orders')
@@ -821,7 +926,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, message: 'Order not found' }, 404);
     }
 
-    if (!admin && order.user_id !== userId) {
+    if (!admin && !serviceAuth && order.user_id !== userId) {
       return jsonResponse({ success: false, message: 'Unauthorized' }, 403);
     }
 
@@ -833,26 +938,40 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: true, skipped: true, fulfillmentStatus: 'fulfilled' });
     }
 
+    if (order.fulfillment_status === 'fulfilling') {
+      return jsonResponse({ success: true, inProgress: true, fulfillmentStatus: 'fulfilling' });
+    }
+
+    const settingsRow = await loadStoreSettingsRow(serviceClient);
+    if (!settingsRow?.g2bulk_enabled) {
+      await serviceClient.rpc('apply_g2bulk_fulfillment', {
+        p_order_id: orderId,
+        p_fulfillment_status: 'skipped',
+        p_metadata: { reason: 'g2bulk_disabled' },
+      });
+      return jsonResponse({ success: true, skipped: true, fulfillmentStatus: 'skipped' });
+    }
+
     const { data: items } = await serviceClient
       .from('order_items')
       .select('*, offers(*, games(*))')
       .eq('order_id', orderId);
 
-    const item = items?.[0];
-    if (!item) {
+    if (!items?.length) {
       return jsonResponse({ success: false, message: 'No order items' }, 400);
     }
 
-    const offer = item.offers;
-    const game = offer?.games;
-    const g2bulkType = offer?.g2bulk_type
-      || (game?.redemption_method === 'redeem_code' ? 'voucher' : 'topup');
+    const mappableItems = items.filter((row) => {
+      const offer = row.offers;
+      const game = offer?.games;
+      const g2bulkType = offer?.g2bulk_type
+        || (game?.redemption_method === 'redeem_code' ? 'voucher' : 'topup');
+      return g2bulkType === 'voucher'
+        ? !!offer?.g2bulk_product_id
+        : !!(game?.g2bulk_game_code && (offer?.g2bulk_catalogue_name || offer?.name_en));
+    });
 
-    const hasMapping = g2bulkType === 'voucher'
-      ? !!offer?.g2bulk_product_id
-      : !!(game?.g2bulk_game_code && (offer?.g2bulk_catalogue_name || offer?.name_en));
-
-    if (!hasMapping) {
+    if (mappableItems.length === 0) {
       await serviceClient.rpc('apply_g2bulk_fulfillment', {
         p_order_id: orderId,
         p_fulfillment_status: 'skipped',
@@ -866,87 +985,97 @@ Deno.serve(async (req) => {
       p_fulfillment_status: 'fulfilling',
     });
 
-    const idempotencyKey = orderId;
+    const callbackUrl = buildG2bulkCallbackUrl(supabaseUrl);
+    const itemResults: Json[] = [];
+    let fulfilledCount = 0;
+    let failedCount = 0;
+    let skippedCount = 0;
+    const errors: string[] = [];
+    let primaryG2bulkOrderId: string | null = null;
+    const allDeliveryItems: string[] = [];
 
     try {
-      if (g2bulkType === 'voucher') {
-        const productId = offer.g2bulk_product_id;
-        const { res, data } = await g2bulkFetch(
-          apiKey!,
-          `/products/${productId}/purchase`,
-          { method: 'POST', body: JSON.stringify({ quantity: item.quantity || 1 }) },
-          idempotencyKey,
-        );
-
-        if (!res.ok || data.success === false) {
-          throw new Error((data.message as string) || 'Voucher purchase failed');
+      for (const row of items) {
+        if (row.fulfillment_status === 'fulfilled') {
+          fulfilledCount += 1;
+          itemResults.push({ itemId: row.id, status: 'fulfilled', skipped: true });
+          continue;
         }
 
-        let deliveryItems = Array.isArray(data.delivery_items) ? data.delivery_items as string[] : null;
-        const g2bulkOrderId = data.order_id;
+        const result = await fulfillG2bulkOrderItem(apiKey!, orderId, row, callbackUrl);
 
-        if (!deliveryItems && data.status === 'PENDING' && g2bulkOrderId) {
-          const polled = await pollVoucherDelivery(apiKey!, Number(g2bulkOrderId));
-          if (!polled.ok) throw new Error(polled.error);
-          deliveryItems = polled.items;
+        if (result.ok && result.skipped) {
+          skippedCount += 1;
+          await serviceClient
+            .from('order_items')
+            .update({ fulfillment_status: 'fulfilled' })
+            .eq('id', row.id);
+          itemResults.push({ itemId: row.id, status: 'skipped' });
+          continue;
         }
 
-        await serviceClient.rpc('apply_g2bulk_fulfillment', {
-          p_order_id: orderId,
-          p_fulfillment_status: 'fulfilled',
-          p_g2bulk_order_id: String(g2bulkOrderId ?? ''),
-          p_delivery_items: deliveryItems,
-          p_metadata: { type: 'voucher', g2bulk: data },
+        if (!result.ok) {
+          failedCount += 1;
+          errors.push(result.error);
+          await serviceClient
+            .from('order_items')
+            .update({ fulfillment_status: 'failed' })
+            .eq('id', row.id);
+          itemResults.push({ itemId: row.id, status: 'failed', error: result.error });
+          continue;
+        }
+
+        fulfilledCount += 1;
+        if (!primaryG2bulkOrderId && result.g2bulkOrderId) {
+          primaryG2bulkOrderId = result.g2bulkOrderId;
+        }
+        if (result.deliveryItems?.length) {
+          allDeliveryItems.push(...result.deliveryItems);
+        }
+
+        await serviceClient
+          .from('order_items')
+          .update({
+            fulfillment_status: 'fulfilled',
+            delivery_items: result.deliveryItems?.length ? result.deliveryItems : null,
+          })
+          .eq('id', row.id);
+
+        itemResults.push({
+          itemId: row.id,
+          status: 'fulfilled',
+          g2bulkOrderId: result.g2bulkOrderId,
         });
-
-        return jsonResponse({
-          success: true,
-          fulfillmentStatus: 'fulfilled',
-          deliveryItems: deliveryItems,
-        });
       }
 
-      const gameCode = game.g2bulk_game_code;
-      const catalogueName = offer.g2bulk_catalogue_name || offer.name_en;
-      const { res, data } = await g2bulkFetch(
-        apiKey!,
-        `/games/${gameCode}/order`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            catalogue_name: catalogueName,
-            player_id: item.player_uid,
-            server_id: item.player_server || undefined,
-            remark: `echocore-${orderId}`,
-          }),
-        },
-        idempotencyKey,
-      );
-
-      if (!res.ok || data.success === false) {
-        throw new Error((data.message as string) || 'Top-up order failed');
-      }
-
-      const g2bulkOrderId = data.order?.order_id ?? data.order_id;
-      let finalStatus = String(data.order?.status || data.status || 'PENDING').toUpperCase();
-
-      if (finalStatus !== 'COMPLETED' && g2bulkOrderId) {
-        const polled = await pollGameOrderStatus(apiKey!, Number(g2bulkOrderId));
-        if (!polled.ok) throw new Error(polled.error);
-        finalStatus = 'COMPLETED';
-      }
+      const finalStatus = failedCount > 0
+        ? 'failed'
+        : (fulfilledCount > 0 ? 'fulfilled' : 'skipped');
 
       await serviceClient.rpc('apply_g2bulk_fulfillment', {
         p_order_id: orderId,
-        p_fulfillment_status: 'fulfilled',
-        p_g2bulk_order_id: String(g2bulkOrderId ?? ''),
-        p_metadata: { type: 'topup', g2bulk: data, status: finalStatus },
+        p_fulfillment_status: finalStatus,
+        p_g2bulk_order_id: primaryG2bulkOrderId || undefined,
+        p_delivery_items: allDeliveryItems.length ? allDeliveryItems : null,
+        p_metadata: { items: itemResults, fulfilledCount, failedCount, skippedCount },
+        p_error: errors[0] || null,
       });
+
+      if (finalStatus === 'failed') {
+        return jsonResponse({
+          success: false,
+          message: errors[0] || 'Fulfillment failed',
+          fulfillmentStatus: 'failed',
+          itemResults,
+        }, 500);
+      }
 
       return jsonResponse({
         success: true,
-        fulfillmentStatus: 'fulfilled',
-        g2bulkOrderId,
+        fulfillmentStatus: finalStatus,
+        deliveryItems: allDeliveryItems.length ? allDeliveryItems : undefined,
+        g2bulkOrderId: primaryG2bulkOrderId,
+        itemResults,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Fulfillment failed';
@@ -2510,7 +2639,9 @@ Deno.serve(async (req) => {
       giftCategoryIds: body.giftCategoryIds,
       carouselBaseKeys: body.carouselBaseKeys,
     });
-    const catalogMode = deriveCatalogMode(selection);
+    const catalogMode = body.catalogMode === 'live' || body.catalogMode === 'sync'
+      ? body.catalogMode
+      : deriveCatalogMode(selection);
     const selectionPayload = {
       ...selection,
       updatedAt: new Date().toISOString(),

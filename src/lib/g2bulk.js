@@ -368,9 +368,10 @@ export async function listG2bulkPullCatalog({ refresh = false, settings = null }
 }
 
 /** Admin: persist which games/accounts to sync + carousel picks */
-export async function saveG2bulkPullSelection(selection) {
+export async function saveG2bulkPullSelection(selection, catalogMode = 'sync') {
   const result = await invokeG2bulk({
     action: 'savePullSelection',
+    catalogMode: catalogMode === 'live' ? 'live' : 'sync',
     topupSyncBaseKeys: selection.topupSyncBaseKeys || [],
     topupLiveBaseKeys: selection.topupLiveBaseKeys || [],
     topupBaseKeys: selection.topupBaseKeys || [],

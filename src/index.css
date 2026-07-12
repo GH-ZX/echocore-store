@@ -122,6 +122,93 @@ html, body, #root {
   max-width: 100%;
 }
 
+/* Portaled modals — viewport-centered on all screen sizes */
+html.modal-open,
+body.modal-open {
+  overflow: hidden;
+}
+
+body.modal-open {
+  position: fixed;
+  width: 100%;
+  left: 0;
+  right: 0;
+  top: var(--scroll-lock-top, 0);
+}
+
+.modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: var(--modal-z, 200);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding:
+    max(1rem, env(safe-area-inset-top, 0px))
+    max(1rem, env(safe-area-inset-right, 0px))
+    max(1rem, env(safe-area-inset-bottom, 0px))
+    max(1rem, env(safe-area-inset-left, 0px));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: manipulation;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, #000 70%, transparent);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.modal-scrim {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: min(100%, 100%);
+  margin: auto;
+  pointer-events: none;
+}
+
+.modal-panel {
+  pointer-events: auto;
+  width: 100%;
+  max-width: var(--modal-max-width, 28rem);
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  box-shadow:
+    0 24px 48px color-mix(in srgb, #000 35%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.modal-panel--scrollable {
+  max-height: min(90dvh, 720px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.modal-panel__header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+  padding: 0.75rem 1rem;
+}
+
+.modal-panel__body {
+  padding: 1rem;
+}
+
 /* Dark base */
 html, body {
   background-color: var(--bg-primary);
@@ -160,6 +247,7 @@ html, body {
 [data-surfaces-style='frosted'] .card,
 [data-surfaces-style='frosted'] .storefront-card,
 [data-surfaces-style='frosted'] .home-game-card,
+[data-surfaces-style='frosted'] .admin-mobile-nav,
 [data-surfaces-style='frosted'] .admin-sidebar,
 [data-surfaces-style='frosted'] .dash-stat-card,
 [data-surfaces-style='frosted'] .catalog-mobile-buybar,
@@ -189,6 +277,7 @@ html, body {
 [data-surfaces-style='frosted'] .card,
 [data-surfaces-style='frosted'] .storefront-card,
 [data-surfaces-style='frosted'] .home-game-card,
+[data-surfaces-style='frosted'] .admin-mobile-nav,
 [data-surfaces-style='frosted'] .admin-sidebar,
 [data-surfaces-style='frosted'] .dash-stat-card,
 [data-surfaces-style='frosted'] .modal-panel,
@@ -3731,6 +3820,9 @@ html, body {
   display: flex;
   align-items: flex-start;
   gap: 1rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .admin-sidebar {
@@ -3854,6 +3946,96 @@ html, body {
 .admin-main {
   flex: 1;
   min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.admin-page-header {
+  min-width: 0;
+}
+
+/* Mobile admin — horizontal section tabs instead of left sidebar */
+.admin-shell {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.admin-mobile-nav {
+  position: sticky;
+  top: var(--header-height, 4rem);
+  z-index: 25;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0 0 0.25rem;
+  padding: 0.5rem 0.25rem 0.625rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  gap: 0.375rem;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  border-radius: 0.875rem;
+  background: color-mix(in srgb, var(--dash-card-bg, var(--bg-surface)) 92%, transparent);
+}
+
+.admin-mobile-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.admin-mobile-tab {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  flex: 0 0 auto;
+  min-width: 4.25rem;
+  min-height: 3.25rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+  color: var(--text-sec);
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  touch-action: manipulation;
+}
+
+.admin-mobile-tab:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-surface) 100%, transparent);
+}
+
+.admin-mobile-tab--active {
+  color: var(--dash-tab-active);
+  border-color: color-mix(in srgb, var(--dash-tab-active) 45%, var(--border));
+  background: color-mix(in srgb, var(--dash-tab-active) 14%, var(--bg-surface));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--dash-tab-active) 20%, transparent);
+}
+
+.admin-mobile-tab__icon {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex-shrink: 0;
+}
+
+.admin-mobile-tab__label {
+  max-width: 4.5rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Admin dashboard RTL (Arabic) — mixed AR/EN copy */
@@ -4036,9 +4218,32 @@ html, body {
   color: var(--text-sec);
 }
 
+.g2bulk-embedded-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.g2bulk-embedded-advanced > summary::marker {
+  content: '';
+}
+
 
 
 @media (max-width: 767px) {
+  .admin-layout {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .admin-sidebar {
+    display: none !important;
+  }
+
+  .admin-main {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
   .admin-shell .dash-stat-card .dash-stat-icon {
     width: 2.25rem;
     height: 2.25rem;
@@ -4112,6 +4317,12 @@ html, body {
 
 .safe-area-pb {
   padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+}
+
+/* Only during language switch — never on idle layout (breaks position:fixed descendants) */
+.lang-switch-motion {
+  filter: blur(6px);
+  transform: scale(0.985);
 }
 
 .catalog-page {
@@ -4270,7 +4481,51 @@ html, body {
 }
 
 .catalog-mobile-buybar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 45;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-surface) 95%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 0.75rem 1rem;
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
   box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.45);
+}
+
+.catalog-mobile-buybar__inner {
+  max-width: 72rem;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.catalog-mobile-buybar__title {
+  font-size: 0.625rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.catalog-mobile-buybar__price {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: var(--accent);
+  line-height: 1.2;
+}
+
+.catalog-mobile-buybar__btn {
+  min-height: 2.75rem;
+  padding: 0.625rem 1.25rem;
+}
+
+@media (min-width: 1024px) {
+  .catalog-mobile-buybar {
+    display: none;
+  }
 }
 
 /* ── Profile page ── */

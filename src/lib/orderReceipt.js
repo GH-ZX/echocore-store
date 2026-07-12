@@ -142,5 +142,5 @@ export function getOrderReceiptPresentation(order, t = {}) {
 export function shouldTriggerFulfillment(order) {
   if (!order || order.status !== 'completed') return false;
   const fs = order.fulfillment_status || 'pending';
-  return fs === 'pending' || fs === 'fulfilling';
+  return fs === 'pending' || fs === 'fulfilling' || fs === 'failed';
 }

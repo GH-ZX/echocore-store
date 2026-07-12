@@ -10,13 +10,14 @@ import ConfirmDialog from '../ui/ConfirmDialog';
 import {
   fetchG2bulkSettings,
   saveG2bulkSettings,
-  g2bulkGetMe,
   syncG2bulkCatalog,
   clearG2bulkSyncedCatalog,
   applyG2bulkCharmPricing,
 } from '../../lib/g2bulk';
+import { refreshSupplierWallets } from '../../lib/adminSupplierWalletsStore';
+import { useAdminG2bulkWallet } from '../../hooks/useAdminG2bulkWallet';
 import { applyCharmPricing } from '../../lib/charmPricing';
-import { countPullSelection, normalizePullSelection } from '../../lib/pullCatalogUtils';
+import { countPullSelection, normalizeCatalogMode, normalizePullSelection } from '../../lib/pullCatalogUtils';
 import { formatMessage } from '../../lib/i18n';
 
 const TIMEZONE_OPTIONS = [
@@ -72,7 +73,37 @@ function SectionCard({ icon: Icon, title, description, children, accent = false 
   );
 }
 
-export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSynced }) {
+function CatalogModeToggle({ mode, onChange, t = {} }) {
+  const resolved = normalizeCatalogMode(mode);
+  return (
+    <div className="inline-flex w-full sm:w-auto rounded-xl border border-[var(--border)] overflow-hidden">
+      <button
+        type="button"
+        onClick={() => onChange('sync')}
+        className={`flex-1 sm:flex-none px-4 py-2.5 min-h-[44px] text-sm font-semibold touch-manipulation transition-colors ${
+          resolved === 'sync'
+            ? 'bg-[var(--accent)]/15 text-[var(--accent)]'
+            : 'bg-[var(--bg-primary)]/40 text-[var(--text-sec)]'
+        }`}
+      >
+        {t.g2bulkCatalogModeSync}
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange('live')}
+        className={`flex-1 sm:flex-none px-4 py-2.5 min-h-[44px] text-sm font-semibold touch-manipulation transition-colors border-s border-[var(--border)] ${
+          resolved === 'live'
+            ? 'bg-[var(--accent)]/15 text-[var(--accent)]'
+            : 'bg-[var(--bg-primary)]/40 text-[var(--text-sec)]'
+        }`}
+      >
+        {t.g2bulkCatalogModeLive}
+      </button>
+    </div>
+  );
+}
+
+export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSynced, embedded = false }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -106,6 +137,14 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     g2bulk_api_key_source: 'none',
   });
   const [apiKeyInput, setApiKeyInput] = useState('');
+  const walletEnabled = !loading && (form.g2bulk_api_key_set || apiKeyInput.trim().length > 0);
+  const {
+    wallet: g2bulkWallet,
+    loading: walletLoading,
+    error: walletError,
+    refresh: refreshG2bulkWallet,
+    hasFetched: walletFetched,
+  } = useAdminG2bulkWallet(walletEnabled, { autoFetch: true });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -117,7 +156,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         g2bulk_markup_percent: data.g2bulk_markup_percent ?? 15,
         g2bulk_charm_pricing_enabled: data.g2bulk_charm_pricing_enabled ?? false,
         g2bulk_catalog_only: data.g2bulk_catalog_only ?? true,
-        g2bulk_catalog_mode: data.g2bulk_catalog_mode || 'sync',
+        g2bulk_catalog_mode: normalizeCatalogMode(data.g2bulk_catalog_mode),
         g2bulk_auto_sync_enabled: data.g2bulk_auto_sync_enabled ?? true,
         g2bulk_auto_sync_hour: data.g2bulk_auto_sync_hour ?? 5,
         g2bulk_auto_sync_timezone: data.g2bulk_auto_sync_timezone || 'Asia/Damascus',
@@ -223,6 +262,10 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         await load();
       }
       await onCatalogSynced?.(form.g2bulk_catalog_only);
+      if (form.g2bulk_api_key_set || apiKeyInput.trim()) {
+        await refreshG2bulkWallet();
+        await refreshSupplierWallets();
+      }
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err.message || t.g2bulkSaveFailed);
@@ -239,12 +282,17 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
       if (apiKeyInput.trim()) {
         await persistSettings();
       }
-      const me = await g2bulkGetMe();
+      const wallet = await refreshG2bulkWallet();
+      if (!wallet) {
+        setTestResult({ ok: false, message: 'Failed to load G2Bulk wallet' });
+        return;
+      }
       setTestResult({
         ok: true,
-        balance: me.balance,
-        username: me.username || me.first_name,
+        balance: wallet.balance,
+        username: wallet.username,
       });
+      await refreshSupplierWallets();
     } catch (err) {
       setTestResult({ ok: false, message: err.message });
     } finally {
@@ -281,16 +329,28 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     await handleSyncCatalog({ selectionOverride: selection });
   }, []);
 
-  const pullCounts = useMemo(
-    () => countPullSelection(pullSelection),
-    [pullSelection],
-  );
+  const catalogMode = normalizeCatalogMode(form.g2bulk_catalog_mode);
+
+  const pullCounts = useMemo(() => {
+    const all = countPullSelection(pullSelection);
+    if (catalogMode === 'live') {
+      return {
+        ...all,
+        games: all.liveGames,
+        vouchers: all.liveVouchers,
+        carousel: 0,
+      };
+    }
+    return {
+      ...all,
+      games: all.syncGames,
+      vouchers: all.syncVouchers,
+    };
+  }, [pullSelection, catalogMode]);
 
   const catalogNeverSynced = !form.g2bulk_last_sync_at;
-  const hasAnyPullSelection = pullCounts.total > 0;
-  const hasSyncableSelection = (
-    pullCounts.syncGames + pullCounts.syncVouchers
-  ) > 0;
+  const hasAnyPullSelection = (pullCounts.games + pullCounts.vouchers) > 0;
+  const hasSyncableSelection = catalogMode === 'sync' && hasAnyPullSelection;
 
   const catalogStatus = useMemo(() => {
     if (syncing) return 'syncing';
@@ -423,51 +483,210 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     );
   }
 
-  return (
-    <div className="space-y-6 max-w-4xl">
-      <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <div className="p-3 rounded-2xl bg-[var(--accent)]/10 text-[var(--accent)]">
-            <Zap className="w-6 h-6" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold">
-              {t.g2bulkTitle}
-            </h2>
-            <p className="text-sm text-[var(--text-sec)] mt-1 max-w-xl">
-              {t.g2bulkCatalogDesc}
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <StatusPill
-            ok={form.g2bulk_api_key_set}
-            label={form.g2bulk_api_key_set ? t.g2bulkApiConfigured : t.g2bulkApiNotSet}
-          />
-          <StatusPill
-            ok={!!form.g2bulk_last_sync_at}
-            label={form.g2bulk_last_sync_at ? t.g2bulkSynced : t.g2bulkNeverSynced}
-          />
-        </div>
-      </header>
+  const handleCatalogModeChange = (nextMode) => {
+    const resolved = normalizeCatalogMode(nextMode);
+    setForm((prev) => ({
+      ...prev,
+      g2bulk_catalog_mode: resolved,
+      g2bulk_catalog_only: resolved === 'live' ? false : prev.g2bulk_catalog_only,
+    }));
+  };
 
-      {(error || success) && (
+  const catalogHealthSection = (
+    <SectionCard
+      icon={Package}
+      accent
+      title={t.g2bulkCatalogHealth}
+      description={t.g2bulkCatalogHealthDesc}
+    >
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]/30 px-4 py-3 space-y-2">
+        <label className="block text-sm font-medium">{t.g2bulkCatalogSource}</label>
+        <CatalogModeToggle
+          mode={catalogMode}
+          onChange={handleCatalogModeChange}
+          t={t}
+        />
+        <p className="text-xs text-[var(--text-muted)]">
+          {catalogMode === 'live' ? t.g2bulkCatalogModeLiveHelp : t.g2bulkCatalogModeSyncHelp}
+        </p>
+      </div>
+
+      <div className={`rounded-2xl border px-4 py-4 ${
+        catalogStatus === 'synced'
+          ? 'border-green-500/30 bg-green-500/5'
+          : catalogStatus === 'no-selection'
+            ? 'border-amber-500/30 bg-amber-500/5'
+            : catalogStatus === 'syncing'
+              ? 'border-[var(--accent)]/30 bg-[var(--accent)]/5'
+              : 'border-[var(--border)] bg-[var(--bg-primary)]/35'
+      }`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            {catalogStatus === 'synced' && <ShieldCheck className="w-6 h-6 text-green-400 shrink-0" />}
+            {catalogStatus === 'no-selection' && <Info className="w-6 h-6 text-amber-300 shrink-0" />}
+            {catalogStatus === 'syncing' && <Loader2 className="w-6 h-6 text-[var(--accent)] animate-spin shrink-0" />}
+            {(catalogStatus === 'ready' || catalogStatus === 'never') && (
+              <CloudDownload className="w-6 h-6 text-[var(--text-sec)] shrink-0" />
+            )}
+            <div>
+              <div className="font-bold text-base">
+                {catalogStatus === 'no-selection' && t.g2bulkNothingSelected}
+                {catalogStatus === 'ready' && t.g2bulkReadyToSync}
+                {catalogStatus === 'synced' && t.g2bulkSelectionSynced}
+                {catalogStatus === 'syncing' && t.g2bulkSyncing}
+              </div>
+              <div className="text-xs text-[var(--text-muted)] mt-1 space-y-1">
+                {hasAnyPullSelection && (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)]/30 px-3 py-2">
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-sec)]">
+                        {t.g2bulkLaneTopups}
+                      </div>
+                      <div className="mt-0.5 text-sm text-[var(--text-primary)] font-semibold">
+                        {pullCounts.games} {t.g2bulkGamesUnit}
+                      </div>
+                      <div className="text-[11px]">
+                        {catalogMode === 'live' ? t.g2bulkLiveMode : t.g2bulkSyncMode}
+                        {pullCounts.carousel > 0 && (
+                          <>
+                            {' · '}
+                            {pullCounts.carousel} {t.g2bulkCarouselUnit}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)]/30 px-3 py-2">
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-sec)]">
+                        {t.g2bulkLaneVouchers}
+                      </div>
+                      <div className="mt-0.5 text-sm text-[var(--text-primary)] font-semibold">
+                        {pullCounts.vouchers} {t.g2bulkVouchersUnit}
+                      </div>
+                      <div className="text-[11px]">
+                        {pullCounts.platformVouchers} {t.g2bulkVoucherPlatformUnit}
+                        {pullCounts.gameVouchers > 0 && (
+                          <>
+                            {' · '}
+                            {pullCounts.gameVouchers} {t.g2bulkVoucherGameUnit}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {form.g2bulk_last_sync_at && (
+                  <div>
+                    {t.g2bulkLastSync}{' '}
+                    {new Date(form.g2bulk_last_sync_at).toLocaleString()}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {catalogMode === 'sync' && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]/30 px-4 py-3 text-sm text-[var(--text-sec)]">
+          <p className="font-medium text-[var(--text-primary)] mb-2 flex items-center gap-2">
+            <Info className="w-4 h-4 text-[var(--accent)]" />
+            {t.g2bulkWhatSyncDoes}
+          </p>
+          <ul className="space-y-1 text-xs leading-relaxed list-disc ps-5">
+            <li>{t.g2bulkSyncStep1}</li>
+            <li>{t.g2bulkSyncStep2}</li>
+            <li>{t.g2bulkSyncStep3}</li>
+            <li>{t.g2bulkSyncStep4}</li>
+            <li>{t.g2bulkSyncStep5}</li>
+          </ul>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={() => setPullPanelOpen(true)}
+          disabled={syncing || clearing}
+          className="btn btn-primary inline-flex items-center gap-2"
+        >
+          <CloudDownload className="w-4 h-4" />
+          {t.g2bulkPullFromApi}
+        </button>
+
+        {catalogMode === 'sync' && (
+          <button
+            type="button"
+            onClick={handleSyncCatalog}
+            disabled={syncing || clearing || !hasSyncableSelection}
+            className="btn btn-secondary inline-flex items-center gap-2"
+          >
+            {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            {syncing
+              ? syncPhaseLabel(syncProgress)
+              : t.g2bulkSyncNow}
+          </button>
+        )}
+
+        {catalogMode === 'sync' && (
+          <button
+            type="button"
+            onClick={handleClearSyncedCatalog}
+            disabled={syncing || clearing}
+            className="btn btn-secondary inline-flex items-center gap-2 text-red-300 border-red-500/30 hover:border-red-500/50"
+          >
+            {clearing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            {t.g2bulkRemoveSynced}
+          </button>
+        )}
+
+        {syncing && (
+          <button
+            type="button"
+            onClick={handleCancelSync}
+            className="btn btn-secondary inline-flex items-center gap-2"
+          >
+            <X className="w-4 h-4" />
+            {t.cancel}
+          </button>
+        )}
+      </div>
+
+      {syncing && syncProgress && (
         <div className="space-y-2">
-          {error && (
-            <div className="flex items-start gap-2 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
-          {success && (
-            <div className="flex items-center gap-2 text-green-400 text-sm bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-3">
-              <CheckCircle className="w-4 h-4 shrink-0" />
-              {success}
-            </div>
+          <div className="flex justify-between text-xs text-[var(--text-muted)]">
+            <span>{syncPhaseLabel(syncProgress)}</span>
+            <span>{syncPercent(syncProgress)}%</span>
+          </div>
+          <div className="h-2.5 rounded-full bg-[var(--border)] overflow-hidden">
+            <div
+              className="h-full rounded-full bg-[var(--accent)] transition-all duration-300 ease-out"
+              style={{ width: `${syncPercent(syncProgress)}%` }}
+            />
+          </div>
+          {syncProgress.offersSynced > 0 && (
+            <p className="text-xs text-[var(--text-muted)]">
+              {formatMessage(t.g2bulkSyncProgress, {
+                games: syncProgress.gamesSynced,
+                offers: syncProgress.offersSynced,
+              })}
+            </p>
           )}
         </div>
       )}
 
+      {syncResult?.errors?.length > 0 && (
+        <div className="text-xs text-amber-300/90 space-y-1 max-h-32 overflow-y-auto">
+          <p className="font-medium">{t.g2bulkSyncWarnings}</p>
+          {syncResult.errors.map((msg) => (
+            <p key={msg} className="font-mono opacity-90">{msg}</p>
+          ))}
+        </div>
+      )}
+    </SectionCard>
+  );
+
+  const connectionSections = (
+    <>
       <div className="grid gap-6 lg:grid-cols-2">
         <SectionCard
           icon={Key}
@@ -490,18 +709,16 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
           />
           <p className="text-xs text-[var(--text-muted)]">{apiKeyHint()}</p>
 
-          {testResult?.ok && (
+          {walletEnabled && (
             <G2bulkWalletCard
-              balance={testResult.balance}
-              username={testResult.username}
+              balance={testResult?.ok ? testResult.balance : g2bulkWallet?.balance}
+              username={testResult?.ok ? testResult.username : g2bulkWallet?.username}
+              loading={walletLoading || testing}
+              error={testResult && !testResult.ok ? testResult.message : walletError}
+              idle={!walletFetched}
               lang={lang}
+              onRefresh={() => refreshG2bulkWallet()}
             />
-          )}
-          {testResult && !testResult.ok && (
-            <div className="rounded-xl border border-red-500/30 bg-red-500/10 text-red-300 px-4 py-3 text-sm flex items-start gap-2">
-              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-              <span>{testResult.message}</span>
-            </div>
           )}
 
           <button
@@ -564,40 +781,13 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
               {t.g2bulkApplyCharmPricing}
             </button>
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1.5">
-              {t.g2bulkCatalogSource}
-            </label>
-            <select
-              value={form.g2bulk_catalog_mode || 'sync'}
-              onChange={(e) => setForm((p) => ({ ...p, g2bulk_catalog_mode: e.target.value }))}
-              className="input w-full max-w-md"
-            >
-              <option value="sync">
-                {t.g2bulkCatalogModeSync}
-              </option>
-              <option value="live">
-                {t.g2bulkCatalogModeLive}
-              </option>
-              <option value="hybrid">
-                {t.g2bulkCatalogModeHybrid}
-              </option>
-            </select>
-            <p className="text-xs text-[var(--text-muted)] mt-1.5 max-w-xl">
-              {form.g2bulk_catalog_mode === 'hybrid'
-                ? t.g2bulkCatalogModeHybridHelp
-                : form.g2bulk_catalog_mode === 'live'
-                ? t.g2bulkCatalogModeLiveHelp
-                : t.g2bulkCatalogModeSyncHelp}
-            </p>
-          </div>
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"
               checked={form.g2bulk_catalog_only}
               onChange={(e) => setForm((p) => ({ ...p, g2bulk_catalog_only: e.target.checked }))}
               className="rounded border-[var(--border)]"
-              disabled={form.g2bulk_catalog_mode === 'live'}
+              disabled={catalogMode === 'live'}
             />
             <span className="text-sm">
               {t.g2bulkCatalogOnly}
@@ -616,194 +806,6 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
           </label>
         </SectionCard>
       </div>
-
-      <SectionCard
-        icon={Package}
-        accent
-        title={t.g2bulkCatalogHealth}
-        description={t.g2bulkCatalogHealthDesc}
-      >
-        <div className={`rounded-2xl border px-4 py-4 ${
-          catalogStatus === 'synced'
-            ? 'border-green-500/30 bg-green-500/5'
-            : catalogStatus === 'no-selection'
-              ? 'border-amber-500/30 bg-amber-500/5'
-              : catalogStatus === 'syncing'
-                ? 'border-[var(--accent)]/30 bg-[var(--accent)]/5'
-                : 'border-[var(--border)] bg-[var(--bg-primary)]/35'
-        }`}>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex items-start gap-3 min-w-0">
-              {catalogStatus === 'synced' && <ShieldCheck className="w-6 h-6 text-green-400 shrink-0" />}
-              {catalogStatus === 'no-selection' && <Info className="w-6 h-6 text-amber-300 shrink-0" />}
-              {catalogStatus === 'syncing' && <Loader2 className="w-6 h-6 text-[var(--accent)] animate-spin shrink-0" />}
-              {(catalogStatus === 'ready' || catalogStatus === 'never') && (
-                <CloudDownload className="w-6 h-6 text-[var(--text-sec)] shrink-0" />
-              )}
-              <div>
-                <div className="font-bold text-base">
-                  {catalogStatus === 'no-selection' && t.g2bulkNothingSelected}
-                  {catalogStatus === 'ready' && t.g2bulkReadyToSync}
-                  {catalogStatus === 'synced' && t.g2bulkSelectionSynced}
-                  {catalogStatus === 'syncing' && t.g2bulkSyncing}
-                </div>
-                <div className="text-xs text-[var(--text-muted)] mt-1 space-y-1">
-                  {hasAnyPullSelection && (
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)]/30 px-3 py-2">
-                        <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-sec)]">
-                          {t.g2bulkLaneTopups}
-                        </div>
-                        <div className="mt-0.5 text-sm text-[var(--text-primary)] font-semibold">
-                          {pullCounts.games} {t.g2bulkGamesUnit}
-                        </div>
-                        <div className="text-[11px]">
-                          {pullCounts.syncGames} {t.g2bulkSyncedUnit}
-                          {' · '}
-                          {pullCounts.liveGames} {t.g2bulkLiveUnit}
-                          {pullCounts.carousel > 0 && (
-                            <>
-                              {' · '}
-                              {pullCounts.carousel} {t.g2bulkCarouselUnit}
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)]/30 px-3 py-2">
-                        <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-sec)]">
-                          {t.g2bulkLaneVouchers}
-                        </div>
-                        <div className="mt-0.5 text-sm text-[var(--text-primary)] font-semibold">
-                          {pullCounts.vouchers} {t.g2bulkVouchersUnit}
-                        </div>
-                        <div className="text-[11px]">
-                          {pullCounts.platformVouchers} {t.g2bulkVoucherPlatformUnit}
-                          {pullCounts.gameVouchers > 0 && (
-                            <>
-                              {' · '}
-                              {pullCounts.gameVouchers} {t.g2bulkVoucherGameUnit}
-                            </>
-                          )}
-                          {' · '}
-                          {pullCounts.syncVouchers} {t.g2bulkSyncedUnit}
-                          {' · '}
-                          {pullCounts.liveVouchers} {t.g2bulkLiveUnit}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {hasAnyPullSelection && form.g2bulk_catalog_mode && (
-                    <div>
-                      {form.g2bulk_catalog_mode === 'hybrid'
-                        ? t.g2bulkHybridMode
-                        : form.g2bulk_catalog_mode === 'live'
-                          ? t.g2bulkLiveMode
-                          : t.g2bulkSyncMode}
-                    </div>
-                  )}
-                  {form.g2bulk_last_sync_at && (
-                    <div>
-                      {t.g2bulkLastSync}{' '}
-                      {new Date(form.g2bulk_last_sync_at).toLocaleString()}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]/30 px-4 py-3 text-sm text-[var(--text-sec)]">
-          <p className="font-medium text-[var(--text-primary)] mb-2 flex items-center gap-2">
-            <Info className="w-4 h-4 text-[var(--accent)]" />
-            {t.g2bulkWhatSyncDoes}
-          </p>
-          <ul className="space-y-1 text-xs leading-relaxed list-disc ps-5">
-            <li>{t.g2bulkSyncStep1}</li>
-            <li>{t.g2bulkSyncStep2}</li>
-            <li>{t.g2bulkSyncStep3}</li>
-            <li>{t.g2bulkSyncStep4}</li>
-            <li>{t.g2bulkSyncStep5}</li>
-          </ul>
-        </div>
-
-        <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={() => setPullPanelOpen(true)}
-            disabled={syncing || clearing}
-            className="btn btn-primary inline-flex items-center gap-2"
-          >
-            <CloudDownload className="w-4 h-4" />
-            {t.g2bulkPullFromApi}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleSyncCatalog}
-            disabled={syncing || clearing || !hasSyncableSelection}
-            className="btn btn-secondary inline-flex items-center gap-2"
-          >
-            {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            {syncing
-              ? syncPhaseLabel(syncProgress)
-              : t.g2bulkSyncNow}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleClearSyncedCatalog}
-            disabled={syncing || clearing}
-            className="btn btn-secondary inline-flex items-center gap-2 text-red-300 border-red-500/30 hover:border-red-500/50"
-          >
-            {clearing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-            {t.g2bulkRemoveSynced}
-          </button>
-
-          {syncing && (
-            <button
-              type="button"
-              onClick={handleCancelSync}
-              className="btn btn-secondary inline-flex items-center gap-2"
-            >
-              <X className="w-4 h-4" />
-              {t.cancel}
-            </button>
-          )}
-        </div>
-
-        {syncing && syncProgress && (
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs text-[var(--text-muted)]">
-              <span>{syncPhaseLabel(syncProgress)}</span>
-              <span>{syncPercent(syncProgress)}%</span>
-            </div>
-            <div className="h-2.5 rounded-full bg-[var(--border)] overflow-hidden">
-              <div
-                className="h-full rounded-full bg-[var(--accent)] transition-all duration-300 ease-out"
-                style={{ width: `${syncPercent(syncProgress)}%` }}
-              />
-            </div>
-            {syncProgress.offersSynced > 0 && (
-              <p className="text-xs text-[var(--text-muted)]">
-                {formatMessage(t.g2bulkSyncProgress, {
-                  games: syncProgress.gamesSynced,
-                  offers: syncProgress.offersSynced,
-                })}
-              </p>
-            )}
-          </div>
-        )}
-
-        {syncResult?.errors?.length > 0 && (
-          <div className="text-xs text-amber-300/90 space-y-1 max-h-32 overflow-y-auto">
-            <p className="font-medium">{t.g2bulkSyncWarnings}</p>
-            {syncResult.errors.map((msg) => (
-              <p key={msg} className="font-mono opacity-90">{msg}</p>
-            ))}
-          </div>
-        )}
-      </SectionCard>
 
       <SectionCard
         icon={CalendarClock}
@@ -865,6 +867,103 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
           </p>
         )}
       </SectionCard>
+    </>
+  );
+
+  return (
+    <div className={`space-y-6 ${embedded ? 'max-w-none' : 'max-w-4xl'}`}>
+      {!embedded && (
+      <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="p-3 rounded-2xl bg-[var(--accent)]/10 text-[var(--accent)]">
+            <Zap className="w-6 h-6" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold">
+              {t.g2bulkTitle}
+            </h2>
+            <p className="text-sm text-[var(--text-sec)] mt-1 max-w-xl">
+              {t.g2bulkCatalogDesc}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <StatusPill
+            ok={form.g2bulk_api_key_set}
+            label={form.g2bulk_api_key_set ? t.g2bulkApiConfigured : t.g2bulkApiNotSet}
+          />
+          <StatusPill
+            ok={!!form.g2bulk_last_sync_at}
+            label={form.g2bulk_last_sync_at ? t.g2bulkSynced : t.g2bulkNeverSynced}
+          />
+        </div>
+      </header>
+      )}
+
+      {embedded && (
+        <div className="rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent)]/5 px-4 py-4 sm:px-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="p-2.5 rounded-xl bg-[var(--accent)]/15 text-[var(--accent)] shrink-0">
+                <Zap className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-lg font-bold">{t.g2bulkTitle}</h2>
+                <p className="text-sm text-[var(--text-sec)] mt-0.5">{t.g2bulkCatalogDesc}</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <StatusPill
+                ok={form.g2bulk_api_key_set}
+                label={form.g2bulk_api_key_set ? t.g2bulkApiConfigured : t.g2bulkApiNotSet}
+              />
+              <StatusPill
+                ok={!!form.g2bulk_last_sync_at}
+                label={form.g2bulk_last_sync_at ? t.g2bulkSynced : t.g2bulkNeverSynced}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(error || success) && (
+        <div className="space-y-2">
+          {error && (
+            <div className="flex items-start gap-2 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
+          {success && (
+            <div className="flex items-center gap-2 text-green-400 text-sm bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-3">
+              <CheckCircle className="w-4 h-4 shrink-0" />
+              {success}
+            </div>
+          )}
+        </div>
+      )}
+
+      {embedded ? (
+        <>
+          {catalogHealthSection}
+          <details className="g2bulk-embedded-advanced rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)]/40 overflow-hidden group">
+            <summary className="cursor-pointer list-none px-4 py-3 sm:px-5 sm:py-4 flex items-center justify-between gap-3 touch-manipulation">
+              <span className="font-semibold text-sm text-[var(--text-primary)]">
+                {t.g2bulkApiConnection} · {t.g2bulkScheduledSync}
+              </span>
+              <span className="text-xs text-[var(--text-muted)] group-open:hidden">{t.saveSettings}</span>
+            </summary>
+            <div className="px-4 pb-5 sm:px-5 space-y-6 border-t border-[var(--border)] pt-4">
+              {connectionSections}
+            </div>
+          </details>
+        </>
+      ) : (
+        <>
+          {connectionSections}
+          {catalogHealthSection}
+        </>
+      )}
 
       <div className="flex flex-wrap gap-3 pt-2 border-t border-[var(--border)]">
         <button
@@ -886,9 +985,11 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         open={pullPanelOpen}
         onClose={() => setPullPanelOpen(false)}
         t={t}
+        catalogMode={catalogMode}
         initialSelection={pullSelection}
         onLoaded={handlePullSelectionLoaded}
         onSaved={handlePullSelectionSaved}
+        onSaveAndSync={handleSaveAndSyncSelection}
       />
 
       <ConfirmDialog

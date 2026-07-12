@@ -1,16 +1,6 @@
 import { Loader2, RefreshCw, Wallet, AlertCircle, Zap } from 'lucide-react';
 import { SUPPLIER_BRAND } from '../../lib/branding';
-
-function formatUsd(amount) {
-  const n = Number(amount);
-  if (!Number.isFinite(n)) return '$0.00';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(n);
-}
+import { formatG2bulkAmount } from '../../lib/g2bulkWalletFormat';
 
 export default function G2bulkWalletCard({
   balance = 0,
@@ -46,7 +36,7 @@ export default function G2bulkWalletCard({
     }
     return (
       <span className="header-balance font-mono" title={isAr ? `رصيد ${SUPPLIER_BRAND}` : `${SUPPLIER_BRAND} wallet`}>
-        {formatUsd(balance)}
+        {formatG2bulkAmount(balance)}
       </span>
     );
   }
@@ -103,7 +93,7 @@ export default function G2bulkWalletCard({
       ) : (
         <>
           <p className="g2bulk-wallet-amount text-4xl sm:text-5xl font-black font-mono tracking-tight text-white">
-            {formatUsd(balance)}
+            {formatG2bulkAmount(balance)}
           </p>
           {username && (
             <p className="text-sm text-[var(--text-sec)] mt-2 truncate">

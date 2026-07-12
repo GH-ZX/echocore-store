@@ -16,6 +16,7 @@ import {
 } from '../lib/offerDisplay';
 import { resolveOfferRoute } from '../lib/offerRoutes';
 import { buildGameBreadcrumb } from '../lib/catalogNav';
+import MobileBuyBar from '../components/catalog/MobileBuyBar';
 
 export default function OfferDetail({
   games,
@@ -152,22 +153,24 @@ export default function OfferDetail({
 
       </div>
 
-      <div className="catalog-mobile-buybar lg:hidden fixed inset-x-0 bottom-0 z-40 border-t border-[var(--border)] bg-[var(--bg-surface)]/95 backdrop-blur-md px-4 py-3 safe-area-pb">
-        <div className="max-w-6xl mx-auto flex items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide truncate">{offerName}</div>
-            <div className="text-xl font-black text-[var(--accent)]">${Number.parseFloat(offer.price).toFixed(2)}</div>
-            {isAdmin && <AdminOfferCostBadge offer={offer} t={t} className="mt-0.5" />}
+      <MobileBuyBar>
+        <div className="catalog-mobile-buybar" role="region" aria-label={t.buyNow}>
+          <div className="catalog-mobile-buybar__inner">
+            <div className="min-w-0 flex-1">
+              <div className="catalog-mobile-buybar__title truncate">{offerName}</div>
+              <div className="catalog-mobile-buybar__price">${Number.parseFloat(offer.price).toFixed(2)}</div>
+              {isAdmin && <AdminOfferCostBadge offer={offer} t={t} className="mt-0.5" />}
+            </div>
+            <button
+              type="button"
+              onClick={() => onBuyNow?.(offer)}
+              className="btn btn-primary catalog-mobile-buybar__btn font-bold shrink-0 touch-manipulation"
+            >
+              {isAdmin ? t.giftOffer : t.buyNow}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => onBuyNow?.(offer)}
-            className="btn btn-primary px-5 py-3 font-bold shrink-0 touch-manipulation"
-          >
-            {isAdmin ? t.giftOffer : t.buyNow}
-          </button>
         </div>
-      </div>
+      </MobileBuyBar>
 
       {isAdmin && editingOffer && (
         <AdminOfferEditModal

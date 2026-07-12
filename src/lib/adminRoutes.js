@@ -24,6 +24,7 @@ export function resolveAdminTabFromPath(pathname = '') {
   if (parts.length === 1) return 'overview';
   const segment = parts[1];
   if (segment === ADMIN_TAB_SEGMENTS.users) return 'users';
+  if (segment === ADMIN_TAB_SEGMENTS.g2bulk) return 'products';
   return ADMIN_SEGMENT_TO_TAB[segment] || 'overview';
 }
 

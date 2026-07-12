@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { uploadImage } from '../../lib/uploadImage';
+import Modal from '../ui/Modal';
 
 export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t = {}, onClose, onSave }) {
   const [form, setForm] = useState({
@@ -107,14 +108,10 @@ export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t 
     }
   };
 
-  if (!offer) return null;
-
   return (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
-      <div className="relative w-full sm:max-w-lg max-h-[92dvh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-2xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3">
-          <h2 className="text-lg font-bold">
+    <Modal open={!!offer} onClose={onClose} size="lg" zIndex={100} ariaLabelledBy="admin-offer-edit-title">
+        <div className="modal-panel__header">
+          <h2 id="admin-offer-edit-title" className="text-lg font-bold">
             {isNew
               ? (form.is_sale ? (t.addSaleOffer || 'Add Sale Offer') : (t.addOffer || 'Add Offer'))
               : (t.editOffer || 'Edit Offer')}
@@ -269,7 +266,6 @@ export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t 
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }

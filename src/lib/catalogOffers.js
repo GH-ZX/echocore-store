@@ -2,13 +2,8 @@ import { supabase } from './supabase';
 import { fetchLiveGameGroup, isLiveCatalogId } from './liveCatalog';
 import { getGameBaseMeta } from './gameRegions';
 
-function usesLiveCatalogForGame({ catalogMode = 'sync', storefrontGame, variant } = {}) {
-  return catalogMode === 'live'
-    || (catalogMode === 'hybrid' && (
-      storefrontGame?.catalog_source === 'live'
-      || isLiveCatalogId(storefrontGame?.id)
-      || isLiveCatalogId(variant?.id)
-    ));
+function usesLiveCatalogForGame({ catalogMode = 'sync' } = {}) {
+  return catalogMode === 'live';
 }
 
 /** Refresh offer prices for a regional variant (live API or Supabase). */

@@ -30,6 +30,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import AdminSupplierWalletsCard from '../../components/ui/AdminSupplierWalletsCard';
 import { useAdminSupplierWallets } from '../../hooks/useAdminSupplierWallets';
+import { formatG2bulkAmount } from '../../lib/g2bulkWalletFormat';
 import ProfileAvatar from '../../components/profile/ProfileAvatar';
 import {
   uploadProfileAvatar,
@@ -121,7 +122,7 @@ export default function ProfileView({
     idle: supplierWalletsIdle,
     refresh: refreshSupplierWallets,
   } = useAdminSupplierWallets(isAdmin, {
-    fetchOnMount: false,
+    fetchOnMount: true,
     pollIntervalMs: 3 * 60 * 1000,
   });
 
@@ -832,7 +833,16 @@ export default function ProfileView({
         {(isAdmin ? [
           { icon: ShoppingBag, label: t.totalOrders, value: userOrders.length, color: 'text-blue-400' },
           { icon: Receipt, label: t.totalSpent, value: `$${totalSpent.toFixed(2)}`, color: 'text-[var(--accent)]' },
-          { icon: Wallet, label: t.g2bulkBalance, value: supplierWalletsLoading ? '…' : (g2bulkWallet ? `$${g2bulkWallet.balance.toFixed(2)}` : '—'), color: 'text-emerald-400' },
+          {
+            icon: Wallet,
+            label: t.g2bulkBalance,
+            value: supplierWalletsLoading
+              ? '…'
+              : (g2bulkWallet
+                ? formatG2bulkAmount(g2bulkWallet.balance)
+                : (g2bulkFetched && g2bulkError ? '!' : '—')),
+            color: 'text-emerald-400',
+          },
           { icon: UserRound, label: t.accountType, value: t.profileRoleAdmin, color: 'text-violet-400' },
         ] : [
           { icon: ShoppingBag, label: t.totalOrders, value: userOrders.length, color: 'text-blue-400' },

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { X, Search, Plus, ExternalLink } from 'lucide-react';
+import Modal from '../ui/Modal';
 import { getCarouselPickableGames, resolveCarouselLogo } from '../../lib/carouselUtils';
 
 export default function CarouselAddPicker({
@@ -27,21 +28,18 @@ export default function CarouselAddPicker({
   const gameName = (game) => (isAr ? game.name_ar : game.name_en) || game.name_en || game.name_ar;
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-        aria-label={isAr ? 'إغلاق' : 'Close'}
-        onClick={onClose}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="relative w-full sm:max-w-md max-h-[min(80dvh,520px)] flex flex-col rounded-t-2xl sm:rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-2xl overflow-hidden"
-      >
-        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-[var(--border)] shrink-0">
+    <Modal
+      open
+      onClose={onClose}
+      size="md"
+      zIndex={110}
+      ariaLabelledBy="carousel-add-picker-title"
+      panelClassName="flex flex-col overflow-hidden max-h-[min(80dvh,520px)]"
+      scrollable={false}
+    >
+        <div className="modal-panel__header shrink-0">
           <div className="min-w-0">
-            <h2 className="text-base font-bold truncate">
+            <h2 id="carousel-add-picker-title" className="text-base font-bold truncate">
               {t.addToCarousel || (isAr ? 'إضافة إلى الكاروسيل' : 'Add to carousel')}
             </h2>
             <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
@@ -121,7 +119,6 @@ export default function CarouselAddPicker({
             {t.goToAddGames || (isAr ? 'إضافة ألعاب جديدة من G2Bulk' : 'Add new games from G2Bulk')}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

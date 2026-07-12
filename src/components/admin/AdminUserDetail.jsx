@@ -47,6 +47,7 @@ import {
 } from '../../lib/username';
 import { adminChangeUsername, getUsernameErrorMessage } from '../../lib/usernameChange';
 import BanDurationField from './BanDurationField';
+import Modal from '../ui/Modal';
 
 function formatAdminDate(value, lang) {
   if (!value) return '—';
@@ -572,37 +573,47 @@ export default function AdminUserDetail({
         )}
       </div>
 
-      {banOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !banLoading && setBanOpen(false)} aria-hidden="true" />
-          <div className="relative w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-2xl p-5 space-y-3">
-            <h3 className="text-lg font-bold">{formatMessage(t.adminBanConfirmTitle, { name: profile.name || profile.email })}</h3>
-            <textarea value={banReason} onChange={(e) => setBanReason(e.target.value)} className="input w-full min-h-[88px]" placeholder={t.adminBanReasonPlaceholder} maxLength={500} />
-            <BanDurationField t={t} duration={banDuration} onDurationChange={setBanDuration} banDays={banDays} onBanDaysChange={setBanDays} />
-            <div className="flex gap-2">
-              <button type="button" disabled={banLoading} onClick={handleBan} className="btn flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white border-red-600">
-                {banLoading ? t.sending : t.adminBanUser}
-              </button>
-              <button type="button" disabled={banLoading} onClick={() => setBanOpen(false)} className="btn btn-secondary flex-1 py-2.5">{t.cancel}</button>
-            </div>
-          </div>
+      <Modal
+        open={banOpen}
+        onClose={banLoading ? undefined : () => setBanOpen(false)}
+        closeOnBackdrop={!banLoading}
+        closeOnEscape={!banLoading}
+        size="md"
+        panelClassName="p-5 space-y-3"
+        scrollable={false}
+        ariaLabelledBy="admin-user-ban-title"
+      >
+        <h3 id="admin-user-ban-title" className="text-lg font-bold">{formatMessage(t.adminBanConfirmTitle, { name: profile.name || profile.email })}</h3>
+        <textarea value={banReason} onChange={(e) => setBanReason(e.target.value)} className="input w-full min-h-[88px]" placeholder={t.adminBanReasonPlaceholder} maxLength={500} />
+        <BanDurationField t={t} duration={banDuration} onDurationChange={setBanDuration} banDays={banDays} onBanDaysChange={setBanDays} />
+        <div className="flex gap-2">
+          <button type="button" disabled={banLoading} onClick={handleBan} className="btn flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white border-red-600">
+            {banLoading ? t.sending : t.adminBanUser}
+          </button>
+          <button type="button" disabled={banLoading} onClick={() => setBanOpen(false)} className="btn btn-secondary flex-1 py-2.5">{t.cancel}</button>
         </div>
-      )}
+      </Modal>
 
-      {messageOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !actionLoading && setMessageOpen(false)} aria-hidden="true" />
-          <form onSubmit={handleSendMessage} className="relative w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-2xl p-5 space-y-3">
-            <h3 className="text-lg font-bold">{formatMessage(t.adminUserMessageTitle, { name: profile.name || profile.email })}</h3>
-            <input value={messageTitle} onChange={(e) => setMessageTitle(e.target.value)} className="input w-full" placeholder={t.adminBroadcastTitlePlaceholder} maxLength={120} />
-            <textarea value={messageBody} onChange={(e) => setMessageBody(e.target.value)} className="input w-full min-h-[120px]" placeholder={t.adminBroadcastBodyPlaceholder} maxLength={2000} />
-            <div className="flex gap-2">
-              <button type="submit" disabled={actionLoading} className="btn btn-primary flex-1">{actionLoading ? t.sending : t.adminUserMessageSend}</button>
-              <button type="button" disabled={actionLoading} onClick={() => setMessageOpen(false)} className="btn btn-secondary flex-1">{t.cancel}</button>
-            </div>
-          </form>
-        </div>
-      )}
+      <Modal
+        open={messageOpen}
+        onClose={actionLoading ? undefined : () => setMessageOpen(false)}
+        closeOnBackdrop={!actionLoading}
+        closeOnEscape={!actionLoading}
+        size="md"
+        panelClassName="p-5"
+        scrollable={false}
+        ariaLabelledBy="admin-user-message-title"
+      >
+        <form onSubmit={handleSendMessage} className="space-y-3">
+          <h3 id="admin-user-message-title" className="text-lg font-bold">{formatMessage(t.adminUserMessageTitle, { name: profile.name || profile.email })}</h3>
+          <input value={messageTitle} onChange={(e) => setMessageTitle(e.target.value)} className="input w-full" placeholder={t.adminBroadcastTitlePlaceholder} maxLength={120} />
+          <textarea value={messageBody} onChange={(e) => setMessageBody(e.target.value)} className="input w-full min-h-[120px]" placeholder={t.adminBroadcastBodyPlaceholder} maxLength={2000} />
+          <div className="flex gap-2">
+            <button type="submit" disabled={actionLoading} className="btn btn-primary flex-1">{actionLoading ? t.sending : t.adminUserMessageSend}</button>
+            <button type="button" disabled={actionLoading} onClick={() => setMessageOpen(false)} className="btn btn-secondary flex-1">{t.cancel}</button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

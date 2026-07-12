@@ -1,5 +1,6 @@
 import { AlertCircle, Loader2, RefreshCw, Smartphone, Wallet, Zap } from 'lucide-react';
 import { SUPPLIER_BRAND } from '../../lib/branding';
+import { getG2bulkBalanceLines } from '../../lib/g2bulkWalletFormat';
 import {
   formatSamCurrencyAmount,
   getSamAccountLabel,
@@ -103,7 +104,7 @@ export default function AdminSupplierWalletsCard({
   const samLabel = isPanelVariant(variant)
     ? (t.samWalletShort || 'Sam API')
     : getSamAccountLabel(samWallets, t.samWalletTitle);
-  const g2bulkLines = [{ currency: 'USD', amount: g2bulkBalance }];
+  const g2bulkLines = getG2bulkBalanceLines({ balance: g2bulkBalance });
   const samLines = getSamSupplierBalanceLines(samWallets);
   const showActions = variant === 'card' && (onOpenDashboard || onOpenPayments);
   const showHeader = variant !== 'dropdown';

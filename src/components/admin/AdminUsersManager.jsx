@@ -14,6 +14,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import ConfirmDialog from '../ui/ConfirmDialog';
+import Modal from '../ui/Modal';
 import BanDurationField from './BanDurationField';
 import AdminUserDetail from './AdminUserDetail';
 import {
@@ -511,23 +512,27 @@ export default function AdminUsersManager({
         )}
       </section>
 
-      {banTarget && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !banLoading && setBanTarget(null)} aria-hidden="true" />
-          <div className="relative w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-2xl p-5 space-y-3">
-            <h3 className="text-lg font-bold">{formatMessage(t.adminBanConfirmTitle, { name: banTarget.name || banTarget.email })}</h3>
-            <p className="text-sm text-[var(--text-sec)]">{t.adminBanConfirmMessage}</p>
-            <textarea value={banReason} onChange={(e) => setBanReason(e.target.value)} className="input w-full min-h-[88px]" placeholder={t.adminBanReasonPlaceholder} maxLength={500} />
-            <BanDurationField t={t} duration={banDuration} onDurationChange={setBanDuration} banDays={banDays} onBanDaysChange={setBanDays} />
-            <div className="flex gap-2">
-              <button type="button" disabled={banLoading} onClick={handleBanConfirm} className="btn flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white border-red-600">
-                {banLoading ? t.sending : t.adminBanUser}
-              </button>
-              <button type="button" disabled={banLoading} onClick={() => setBanTarget(null)} className="btn btn-secondary flex-1 py-2.5">{t.cancel}</button>
-            </div>
-          </div>
+      <Modal
+        open={!!banTarget}
+        onClose={banLoading ? undefined : () => setBanTarget(null)}
+        closeOnBackdrop={!banLoading}
+        closeOnEscape={!banLoading}
+        size="md"
+        panelClassName="p-5 space-y-3"
+        scrollable={false}
+        ariaLabelledBy="admin-ban-user-title"
+      >
+        <h3 id="admin-ban-user-title" className="text-lg font-bold">{formatMessage(t.adminBanConfirmTitle, { name: banTarget?.name || banTarget?.email })}</h3>
+        <p className="text-sm text-[var(--text-sec)]">{t.adminBanConfirmMessage}</p>
+        <textarea value={banReason} onChange={(e) => setBanReason(e.target.value)} className="input w-full min-h-[88px]" placeholder={t.adminBanReasonPlaceholder} maxLength={500} />
+        <BanDurationField t={t} duration={banDuration} onDurationChange={setBanDuration} banDays={banDays} onBanDaysChange={setBanDays} />
+        <div className="flex gap-2">
+          <button type="button" disabled={banLoading} onClick={handleBanConfirm} className="btn flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white border-red-600">
+            {banLoading ? t.sending : t.adminBanUser}
+          </button>
+          <button type="button" disabled={banLoading} onClick={() => setBanTarget(null)} className="btn btn-secondary flex-1 py-2.5">{t.cancel}</button>
         </div>
-      )}
+      </Modal>
 
       <ConfirmDialog open={!!unbanTarget} title={t.adminUnbanConfirmTitle} message={formatMessage(t.adminUnbanConfirmMessage, { name: unbanTarget?.name || unbanTarget?.email || '' })} confirmLabel={t.adminUnbanUser} cancelLabel={t.cancel} loading={unbanLoading} onConfirm={handleUnbanConfirm} onCancel={() => !unbanLoading && setUnbanTarget(null)} />
 
@@ -542,25 +547,31 @@ export default function AdminUsersManager({
         onCancel={() => !verifyLoading && setVerifyTarget(null)}
       />
 
-      {messageTarget && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !messageSending && setMessageTarget(null)} aria-hidden="true" />
-          <form onSubmit={handleDirectMessage} className="relative w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-2xl p-5 space-y-3">
-            <h3 className="text-lg font-bold">{formatMessage(t.adminUserMessageTitle, { name: messageTarget.name || messageTarget.email })}</h3>
-            <div className="inbox-filter-bar">
-              {['announcement', 'warning'].map((kind) => (
-                <button key={kind} type="button" onClick={() => setMessageKind(kind)} className={`inbox-filter-chip ${messageKind === kind ? 'inbox-filter-chip--active' : ''}`}>{broadcastKindLabel[kind]}</button>
-              ))}
-            </div>
-            <input value={messageTitle} onChange={(e) => setMessageTitle(e.target.value)} className="input w-full" placeholder={t.adminBroadcastTitlePlaceholder} maxLength={120} />
-            <textarea value={messageBody} onChange={(e) => setMessageBody(e.target.value)} className="input w-full min-h-[120px]" placeholder={t.adminBroadcastBodyPlaceholder} maxLength={2000} />
-            <div className="flex gap-2">
-              <button type="submit" disabled={messageSending} className="btn btn-primary flex-1">{messageSending ? t.sending : t.adminUserMessageSend}</button>
-              <button type="button" disabled={messageSending} onClick={() => setMessageTarget(null)} className="btn btn-secondary flex-1">{t.cancel}</button>
-            </div>
-          </form>
-        </div>
-      )}
+      <Modal
+        open={!!messageTarget}
+        onClose={messageSending ? undefined : () => setMessageTarget(null)}
+        closeOnBackdrop={!messageSending}
+        closeOnEscape={!messageSending}
+        size="md"
+        panelClassName="p-5"
+        scrollable={false}
+        ariaLabelledBy="admin-direct-message-title"
+      >
+        <form onSubmit={handleDirectMessage} className="space-y-3">
+          <h3 id="admin-direct-message-title" className="text-lg font-bold">{formatMessage(t.adminUserMessageTitle, { name: messageTarget?.name || messageTarget?.email })}</h3>
+          <div className="inbox-filter-bar">
+            {['announcement', 'warning'].map((kind) => (
+              <button key={kind} type="button" onClick={() => setMessageKind(kind)} className={`inbox-filter-chip ${messageKind === kind ? 'inbox-filter-chip--active' : ''}`}>{broadcastKindLabel[kind]}</button>
+            ))}
+          </div>
+          <input value={messageTitle} onChange={(e) => setMessageTitle(e.target.value)} className="input w-full" placeholder={t.adminBroadcastTitlePlaceholder} maxLength={120} />
+          <textarea value={messageBody} onChange={(e) => setMessageBody(e.target.value)} className="input w-full min-h-[120px]" placeholder={t.adminBroadcastBodyPlaceholder} maxLength={2000} />
+          <div className="flex gap-2">
+            <button type="submit" disabled={messageSending} className="btn btn-primary flex-1">{messageSending ? t.sending : t.adminUserMessageSend}</button>
+            <button type="button" disabled={messageSending} onClick={() => setMessageTarget(null)} className="btn btn-secondary flex-1">{t.cancel}</button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

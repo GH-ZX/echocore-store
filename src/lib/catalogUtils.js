@@ -31,6 +31,16 @@ export function isTopupGame(game) {
     || (!game.redemption_method && !isVoucherGame(game));
 }
 
+/** Cart checkout cannot collect in-game player IDs — use Buy Now per top-up offer. */
+export function cartRequiresPlayerUid(cart = [], games = []) {
+  const gameById = new Map(games.map((g) => [String(g.id), g]));
+  return cart.some((item) => {
+    const game = gameById.get(String(item.game_id));
+    if (!game) return false;
+    return game.redemption_method === 'uid' || game.redemption_method === 'both';
+  });
+}
+
 export function getVoucherGames(games = []) {
   return getStorefrontVoucherGames(games);
 }

@@ -29,6 +29,7 @@ import { getAdminGiftPath } from './lib/adminRoutes';
 import { getOfferOrderNameSnapshot } from './lib/offerDisplay';
 import { getGameOfferBuyPath, getGameOfferPath } from './lib/offerRoutes';
 import { resolveStorefrontGame } from './lib/gameRegions';
+import { cartRequiresPlayerUid } from './lib/catalogUtils';
 import { fetchAllSupabaseRows } from './lib/supabaseQuery';
 import { fetchPaymentMethods } from './lib/storeSettings';
 import { fetchSiteStatus, isLoginBlockedDuringMaintenance } from './lib/siteStatus';
@@ -54,10 +55,7 @@ import {
   dismissNotification,
   subscribeToNotifications,
 } from './lib/notifications';
-import {
-  adminMockFulfillOrder,
-  isMockFulfillmentEnabled,
-} from './lib/devTools';
+
 import { translations } from './data/translations';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -536,7 +534,10 @@ export default function App() {
     }
     if (removedCount > 0) {
       setCart(syncedCart);
-      throw new Error(lang === 'ar' ? 'تمت إزالة عروض غير متاحة من السلة' : 'Unavailable offers were removed from your cart');
+      throw new Error(t.cartItemsRemoved);
+    }
+    if (cartRequiresPlayerUid(syncedCart, games)) {
+      throw new Error(t.cartUidCheckoutBlocked);
     }
     setCart(syncedCart);
 
@@ -689,12 +690,6 @@ export default function App() {
 
   const tryFulfillOrder = async (orderId) => {
     try {
-      if (isMockFulfillmentEnabled()) {
-        if (user?.role === 'admin') {
-          await adminMockFulfillOrder(orderId);
-        }
-        return;
-      }
       await fulfillOrderG2bulk(orderId);
     } catch (e) {
       console.error('G2Bulk fulfillment:', e);
@@ -940,7 +935,7 @@ export default function App() {
   const goToAddStoreGames = () => {
     setAdminCarouselPickerOpen(false);
     setAdminCarouselOpen(false);
-    navigate('/dashboard/g2bulk');
+    navigate('/dashboard/products');
   };
 
   const moveCarouselGame = async (gameId, direction) => {
@@ -1242,10 +1237,6 @@ export default function App() {
       await loadLiveCatalog(pull);
       return;
     }
-    if (config.g2bulkCatalogMode === 'hybrid') {
-      await loadHybridCatalog(config);
-      return;
-    }
     const onlyG2bulk = catalogOnly ?? config.g2bulkCatalogOnly;
     setLoadingGames(true);
     try {
@@ -1263,9 +1254,7 @@ export default function App() {
       await Promise.allSettled([
         config.g2bulkCatalogMode === 'live'
           ? loadLiveCatalog(config.g2bulkPullSelection)
-          : config.g2bulkCatalogMode === 'hybrid'
-            ? loadHybridCatalog(config)
-            : (async () => {
+          : (async () => {
               setLoadingGames(true);
               try {
                 await loadSyncedCatalog(config.g2bulkCatalogOnly, config.g2bulkPullSelection);
@@ -1524,13 +1513,9 @@ export default function App() {
       />
 
       <motion.div
-        animate={{
-          opacity: langSwitching ? 0 : 1,
-          filter: langSwitching ? 'blur(6px)' : 'blur(0px)',
-          scale: langSwitching ? 0.985 : 1,
-        }}
+        animate={{ opacity: langSwitching ? 0 : 1 }}
         transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
-        className={langSwitching ? 'pointer-events-none select-none' : ''}
+        className={langSwitching ? 'pointer-events-none select-none lang-switch-motion' : ''}
       >
       <main id="main-content" className="container mx-auto px-3 sm:px-4 pb-20 sm:pb-24 max-w-7xl">
         <AppRoutes

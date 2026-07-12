@@ -167,11 +167,11 @@ export default function BuyView({
   const startPurchase = async () => {
     if (!user?.id || !canProceed) return;
 
-    if (showRecipientFields) {
+    if (showRecipientFields && playerUid.trim()) {
       try {
         const validation = await g2bulkCheckPlayer({
           game: game?.g2bulk_game_code || game?.slug || game?.id || '',
-          userId: user.id,
+          userId: playerUid.trim(),
           serverId: playerServer.trim() || undefined,
         });
         const isValidationValid = validation?.valid === 'valid' || validation?.valid === true || validation?.valid === 'true' || validation?.success !== false;

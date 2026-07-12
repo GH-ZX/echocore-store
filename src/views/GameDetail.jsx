@@ -68,11 +68,7 @@ export default function GameDetail({
   const [editingGame, setEditingGame] = useState(false);
 
   useEffect(() => {
-    const usesLiveCatalog = catalogMode === 'live'
-      || (catalogMode === 'hybrid' && (
-        storefrontGame?.catalog_source === 'live'
-        || isLiveCatalogId(storefrontGame?.id)
-      ));
+    const usesLiveCatalog = catalogMode === 'live';
     if (!usesLiveCatalog || !storefrontGame || isVoucherGame(storefrontGame)) return undefined;
 
     const baseKey = storefrontGame.group_base_key || getGameBaseMeta(storefrontGame).baseKey;

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X, ChevronUp, ChevronDown, Eye, EyeOff, Plus, GripVertical, ExternalLink } from 'lucide-react';
 import AdminEditButton from './AdminEditButton';
+import Modal from '../ui/Modal';
 import { resolveCarouselLogo } from '../../lib/carouselUtils';
 
 export default function AdminCarouselManager({
@@ -149,12 +150,10 @@ export default function AdminCarouselManager({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
-      <div className="relative w-full sm:max-w-xl max-h-[92dvh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-2xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3">
+    <Modal open onClose={onClose} size="xl" zIndex={100} ariaLabelledBy="admin-carousel-title">
+        <div className="modal-panel__header">
           <div>
-            <h2 className="text-lg font-bold">{t.manageCarousel || 'Manage Carousel'}</h2>
+            <h2 id="admin-carousel-title" className="text-lg font-bold">{t.manageCarousel || 'Manage Carousel'}</h2>
             <p className="text-xs text-[var(--text-muted)]">
               {t.carouselOrderHelp || 'Reorder slides from games already in your store'}
             </p>
@@ -218,7 +217,6 @@ export default function AdminCarouselManager({
             </div>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

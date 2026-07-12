@@ -15,7 +15,6 @@ import {
   adminCreditTestBalance,
   adminGetDevWallet,
   adminRunMockPurchase,
-  isMockFulfillmentEnabled,
 } from '../../lib/devTools';
 
 export default function AdminDevTools({
@@ -27,7 +26,6 @@ export default function AdminDevTools({
   onNotify,
 }) {
   const isAr = lang === 'ar';
-  const mockMode = isMockFulfillmentEnabled();
   const [creditAmount, setCreditAmount] = useState('50');
   const [offerId, setOfferId] = useState('');
   const [mockCode, setMockCode] = useState('');
@@ -329,11 +327,7 @@ export default function AdminDevTools({
             ? 'بعد المحاكاة افتح الجرس أو /notifications — كل التحديثات داخل الموقع فقط.'
             : 'After a mock run, open the bell or /notifications — all updates stay inside the site.'}
         </p>
-        <p className="text-xs text-[var(--text-muted)] mt-4">
-          {mockMode
-            ? (isAr ? 'VITE_MOCK_FULFILLMENT=true مفعّل.' : 'VITE_MOCK_FULFILLMENT=true is enabled.')
-            : (isAr ? 'اختياري: VITE_MOCK_FULFILLMENT=true لتخطي G2Bulk تلقائياً.' : 'Optional: VITE_MOCK_FULFILLMENT=true to skip auto G2Bulk.')}
-        </p>
+
       </div>
     </div>
   );

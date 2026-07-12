@@ -1,4 +1,4 @@
-const CURRENCY_ORDER = ['USD', 'SYP', 'EUR'];
+const CURRENCY_ORDER = ['USD', 'USDT', 'SYP', 'EUR'];
 
 export function normalizeSamBalances(balances) {
   if (!Array.isArray(balances)) return [];
@@ -28,6 +28,13 @@ export function formatSamCurrencyAmount(currency, amount) {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(safe);
+  }
+
+  if (currency === 'USDT') {
+    return `${new Intl.NumberFormat(AMOUNT_LOCALE, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 4,
+    }).format(safe)} USDT`;
   }
 
   if (currency === 'EUR') {

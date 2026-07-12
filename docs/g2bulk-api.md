@@ -1,8 +1,26 @@
 # G2Bulk API — Implementation Reference
 
-> **Source:** https://api.g2bulk.com/  
-> **Fetched:** 2026-07-09  
-> **Purpose:** Quick reference for integrating G2Bulk into EchoCore Store (catalog sync, fulfillment, top-ups).
+> **Source of truth:** this file (`docs/g2bulk-api.md`) — agents use **only** this MD, not https://api.g2bulk.com/  
+> **Upstream origin:** https://api.g2bulk.com/ (content captured here 2026-07-12; update this file when the API changes)  
+> **Purpose:** Contract for G2Bulk integration in EchoCore Store (catalog sync, fulfillment, top-ups).  
+> **Agent rule:** Read this file + `.grok/skills/g2bulk-api/SKILL.md` before any G2Bulk work. Do not invent API behavior.
+
+## Overview
+
+The G2Bulk API lets you resell game top-ups, voucher codes, and digital goods from your own backend. Every call is JSON over HTTPS — no SDK. Orders are idempotent; delivery is instant or via a short poll.
+
+- **Base URL:** `https://api.g2bulk.com/v1/`
+- **API key & wallet:** Telegram bot [@G2BULKBOT](https://t.me/G2BULKBOT) (no separate dashboard signup)
+- **Prices** move with exchange rates — always read `unit_price` / `amount` from the catalogue right before charging
+
+### How a purchase flows
+
+1. Browse `GET /category` and `GET /products` (vouchers) or `GET /games/:code/catalogue` (top-ups) to find what to sell.
+2. Call the purchase or order endpoint with your API key.
+3. Get codes back instantly, or poll the delivery URL until ready.
+4. Reconcile against `GET /transactions` (every balance change is logged).
+
+EchoCore maps this as: **sync** (admin) → **customer checkout** → **edge `fulfillOrder`** → poll/webhook → save codes or UID confirmation to `order_items`.
 
 ## EchoCore setup (do once)
 
@@ -36,6 +54,12 @@
 
 **Never expose the API key in client-side code.** Use a Supabase Edge Function, serverless proxy, or admin-only backend.
 
+### Security notes (from official docs)
+
+- Keys are tied to your wallet balance — treat them like a password.
+- **Brute-force protection:** repeated failed auth (401) triggers a **permanent IP ban**. Cache your key; do not retry in a tight loop on 401.
+- Public catalog endpoints (`/category`, `/products`, `/games`, `/games/:code/catalogue`, `/games/fields`, `/games/servers`, `/games/checkPlayerId`, `/games/eta`) need **no key**.
+
 ---
 
 ## Authentication
@@ -44,6 +68,13 @@
 
 ```http
 X-API-Key: your_api_key_here
+```
+
+**Verify your key:**
+
+```bash
+curl -X GET https://api.g2bulk.com/v1/getMe \
+  -H "X-API-Key: your_api_key_here"
 ```
 
 Optional idempotency (purchase + game order):
@@ -112,6 +143,13 @@ Products inside one category.
       "description": "",
       "image_url": "https://example.com/pubg.png",
       "product_count": 11
+    },
+    {
+      "id": 2,
+      "title": "Razer Gold Accounts",
+      "description": "",
+      "image_url": null,
+      "product_count": 5
     }
   ]
 }
@@ -162,6 +200,16 @@ Single product — **fetch before purchase** (prices move with exchange rates).
 |------------|------|----------|-------------|
 | `quantity` | integer | yes | Units to buy |
 
+**cURL (official example — quantity 5, idempotency key):**
+
+```bash
+curl -X POST https://api.g2bulk.com/v1/products/1/purchase \
+  -H "X-API-Key: your_api_key_here" \
+  -H "X-Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000" \
+  -H "Content-Type: application/json" \
+  -d '{"quantity": 5}'
+```
+
 **Completed 200:**
 
 ```json
@@ -193,7 +241,7 @@ Single product — **fetch before purchase** (prices move with exchange rates).
 
 #### `GET /v1/orders` (auth)
 
-Paginated order history.
+Paginated order history, newest first.
 
 | Query | Type | Default | Max |
 |-------|------|---------|-----|
@@ -201,15 +249,47 @@ Paginated order history.
 | `limit` | int | 50 | 100 |
 | `search` | string | — | optional filter |
 
+```bash
+curl -X GET "https://api.g2bulk.com/v1/orders?page=1&limit=50" \
+  -H "X-API-Key: your_api_key_here"
+```
+
+**Response 200:**
+
+```json
+{
+  "success": true,
+  "orders": [
+    {
+      "id": 1,
+      "user_id": 123456789,
+      "product_id": 1,
+      "product_title": "60 UC Voucher",
+      "quantity": 1,
+      "total_price": "0.840",
+      "status": "COMPLETED",
+      "description": "Purchase from G2Bulk Bot",
+      "created_at": "2025-10-19T05:30:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 50,
+    "total": 120,
+    "total_pages": 3
+  }
+}
+```
+
 #### `GET /v1/orders/:id` (auth)
 
-Single order.
+Single order by id.
 
 **Order object fields:** `id`, `user_id`, `product_id`, `product_title`, `quantity`, `total_price`, `status`, `description`, `created_at`
 
 #### `GET /v1/orders/:id/delivery` (auth)
 
-Poll PENDING voucher orders every **2–5 seconds**.
+Poll PENDING voucher orders every **2–5 seconds**. Most orders finish within **5–10 seconds**. Stop on **200** (codes ready) or **410** (auto-refunded). Pre-order mode for non-instant products will reuse the same `poll_url` pattern.
 
 | HTTP | Meaning |
 |------|---------|
@@ -259,12 +339,39 @@ Poll PENDING voucher orders every **2–5 seconds**.
 
 #### `GET /v1/transactions` (auth)
 
-Wallet ledger (paginated, optional `search`).
+Wallet ledger — every charge and top-up with `balance_before` / `balance_after` for exact reconciliation. Paginated like orders; optional `search` filter.
 
 | `transaction_type` | Meaning |
 |--------------------|---------|
-| `add_balance` | Top-up or refund |
-| `charge_balance` | Purchase deduction |
+| `add_balance` | Balance added — manual addition or refund |
+| `charge_balance` | Balance deducted — purchase or top-up |
+
+**Response 200:**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 45,
+      "user_id": 123456789,
+      "transaction_type": "charge_balance",
+      "amount": "1.126",
+      "balance_before": "10.000",
+      "balance_after": "8.874",
+      "status": "success",
+      "description": "Purchase PUBG Mobile 60 UC",
+      "created_at": "2025-10-19T05:30:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 50,
+    "total": 200,
+    "total_pages": 4
+  }
+}
+```
 
 ---
 
@@ -283,6 +390,12 @@ Supported games list.
       "code": "pubg_mobile",
       "name": "PUBG Mobile",
       "image_url": "/images/pubg_mobile.png"
+    },
+    {
+      "id": 2,
+      "code": "free_fire",
+      "name": "Free Fire",
+      "image_url": "/images/free_fire.png"
     }
   ]
 }
@@ -296,6 +409,12 @@ Required input fields per game.
 |------|------|----------|
 | `game` | string | yes — e.g. `mlbb` |
 
+```bash
+curl -X POST https://api.g2bulk.com/v1/games/fields \
+  -H "Content-Type: application/json" \
+  -d '{"game": "mlbb"}'
+```
+
 ```json
 {
   "code": "200",
@@ -308,7 +427,13 @@ Required input fields per game.
 
 #### `POST /v1/games/servers` (public)
 
-Server list for games that need it. **403 = no server required** (not an error).
+Server list for games that need it. **403 = no server required** (not an error — check `/games/fields` for real requirements).
+
+```bash
+curl -X POST https://api.g2bulk.com/v1/games/servers \
+  -H "Content-Type: application/json" \
+  -d '{"game": "mlbb"}'
+```
 
 ```json
 {
@@ -332,13 +457,28 @@ Validate player before charging.
 | `server_id` | string | if game requires |
 | `charname` | string | if game requires |
 
-```json
-// request
-{ "game": "mlbb", "user_id": "123456789", "server_id": "2001", "charname": "charname" }
+**Request:**
 
-// valid 200
-{ "valid": "valid", "name": "John Doe", "openid": "41581795132966184" }
+```json
+{
+  "game": "mlbb",
+  "user_id": "123456789",
+  "server_id": "2001",
+  "charname": "charname"
+}
 ```
+
+**Valid 200:**
+
+```json
+{
+  "valid": "valid",
+  "name": "John Doe",
+  "openid": "41581795132966184"
+}
+```
+
+> `charname` means different things per game (character, server, or account id). Read `notes` from `/games/fields`.
 
 #### `GET /v1/games/:code/catalogue` (public)
 
@@ -357,7 +497,12 @@ Denominations + live `amount` (your cost).
 
 #### `POST /v1/games/eta` (public)
 
-Estimated fulfillment time.
+Estimated fulfillment time for a top-up denomination.
+
+| Body | Type | Required |
+|------|------|----------|
+| `game` | string | yes |
+| `catalogue_name` | string | yes |
 
 | ETA label | Range |
 |-----------|-------|
@@ -396,18 +541,22 @@ Place direct top-up order.
 
 **Status values:** `PENDING` → `PROCESSING` → `COMPLETED` | `FAILED` (refunded)
 
+**Request body:**
+
 ```json
-// request
 {
   "catalogue_name": "60 UC",
   "player_id": "12345678",
   "server_id": "2001",
   "charname": "charname",
-  "remark": "echocore-order-abc123",
-  "callback_url": "https://your-domain.com/api/g2bulk/webhook"
+  "remark": "Optional note",
+  "callback_url": "https://your-domain.com/webhook/order-status"
 }
+```
 
-// response 200
+**Response 200:**
+
+```json
 {
   "success": true,
   "message": "Order created successfully. We are processing your order.",
@@ -419,10 +568,12 @@ Place direct top-up order.
     "player_name": "PlayerName",
     "price": 0.88,
     "status": "PENDING",
-    "callback_url": "https://your-domain.com/api/g2bulk/webhook"
+    "callback_url": "https://your-domain.com/webhook/order-status"
   }
 }
 ```
+
+> EchoCore sets `remark` to the internal order id and passes `callback_url` when webhook mode is configured in the edge function.
 
 #### `POST /v1/games/order/status` (auth)
 
@@ -431,6 +582,30 @@ Poll game top-up order status (alternative to webhook).
 #### `GET /v1/games/orders` (auth)
 
 Paginated game top-up order history.
+
+**Response 200:**
+
+```json
+{
+  "success": true,
+  "orders": [
+    {
+      "order_id": 42,
+      "game_code": "pubgm",
+      "game_name": "PUBG Mobile",
+      "player_id": "12345678",
+      "player_name": "PlayerOne",
+      "denom_id": "60",
+      "price": 0.84,
+      "status": "completed",
+      "is_refunded": false,
+      "created_at": "2025-10-19T05:30:00Z",
+      "completed_at": "2025-10-19T05:31:00Z"
+    }
+  ],
+  "pagination": { "page": 1, "limit": 50, "total": 85, "total_pages": 2 }
+}
+```
 
 ---
 
@@ -563,18 +738,34 @@ SMM status values: `Pending`, `In progress`, `Completed`, `Partial`, `Canceled`
 
 ---
 
-## HTTP status codes (main API)
+## Reference — limits & status codes
+
+### Operational limits (official)
+
+| Limit | Value |
+|-------|-------|
+| Rate limit | 1000 requests / 10 seconds per key |
+| Idempotency window | 30 minutes |
+| Pending poll cadence | every 2–5 seconds |
+| Typical completion | 5–10 seconds |
+| Delivery item retention | 30 days after `created_at` |
+| Page size max | 100 items |
+| Auth failures | permanent IP ban on repeated 401s |
+
+Use exponential backoff on **429** and **5xx**. Stop polling delivery on **200** (ready) or **410** (refunded terminal).
+
+### HTTP status codes (main API)
 
 | Code | Meaning |
 |------|---------|
-| 200 | OK |
-| 202 | Accepted — still processing, poll again |
-| 400 | Bad request |
-| 401 | Unauthorized — **do not retry in a loop** |
-| 404 | Not found |
-| 410 | Gone — failed/refunded (terminal) |
-| 429 | Rate limited — exponential backoff |
-| 500 | Server error — exponential backoff |
+| 200 | OK — request successful |
+| 202 | Accepted — still pending/processing, poll again |
+| 400 | Bad request — invalid format or parameters |
+| 401 | Unauthorized — auth failed or key invalid (**do not retry in a loop**) |
+| 404 | Not found — resource does not exist |
+| 410 | Gone — failed, refunded, or cancelled (terminal) |
+| 429 | Too many requests — rate limit exceeded |
+| 500 | Internal server error |
 
 **Error shape:**
 
@@ -697,12 +888,16 @@ curl -X POST https://api.g2bulk.com/v1/games/checkPlayerId \
   -H "Content-Type: application/json" \
   -d '{"game":"mlbb","user_id":"123456789","server_id":"2001"}'
 
-# Buy voucher
+# Buy voucher (official example uses quantity 5 + fixed UUID)
 curl -X POST https://api.g2bulk.com/v1/products/1/purchase \
   -H "X-API-Key: $KEY" \
-  -H "X-Idempotency-Key: $(uuidgen)" \
+  -H "X-Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000" \
   -H "Content-Type: application/json" \
-  -d '{"quantity":1}'
+  -d '{"quantity": 5}'
+
+# Order history (paginated)
+curl -X GET "https://api.g2bulk.com/v1/orders?page=1&limit=50" \
+  -H "X-API-Key: $KEY"
 
 # Poll delivery
 curl -H "X-API-Key: $KEY" https://api.g2bulk.com/v1/orders/124/delivery
@@ -710,9 +905,16 @@ curl -H "X-API-Key: $KEY" https://api.g2bulk.com/v1/orders/124/delivery
 # Place top-up
 curl -X POST https://api.g2bulk.com/v1/games/pubgm/order \
   -H "X-API-Key: $KEY" \
-  -H "X-Idempotency-Key: $(uuidgen)" \
+  -H "X-Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000" \
   -H "Content-Type: application/json" \
-  -d '{"catalogue_name":"60 UC","player_id":"12345678","remark":"echocore-001"}'
+  -d '{
+    "catalogue_name": "60 UC",
+    "player_id": "12345678",
+    "server_id": "2001",
+    "charname": "charname",
+    "remark": "echocore-001",
+    "callback_url": "https://your-domain.com/webhook/order-status"
+  }'
 
 # SMM balance
 curl https://api.g2bulk.com/api/v2 -d key=$KEY -d action=balance
@@ -739,7 +941,7 @@ curl https://api.g2bulk.com/api/v2 -d key=$KEY -d action=balance
 
 ## Links
 
-- Docs UI: https://api.g2bulk.com/
-- Main API: `https://api.g2bulk.com/v1/`
-- SMM API: `https://api.g2bulk.com/api/v2`
+- Main API base: `https://api.g2bulk.com/v1/`
+- SMM API base: `https://api.g2bulk.com/api/v2`
 - API key / wallet: Telegram `@G2BULKBOT`
+- Upstream docs UI (humans only — agents use this MD file): https://api.g2bulk.com/

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { g2bulkGetMe } from '../lib/g2bulk';
+import { normalizeG2bulkWallet } from '../lib/g2bulkWalletFormat';
 import {
   isWalletCacheStale,
   readG2bulkWalletCache,
@@ -38,11 +39,7 @@ export function useAdminG2bulkWallet(enabled, {
 
     try {
       const me = await g2bulkGetMe();
-      const next = {
-        balance: Number(me.balance) || 0,
-        username: me.username || me.first_name || '',
-        userId: me.user_id ?? null,
-      };
+      const next = normalizeG2bulkWallet(me);
       setWallet(next);
       setError(null);
       setHasFetched(true);

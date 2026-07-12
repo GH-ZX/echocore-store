@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getAdminDashboardPath, getAdminOrdersPath, isValidAdminTabSegment, resolveAdminTabFromPath } from '../../lib/adminRoutes';
 import { getOrderCustomerLabel } from '../../lib/adminOrderFilters';
 import { formatOrderDisplayId } from '../../lib/orderReceipt';
-import { Trash2, Plus, BarChart3, Package, ShoppingCart, RefreshCw, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Zap, FlaskConical, PanelLeftClose, PanelLeftOpen, Users } from 'lucide-react';
+import { Trash2, Plus, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Zap, FlaskConical, PanelLeftClose, PanelLeftOpen, Users } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uploadImage } from '../../lib/uploadImage';
+import { centerActiveMobileTab, resetPageHorizontalScroll } from '../../lib/adminMobileNav';
 import { getCatalogOfferStats } from '../../lib/catalogUtils';
 import AdminSupplierWalletsCard from '../../components/ui/AdminSupplierWalletsCard';
 import { useAdminSupplierWallets } from '../../hooks/useAdminSupplierWallets';
@@ -47,7 +48,6 @@ function buildAdminNavItems(t) {
     { id: 'products', label: t.gamesAndOffers, shortLabel: t.tabGamesShort, icon: Package },
     { id: 'orders', label: t.ordersTab, shortLabel: t.tabOrdersShort, icon: ShoppingCart },
     { id: 'payments', label: t.paymentsTab, shortLabel: t.tabPaymentsShort, icon: Wallet },
-    { id: 'g2bulk', label: t.g2bulkTab, shortLabel: 'G2B', icon: Zap },
     { id: 'recharges', label: t.rechargesTab, shortLabel: t.tabRechargesShort, icon: CircleDollarSign },
     { id: 'theme', label: t.themeTab, shortLabel: t.tabThemeShort, icon: Palette },
     { id: 'reviews', label: t.reviewsTab, shortLabel: t.tabReviewsShort, icon: MessageSquare },
@@ -92,8 +92,14 @@ export default function AdminView({
   const activeTab = useMemo(() => resolveAdminTabFromPath(location.pathname), [location.pathname]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const adminNavItems = useMemo(() => buildAdminNavItems(t), [t]);
+  const activeNavItem = useMemo(
+    () => adminNavItems.find((item) => item.id === activeTab) || adminNavItems[0],
+    [adminNavItems, activeTab],
+  );
+  const mobileNavRef = useRef(null);
 
   const setAdminTab = (tabId) => {
+    resetPageHorizontalScroll();
     navigate(getAdminDashboardPath(tabId));
   };
 
@@ -107,10 +113,26 @@ export default function AdminView({
     const parts = location.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
     if (parts[0] !== 'dashboard' || parts.length < 2) return;
     if (parts.length === 3 && parts[1] === 'users') return;
+    if (parts[1] === 'g2bulk') {
+      navigate('/dashboard/products', { replace: true });
+      return;
+    }
     if (!isValidAdminTabSegment(parts[1])) {
       navigate('/dashboard', { replace: true });
     }
   }, [location.pathname, navigate]);
+
+  useEffect(() => {
+    resetPageHorizontalScroll();
+    const root = mobileNavRef.current;
+    if (!root) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      centerActiveMobileTab(root);
+      resetPageHorizontalScroll();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTab]);
+
   const [newProduct, setNewProduct] = useState({
     game_id: '',
     name_en: '',
@@ -360,12 +382,12 @@ export default function AdminView({
 
   return (
     <div
-      className={`admin-shell admin-layout mt-4 sm:mt-6 animate-fade-in${sidebarCollapsed ? ' admin-layout--collapsed' : ''}${lang === 'ar' ? ' admin-shell--rtl' : ''}`}
+      className={`admin-shell admin-layout mt-2 sm:mt-6 animate-fade-in${sidebarCollapsed ? ' admin-layout--collapsed' : ''}${lang === 'ar' ? ' admin-shell--rtl' : ''}`}
       dir={lang === 'ar' ? 'rtl' : 'ltr'}
       lang={lang}
     >
       <aside
-        className={`admin-sidebar${sidebarCollapsed ? ' admin-sidebar--collapsed' : ''}`}
+        className={`admin-sidebar hidden md:flex${sidebarCollapsed ? ' admin-sidebar--collapsed' : ''}`}
         aria-label={t.adminNavLabel}
       >
         <button
@@ -407,20 +429,41 @@ export default function AdminView({
       </aside>
 
       <div className="admin-main">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-5 sm:mb-6">
-          <div className="min-w-0">
-            <h1 className="text-2xl sm:text-3xl font-black">{t.adminDashboard}</h1>
-            <p className="text-sm sm:text-base text-[var(--text-sec)]">{t.manageYourStore}</p>
-          </div>
-          <div className="flex gap-2 self-start sm:self-auto flex-shrink-0">
-            {refreshProducts && (
-              <button onClick={refreshProducts} className="btn btn-secondary flex items-center gap-2 text-sm px-3 sm:px-4" title={t.refresh}>
-                <RefreshCw className="w-4 h-4" />
-                <span className="hidden sm:inline">{t.refresh}</span>
+        <nav
+          ref={mobileNavRef}
+          className="admin-mobile-nav glass-panel flex md:hidden"
+          aria-label={t.adminNavLabel}
+        >
+          {adminNavItems.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setAdminTab(tab.id)}
+                className={`admin-mobile-tab${isActive ? ' admin-mobile-tab--active' : ''}`}
+                aria-current={isActive ? 'page' : undefined}
+                title={tab.label}
+              >
+                <Icon className="admin-mobile-tab__icon" aria-hidden="true" />
+                <span className="admin-mobile-tab__label">{tab.shortLabel}</span>
               </button>
-            )}
-          </div>
-        </div>
+            );
+          })}
+        </nav>
+
+        <header className="admin-page-header mb-4 sm:mb-6">
+          <p className="text-[10px] sm:hidden font-semibold uppercase tracking-wider text-[var(--accent)] mb-0.5">
+            {t.adminDashboard}
+          </p>
+          <h1 className="text-xl sm:text-3xl font-black truncate">
+            {activeNavItem?.label || t.adminDashboard}
+          </h1>
+          <p className="text-xs sm:text-base text-[var(--text-sec)] mt-0.5 sm:mt-0">
+            {activeTab === 'overview' ? t.manageYourStore : t.adminSectionHelp}
+          </p>
+        </header>
 
       {/* OVERVIEW TAB */}
       {activeTab === 'overview' && (
@@ -438,7 +481,7 @@ export default function AdminView({
             samFetched={samFetched}
             loading={supplierWalletsLoading}
             onRefresh={refreshSupplierWallets}
-            onOpenDashboard={() => setAdminTab('g2bulk')}
+            onOpenDashboard={() => setAdminTab('products')}
             onOpenPayments={() => setAdminTab('payments')}
           />
 
@@ -570,7 +613,22 @@ export default function AdminView({
 
       {/* PRODUCTS TAB */}
       {activeTab === 'products' && (
-        <div className="space-y-8">
+        <div className="space-y-6">
+          <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+            <AdminG2BulkSettings
+              embedded
+              t={t}
+              lang={lang}
+              onCatalogSynced={onCatalogSynced}
+            />
+          </Suspense>
+
+          <div className="admin-products-divider" role="separator">
+            <span className="admin-products-divider__line" aria-hidden="true" />
+            <span className="admin-products-divider__label">{t.gamesAndOffers}</span>
+            <span className="admin-products-divider__line" aria-hidden="true" />
+          </div>
+
           <div className="card p-4 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div>
@@ -840,12 +898,6 @@ export default function AdminView({
             lang={lang}
             onSaved={onPaymentSettingsSaved}
           />
-        </Suspense>
-      )}
-
-      {activeTab === 'g2bulk' && (
-        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
-          <AdminG2BulkSettings t={t} lang={lang} onCatalogSynced={onCatalogSynced} />
         </Suspense>
       )}
 

@@ -104,6 +104,29 @@ function paymentMethodToSam(method: string) {
   return 'shamcash';
 }
 
+async function triggerG2bulkFulfillment(orderId: string) {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')?.replace(/\/$/, '');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim();
+  if (!supabaseUrl || !serviceRoleKey || !orderId) return;
+
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/g2bulk`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${serviceRoleKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ action: 'fulfillOrder', orderId }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.error('G2Bulk fulfillOrder after Sam payment:', payload);
+    }
+  } catch (err) {
+    console.error('G2Bulk fulfillOrder invoke failed:', err);
+  }
+}
+
 async function completeEntityAfterPaid(
   serviceClient: ReturnType<typeof createClient>,
   row: Record<string, unknown>,
@@ -118,6 +141,11 @@ async function completeEntityAfterPaid(
     if (error) {
       console.error('complete_order_from_sam_invoice:', error.message);
       return { error: error.message };
+    }
+
+    const orderId = String((data as Json)?.orderId || row.entity_id || '');
+    if (orderId) {
+      await triggerG2bulkFulfillment(orderId);
     }
 
     return data;
