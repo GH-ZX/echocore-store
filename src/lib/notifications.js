@@ -47,6 +47,12 @@ export function formatNotification(item, t = {}, lang = 'ar') {
       adminTab: 'recharges',
       tone: 'warning',
     },
+    admin_recharge_completed: {
+      title: t.notifAdminRechargeCompletedTitle,
+      body: applyTemplate(t.notifAdminRechargeCompletedBody, { amount, user: userName }),
+      adminTab: 'recharges',
+      tone: 'success',
+    },
     admin_order_payment_sent: {
       title: t.notifAdminOrderTitle,
       body: applyTemplate(t.notifAdminOrderBody, { amount, user: userName, reference }),

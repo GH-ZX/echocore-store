@@ -29,6 +29,7 @@ const RECHARGE_TYPES = new Set([
 
 const ADMIN_TYPES = new Set([
   'admin_recharge_payment_sent',
+  'admin_recharge_completed',
   'admin_order_payment_sent',
   'admin_contact_message',
 ]);

@@ -722,7 +722,7 @@ ALTER TABLE public.store_settings
 CREATE TABLE IF NOT EXISTS public.recharge_requests (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  amount numeric(10,2) NOT NULL CHECK (amount >= 5 AND amount <= 500),
+  amount numeric(10,2) NOT NULL CHECK (amount >= 1 AND amount <= 500),
   reference text NOT NULL UNIQUE,
   status text NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'payment_sent', 'approved', 'rejected', 'cancelled')),
@@ -808,7 +808,7 @@ GRANT EXECUTE ON FUNCTION public.credit_user_balance(uuid, numeric, text, text) 
 -- 5. USER RECHARGE RPCs
 -- ---------------------------------------------------------------------------
 
--- (superseded create_recharge_request — see §26 append)
+-- (superseded create_recharge_request — see §26 append + scripts/fix-recharge-constraints.sql)
 
 
 REVOKE EXECUTE ON FUNCTION public.mark_recharge_payment_sent(uuid) FROM public;
@@ -833,6 +833,7 @@ BEGIN
   FROM recharge_requests
   WHERE user_id = v_user_id
     AND status IN ('pending', 'payment_sent')
+    AND created_at > now() - interval '30 minutes'
   ORDER BY created_at DESC
   LIMIT 1;
 
