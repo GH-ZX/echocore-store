@@ -947,9 +947,11 @@ export default function ProfileView({
               <div className="text-center py-10 text-[var(--text-sec)]">
                 <Receipt className="w-10 h-10 mx-auto mb-3 opacity-30" />
                 <p className="text-sm">{t.noTransactions}</p>
-                <button type="button" onClick={onRecharge} className="action-chip btn btn-secondary mt-4 !h-11">
-                  {t.rechargeNow}
-                </button>
+                {!isAdmin && onRecharge ? (
+                  <button type="button" onClick={onRecharge} className="action-chip btn btn-secondary mt-4 !h-11">
+                    {t.rechargeNow}
+                  </button>
+                ) : null}
               </div>
             ) : (
               <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">

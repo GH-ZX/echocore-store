@@ -431,7 +431,7 @@ export default function AppRoutes({
                 user={user}
                 navigate={navigate}
                 onLogout={handleLogout}
-                onRecharge={() => navigate('/recharge')}
+                onRecharge={user?.role === 'admin' ? undefined : () => navigate('/recharge')}
                 onUpdateProfile={updateUserProfile}
               />
             ) : (
@@ -444,16 +444,20 @@ export default function AppRoutes({
           path="/recharge"
           element={(
             <ProtectedRoute user={user} loadingAuth={loadingAuth} lang={lang}>
-              <RechargeView
-                t={t}
-                lang={lang}
-                navigate={navigate}
-                user={user}
-                currentBalance={user?.balance || 0}
-                paymentConfig={paymentConfig}
-                onNotify={showToast}
-                onRechargePaid={handleRechargeApproved}
-              />
+              {user?.role === 'admin' ? (
+                <Navigate to="/dashboard/payments" replace />
+              ) : (
+                <RechargeView
+                  t={t}
+                  lang={lang}
+                  navigate={navigate}
+                  user={user}
+                  currentBalance={user?.balance || 0}
+                  paymentConfig={paymentConfig}
+                  onNotify={showToast}
+                  onRechargePaid={handleRechargeApproved}
+                />
+              )}
             </ProtectedRoute>
           )}
         />

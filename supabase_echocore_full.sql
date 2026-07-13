@@ -1459,9 +1459,19 @@ DECLARE
   v_row recharge_requests%ROWTYPE;
   v_user_name text;
   v_current_balance numeric;
+  v_wallet_mode text;
 BEGIN
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  SELECT COALESCE(sam_wallet_mode, 'manual')
+  INTO v_wallet_mode
+  FROM store_settings
+  WHERE id = 1;
+
+  IF v_wallet_mode = 'api' THEN
+    RAISE EXCEPTION 'Manual payment confirmation is not used in Sam API wallet mode';
   END IF;
 
   SELECT * INTO v_row
@@ -4440,6 +4450,10 @@ BEGIN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
+  IF public.is_admin() THEN
+    RAISE EXCEPTION 'Admin accounts cannot recharge store balance from the storefront';
+  END IF;
+
   BEGIN
     PERFORM public.assert_user_not_banned(v_user_id);
     PERFORM public.assert_user_verified_if_required(v_user_id);
@@ -4701,6 +4715,18 @@ BEGIN
     '/profile'
   );
 
+  -- Notify ALL admins: "{userName} recharged ${amount}" (informational, no approval needed)
+  PERFORM public.notify_all_admins(
+    'admin_recharge_completed',
+    jsonb_build_object(
+      'requestId', v_row.id,
+      'amount', v_row.amount,
+      'reference', v_ref,
+      'userName', (SELECT COALESCE(name, 'Customer') FROM public.profiles WHERE id = v_row.user_id)
+    ),
+    '/dashboard'
+  );
+
   RETURN jsonb_build_object(
     'requestId', v_row.id,
     'userId', v_row.user_id,
@@ -4769,6 +4795,51 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.cancel_recharge_from_sam_invoice(text) FROM public;
 GRANT EXECUTE ON FUNCTION public.cancel_recharge_from_sam_invoice(text) TO service_role;
+
+-- 5. Cancel own pending recharge (client) — used by Sam invoice flow when creation
+--    fails (e.g. Sam NOT_FOUND), so the user is not stuck on "already pending" lock.
+CREATE OR REPLACE FUNCTION public.cancel_my_recharge_request(p_request_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_row public.recharge_requests%ROWTYPE;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  SELECT * INTO v_row
+  FROM public.recharge_requests
+  WHERE id = p_request_id AND user_id = v_user_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Recharge request not found';
+  END IF;
+
+  IF v_row.status NOT IN ('pending', 'payment_sent') THEN
+    RAISE EXCEPTION 'This recharge request can no longer be cancelled';
+  END IF;
+
+  UPDATE public.recharge_requests
+  SET
+    status = 'cancelled',
+    updated_at = now()
+  WHERE id = p_request_id;
+
+  RETURN jsonb_build_object(
+    'requestId', p_request_id,
+    'userId', v_user_id,
+    'status', 'cancelled'
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.cancel_my_recharge_request(uuid) FROM public;
+GRANT EXECUTE ON FUNCTION public.cancel_my_recharge_request(uuid) TO authenticated;
 
 -- =============================================================================
 -- APPEND: sam_invoice_orders

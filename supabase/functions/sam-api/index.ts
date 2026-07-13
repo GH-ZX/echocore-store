@@ -84,6 +84,61 @@ function samErrorMessage(data: Json, fallback: string) {
   return code ? `${code}: ${message}` : message;
 }
 
+// Map Sam API GET/POST invoice error codes to actionable messages + an uplevel
+// `code` (SAM_*) the client can branch on (e.g. show a generic localized toast).
+function mapSamInvoiceError(data: Json, fallback: string) {
+  const code = typeof data.code === 'string' ? data.code : '';
+
+  if (code === 'NOT_FOUND') {
+    return {
+      message: 'Sam receiving wallet not found. In Admin → Payments → Sam API, click "Test wallets", pick a linked wallet, then Save.',
+      code: 'SAM_NOT_FOUND',
+      samCode: 'NOT_FOUND',
+    };
+  }
+  if (code === 'INVALID_IDENTIFIER') {
+    return {
+      message: 'Sam wallet identifier format is invalid for the selected provider.',
+      code: 'SAM_INVALID_IDENTIFIER',
+      samCode: 'INVALID_IDENTIFIER',
+    };
+  }
+  if (code === 'WALLET_SESSION_EXPIRED') {
+    return {
+      message: 'Sam wallet session expired — re-link the wallet in the Sam dashboard.',
+      code: 'SAM_SESSION',
+      samCode: 'WALLET_SESSION_EXPIRED',
+    };
+  }
+  if (code === 'MISSING_API_KEY' || code === 'INVALID_API_KEY') {
+    return {
+      message: 'Sam API key is missing or invalid. Configure it in Admin → Payments → Sam API.',
+      code: 'SAM_API_KEY',
+      samCode: code,
+    };
+  }
+  if (code === 'VALIDATION_ERROR') {
+    return {
+      message: 'Sam rejected the invoice request (validation error). Check identifier/currency in Admin → Sam API.',
+      code: 'SAM_VALIDATION',
+      samCode: 'VALIDATION_ERROR',
+    };
+  }
+  if (code === 'PROVIDER_ERROR' || code === 'WALLET_UPSTREAM_ERROR') {
+    return {
+      message: 'Payment provider is unavailable right now. Please try again later.',
+      code: 'SAM_PROVIDER',
+      samCode: code,
+    };
+  }
+
+  return {
+    message: samErrorMessage(data, fallback),
+    code: String(code || 'SAM_UNKNOWN'),
+    samCode: code,
+  };
+}
+
 function buildWebhookUrl(supabaseUrl: string, token: string) {
   const base = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/sam-api`;
   return `${base}?token=${encodeURIComponent(token)}`;
@@ -102,6 +157,83 @@ const USER_ACTIONS = new Set(['createInvoice', 'verifyInvoice', 'getInvoiceStatu
 function paymentMethodToSam(method: string) {
   if (method === 'SyriatelCash') return 'syriatel';
   return 'shamcash';
+}
+
+function walletIdentifierCandidates(wallet: Record<string, unknown>): string[] {
+  return [
+    wallet.walletAddress,
+    wallet.phone,
+    wallet.cashCode,
+    wallet.accountNumber,
+    wallet.id,
+  ]
+    .filter((value) => value != null && String(value).trim() !== '')
+    .map((value) => String(value).trim());
+}
+
+function invoiceIdentifierForWallet(wallet: Record<string, unknown>, provider: string): string | null {
+  if (provider === 'syriatel') {
+    const identifier = String(wallet.phone || wallet.cashCode || wallet.walletAddress || wallet.id || '').trim();
+    return identifier || null;
+  }
+
+  const identifier = String(
+    wallet.walletAddress || wallet.accountNumber || wallet.phone || wallet.id || '',
+  ).trim();
+  return identifier || null;
+}
+
+async function resolveSamInvoiceIdentifier(
+  apiKey: string,
+  samMethod: string,
+  storedIdentifier: string,
+): Promise<{ identifier: string } | { error: string; code: string; samCode?: string }> {
+  const stored = storedIdentifier.trim();
+  if (!stored) {
+    return {
+      error: 'Sam API receiving wallet not configured',
+      code: 'SAM_NOT_CONFIGURED',
+    };
+  }
+
+  const { res, data } = await samFetch(apiKey, '/v1/wallets');
+  if (!res.ok) {
+    const mapped = mapSamInvoiceError(data, 'Failed to list Sam wallets');
+    return {
+      error: mapped.message,
+      code: mapped.code,
+      samCode: mapped.samCode,
+    };
+  }
+
+  const wallets = Array.isArray(data) ? data : [];
+  const normalizedStored = stored.toLowerCase();
+
+  const match = wallets.find((wallet) => {
+    const row = wallet as Record<string, unknown>;
+    const provider = row.provider === 'syriatel' ? 'syriatel' : 'shamcash';
+    if (provider !== samMethod) return false;
+    return walletIdentifierCandidates(row).some((candidate) => candidate.toLowerCase() === normalizedStored);
+  }) as Record<string, unknown> | undefined;
+
+  if (!match) {
+    return {
+      error: 'Sam receiving wallet not found. In Admin → Payments → Sam API, click "Test wallets", pick a linked wallet, then Save.',
+      code: 'SAM_NOT_FOUND',
+      samCode: 'NOT_FOUND',
+    };
+  }
+
+  const identifier = invoiceIdentifierForWallet(match, samMethod);
+  if (!identifier) {
+    return {
+      error: 'Linked Sam wallet has no usable identifier for invoices.',
+      code: 'SAM_INVALID_IDENTIFIER',
+      samCode: 'INVALID_IDENTIFIER',
+    };
+  }
+
+  return { identifier };
 }
 
 async function triggerG2bulkFulfillment(orderId: string) {
@@ -363,6 +495,14 @@ Deno.serve(async (req) => {
 
         invoiceAmount = order.total;
       } else {
+        if (userIsAdmin) {
+          return jsonResponse({
+            success: false,
+            message: 'Admin accounts cannot recharge store balance from the storefront',
+            code: 'ADMIN_RECHARGE_FORBIDDEN',
+          }, 403);
+        }
+
         const { data: recharge } = await serviceClient
           .from('recharge_requests')
           .select('id, user_id, amount, status, payment_method')
@@ -419,16 +559,27 @@ Deno.serve(async (req) => {
       }
 
       const samMethod = paymentMethodToSam(paymentMethod);
-      const identifier = samMethod === 'syriatel'
+      const storedIdentifier = samMethod === 'syriatel'
         ? String(settings.sam_syriatel_wallet_identifier || '').trim()
         : String(settings.sam_shamcash_wallet_identifier || '').trim();
       const currency = String(settings.sam_invoice_currency || 'USD');
       const webhookSecret = await resolveWebhookSecret(serviceClient);
 
-      if (!identifier || !webhookSecret) {
+      if (!storedIdentifier || !webhookSecret) {
         return jsonResponse({ success: false, message: 'Sam API receiving wallet not configured' }, 400);
       }
 
+      const resolved = await resolveSamInvoiceIdentifier(apiKey, samMethod, storedIdentifier);
+      if ('error' in resolved) {
+        return jsonResponse({
+          success: false,
+          message: resolved.error,
+          code: resolved.code,
+          samCode: resolved.samCode,
+        }, 400);
+      }
+
+      const identifier = resolved.identifier;
       const amountStr = Number(invoiceAmount).toFixed(2);
       const webhookUrl = buildWebhookUrl(supabaseUrl, webhookSecret);
 
@@ -444,7 +595,13 @@ Deno.serve(async (req) => {
       });
 
       if (!res.ok) {
-        return jsonResponse({ success: false, message: samErrorMessage(data, 'Failed to create invoice') }, res.status);
+        const mapped = mapSamInvoiceError(data, 'Failed to create invoice');
+        return jsonResponse({
+          success: false,
+          message: mapped.message,
+          code: mapped.code,
+          samCode: mapped.samCode,
+        }, res.status);
       }
 
       const samInvoiceId = String(data.invoiceId || '');

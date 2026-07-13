@@ -306,7 +306,7 @@ export default function CheckoutView({
           })}
         </div>
 
-        {!hasEnoughBalance && user && (
+        {!hasEnoughBalance && user && user.role !== 'admin' && (
           <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <p className="text-sm text-amber-100">{t.insufficientBalanceRechargeHint}</p>
             <button

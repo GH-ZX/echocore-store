@@ -1516,7 +1516,7 @@ export default function App() {
         cartLength={cart.length}
         onLogout={handleLogout}
         navigate={navigate}
-        onRecharge={() => navigate('/recharge')}
+        onRecharge={user?.role === 'admin' ? undefined : () => navigate('/recharge')}
         cartRef={cartIconRef}
         notifications={notifications}
         unreadCount={unreadCount}

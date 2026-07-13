@@ -29,7 +29,10 @@ async function invokeSamApi(body) {
     throw new Error(await parseInvokeError(error));
   }
   if (data?.success === false) {
-    throw new Error(data.message || 'Sam API request failed');
+    const err = new Error(data.message || 'Sam API request failed');
+    if (data.code) err.code = data.code;
+    if (data.samCode) err.samCode = data.samCode;
+    throw err;
   }
   return data;
 }
@@ -96,6 +99,29 @@ export async function createRechargeInvoice({ requestId, paymentMethod }) {
     paymentMethod,
   });
   return data.invoice;
+}
+
+/** Map Sam API / edge invoice errors to localized recharge copy. */
+export function mapSamRechargeError(err, t = {}) {
+  const code = String(err?.code || err?.samCode || '').toUpperCase();
+
+  if (code === 'SAM_NOT_FOUND' || code === 'NOT_FOUND') {
+    return t.samInvoiceWalletNotFound || t.samInvoiceCreateFailed || 'Payment unavailable';
+  }
+  if (code === 'SAM_SESSION' || code === 'WALLET_SESSION_EXPIRED') {
+    return t.samInvoiceSessionExpired || t.samInvoiceCreateFailed || 'Payment unavailable';
+  }
+  if (code === 'SAM_API_KEY' || code === 'INVALID_API_KEY' || code === 'MISSING_API_KEY') {
+    return t.samInvoicePaymentUnavailable || t.samInvoiceCreateFailed || 'Payment unavailable';
+  }
+  if (code === 'SAM_INVALID_IDENTIFIER' || code === 'INVALID_IDENTIFIER') {
+    return t.samInvoiceWalletNotFound || t.samInvoiceCreateFailed || 'Payment unavailable';
+  }
+  if (code === 'EXPIRED') {
+    return t.samInvoiceExpired || t.samInvoiceCreateFailed || 'Invoice expired';
+  }
+
+  return err?.message || t.samInvoiceCreateFailed || t.rechargeFailed || 'Recharge failed';
 }
 
 export async function verifyOrderInvoice(samInvoiceId, transactionRef) {

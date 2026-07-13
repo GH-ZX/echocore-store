@@ -17,6 +17,11 @@ export const RECHARGE_MIN = 1;
 export const RECHARGE_MAX = 500;
 export const RECHARGE_PRESETS = [1, 5, 10, 25, 50, 100];
 
+/** Storefront recharge is for customers only — admins use supplier wallets (Sam site). */
+export function canUserRecharge(user) {
+  return !!user?.id && user.role !== 'admin';
+}
+
 export function validateRechargeAmount(amount) {
   const value = parseFloat(amount);
   if (!Number.isFinite(value)) return { valid: false, value: 0 };
@@ -53,6 +58,16 @@ export async function createRechargeRequest(amount, paymentMethod = 'ShamCash') 
 
 export async function markRechargePaymentSent(requestId) {
   const { data, error } = await supabase.rpc('mark_recharge_payment_sent', {
+    p_request_id: requestId,
+  });
+  return assertRpcData(data, error);
+}
+
+// Cancel the caller's own pending/payment_sent recharge. Used by the Sam API
+// flow when invoice creation fails, so the user is not locked out by the
+// "already have a pending recharge" guard. Owner-only (enforced server-side).
+export async function cancelMyRechargeRequest(requestId) {
+  const { data, error } = await supabase.rpc('cancel_my_recharge_request', {
     p_request_id: requestId,
   });
   return assertRpcData(data, error);

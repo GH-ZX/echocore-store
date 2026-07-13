@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ArrowLeft, Loader2, CheckCircle, Wallet, QrCode, Clock } from 'lucide-react';
+import { ArrowLeft, Loader2, CheckCircle, Wallet, QrCode, Clock, AlertCircle } from 'lucide-react';
 import {
   RECHARGE_PRESETS,
   validateRechargeAmount,
   createRechargeRequest,
   markRechargePaymentSent,
   getMyActiveRechargeRequest,
+  cancelMyRechargeRequest,
+  canUserRecharge,
 } from '../lib/recharge';
 import {
   buildPaymentMethods,
@@ -17,9 +19,18 @@ import {
   isApiWalletMode,
   isPaymentMethodReady,
 } from '../lib/paymentMethods';
-import { createRechargeInvoice } from '../lib/samApi';
+import { createRechargeInvoice, mapSamRechargeError } from '../lib/samApi';
 import SamInvoicePaymentPanel from '../components/SamInvoicePaymentPanel';
 import { formatMessage } from '../lib/i18n';
+
+async function cancelPendingRecharge(requestId) {
+  if (!requestId) return;
+  try {
+    await cancelMyRechargeRequest(requestId);
+  } catch (err) {
+    console.error('Failed to cancel pending recharge:', err);
+  }
+}
 
 export default function RechargeView({
   t,
@@ -38,6 +49,7 @@ export default function RechargeView({
 
   const balance = typeof currentBalance === 'number' ? currentBalance : (user?.balance || 0);
   const isApiMode = isApiWalletMode(paymentConfig);
+  const rechargeAllowed = canUserRecharge(user);
 
   const walletMethods = useMemo(
     () => buildPaymentMethods(t, lang, paymentConfig).filter((m) => m.id === 'ShamCash' || m.id === 'SyriatelCash'),
@@ -53,6 +65,8 @@ export default function RechargeView({
   const [isProcessing, setIsProcessing] = useState(false);
   const [loadingRequest, setLoadingRequest] = useState(true);
   const [activeRequest, setActiveRequest] = useState(null);
+  const [invoiceError, setInvoiceError] = useState('');
+  const [completedRecharge, setCompletedRecharge] = useState(null);
 
   const methodReady = isPaymentMethodReady(selectedMethod, paymentConfig);
   const anyReady = hasAnyManualWalletReady(paymentConfig);
@@ -75,35 +89,54 @@ export default function RechargeView({
   }, [walletMethods, usableWalletMethods, selectedMethod]);
 
   useEffect(() => {
+    if (!rechargeAllowed) {
+      setLoadingRequest(false);
+      return undefined;
+    }
+
     let cancelled = false;
 
     (async () => {
       try {
         let existing = await getMyActiveRechargeRequest();
         if (cancelled) return;
-        if (existing?.requestId) {
-          if (existing.paymentMethod) {
-            setSelectedMethod(existing.paymentMethod);
-          }
 
-          if (
-            isApiWalletMethod(existing.paymentMethod, paymentConfig)
-            && !existing.invoice?.samInvoiceId
-          ) {
+        if (!existing?.requestId) return;
+
+        if (existing.paymentMethod) {
+          setSelectedMethod(existing.paymentMethod);
+        }
+
+        const apiWallet = isApiWalletMethod(existing.paymentMethod, paymentConfig);
+
+        if (apiWallet) {
+          if (!existing.invoice?.samInvoiceId) {
             try {
               const invoice = await createRechargeInvoice({
                 requestId: existing.requestId,
                 paymentMethod: existing.paymentMethod,
               });
               existing = { ...existing, invoice };
+              setInvoiceError('');
             } catch (err) {
               console.error('Failed to resume recharge invoice:', err);
+              await cancelPendingRecharge(existing.requestId);
+              if (!cancelled) {
+                setInvoiceError(mapSamRechargeError(err, t));
+              }
+              existing = null;
             }
           }
 
-          setActiveRequest(existing);
-          setStep(existing.status === 'payment_sent' ? 'pending' : 'payment');
+          if (existing) {
+            setActiveRequest(existing);
+            setStep('payment');
+          }
+          return;
         }
+
+        setActiveRequest(existing);
+        setStep(existing.status === 'payment_sent' ? 'pending' : 'payment');
       } catch (err) {
         console.error('Failed to load active recharge request:', err);
       } finally {
@@ -112,7 +145,7 @@ export default function RechargeView({
     })();
 
     return () => { cancelled = true; };
-  }, [paymentConfig]);
+  }, [paymentConfig, t, rechargeAllowed]);
 
   const handleAmountPreset = (amt) => {
     setCustomMode(false);
@@ -140,19 +173,28 @@ export default function RechargeView({
     }
 
     setIsProcessing(true);
+    setInvoiceError('');
+
     try {
       const result = await createRechargeRequest(effectiveAmount, selectedMethod);
+      const apiWallet = isApiWalletMethod(selectedMethod, paymentConfig);
 
-      if (isApiWalletMethod(selectedMethod, paymentConfig)) {
-        const invoice = await createRechargeInvoice({
-          requestId: result.requestId,
-          paymentMethod: selectedMethod,
-        });
-        setActiveRequest({ ...result, invoice });
-      } else {
-        setActiveRequest(result);
+      if (apiWallet) {
+        try {
+          const invoice = await createRechargeInvoice({
+            requestId: result.requestId,
+            paymentMethod: selectedMethod,
+          });
+          setActiveRequest({ ...result, invoice });
+          setStep('payment');
+        } catch (invoiceErr) {
+          await cancelPendingRecharge(result.requestId);
+          notifyError(mapSamRechargeError(invoiceErr, t));
+        }
+        return;
       }
 
+      setActiveRequest(result);
       setStep('payment');
     } catch (err) {
       notifyError(err.message || t.rechargeFailed);
@@ -162,7 +204,9 @@ export default function RechargeView({
   };
 
   const confirmPaymentSent = async () => {
-    if (!activeRequest?.requestId) return;
+    if (!activeRequest?.requestId || isApiWalletMethod(activeRequest.paymentMethod, paymentConfig)) {
+      return;
+    }
 
     setIsProcessing(true);
     try {
@@ -178,26 +222,45 @@ export default function RechargeView({
   };
 
   const handleInvoicePaid = (completion) => {
-    if (completion?.newBalance != null) {
+    const amount = completion?.amount ?? activeRequest?.amount;
+    const newBalance = completion?.newBalance;
+
+    if (newBalance != null) {
       onRechargePaid?.({
-        userId: completion.userId || user?.id,
-        newBalance: completion.newBalance,
-        amount: completion.amount,
+        userId: completion?.userId || user?.id,
+        newBalance,
+        amount,
       });
     }
+
+    setCompletedRecharge({
+      amount,
+      newBalance: newBalance ?? balance,
+    });
     setActiveRequest(null);
-    setStep('amount');
+    setInvoiceError('');
+    setStep('completed');
     notifySuccess(t.rechargeSuccess);
   };
 
   const handleInvoiceExpired = () => {
     setActiveRequest(null);
+    setInvoiceError('');
     setStep('amount');
   };
 
-  const resetToAmount = () => {
+  const resetToAmount = async () => {
+    if (
+      activeRequest?.requestId
+      && isApiWalletMethod(activeRequest.paymentMethod, paymentConfig)
+      && step !== 'completed'
+    ) {
+      await cancelPendingRecharge(activeRequest.requestId);
+    }
     setStep('amount');
     setActiveRequest(null);
+    setInvoiceError('');
+    setCompletedRecharge(null);
   };
 
   const activeMethod = activeRequest?.paymentMethod || selectedMethod;
@@ -210,6 +273,22 @@ export default function RechargeView({
     return (
       <div className="max-w-2xl mx-auto py-20 text-center text-[var(--text-sec)]">
         <Loader2 className="w-8 h-8 animate-spin mx-auto text-[var(--accent)]" />
+      </div>
+    );
+  }
+
+  if (!rechargeAllowed) {
+    return (
+      <div className="max-w-2xl mx-auto py-20 text-center">
+        <AlertCircle className="w-10 h-10 mx-auto text-amber-300 mb-4" />
+        <p className="text-[var(--text-sec)] mb-6">{t.adminRechargeNotAllowed}</p>
+        <button
+          type="button"
+          onClick={() => navigate('/dashboard/payments')}
+          className="btn btn-primary"
+        >
+          {t.adminDash}
+        </button>
       </div>
     );
   }
@@ -241,6 +320,34 @@ export default function RechargeView({
         {!anyReady && (
           <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
             {t.rechargeNotConfigured}
+          </div>
+        )}
+
+        {invoiceError && step === 'amount' && (
+          <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+            {invoiceError}
+          </div>
+        )}
+
+        {step === 'completed' && completedRecharge && (
+          <div className="text-center space-y-5">
+            <div className="py-8 rounded-2xl border border-emerald-500/30 bg-emerald-500/10">
+              <CheckCircle className="w-12 h-12 mx-auto text-emerald-400 mb-4" />
+              <div className="text-2xl font-black text-emerald-100 mb-2">{t.rechargeSuccess}</div>
+              <p className="text-sm text-[var(--text-sec)] max-w-sm mx-auto">
+                {formatMessage(t.rechargeCompletedDesc, {
+                  amount: `$${parseFloat(completedRecharge.amount || 0).toFixed(2)}`,
+                  balance: `$${Number(completedRecharge.newBalance || 0).toFixed(2)}`,
+                })}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={resetToAmount}
+              className="btn btn-primary w-full py-4 font-bold"
+            >
+              {t.rechargeAgain}
+            </button>
           </div>
         )}
 
@@ -365,20 +472,37 @@ export default function RechargeView({
               <div className="text-xs text-[var(--text-sec)] mt-1">{activeMethodLabel}</div>
             </div>
 
-            {activeIsApiWallet && activeInvoice?.samInvoiceId ? (
-              <SamInvoicePaymentPanel
-                t={t}
-                lang={lang}
-                total={activeRequest.amount}
-                methodLabel={activeMethodLabel}
-                invoice={activeInvoice}
-                onPaid={handleInvoicePaid}
-                onExpired={handleInvoiceExpired}
-                onNotify={onNotify}
-                paidRedirectKey="samInvoiceRechargeRedirecting"
-                expiredDescKey="samInvoiceExpiredRechargeDesc"
-                autoConfirmNoteKey="samInvoiceRechargeAutoConfirmNote"
-              />
+            {activeIsApiWallet ? (
+              activeInvoice?.samInvoiceId ? (
+                <SamInvoicePaymentPanel
+                  t={t}
+                  lang={lang}
+                  total={activeRequest.amount}
+                  methodLabel={activeMethodLabel}
+                  invoice={activeInvoice}
+                  onPaid={handleInvoicePaid}
+                  onExpired={handleInvoiceExpired}
+                  onNotify={onNotify}
+                  paidRedirectKey="samInvoiceRechargeRedirecting"
+                  expiredDescKey="samInvoiceExpiredRechargeDesc"
+                  autoConfirmNoteKey="samInvoiceRechargeAutoConfirmNote"
+                />
+              ) : (
+                <div className="text-center py-6 rounded-2xl border border-red-500/30 bg-red-500/10">
+                  <AlertCircle className="w-10 h-10 mx-auto text-red-300 mb-3" />
+                  <div className="font-bold text-red-100">{t.samInvoiceUnavailable}</div>
+                  <p className="text-xs text-[var(--text-sec)] mt-2 max-w-sm mx-auto">
+                    {invoiceError || t.samInvoiceCreateFailed}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={resetToAmount}
+                    className="btn btn-secondary mt-4 px-6 py-2"
+                  >
+                    {t.back}
+                  </button>
+                </div>
+              )
             ) : (
               <>
                 <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-5 text-center">
