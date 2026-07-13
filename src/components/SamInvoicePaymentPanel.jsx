@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ExternalLink, Loader2, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import { verifyOrderInvoice, getSamInvoiceStatus } from '../lib/samApi';
 import { formatMessage } from '../lib/i18n';
+import { closeSamPaymentWindow, openSamPaymentWindow } from '../lib/samPaymentPopup';
 
 const POLL_MS = 4000;
 
@@ -17,6 +18,7 @@ export default function SamInvoicePaymentPanel({
   paidRedirectKey = 'samInvoiceRedirecting',
   expiredDescKey = 'samInvoiceExpiredDesc',
   autoConfirmNoteKey = 'samInvoiceAutoConfirmNote',
+  autoOpenPaymentPopup = false,
 }) {
   const notifyError = useCallback((message) => onNotify?.(message, 'error'), [onNotify]);
   const notifySuccess = useCallback((message) => onNotify?.(message, 'success'), [onNotify]);
@@ -25,18 +27,24 @@ export default function SamInvoicePaymentPanel({
   const [verifying, setVerifying] = useState(false);
   const [status, setStatus] = useState(invoice?.status || 'pending');
   const [entityStatus, setEntityStatus] = useState(null);
+  const [popupBlocked, setPopupBlocked] = useState(false);
+  const paymentPopupRef = useRef(null);
 
   const samInvoiceId = invoice?.samInvoiceId;
   const paymentUrl = invoice?.paymentUrl;
   const displayTotal = total != null ? parseFloat(total).toFixed(2) : invoice?.amount;
 
   const handlePaid = useCallback((completion) => {
+    closeSamPaymentWindow(paymentPopupRef.current);
+    paymentPopupRef.current = null;
     setStatus('paid');
     notifySuccess(t.samInvoicePaymentConfirmed);
     onPaid?.(completion);
   }, [onPaid, notifySuccess, t.samInvoicePaymentConfirmed]);
 
   const handleExpired = useCallback(() => {
+    closeSamPaymentWindow(paymentPopupRef.current);
+    paymentPopupRef.current = null;
     setStatus('expired');
     notifyError(t.samInvoiceExpired);
     onExpired?.();
@@ -76,6 +84,25 @@ export default function SamInvoicePaymentPanel({
     return () => clearInterval(id);
   }, [samInvoiceId, status, pollStatus]);
 
+  useEffect(() => {
+    if (!autoOpenPaymentPopup || !paymentUrl || status === 'paid' || status === 'expired') {
+      return undefined;
+    }
+
+    if (paymentPopupRef.current && !paymentPopupRef.current.closed) {
+      return undefined;
+    }
+
+    const popup = openSamPaymentWindow(paymentUrl);
+    paymentPopupRef.current = popup;
+    setPopupBlocked(!popup);
+  }, [autoOpenPaymentPopup, paymentUrl, status]);
+
+  useEffect(() => () => {
+    closeSamPaymentWindow(paymentPopupRef.current);
+    paymentPopupRef.current = null;
+  }, []);
+
   const handleVerify = async () => {
     const ref = transactionRef.trim();
     if (!ref || !samInvoiceId) return;
@@ -98,6 +125,14 @@ export default function SamInvoicePaymentPanel({
     } finally {
       setVerifying(false);
     }
+  };
+
+  const openPaymentPage = () => {
+    if (!paymentUrl) return;
+    const popup = openSamPaymentWindow(paymentUrl);
+    paymentPopupRef.current = popup;
+    setPopupBlocked(!popup);
+    if (!popup) notifyError(t.samPaymentPopupBlocked);
   };
 
   if (status === 'paid' || entityStatus === 'completed' || entityStatus === 'approved') {
@@ -125,19 +160,28 @@ export default function SamInvoicePaymentPanel({
     <div className="space-y-5">
       <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-5 text-center">
         <p className="text-sm text-[var(--text-sec)] mb-4 leading-relaxed">
-          {formatMessage(t.samInvoicePayDesc, { method: methodLabel, amount: `$${displayTotal}` })}
+          {autoOpenPaymentPopup
+            ? t.samPaymentPopupOpened
+            : formatMessage(t.samInvoicePayDesc, { method: methodLabel, amount: `$${displayTotal}` })}
         </p>
 
         {paymentUrl ? (
-          <a
-            href={paymentUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn btn-primary w-full py-4 font-bold inline-flex items-center justify-center gap-2"
-          >
-            <ExternalLink className="w-4 h-4" />
-            {t.samInvoiceOpenPaymentPage}
-          </a>
+          <>
+            {autoOpenPaymentPopup && (
+              <p className="text-xs text-[var(--text-muted)] mb-4 flex items-center justify-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                {t.samPaymentWaitingInPopup}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={openPaymentPage}
+              className="btn btn-primary w-full py-4 font-bold inline-flex items-center justify-center gap-2"
+            >
+              <ExternalLink className="w-4 h-4" />
+              {popupBlocked ? t.samInvoiceOpenPaymentPage : t.samPaymentReopenPopup}
+            </button>
+          </>
         ) : (
           <div className="py-4 text-sm text-[var(--text-muted)]">{t.samInvoiceUnavailable}</div>
         )}

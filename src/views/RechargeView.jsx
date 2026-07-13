@@ -241,6 +241,10 @@ export default function RechargeView({
     setInvoiceError('');
     setStep('completed');
     notifySuccess(t.rechargeSuccess);
+
+    window.setTimeout(() => {
+      navigate(returnTo || '/');
+    }, 1400);
   };
 
   const handleInvoiceExpired = () => {
@@ -483,6 +487,7 @@ export default function RechargeView({
                   onPaid={handleInvoicePaid}
                   onExpired={handleInvoiceExpired}
                   onNotify={onNotify}
+                  autoOpenPaymentPopup
                   paidRedirectKey="samInvoiceRechargeRedirecting"
                   expiredDescKey="samInvoiceExpiredRechargeDesc"
                   autoConfirmNoteKey="samInvoiceRechargeAutoConfirmNote"

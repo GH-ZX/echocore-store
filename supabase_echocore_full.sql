@@ -1507,16 +1507,18 @@ BEGIN
     '/recharge'
   );
 
-  PERFORM public.notify_all_admins(
-    'admin_recharge_payment_sent',
-    jsonb_build_object(
-      'requestId', p_request_id,
-      'amount', v_row.amount,
-      'reference', v_row.reference,
-      'userName', COALESCE(v_user_name, 'Customer')
-    ),
-    '/dashboard'
-  );
+  IF v_wallet_mode = 'manual' THEN
+    PERFORM public.notify_all_admins(
+      'admin_recharge_payment_sent',
+      jsonb_build_object(
+        'requestId', p_request_id,
+        'amount', v_row.amount,
+        'reference', v_row.reference,
+        'userName', COALESCE(v_user_name, 'Customer')
+      ),
+      '/dashboard'
+    );
+  END IF;
 
   RETURN jsonb_build_object(
     'requestId', p_request_id,
@@ -4743,17 +4745,7 @@ BEGIN
     '/profile'
   );
 
-  -- Notify ALL admins: "{userName} recharged ${amount}" (informational, no approval needed)
-  PERFORM public.notify_all_admins(
-    'admin_recharge_completed',
-    jsonb_build_object(
-      'requestId', v_row.id,
-      'amount', v_row.amount,
-      'reference', v_ref,
-      'userName', (SELECT COALESCE(name, 'Customer') FROM public.profiles WHERE id = v_row.user_id)
-    ),
-    '/dashboard'
-  );
+  -- Sam API auto-credit: no admin approval or admin inbox notification.
 
   RETURN jsonb_build_object(
     'requestId', v_row.id,
