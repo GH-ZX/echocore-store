@@ -13,9 +13,9 @@ function assertRpcData(data, error) {
   return data;
 }
 
-export const RECHARGE_MIN = 5;
+export const RECHARGE_MIN = 1;
 export const RECHARGE_MAX = 500;
-export const RECHARGE_PRESETS = [5, 10, 25, 50, 100];
+export const RECHARGE_PRESETS = [1, 5, 10, 25, 50, 100];
 
 export function validateRechargeAmount(amount) {
   const value = parseFloat(amount);

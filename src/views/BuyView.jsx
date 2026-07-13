@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
-import { ArrowLeft, Loader2, CheckCircle, User, Server, QrCode, Clock, Ticket, Zap, Gift } from 'lucide-react';
+import { useParams, useLocation } from 'react-router-dom';
+import { ArrowLeft, Loader2, CheckCircle, User, QrCode, Clock, Ticket, Zap, Gift, Wallet } from 'lucide-react';
+import ServerIdField from '../components/catalog/ServerIdField';
 import { isVoucherGame } from '../lib/catalogUtils';
 import {
   buildPaymentMethods,
@@ -21,6 +22,10 @@ import { getSavedGamePlayerEntry } from '../lib/gamePlayerUid';
 import { getAdminGiftPath } from '../lib/adminRoutes';
 import { getGameOfferPath } from '../lib/offerRoutes';
 import { g2bulkCheckPlayer } from '../lib/g2bulk';
+import {
+  gameShowsServerField,
+  resolvePlayerServerForOrder,
+} from '../lib/gameServers';
 
 export default function BuyView({
   t = {},
@@ -39,6 +44,7 @@ export default function BuyView({
   const notifyError = (message) => onNotify?.(message, 'error');
   const notifySuccess = (message) => onNotify?.(message, 'success');
   const { gameSlug, offerSlug } = useParams();
+  const location = useLocation();
 
   const { offer, game } = resolveOfferRoute(offers, games, { gameSlug, offerSlug });
 
@@ -60,10 +66,12 @@ export default function BuyView({
   const isVoucherOnly = isValidOffer && isVoucherGame(game);
   const showUidForm = needsUid && (!isBoth || redemptionChoice === 'uid') && !isVoucherOnly;
   const showRecipientFields = showUidForm && !isVoucherOnly;
+  const needsServerField = showRecipientFields && gameShowsServerField(game);
 
   const price = offer ? parseFloat(offer.price) : 0;
   const total = price.toFixed(2);
   const hasEnough = currentBalance >= price;
+  const goRecharge = () => navigate('/recharge', { state: { returnTo: location.pathname } });
 
   const paymentMethods = useMemo(
     () => (isValidOffer
@@ -151,13 +159,17 @@ export default function BuyView({
 
   const currentMethod = paymentMethods.find((m) => m.id === selectedMethod) || usableMethods[0];
 
+  const resolvedPlayerServer = needsServerField
+    ? resolvePlayerServerForOrder(game, playerServer)
+    : null;
+
   const playerInfo = {
     player_uid: showUidForm ? playerUid.trim() || null : null,
-    player_server: playerServer.trim() || null,
+    player_server: resolvedPlayerServer,
   };
 
   const isUidComplete = !showUidForm || playerUid.trim().length > 2;
-  const isServerComplete = !showRecipientFields || playerServer.trim().length > 0;
+  const isServerComplete = !needsServerField || !!resolvedPlayerServer;
   const canProceed = isUidComplete && isServerComplete && !!currentMethod;
   const isManualWallet = isManualWalletMethod(selectedMethod);
   const isApiWallet = isApiWalletMethod(selectedMethod, paymentConfig);
@@ -170,7 +182,7 @@ export default function BuyView({
         const validation = await g2bulkCheckPlayer({
           game: game?.g2bulk_game_code || game?.slug || game?.id || '',
           userId: playerUid.trim(),
-          serverId: playerServer.trim() || undefined,
+          serverId: resolvedPlayerServer || undefined,
         });
         const isValidationValid = validation?.valid === 'valid' || validation?.valid === true || validation?.valid === 'true' || validation?.success !== false;
         if (!isValidationValid) {
@@ -472,23 +484,16 @@ export default function BuyView({
             </div>
           )}
 
-          <div>
-            <label className="text-xs text-[var(--text-muted)] inline-flex items-center gap-1 mb-1">
-              <Server className="w-3.5 h-3.5" />
-              {t.serverLabel || 'Server ID'}
-              <span className="text-red-400 ml-1">*</span>
-            </label>
-            <input
-              type="text"
+          {needsServerField && (
+            <ServerIdField
+              game={game}
               value={playerServer}
-              onChange={(e) => setPlayerServer(e.target.value)}
-              placeholder={t.serverPlaceholder || 'Enter server ID (e.g. 1, 2, 3)'}
-              className="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 font-mono focus:border-[var(--accent)] outline-none"
+              onChange={setPlayerServer}
+              t={t}
+              required
+              inputClassName="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 font-mono focus:border-[var(--accent)] outline-none"
             />
-            {showRecipientFields && !playerServer && (
-              <div className="text-xs text-amber-400 mt-1">{t.serverRequired || 'A server ID is required for this game.'}</div>
-            )}
-          </div>
+          )}
 
           {(needsCode && !showUidForm) && (
             <div className="text-sm p-3 rounded-xl bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 mt-3 mb-2">
@@ -520,7 +525,8 @@ export default function BuyView({
             {paymentMethods.map((m) => {
               const Icon = m.icon;
               const active = selectedMethod === m.id;
-              const isDisabled = m.disabled || m.comingSoon;
+              const isBalance = m.id === 'balance';
+              const isDisabled = m.disabled || m.comingSoon || (isBalance && !hasEnough);
               return (
                 <div
                   key={m.id}
@@ -542,17 +548,46 @@ export default function BuyView({
                       )}
                     </div>
                   </div>
-                  {m.id === 'balance' && <div className="ml-auto text-xs text-emerald-400">(${currentBalance.toFixed(2)})</div>}
+                  {isBalance && (
+                    <div className="ml-auto flex flex-col items-end gap-1">
+                      <div className="text-xs text-emerald-400">(${currentBalance.toFixed(2)})</div>
+                      {!hasEnough && (
+                        <div className="text-[10px] px-2 py-0.5 rounded bg-red-500/10 text-red-400">
+                          {t.insufficientBalance}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
         </div>
 
+        {!hasEnough && user && (
+          <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-sm text-amber-100">{t.insufficientBalanceRechargeHint}</p>
+            <button
+              type="button"
+              onClick={goRecharge}
+              className="btn btn-primary inline-flex items-center justify-center gap-2 shrink-0"
+            >
+              <Wallet className="w-4 h-4" />
+              {t.recharge}
+            </button>
+          </div>
+        )}
+
         <button
           type="button"
           onClick={startPurchase}
-          disabled={!canProceed || isProcessing || !user || (isManualWallet && !methodReady)}
+          disabled={
+            !canProceed
+            || isProcessing
+            || !user
+            || (selectedMethod === 'balance' && !hasEnough)
+            || (isManualWallet && !methodReady)
+          }
           className="btn btn-primary w-full py-5 text-xl font-black disabled:opacity-50"
         >
           {isProcessing ? (

@@ -14,6 +14,11 @@ import {
   getProfileAdminLabel,
   profileNamesDiffer,
 } from '../../lib/username';
+import ServerIdField from '../catalog/ServerIdField';
+import {
+  gameShowsServerField,
+  resolvePlayerServerForOrder,
+} from '../../lib/gameServers';
 
 const RECIPIENT_SEARCH_LIMIT = 50;
 
@@ -79,6 +84,7 @@ export default function AdminGiftForm({
 
   const isVoucher = game ? isVoucherGame(game) : false;
   const needsUid = game && !isVoucher && (game.redemption_method === 'uid' || game.redemption_method === 'both');
+  const needsServerField = needsUid && gameShowsServerField(game);
 
   const purchasableOffers = useMemo(
     () => [...offers]
@@ -174,6 +180,13 @@ export default function AdminGiftForm({
       notifyError(t.adminGiftUidRequired);
       return;
     }
+    const resolvedPlayerServer = needsServerField
+      ? resolvePlayerServerForOrder(game, playerServer)
+      : null;
+    if (needsServerField && !resolvedPlayerServer) {
+      notifyError(t.serverRequired);
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -181,7 +194,7 @@ export default function AdminGiftForm({
         targetUserId: recipient.id,
         offerId: selectedOffer.id,
         playerUid: playerUid.trim() || null,
-        playerServer: playerServer.trim() || null,
+        playerServer: resolvedPlayerServer,
         giftMessage: giftMessage.trim() || null,
         adminNote: adminNote.trim() || null,
       });
@@ -340,19 +353,15 @@ export default function AdminGiftForm({
         </div>
       )}
 
-      {needsUid && (
-        <div>
-          <label className="text-xs font-semibold text-[var(--text-muted)] block mb-1.5">
-            {t.serverLabel}
-          </label>
-          <input
-            type="text"
-            value={playerServer}
-            onChange={(e) => setPlayerServer(e.target.value)}
-            placeholder={t.serverPlaceholder || 'Enter server ID (e.g. 1, 2, 3)'}
-            className="input w-full font-mono"
-          />
-        </div>
+      {needsServerField && (
+        <ServerIdField
+          game={game}
+          value={playerServer}
+          onChange={setPlayerServer}
+          t={t}
+          required
+          inputClassName="input w-full font-mono"
+        />
       )}
 
       <div>

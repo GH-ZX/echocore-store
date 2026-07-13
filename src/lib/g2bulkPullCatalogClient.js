@@ -1,6 +1,6 @@
 import { classifyVoucherSegment } from './catalogSegments';
 import { supabase } from './supabase';
-import { normalizePullSelection } from './pullCatalogUtils';
+import { normalizePullSelection, pruneSelectionToCatalog } from './pullCatalogUtils';
 
 async function fetchSyncedPullFlags() {
   const [topupRes, voucherRes] = await Promise.all([
@@ -32,24 +32,35 @@ async function fetchSyncedPullFlags() {
   };
 }
 
-function markCatalogSynced(catalog = {}, flags = {}) {
+function markCatalogSynced(catalog = {}, flags = {}, selection = {}) {
+  const normalized = normalizePullSelection(selection);
+  const selectedTopup = new Set(normalized.topupSyncBaseKeys);
+  const selectedAccounts = new Set(normalized.accountSyncCategoryIds);
+  const selectedGifts = new Set(normalized.giftSyncCategoryIds);
+
   const games = (catalog.games || []).map((item) => {
     const code = String(item.code || '').trim();
     return {
       ...item,
-      synced: flags.topupCodes?.has(code),
+      synced: flags.topupCodes?.has(code) && selectedTopup.has(code),
     };
   });
 
-  const accounts = (catalog.accounts || []).map((item) => ({
-    ...item,
-    synced: flags.voucherCategoryIds?.has(Number(item.categoryId)),
-  }));
+  const accounts = (catalog.accounts || []).map((item) => {
+    const categoryId = Number(item.categoryId);
+    return {
+      ...item,
+      synced: flags.voucherCategoryIds?.has(categoryId) && selectedAccounts.has(categoryId),
+    };
+  });
 
-  const giftCards = (catalog.giftCards || []).map((item) => ({
-    ...item,
-    synced: flags.voucherCategoryIds?.has(Number(item.categoryId)),
-  }));
+  const giftCards = (catalog.giftCards || []).map((item) => {
+    const categoryId = Number(item.categoryId);
+    return {
+      ...item,
+      synced: flags.voucherCategoryIds?.has(categoryId) && selectedGifts.has(categoryId),
+    };
+  });
 
   return { games, accounts, giftCards };
 }
@@ -109,7 +120,7 @@ export async function buildPullCatalogClientFallback(invokeG2bulk, settings = {}
 
   const gamesPayload = settleValue(gamesResult, { games: [] });
   const categoriesPayload = settleValue(categoriesResult, { accounts: [], giftCards: [], categories: [] });
-  const flags = settleValue(flagsResult, { topupSlugs: new Set(), voucherCategoryIds: new Set() });
+  const flags = settleValue(flagsResult, { topupCodes: new Set(), voucherCategoryIds: new Set() });
 
   if (gamesResult.status === 'rejected' && categoriesResult.status === 'rejected') {
     throw gamesResult.reason || categoriesResult.reason;
@@ -127,15 +138,16 @@ export async function buildPullCatalogClientFallback(invokeG2bulk, settings = {}
     remote.giftCards = split.giftCards;
   }
 
-  const marked = markCatalogSynced(remote, flags);
-  const selection = normalizePullSelection(settings.g2bulk_pull_selection || {});
+  const savedSelection = normalizePullSelection(settings.g2bulk_pull_selection || {});
+  const marked = markCatalogSynced(remote, flags, savedSelection);
+  const selection = pruneSelectionToCatalog(savedSelection, marked);
 
   return {
     success: true,
     ...marked,
     selection,
     databaseSelection: selection,
-    savedSelection: selection,
+    savedSelection,
     catalogMode: settings.g2bulk_catalog_mode || 'sync',
     persisted: false,
     fallback: true,

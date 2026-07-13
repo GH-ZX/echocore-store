@@ -2374,7 +2374,7 @@ STABLE AS $$
         AND length(trim(shamcash_pay_code)) > 0
       FROM store_settings WHERE id = 1
     ), false),
-    'rechargeMin', 5,
+    'rechargeMin', 1,
     'rechargeMax', 500,
     'shamcashConfigured', COALESCE((
       SELECT shamcash_enabled
@@ -4261,7 +4261,7 @@ STABLE AS $$
         AND length(trim(syriatel_pay_code)) > 0
       FROM store_settings WHERE id = 1
     ), false),
-    'rechargeMin', 5,
+    'rechargeMin', 1,
     'rechargeMax', 500,
     'shamcashConfigured', COALESCE((
       SELECT shamcash_enabled
@@ -4355,8 +4355,8 @@ BEGIN
 
   v_amount := round(p_amount::numeric, 2);
 
-  IF v_amount < 5 OR v_amount > 500 THEN
-    RAISE EXCEPTION 'Amount must be between $5 and $500';
+  IF v_amount < 1 OR v_amount > 500 THEN
+    RAISE EXCEPTION 'Amount must be between $1 and $500';
   END IF;
 
   SELECT COALESCE(sam_wallet_mode, 'manual')

@@ -331,13 +331,13 @@ export default function G2bulkPullPanel({
   const tabs = useMemo(() => ([
     {
       id: TABS.topups,
-      label: t.g2bulkTopupsNav || CATALOG_NAV_ITEMS[0].fallbackEn,
+      label: t.g2bulkTopupsNav,
       icon: CATALOG_NAV_ITEMS[0].icon,
       count: catalog.games.length,
     },
     {
       id: TABS.vouchers,
-      label: t.g2bulkVouchersNav || CATALOG_NAV_ITEMS[1].fallbackEn,
+      label: t.g2bulkVouchersNav,
       icon: CATALOG_NAV_ITEMS[1].icon,
       count: voucherCatalogItems.length,
     },
@@ -689,10 +689,10 @@ export default function G2bulkPullPanel({
                 {['all', 'selected', 'unselected'].map((option) => {
                   const active = selectionFilter === option;
                   const label = option === 'selected'
-                    ? (t.g2bulkPullFilterSelected || 'Selected')
+                    ? t.g2bulkPullFilterSelected
                     : option === 'unselected'
-                      ? (t.g2bulkPullFilterUnselected || 'Unselected')
-                      : (t.g2bulkPullFilterAll || 'All');
+                      ? t.g2bulkPullFilterUnselected
+                      : t.g2bulkPullFilterAll;
                   return (
                     <button
                       key={option}
@@ -714,7 +714,7 @@ export default function G2bulkPullPanel({
                     onClick={() => setSelectionFilter('all')}
                     className="px-3 py-1.5 rounded-full text-xs font-semibold border border-[var(--border)] text-[var(--text-sec)] hover:border-[var(--accent)]/50"
                   >
-                    {t.g2bulkPullFilterClear || 'Clear filter'}
+                    {t.g2bulkPullFilterClear}
                   </button>
                 )}
               </div>
@@ -912,7 +912,7 @@ export default function G2bulkPullPanel({
                     className="btn btn-primary inline-flex items-center justify-center gap-2 flex-1 sm:flex-none min-h-[44px] touch-manipulation"
                   >
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudDownload className="w-4 h-4" />}
-                    {t.g2bulkPullSaveAndSync || 'Save & Sync'}
+                    {t.g2bulkPullSaveAndSync}
                   </button>
                 )}
               </div>

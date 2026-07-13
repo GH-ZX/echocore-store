@@ -366,7 +366,7 @@ export default function SuccessView({
               <div className="font-mono text-[var(--accent)] text-lg break-all">{playerUid}</div>
             </div>
             <div className="rounded-xl border border-[var(--border)] p-4 text-sm">
-              <div className="text-[var(--text-muted)] text-xs mb-1">{t.serverLabel || 'Server / Region'}</div>
+              <div className="text-[var(--text-muted)] text-xs mb-1">{t.serverLabel}</div>
               <div className="font-mono">{playerServer || (t.notProvided || 'Required for this game')}</div>
             </div>
             <div className="rounded-xl border border-[var(--border)] p-4 text-sm">

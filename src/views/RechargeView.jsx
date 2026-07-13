@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { ArrowLeft, Loader2, CheckCircle, Wallet, QrCode, Clock } from 'lucide-react';
 import {
   RECHARGE_PRESETS,
@@ -32,6 +33,8 @@ export default function RechargeView({
 }) {
   const notifyError = (message) => onNotify?.(message, 'error');
   const notifySuccess = (message) => onNotify?.(message, 'success');
+  const location = useLocation();
+  const returnTo = location.state?.returnTo;
 
   const balance = typeof currentBalance === 'number' ? currentBalance : (user?.balance || 0);
   const isApiMode = isApiWalletMode(paymentConfig);
@@ -215,10 +218,10 @@ export default function RechargeView({
     <div className="max-w-2xl mx-auto">
       <button
         type="button"
-        onClick={() => navigate('/')}
+        onClick={() => navigate(returnTo || '/')}
         className="mb-6 flex items-center gap-2 text-sm text-[var(--text-sec)] hover:text-[var(--accent)]"
       >
-        <ArrowLeft className="w-4 h-4" /> {t.backToHome}
+        <ArrowLeft className="w-4 h-4" /> {returnTo ? t.back : t.backToHome}
       </button>
 
       <div className="card p-8 md:p-10">

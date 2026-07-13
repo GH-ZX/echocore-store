@@ -1,4 +1,4 @@
-import { FunctionsHttpError } from '@supabase/supabase-js';
+import { FunctionsFetchError, FunctionsHttpError, FunctionsRelayError } from '@supabase/supabase-js';
 import { brandUserText } from './branding';
 import {
   buildPullCatalogClientFallback,
@@ -28,25 +28,47 @@ async function parseInvokeError(error, { sanitizeForUser = false } = {}) {
   if (/unauthorized|admin only|jwt/i.test(message)) {
     message = 'Admin session expired or access denied. Log out, log back in as admin, then retry.';
   }
-  if (/failed to send a request to the edge function/i.test(message)) {
-    message = 'Could not reach the G2Bulk Edge Function. Check your connection or redeploy supabase/functions/g2bulk.';
+  if (/failed to send a request to the edge function|failed to fetch|networkerror|load failed/i.test(message)) {
+    message = 'Sync lost connection to the G2Bulk Edge Function (request too slow or network drop). Wait a moment and retry — sync now runs in smaller batches.';
   }
   if (/relay error invoking the edge function/i.test(message)) {
-    message = 'G2Bulk Edge Function timed out or crashed on the server. Redeploy supabase/functions/g2bulk and retry.';
+    message = 'G2Bulk Edge Function timed out on the server. Wait a moment and retry — sync now runs in smaller batches.';
   }
   return sanitizeForUser ? brandUserText(message) : message;
 }
 
-async function invokeG2bulk(body, { sanitizeForUser = false } = {}) {
-  const { data, error } = await supabase.functions.invoke('g2bulk', { body });
-  if (error) {
-    throw new Error(await parseInvokeError(error, { sanitizeForUser }));
+function isRetryableInvokeError(error) {
+  return error instanceof FunctionsFetchError
+    || error instanceof FunctionsRelayError
+    || isEdgeTransportError(error);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function invokeG2bulk(body, { sanitizeForUser = false, retries = 2 } = {}) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const { data, error } = await supabase.functions.invoke('g2bulk', { body });
+    if (!error) {
+      if (data?.success === false) {
+        const message = data.message || (sanitizeForUser ? 'Fulfillment request failed' : 'G2Bulk request failed');
+        throw new Error(sanitizeForUser ? brandUserText(message) : message);
+      }
+      return data;
+    }
+
+    lastError = error;
+    if (attempt < retries && isRetryableInvokeError(error)) {
+      await sleep(1200 * (attempt + 1));
+      continue;
+    }
+    break;
   }
-  if (data?.success === false) {
-    const message = data.message || (sanitizeForUser ? 'Fulfillment request failed' : 'G2Bulk request failed');
-    throw new Error(sanitizeForUser ? brandUserText(message) : message);
-  }
-  return data;
+
+  throw new Error(await parseInvokeError(lastError, { sanitizeForUser }));
 }
 
 /** Admin: re-apply markup + .99 charm pricing to synced offers from stored cost. */
@@ -99,8 +121,9 @@ export async function saveG2bulkSettings({
   return data;
 }
 
-const GAMES_BATCH_SIZE = 32;
-const CHECK_BATCH_SIZE = 32;
+/** Keep each edge invoke under ~15s so browser fetch does not drop mid-sync. */
+const GAMES_BATCH_SIZE = 3;
+const CHECK_BATCH_SIZE = 8;
 
 function mergeCheckTotals(base, extra = {}) {
   return {
@@ -350,26 +373,11 @@ export async function listG2bulkPullCatalog({ refresh = false, settings = null }
     return pullCatalogCache;
   }
 
-  try {
-    const data = await invokeG2bulk({ action: 'listPullCatalog' });
-    pullCatalogCache = data;
-    pullCatalogCacheAt = now;
-    return data;
-  } catch (primaryError) {
-    try {
-      const resolvedSettings = settings || await fetchG2bulkSettings().catch(() => ({}));
-      const data = await buildPullCatalogClientFallback(invokeG2bulk, resolvedSettings);
-      pullCatalogCache = data;
-      pullCatalogCacheAt = now;
-      return data;
-    } catch (_fallbackError) {
-      // Fallback failed — surface the original catalog error below.
-    }
-    if (isEdgeTransportError(primaryError)) {
-      throw new Error(await parseInvokeError(primaryError), { cause: primaryError });
-    }
-    throw primaryError;
-  }
+  const resolvedSettings = settings || await fetchG2bulkSettings().catch(() => ({}));
+  const data = await buildPullCatalogClientFallback(invokeG2bulk, resolvedSettings);
+  pullCatalogCache = data;
+  pullCatalogCacheAt = now;
+  return data;
 }
 
 /** Admin: persist which games/accounts to sync + carousel picks */

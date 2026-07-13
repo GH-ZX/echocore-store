@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, Loader2, QrCode, Clock, CheckCircle, Gift } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { ArrowLeft, Loader2, QrCode, Clock, CheckCircle, Gift, Wallet } from 'lucide-react';
 import {
   buildPaymentMethods,
   getDefaultPaymentMethod,
@@ -34,9 +35,11 @@ export default function CheckoutView({
   const [activeOrder, setActiveOrder] = useState(null);
   const [selectedMethod, setSelectedMethod] = useState('balance');
 
+  const location = useLocation();
   const totalNum = cart.reduce((s, i) => s + parseFloat(i.price), 0);
   const total = totalNum.toFixed(2);
   const hasEnoughBalance = currentBalance >= totalNum;
+  const goRecharge = () => navigate('/recharge', { state: { returnTo: location.pathname } });
 
   const allMethods = useMemo(
     () => buildPaymentMethods(t, lang, paymentConfig, { includeBalance: true, currentBalance: hasEnoughBalance ? currentBalance : 0 }),
@@ -302,6 +305,20 @@ export default function CheckoutView({
             );
           })}
         </div>
+
+        {!hasEnoughBalance && user && (
+          <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-sm text-amber-100">{t.insufficientBalanceRechargeHint}</p>
+            <button
+              type="button"
+              onClick={goRecharge}
+              className="btn btn-primary inline-flex items-center justify-center gap-2 shrink-0"
+            >
+              <Wallet className="w-4 h-4" />
+              {t.recharge}
+            </button>
+          </div>
+        )}
 
         <button
           onClick={handleCheckoutProcess}

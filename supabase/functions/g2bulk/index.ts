@@ -222,7 +222,7 @@ function pushCheckSample(list: Json[], item: Json, max = 8) {
   if (list.length < max) list.push(item);
 }
 
-const CATALOG_BATCH_MAX = 32;
+const CATALOG_BATCH_MAX = 8;
 
 async function fetchGameFieldNotes(code: string) {
   try {
@@ -238,7 +238,7 @@ async function fetchGameFieldNotes(code: string) {
   }
 }
 
-async function fetchGameServersList(code: string): Promise<string[]> {
+async function fetchGameServersList(code: string): Promise<Array<{ id: string; label: string }>> {
   try {
     const res = await fetch(`${G2BULK_BASE}/games/servers`, {
       method: 'POST',
@@ -248,8 +248,13 @@ async function fetchGameServersList(code: string): Promise<string[]> {
     if (res.status === 403) return [];
     const payload = await res.json().catch(() => ({}));
     const servers = payload?.servers;
-    if (!servers || typeof servers !== 'object') return [];
-    return [...new Set(Object.values(servers).map((value) => String(value).trim()).filter(Boolean))];
+    if (!servers || typeof servers !== 'object' || Array.isArray(servers)) return [];
+    return Object.entries(servers as Record<string, unknown>)
+      .map(([id, label]) => ({
+        id: String(id).trim(),
+        label: String(label ?? id).trim(),
+      }))
+      .filter((row) => row.id);
   } catch {
     return [];
   }
@@ -503,32 +508,14 @@ async function loadPullSelection(serviceClient: ReturnType<typeof createClient>)
   return normalizePullSelection(data?.g2bulk_pull_selection);
 }
 
-async function buildPullCatalogLists(serviceClient: ReturnType<typeof createClient>) {
-  const [validGames, categoriesPayload, syncedGames, syncedVoucherGames] = await Promise.all([
+async function buildPullCatalogPruneSnapshot() {
+  const [validGames, categoriesPayload] = await Promise.all([
     fetchG2GamesPublic().then((rows) => filterValidG2Games(rows)),
     fetch(`${G2BULK_BASE}/category`).then((res) => res.json().catch(() => ({}))),
-    serviceClient
-      .from('games')
-      .select('g2bulk_game_code, name_en')
-      .eq('catalog_source', 'g2bulk')
-      .eq('redemption_method', 'uid')
-      .not('g2bulk_game_code', 'is', null),
-    serviceClient
-      .from('games')
-      .select('g2bulk_source_id')
-      .eq('catalog_source', 'g2bulk')
-      .eq('redemption_method', 'redeem_code'),
   ]);
 
-  const syncedCodes = new Set(
-    (syncedGames || []).map((row) => String(row.g2bulk_game_code || '').trim()).filter(Boolean),
-  );
-
   const games = validGames
-    .filter((g) => {
-      const code = String(g.code || '').trim();
-      return !!code;
-    })
+    .filter((g) => !!String(g.code || '').trim())
     .map((g) => {
       const code = String(g.code || '').trim();
       const meta = parseG2BulkGameMeta(code, String(g.name || code));
@@ -539,19 +526,11 @@ async function buildPullCatalogLists(serviceClient: ReturnType<typeof createClie
         code,
         name: displayName,
         image_url: absImageUrl(g.image_url as string | undefined),
-        synced: syncedCodes.has(code),
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const categories = Array.isArray(categoriesPayload.categories) ? categoriesPayload.categories : [];
-
-  const syncedCategoryIds = new Set(
-    (syncedVoucherGames || [])
-      .map((row) => Number(row.g2bulk_source_id))
-      .filter((value) => Number.isFinite(value)),
-  );
-
   const accounts: Json[] = [];
   const giftCards: Json[] = [];
 
@@ -565,7 +544,6 @@ async function buildPullCatalogLists(serviceClient: ReturnType<typeof createClie
       title,
       image_url: absImageUrl(category.image_url as string | undefined),
       productCount: Number(category.product_count ?? 0),
-      synced: syncedCategoryIds.has(categoryId),
     };
     if (segment === 'gaming_account') accounts.push(row);
     else giftCards.push(row);
@@ -573,6 +551,64 @@ async function buildPullCatalogLists(serviceClient: ReturnType<typeof createClie
 
   accounts.sort((a, b) => String(a.title).localeCompare(String(b.title)));
   giftCards.sort((a, b) => String(a.title).localeCompare(String(b.title)));
+
+  return { games, accounts, giftCards };
+}
+
+async function buildPullCatalogLists(serviceClient: ReturnType<typeof createClient>) {
+  const [pruneSnapshot, syncedGames, syncedVoucherGames, savedSelection] = await Promise.all([
+    buildPullCatalogPruneSnapshot(),
+    serviceClient
+      .from('games')
+      .select('g2bulk_game_code, name_en')
+      .eq('catalog_source', 'g2bulk')
+      .eq('redemption_method', 'uid')
+      .not('g2bulk_game_code', 'is', null),
+    serviceClient
+      .from('games')
+      .select('g2bulk_source_id')
+      .eq('catalog_source', 'g2bulk')
+      .eq('redemption_method', 'redeem_code'),
+    loadPullSelection(serviceClient),
+  ]);
+
+  const selection = normalizePullSelection(savedSelection);
+  const selectedTopupCodes = new Set(selection.topupSyncBaseKeys);
+  const selectedAccountIds = new Set(selection.accountSyncCategoryIds);
+  const selectedGiftIds = new Set(selection.giftSyncCategoryIds);
+
+  const syncedCodes = new Set(
+    (syncedGames || []).map((row) => String(row.g2bulk_game_code || '').trim()).filter(Boolean),
+  );
+  const syncedCategoryIds = new Set(
+    (syncedVoucherGames || [])
+      .map((row) => Number(row.g2bulk_source_id))
+      .filter((value) => Number.isFinite(value)),
+  );
+
+  const games = pruneSnapshot.games.map((row) => {
+    const code = String(row.code || '').trim();
+    return {
+      ...row,
+      synced: syncedCodes.has(code) && selectedTopupCodes.has(code),
+    };
+  });
+
+  const accounts = pruneSnapshot.accounts.map((row) => {
+    const categoryId = Number(row.categoryId);
+    return {
+      ...row,
+      synced: syncedCategoryIds.has(categoryId) && selectedAccountIds.has(categoryId),
+    };
+  });
+
+  const giftCards = pruneSnapshot.giftCards.map((row) => {
+    const categoryId = Number(row.categoryId);
+    return {
+      ...row,
+      synced: syncedCategoryIds.has(categoryId) && selectedGiftIds.has(categoryId),
+    };
+  });
 
   return { games, accounts, giftCards };
 }
@@ -1143,9 +1179,10 @@ Deno.serve(async (req) => {
       const slug = slugify(code);
       const imageUrl = absImageUrl(g.image_url as string | undefined);
 
-      const [catRes, fieldNotes] = await Promise.all([
+      const [catRes, fieldNotes, serverOptions] = await Promise.all([
         fetch(`${G2BULK_BASE}/games/${encodeURIComponent(code)}/catalogue`),
         fetchGameFieldNotes(code),
+        fetchGameServersList(code),
       ]);
       const catPayload = await catRes.json().catch(() => ({}));
       const catalogues = Array.isArray(catPayload.catalogues) ? catPayload.catalogues : [];
@@ -1187,7 +1224,7 @@ Deno.serve(async (req) => {
         g2bulk_synced_at: syncNow,
         parent_game_id: null,
         region_label: meta.regionLabel,
-        servers: [],
+        servers: serverOptions,
       };
 
       let gameId = existing?.id as string | undefined;
@@ -1660,12 +1697,21 @@ Deno.serve(async (req) => {
         .update({ show_in_carousel: false })
         .eq('catalog_source', 'g2bulk');
 
+      const selectedCodes = new Set(pullSelection.topupSyncBaseKeys);
+      for (const game of topupGames || []) {
+        const code = String(game.g2bulk_game_code || '').trim();
+        if (!code || !selectedCodes.has(code)) {
+          await serviceClient.from('games').update({ active: false }).eq('id', game.id);
+          await serviceClient.from('offers').update({ active: false }).eq('game_id', game.id);
+        }
+      }
+
       const carouselIds: string[] = [];
       for (let i = 0; i < carouselBaseKeys.length; i++) {
         const targetCode = carouselBaseKeys[i];
         const matching = (topupGames || []).filter((row) => {
           const code = String(row.g2bulk_game_code || '').trim();
-          return code && code === targetCode;
+          return code && code === targetCode && selectedCodes.has(code);
         });
         for (const game of matching) {
           carouselIds.push(game.id as string);
@@ -2509,7 +2555,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, message: 'Admin only' }, 403);
     }
 
-    const catalog = await buildPullCatalogLists(serviceClient);
+    const catalog = await buildPullCatalogPruneSnapshot();
     const selection = prunePullSelectionToCatalog(normalizePullSelection({
       topupSyncBaseKeys: body.topupSyncBaseKeys,
       topupLiveBaseKeys: body.topupLiveBaseKeys,
