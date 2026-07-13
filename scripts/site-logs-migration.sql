@@ -170,11 +170,13 @@ BEGIN
       sl.subject_user_id,
       sl.metadata,
       sl.created_at,
-      COALESCE(ap.name, ap.email, '') AS actor_name,
-      COALESCE(sp.name, sp.email, '') AS subject_name
+      COALESCE(ap.name, ap.username, au.email, '') AS actor_name,
+      COALESCE(sp.name, sp.username, su.email, '') AS subject_name
     FROM public.site_logs sl
     LEFT JOIN public.profiles ap ON ap.id = sl.actor_user_id
+    LEFT JOIN auth.users au ON au.id = sl.actor_user_id
     LEFT JOIN public.profiles sp ON sp.id = sl.subject_user_id
+    LEFT JOIN auth.users su ON su.id = sl.subject_user_id
     WHERE v_category IS NULL OR sl.category = v_category
     ORDER BY sl.created_at DESC
     LIMIT v_limit
