@@ -656,7 +656,11 @@ export default function App() {
     offer = resolvedOffer || offer;
 
     const amount = parseFloat(offer.price);
-    const { player_uid = null, player_server = null } = playerInfo;
+    const {
+      player_uid = null,
+      player_server = null,
+      player_charname = null,
+    } = playerInfo;
 
     const items = [{
       offer_id: offer.id,
@@ -664,7 +668,8 @@ export default function App() {
       price: amount,
       quantity: 1,
       player_uid: player_uid || null,
-      player_server: player_server || null
+      player_server: player_server || null,
+      player_charname: player_charname || null,
     }];
 
     if (paymentMethod === 'balance') {

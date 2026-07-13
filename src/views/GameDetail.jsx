@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Loader2, Ticket, Zap } from 'lucide-react';
+import { ArrowLeftRight, Loader2, Ticket, Zap } from 'lucide-react';
 import AdminEditButton from '../components/admin/AdminEditButton';
 import AdminGameEditModal from '../components/admin/AdminGameEditModal';
 import { getAdminGiftPath } from '../lib/adminRoutes';
@@ -15,6 +15,14 @@ import { resolveStorefrontGame } from '../lib/gameRegions';
 import { sortOffersByPrice } from '../lib/offerDisplay';
 import { buildGameBreadcrumb } from '../lib/catalogNav';
 import { formatMessage } from '../lib/i18n';
+import {
+  buildSearchPath,
+  getCatalogSearchQuery,
+  SEARCH_FILTER_GIFT_CARD,
+  SEARCH_FILTER_TOPUP,
+  topupHasGiftCardAlternative,
+  voucherHasTopupAlternative,
+} from '../lib/searchUtils';
 
 export default function GameDetail({
   games,
@@ -44,6 +52,22 @@ export default function GameDetail({
   const gameOffers = sortOffersByPrice(
     offers.filter((offer) => offer.game_id === activeGameId && offer.active !== false),
   );
+
+  const showGiftCodeAlt = useMemo(
+    () => (storefrontGame && !isVoucher && !isAccount
+      ? topupHasGiftCardAlternative(storefrontGame, games, offers)
+      : false),
+    [storefrontGame, games, offers, isVoucher, isAccount],
+  );
+
+  const showTopupAlt = useMemo(
+    () => (storefrontGame && isVoucher && !isAccount
+      ? voucherHasTopupAlternative(storefrontGame, games, offers)
+      : false),
+    [storefrontGame, games, offers, isVoucher, isAccount],
+  );
+
+  const catalogSearchQuery = storefrontGame ? getCatalogSearchQuery(storefrontGame) : '';
 
   if (loadingGames || (!storefrontGame && games.length === 0)) {
     return (
@@ -115,6 +139,48 @@ export default function GameDetail({
           }`}
         badges={heroBadges}
       />
+
+      {showTopupAlt && (
+        <div className="catalog-info-banner catalog-info-banner--topup mb-6 sm:mb-8">
+          <Zap className="w-5 h-5 shrink-0 text-[var(--accent)]" />
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 min-w-0 flex-1">
+            <p className="text-sm font-semibold text-[var(--text-primary)]">
+              {t.voucherTopupPrompt}
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate(buildSearchPath({
+                q: catalogSearchQuery,
+                type: SEARCH_FILTER_TOPUP,
+              }))}
+              className="btn btn-primary shrink-0 text-sm px-4 py-2"
+            >
+              {t.voucherTopupCta}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showGiftCodeAlt && (
+        <div className="catalog-info-banner catalog-info-banner--voucher mb-6 sm:mb-8">
+          <ArrowLeftRight className="w-5 h-5 shrink-0 text-violet-300" />
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 min-w-0 flex-1">
+            <p className="text-sm font-semibold text-violet-100">
+              {t.topupGiftCodePrompt}
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate(buildSearchPath({
+                q: catalogSearchQuery,
+                type: SEARCH_FILTER_GIFT_CARD,
+              }))}
+              className="btn btn-secondary shrink-0 text-sm px-4 py-2 border-violet-400/35 bg-violet-500/15 text-violet-100 hover:bg-violet-500/25"
+            >
+              {t.topupGiftCodeCta}
+            </button>
+          </div>
+        </div>
+      )}
 
       {(isVoucher || isAccount) && (
         <div className={`catalog-info-banner mb-6 sm:mb-8 ${isAccount ? 'catalog-info-banner--redeem' : 'catalog-info-banner--voucher'}`}>

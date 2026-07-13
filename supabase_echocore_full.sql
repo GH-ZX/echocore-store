@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS public.order_items (
   quantity integer DEFAULT 1,
   player_uid text,              -- Target In-game UID provided by the buyer
   player_server text,           -- Target In-game Server/Zone selected by the buyer
+  player_charname text,         -- Character name / extra id for G2Bulk top-up games
   redemption_info jsonb         -- Flexible metadata for custom top-up details
 );
 
@@ -3981,6 +3982,7 @@ CREATE OR REPLACE FUNCTION public.admin_gift_order(
   p_offer_id uuid,
   p_player_uid text DEFAULT null,
   p_player_server text DEFAULT null,
+  p_player_charname text DEFAULT null,
   p_gift_message text DEFAULT null,
   p_admin_note text DEFAULT null
 )
@@ -4068,7 +4070,8 @@ BEGIN
     price,
     quantity,
     player_uid,
-    player_server
+    player_server,
+    player_charname
   )
   VALUES (
     v_order_id,
@@ -4077,7 +4080,8 @@ BEGIN
     v_offer.price,
     1,
     nullif(trim(p_player_uid), ''),
-    nullif(trim(p_player_server), '')
+    nullif(trim(p_player_server), ''),
+    nullif(trim(p_player_charname), '')
   );
 
   PERFORM public.notify_user(
@@ -4105,8 +4109,8 @@ BEGIN
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.admin_gift_order(uuid, uuid, text, text, text, text) FROM public;
-GRANT EXECUTE ON FUNCTION public.admin_gift_order(uuid, uuid, text, text, text, text) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.admin_gift_order(uuid, uuid, text, text, text, text, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_gift_order(uuid, uuid, text, text, text, text, text) TO authenticated;
 
 -- 3. Dev mock purchase — bypass create_order_atomic admin block
 CREATE OR REPLACE FUNCTION public.admin_run_mock_purchase(
@@ -5178,7 +5182,16 @@ BEGIN
 
   FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
   LOOP
-    INSERT INTO order_items (order_id, offer_id, name_snapshot, price, quantity, player_uid, player_server)
+    INSERT INTO order_items (
+      order_id,
+      offer_id,
+      name_snapshot,
+      price,
+      quantity,
+      player_uid,
+      player_server,
+      player_charname
+    )
     VALUES (
       v_order_id,
       (v_item->>'offer_id')::uuid,
@@ -5186,7 +5199,8 @@ BEGIN
       (v_item->>'price')::numeric,
       COALESCE((v_item->>'quantity')::integer, 1),
       COALESCE(NULLIF(v_item->>'player_uid', ''), NULLIF(p_player_uid, '')),
-      COALESCE(NULLIF(v_item->>'player_server', ''), NULLIF(p_player_server, ''))
+      COALESCE(NULLIF(v_item->>'player_server', ''), NULLIF(p_player_server, '')),
+      NULLIF(v_item->>'player_charname', '')
     );
   END LOOP;
 

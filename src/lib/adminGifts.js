@@ -15,6 +15,7 @@ export async function adminGiftOrder({
   offerId,
   playerUid = null,
   playerServer = null,
+  playerCharname = null,
   giftMessage = null,
   adminNote = null,
 }) {
@@ -23,6 +24,7 @@ export async function adminGiftOrder({
     p_offer_id: offerId,
     p_player_uid: playerUid,
     p_player_server: playerServer,
+    p_player_charname: playerCharname,
     p_gift_message: giftMessage,
     p_admin_note: adminNote,
   });

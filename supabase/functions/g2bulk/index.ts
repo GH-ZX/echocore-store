@@ -234,7 +234,7 @@ function pushCheckSample(list: Json[], item: Json, max = 8) {
 
 const CATALOG_BATCH_MAX = 8;
 
-async function fetchGameFieldNotes(code: string) {
+async function fetchGameFieldsInfo(code: string): Promise<{ fields: string[]; notes: string }> {
   try {
     const res = await fetch(`${G2BULK_BASE}/games/fields`, {
       method: 'POST',
@@ -242,10 +242,20 @@ async function fetchGameFieldNotes(code: string) {
       body: JSON.stringify({ game: code }),
     });
     const payload = await res.json().catch(() => ({}));
-    return String(payload?.info?.notes || payload?.notes || '').trim();
+    const info = payload?.info && typeof payload.info === 'object' ? payload.info as Json : payload;
+    const fields = Array.isArray(info?.fields)
+      ? (info.fields as unknown[]).map((value) => String(value).trim()).filter(Boolean)
+      : [];
+    const notes = String(info?.notes || payload?.notes || '').trim();
+    return { fields, notes };
   } catch {
-    return '';
+    return { fields: [], notes: '' };
   }
+}
+
+async function fetchGameFieldNotes(code: string) {
+  const { notes } = await fetchGameFieldsInfo(code);
+  return notes;
 }
 
 async function fetchGameServersList(code: string): Promise<Array<{ id: string; label: string }>> {
@@ -831,6 +841,7 @@ async function fulfillG2bulkOrderItem(
     catalogue_name: catalogueName,
     player_id: playerId,
     server_id: item.player_server || undefined,
+    charname: item.player_charname || undefined,
     remark: `echocore-${orderId}`,
   };
   if (callbackUrl) orderBody.callback_url = callbackUrl;
@@ -934,6 +945,31 @@ Deno.serve(async (req) => {
       }),
     }).then(async (r) => ({ res: r, data: await r.json().catch(() => ({})) }));
     return jsonResponse(data as Json, res.status);
+  }
+
+  if (action === 'getTopupMeta') {
+    const code = String(body.game || '').trim();
+    if (!code) {
+      return jsonResponse({ success: false, message: 'game code required' }, 400);
+    }
+
+    const [{ fields, notes }, servers] = await Promise.all([
+      fetchGameFieldsInfo(code),
+      fetchGameServersList(code),
+    ]);
+
+    const requiresServer = fields.some((field) => /server/i.test(field));
+    const requiresCharname = fields.some((field) => /charname|character|char_name/i.test(field));
+
+    return jsonResponse({
+      success: true,
+      game: code,
+      fields,
+      servers,
+      notes,
+      requiresServer,
+      requiresCharname,
+    });
   }
 
   if (action === 'applyCharmPricing') {

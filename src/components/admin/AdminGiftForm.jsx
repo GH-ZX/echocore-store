@@ -14,7 +14,13 @@ import {
   getProfileAdminLabel,
   profileNamesDiffer,
 } from '../../lib/username';
+import CharnameField from '../catalog/CharnameField';
 import ServerIdField from '../catalog/ServerIdField';
+import { g2bulkGetTopupMeta } from '../../lib/g2bulk';
+import {
+  gameShowsCharnameField,
+  isCharnameComplete,
+} from '../../lib/gameTopupFields';
 import {
   gameShowsServerField,
   resolvePlayerServerForOrder,
@@ -66,6 +72,15 @@ export default function AdminGiftForm({
   const [offerId, setOfferId] = useState(initialOffer?.id || '');
   const [playerUid, setPlayerUid] = useState('');
   const [playerServer, setPlayerServer] = useState('');
+  const [playerCharname, setPlayerCharname] = useState('');
+  const [topupMeta, setTopupMeta] = useState({
+    loading: false,
+    fields: [],
+    servers: [],
+    notes: '',
+    requiresServer: false,
+    requiresCharname: false,
+  });
   const [giftMessage, setGiftMessage] = useState(t.adminGiftDefaultMessage || '');
   const [adminNote, setAdminNote] = useState('');
   const [searching, setSearching] = useState(false);
@@ -85,7 +100,8 @@ export default function AdminGiftForm({
 
   const isVoucher = game ? isVoucherGame(game) : false;
   const needsUid = game && !isVoucher && (game.redemption_method === 'uid' || game.redemption_method === 'both');
-  const needsServerField = needsUid && gameShowsServerField(game);
+  const needsServerField = needsUid && gameShowsServerField(game, topupMeta);
+  const needsCharnameField = needsUid && gameShowsCharnameField(game, topupMeta);
 
   const purchasableOffers = useMemo(
     () => [...offers]
@@ -131,9 +147,57 @@ export default function AdminGiftForm({
   };
 
   const savedRecipientGamePlayer = useMemo(
-    () => (needsUid && game ? getSavedGamePlayerEntry(recipient?.game_player_uids, game) : { uid: '', server: '' }),
+    () => (needsUid && game
+      ? getSavedGamePlayerEntry(recipient?.game_player_uids, game)
+      : { uid: '', server: '', charname: '' }),
     [needsUid, game, recipient?.game_player_uids],
   );
+
+  useEffect(() => {
+    const code = game?.g2bulk_game_code;
+    if (!needsUid || !code) {
+      setTopupMeta({
+        loading: false,
+        fields: [],
+        servers: [],
+        notes: '',
+        requiresServer: false,
+        requiresCharname: false,
+      });
+      return undefined;
+    }
+
+    let cancelled = false;
+    setTopupMeta((prev) => ({ ...prev, loading: true }));
+
+    g2bulkGetTopupMeta(code)
+      .then((payload) => {
+        if (cancelled) return;
+        setTopupMeta({
+          loading: false,
+          fields: Array.isArray(payload?.fields) ? payload.fields : [],
+          servers: Array.isArray(payload?.servers) ? payload.servers : [],
+          notes: payload?.notes || '',
+          requiresServer: !!payload?.requiresServer,
+          requiresCharname: !!payload?.requiresCharname,
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setTopupMeta({
+          loading: false,
+          fields: [],
+          servers: [],
+          notes: '',
+          requiresServer: false,
+          requiresCharname: false,
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [needsUid, game?.g2bulk_game_code]);
 
   useEffect(() => {
     if (!recipient?.id || !needsUid || !game) return undefined;
@@ -182,10 +246,14 @@ export default function AdminGiftForm({
       return;
     }
     const resolvedPlayerServer = needsServerField
-      ? resolvePlayerServerForOrder(game, playerServer)
+      ? resolvePlayerServerForOrder(game, playerServer, topupMeta)
       : null;
     if (needsServerField && !resolvedPlayerServer) {
       notifyError(t.serverRequired);
+      return;
+    }
+    if (!isCharnameComplete(topupMeta, playerCharname)) {
+      notifyError(t.charnameRequired);
       return;
     }
 
@@ -197,6 +265,7 @@ export default function AdminGiftForm({
         offerId: selectedOffer.id,
         playerUid: playerUid.trim() || null,
         playerServer: resolvedPlayerServer,
+        playerCharname: needsCharnameField ? playerCharname.trim() || null : null,
         giftMessage: giftMessage.trim() || null,
         adminNote: adminNote.trim() || null,
       });
@@ -376,11 +445,25 @@ export default function AdminGiftForm({
       {needsServerField && (
         <ServerIdField
           game={game}
+          topupMeta={topupMeta}
           value={playerServer}
           onChange={setPlayerServer}
           t={t}
           required
           inputClassName="input w-full font-mono"
+          selectClassName="input w-full"
+        />
+      )}
+
+      {needsCharnameField && (
+        <CharnameField
+          game={game}
+          topupMeta={topupMeta}
+          value={playerCharname}
+          onChange={setPlayerCharname}
+          t={t}
+          required
+          inputClassName="input w-full"
         />
       )}
 

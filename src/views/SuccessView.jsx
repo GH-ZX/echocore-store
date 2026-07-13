@@ -177,6 +177,7 @@ export default function SuccessView({
   const firstItem = orderItems[0] || {};
   const playerUid = firstItem.player_uid;
   const playerServer = firstItem.player_server;
+  const playerCharname = firstItem.player_charname;
   const hasUid = !!playerUid;
   const deliveryCodes = extractDeliveryCodes(orderItems);
   const hasCodes = deliveryCodes.length > 0;
@@ -366,10 +367,18 @@ export default function SuccessView({
               <div className="text-[var(--text-muted)] text-xs mb-1">{t.playerUidLabel || 'Player ID'}</div>
               <div className="font-mono text-[var(--accent)] text-lg break-all">{playerUid}</div>
             </div>
-            <div className="rounded-xl border border-[var(--border)] p-4 text-sm">
-              <div className="text-[var(--text-muted)] text-xs mb-1">{t.serverLabel}</div>
-              <div className="font-mono">{playerServer || (t.notProvided || 'Required for this game')}</div>
-            </div>
+            {playerServer && (
+              <div className="rounded-xl border border-[var(--border)] p-4 text-sm">
+                <div className="text-[var(--text-muted)] text-xs mb-1">{t.serverLabel}</div>
+                <div className="font-mono">{playerServer}</div>
+              </div>
+            )}
+            {playerCharname && (
+              <div className="rounded-xl border border-[var(--border)] p-4 text-sm">
+                <div className="text-[var(--text-muted)] text-xs mb-1">{t.charnameLabel}</div>
+                <div className="font-mono">{playerCharname}</div>
+              </div>
+            )}
             <div className="rounded-xl border border-[var(--border)] p-4 text-sm">
               <div className="text-[var(--text-muted)] text-xs mb-1">{t.total}</div>
               <div className="font-semibold">${parseFloat(orderDetails.total).toFixed(2)}</div>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { ArrowLeft, Loader2, CheckCircle, User, QrCode, Clock, Ticket, Zap, Gift, Wallet } from 'lucide-react';
+import CharnameField from '../components/catalog/CharnameField';
 import ServerIdField from '../components/catalog/ServerIdField';
 import { isVoucherGame } from '../lib/catalogUtils';
 import {
@@ -21,11 +22,15 @@ import { brandUserText } from '../lib/branding';
 import { getSavedGamePlayerEntry } from '../lib/gamePlayerUid';
 import { getAdminGiftPath } from '../lib/adminRoutes';
 import { getGameOfferPath } from '../lib/offerRoutes';
-import { g2bulkCheckPlayer } from '../lib/g2bulk';
+import { g2bulkCheckPlayer, g2bulkGetTopupMeta } from '../lib/g2bulk';
 import {
   getFulfillmentUnavailableMessage,
   inspectFulfillmentAvailability,
 } from '../lib/fulfillmentAvailability';
+import {
+  gameShowsCharnameField,
+  isCharnameComplete,
+} from '../lib/gameTopupFields';
 import {
   gameShowsServerField,
   resolvePlayerServerForOrder,
@@ -56,6 +61,15 @@ export default function BuyView({
 
   const [playerUid, setPlayerUid] = useState('');
   const [playerServer, setPlayerServer] = useState('');
+  const [playerCharname, setPlayerCharname] = useState('');
+  const [topupMeta, setTopupMeta] = useState({
+    loading: false,
+    fields: [],
+    servers: [],
+    notes: '',
+    requiresServer: false,
+    requiresCharname: false,
+  });
   const [isProcessing, setIsProcessing] = useState(false);
   const [step, setStep] = useState('details');
   const [activeOrder, setActiveOrder] = useState(null);
@@ -70,7 +84,8 @@ export default function BuyView({
   const isVoucherOnly = isValidOffer && isVoucherGame(game);
   const showUidForm = needsUid && (!isBoth || redemptionChoice === 'uid') && !isVoucherOnly;
   const showRecipientFields = showUidForm && !isVoucherOnly;
-  const needsServerField = showRecipientFields && gameShowsServerField(game);
+  const needsServerField = showRecipientFields && gameShowsServerField(game, topupMeta);
+  const needsCharnameField = showRecipientFields && gameShowsCharnameField(game, topupMeta);
 
   const price = offer ? parseFloat(offer.price) : 0;
   const total = price.toFixed(2);
@@ -101,7 +116,7 @@ export default function BuyView({
 
   const savedGamePlayer = isValidOffer && showUidForm && game
     ? getSavedGamePlayerEntry(user?.game_player_uids, game)
-    : { uid: '', server: '' };
+    : { uid: '', server: '', charname: '' };
 
   useEffect(() => {
     if (!isValidOffer || !showUidForm || !game) return;
@@ -113,6 +128,52 @@ export default function BuyView({
       setPlayerServer((prev) => prev.trim() || saved.server);
     }
   }, [isValidOffer, showUidForm, game, user?.game_player_uids]);
+
+  useEffect(() => {
+    const code = game?.g2bulk_game_code;
+    if (!isValidOffer || !showUidForm || !code) {
+      setTopupMeta({
+        loading: false,
+        fields: [],
+        servers: [],
+        notes: '',
+        requiresServer: false,
+        requiresCharname: false,
+      });
+      return undefined;
+    }
+
+    let cancelled = false;
+    setTopupMeta((prev) => ({ ...prev, loading: true }));
+
+    g2bulkGetTopupMeta(code)
+      .then((payload) => {
+        if (cancelled) return;
+        setTopupMeta({
+          loading: false,
+          fields: Array.isArray(payload?.fields) ? payload.fields : [],
+          servers: Array.isArray(payload?.servers) ? payload.servers : [],
+          notes: payload?.notes || '',
+          requiresServer: !!payload?.requiresServer,
+          requiresCharname: !!payload?.requiresCharname,
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setTopupMeta({
+          loading: false,
+          fields: [],
+          servers: [],
+          notes: '',
+          requiresServer: false,
+          requiresCharname: false,
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isValidOffer, showUidForm, game?.g2bulk_game_code]);
 
   const isUidCompleteForStock = !showUidForm || playerUid.trim().length > 2;
   const [stockCheck, setStockCheck] = useState({ loading: false, available: true, message: '' });
@@ -211,17 +272,21 @@ export default function BuyView({
   const currentMethod = paymentMethods.find((m) => m.id === selectedMethod) || usableMethods[0];
 
   const resolvedPlayerServer = needsServerField
-    ? resolvePlayerServerForOrder(game, playerServer)
+    ? resolvePlayerServerForOrder(game, playerServer, topupMeta)
     : null;
+
+  const resolvedPlayerCharname = needsCharnameField ? playerCharname.trim() || null : null;
 
   const playerInfo = {
     player_uid: showUidForm ? playerUid.trim() || null : null,
     player_server: resolvedPlayerServer,
+    player_charname: resolvedPlayerCharname,
   };
 
   const isUidComplete = !showUidForm || playerUid.trim().length > 2;
   const isServerComplete = !needsServerField || !!resolvedPlayerServer;
-  const canProceed = isUidComplete && isServerComplete && !!currentMethod;
+  const isCharnameFieldComplete = isCharnameComplete(topupMeta, playerCharname);
+  const canProceed = isUidComplete && isServerComplete && isCharnameFieldComplete && !!currentMethod;
   const isManualWallet = isManualWalletMethod(selectedMethod);
   const isApiWallet = isApiWalletMethod(selectedMethod, paymentConfig);
   const methodReady = isPaymentMethodReady(selectedMethod, paymentConfig);
@@ -234,6 +299,7 @@ export default function BuyView({
           game: game?.g2bulk_game_code || game?.slug || game?.id || '',
           userId: playerUid.trim(),
           serverId: resolvedPlayerServer || undefined,
+          charname: resolvedPlayerCharname || undefined,
         });
         const isValidationValid = validation?.valid === 'valid' || validation?.valid === true || validation?.valid === 'true' || validation?.success !== false;
         if (!isValidationValid) {
@@ -508,7 +574,12 @@ export default function BuyView({
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setRedemptionChoice('redeem_code'); setPlayerUid(''); setPlayerServer(''); }}
+                  onClick={() => {
+                    setRedemptionChoice('redeem_code');
+                    setPlayerUid('');
+                    setPlayerServer('');
+                    setPlayerCharname('');
+                  }}
                   className={`flex-1 py-3 rounded-2xl border text-sm font-semibold transition ${redemptionChoice === 'redeem_code' ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border)] hover:border-[var(--accent)]/60'}`}
                 >
                   {t.useRedeemCode}
@@ -536,14 +607,32 @@ export default function BuyView({
           )}
 
           {needsServerField && (
-            <ServerIdField
-              game={game}
-              value={playerServer}
-              onChange={setPlayerServer}
-              t={t}
-              required
-              inputClassName="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 font-mono focus:border-[var(--accent)] outline-none"
-            />
+            <div className="mb-3">
+              <ServerIdField
+                game={game}
+                topupMeta={topupMeta}
+                value={playerServer}
+                onChange={setPlayerServer}
+                t={t}
+                required
+                inputClassName="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 font-mono focus:border-[var(--accent)] outline-none"
+                selectClassName="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 focus:border-[var(--accent)] outline-none"
+              />
+            </div>
+          )}
+
+          {needsCharnameField && (
+            <div className="mb-3">
+              <CharnameField
+                game={game}
+                topupMeta={topupMeta}
+                value={playerCharname}
+                onChange={setPlayerCharname}
+                t={t}
+                required
+                inputClassName="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 focus:border-[var(--accent)] outline-none"
+              />
+            </div>
           )}
 
           {(needsCode && !showUidForm) && (

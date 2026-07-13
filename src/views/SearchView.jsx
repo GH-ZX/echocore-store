@@ -11,7 +11,18 @@ import {
   getGamingAccountGames,
   getVisibleTopupGames,
 } from '../lib/catalogUtils';
-import { filterGamesByQuery, filterOffersByQuery, filterTopupGamesByQuery } from '../lib/searchUtils';
+import { formatMessage } from '../lib/i18n';
+import {
+  filterGamesByQuery,
+  filterOffersByQuery,
+  filterTopupGamesByQuery,
+  parseSearchCatalogFilter,
+  SEARCH_FILTER_ACCOUNT,
+  SEARCH_FILTER_ALL,
+  SEARCH_FILTER_GIFT_CARD,
+  SEARCH_FILTER_OFFERS,
+  SEARCH_FILTER_TOPUP,
+} from '../lib/searchUtils';
 
 const pageMotion = {
   initial: { opacity: 0, y: 14 },
@@ -30,6 +41,14 @@ const itemMotion = {
   transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] },
 };
 
+const FILTER_OPTIONS = [
+  { id: SEARCH_FILTER_ALL, labelKey: 'searchFilterAll' },
+  { id: SEARCH_FILTER_TOPUP, labelKey: 'searchFilterTopup' },
+  { id: SEARCH_FILTER_GIFT_CARD, labelKey: 'searchFilterGiftCard' },
+  { id: SEARCH_FILTER_ACCOUNT, labelKey: 'searchFilterAccount' },
+  { id: SEARCH_FILTER_OFFERS, labelKey: 'searchFilterOffers' },
+];
+
 export default function SearchView({
   games = [],
   offers = [],
@@ -40,8 +59,9 @@ export default function SearchView({
   onSelectOffer,
   onBuyNow,
 }) {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const query = (searchParams.get('q') || '').trim();
+  const catalogFilter = parseSearchCatalogFilter(searchParams.get('type'));
   const isAr = lang === 'ar';
 
   const matchedTopupGames = useMemo(() => {
@@ -75,20 +95,36 @@ export default function SearchView({
     [offers, games, query],
   );
 
-  const catalogCount = matchedTopupGames.length + matchedGiftCardGames.length + matchedAccountGames.length;
+  const showTopup = catalogFilter === SEARCH_FILTER_ALL || catalogFilter === SEARCH_FILTER_TOPUP;
+  const showGiftCards = catalogFilter === SEARCH_FILTER_ALL || catalogFilter === SEARCH_FILTER_GIFT_CARD;
+  const showAccounts = catalogFilter === SEARCH_FILTER_ALL || catalogFilter === SEARCH_FILTER_ACCOUNT;
+  const showOffers = catalogFilter === SEARCH_FILTER_ALL || catalogFilter === SEARCH_FILTER_OFFERS;
+
+  const visibleTopupGames = showTopup ? matchedTopupGames : [];
+  const visibleGiftCardGames = showGiftCards ? matchedGiftCardGames : [];
+  const visibleAccountGames = showAccounts ? matchedAccountGames : [];
+  const visibleOffers = showOffers ? matchedOffers : [];
+
+  const catalogCount = visibleTopupGames.length
+    + visibleGiftCardGames.length
+    + visibleAccountGames.length;
+
+  const setCatalogFilter = (nextFilter) => {
+    const next = new URLSearchParams(searchParams);
+    if (nextFilter === SEARCH_FILTER_ALL) {
+      next.delete('type');
+    } else {
+      next.set('type', nextFilter);
+    }
+    setSearchParams(next, { replace: true });
+  };
 
   if (!query) {
     return (
       <motion.div {...pageMotion} className="max-w-3xl mx-auto text-center py-20">
         <Search className="w-10 h-10 mx-auto text-[var(--text-muted)] mb-4" strokeWidth={1.75} />
-        <h1 className="text-2xl font-black mb-2">
-          {isAr ? t.searchGames || 'ابحث عن الألعاب' : t.searchGames || 'Search games'}
-        </h1>
-        <p className="text-[var(--text-sec)]">
-          {isAr
-            ? t.searchPrompt || 'اكتب اسم لعبة في شريط البحث أعلى الصفحة.'
-            : t.searchPrompt || 'Type a game name in the search bar above.'}
-        </p>
+        <h1 className="text-2xl font-black mb-2">{t.searchGames}</h1>
+        <p className="text-[var(--text-sec)]">{t.searchPrompt}</p>
       </motion.div>
     );
   }
@@ -103,19 +139,40 @@ export default function SearchView({
           className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[var(--accent)]/25 bg-[var(--accent)]/10 text-[var(--accent)] text-xs font-bold mb-4"
         >
           <Search className="w-3.5 h-3.5" strokeWidth={2.5} />
-          {isAr ? t.searchResults || 'نتائج البحث' : t.searchResults || 'Search results'}
+          {t.searchResults}
         </motion.div>
 
         <h1 className="games-page-title section-heading text-3xl md:text-4xl font-black mb-2">
-          {isAr ? `${t.resultsFor || 'نتائج لـ'} "${query}"` : `${t.resultsFor || 'Results for'} "${query}"`}
+          {`${t.resultsFor} "${query}"`}
         </h1>
         <p className="games-page-subtitle section-subheading text-left mx-0 max-w-[50ch]">
           {loading
-            ? (isAr ? t.loading || 'جاري التحميل...' : t.loading || 'Loading...')
-            : (isAr
-              ? `${catalogCount} منتج • ${matchedOffers.length} عرض`
-              : `${catalogCount} products • ${matchedOffers.length} offers`)}
+            ? t.loading
+            : formatMessage(t.searchResultsSummary, {
+              products: catalogCount,
+              offers: visibleOffers.length,
+            })}
         </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-6 sm:mb-8">
+        {FILTER_OPTIONS.map((option) => {
+          const active = catalogFilter === option.id;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => setCatalogFilter(option.id)}
+              className={`px-4 py-2 rounded-full text-sm font-semibold border transition-colors ${
+                active
+                  ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
+                  : 'border-[var(--border)] text-[var(--text-sec)] hover:border-[var(--accent)]/50'
+              }`}
+            >
+              {t[option.labelKey]}
+            </button>
+          );
+        })}
       </div>
 
       {loading ? (
@@ -130,24 +187,22 @@ export default function SearchView({
             />
           ))}
         </div>
-      ) : catalogCount === 0 && matchedOffers.length === 0 ? (
+      ) : catalogCount === 0 && visibleOffers.length === 0 ? (
         <motion.div
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
           className="card p-10 text-center"
         >
           <Gamepad2 className="w-10 h-10 mx-auto text-[var(--text-muted)] mb-3" />
-          <p className="text-lg text-[var(--text-sec)]">
-            {isAr ? t.noResults || 'لا توجد نتائج مطابقة.' : t.noResults || 'No games match your search.'}
-          </p>
+          <p className="text-lg text-[var(--text-sec)]">{t.noResults}</p>
         </motion.div>
       ) : (
         <div className="space-y-10">
-          {matchedTopupGames.length > 0 && (
+          {visibleTopupGames.length > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-5">
                 <Gamepad2 className="w-5 h-5 text-[var(--accent)]" />
-                <h2 className="text-xl font-bold">{isAr ? t.allGames || 'الألعاب' : t.allGames || 'Games'}</h2>
+                <h2 className="text-xl font-bold">{t.allGames}</h2>
               </div>
 
               <motion.div
@@ -156,7 +211,7 @@ export default function SearchView({
                 animate="animate"
                 className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
               >
-                {matchedTopupGames.map((game) => (
+                {visibleTopupGames.map((game) => (
                   <motion.div key={game.id} variants={itemMotion}>
                     <HomeGameCard
                       game={game}
@@ -170,11 +225,11 @@ export default function SearchView({
             </section>
           )}
 
-          {matchedGiftCardGames.length > 0 && (
+          {visibleGiftCardGames.length > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-5">
                 <Ticket className="w-5 h-5 text-violet-300" />
-                <h2 className="text-xl font-bold">{isAr ? t.giftCards || 'بطاقات الهدايا' : t.giftCards || 'Gift cards'}</h2>
+                <h2 className="text-xl font-bold">{t.giftCards}</h2>
               </div>
 
               <motion.div
@@ -183,7 +238,7 @@ export default function SearchView({
                 animate="animate"
                 className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
               >
-                {matchedGiftCardGames.map((game) => (
+                {visibleGiftCardGames.map((game) => (
                   <motion.div key={game.id} variants={itemMotion}>
                     <HomeGameCard
                       game={game}
@@ -199,11 +254,11 @@ export default function SearchView({
             </section>
           )}
 
-          {matchedAccountGames.length > 0 && (
+          {visibleAccountGames.length > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-5">
                 <UserCircle className="w-5 h-5 text-sky-300" />
-                <h2 className="text-xl font-bold">{isAr ? t.searchGamingAccounts || 'حسابات الألعاب' : t.searchGamingAccounts || 'Gaming accounts'}</h2>
+                <h2 className="text-xl font-bold">{t.searchGamingAccounts}</h2>
               </div>
 
               <motion.div
@@ -212,7 +267,7 @@ export default function SearchView({
                 animate="animate"
                 className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
               >
-                {matchedAccountGames.map((game) => (
+                {visibleAccountGames.map((game) => (
                   <motion.div key={game.id} variants={itemMotion}>
                     <HomeGameCard
                       game={game}
@@ -228,11 +283,11 @@ export default function SearchView({
             </section>
           )}
 
-          {matchedOffers.length > 0 && (
+          {visibleOffers.length > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-5">
                 <Tag className="w-5 h-5 text-[var(--accent)]" />
-                <h2 className="text-xl font-bold">{isAr ? t.offers || 'العروض' : t.offers || 'Offers'}</h2>
+                <h2 className="text-xl font-bold">{t.offers}</h2>
               </div>
 
               <motion.div
@@ -241,7 +296,7 @@ export default function SearchView({
                 animate="animate"
                 className="grid grid-cols-1 min-[400px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4"
               >
-                {matchedOffers.map((offer) => (
+                {visibleOffers.map((offer) => (
                   <motion.div key={offer.id} variants={itemMotion}>
                     <SaleOfferCard
                       offer={offer}

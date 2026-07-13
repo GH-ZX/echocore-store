@@ -14,20 +14,25 @@ export function getSavedGamePlayerEntry(gamePlayerUids, gameOrKey) {
     ? gameOrKey
     : resolveGameUidStorageKey(gameOrKey);
 
-  if (!key) return { uid: '', server: '' };
+  if (!key) return { uid: '', server: '', charname: '' };
 
   const entry = map[key];
   if (!entry || typeof entry !== 'object') {
-    return { uid: '', server: '' };
+    return { uid: '', server: '', charname: '' };
   }
 
   return {
     uid: String(entry.uid || '').trim(),
     server: String(entry.server || '').trim(),
+    charname: String(entry.charname || '').trim(),
   };
 }
 
-export function mergeGamePlayerUidIntoProfile(profile, game, { player_uid, player_server } = {}) {
+export function mergeGamePlayerUidIntoProfile(profile, game, {
+  player_uid,
+  player_server,
+  player_charname,
+} = {}) {
   if (!profile) return profile;
 
   const key = resolveGameUidStorageKey(game);
@@ -36,6 +41,7 @@ export function mergeGamePlayerUidIntoProfile(profile, game, { player_uid, playe
 
   const prev = normalizeGamePlayerUids(profile.game_player_uids);
   const server = String(player_server || '').trim();
+  const charname = String(player_charname || '').trim();
 
   return {
     ...profile,
@@ -44,6 +50,7 @@ export function mergeGamePlayerUidIntoProfile(profile, game, { player_uid, playe
       [key]: {
         uid,
         ...(server ? { server } : {}),
+        ...(charname ? { charname } : {}),
         updated_at: new Date().toISOString(),
       },
     },

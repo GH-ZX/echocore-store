@@ -348,6 +348,15 @@ export async function g2bulkCheckPlayer({ game, userId, serverId, charname }) {
   });
 }
 
+/** Authenticated: required checkout fields + server list from G2Bulk (public API proxied). */
+export async function g2bulkGetTopupMeta(gameCode) {
+  const code = String(gameCode || '').trim();
+  if (!code) {
+    return { fields: [], servers: [], notes: '', requiresServer: false };
+  }
+  return invokeG2bulk({ action: 'getTopupMeta', game: code });
+}
+
 const PULL_CATALOG_CACHE_TTL_MS = 5 * 60 * 1000;
 let pullCatalogCache = null;
 let pullCatalogCacheAt = 0;
