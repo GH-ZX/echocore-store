@@ -78,6 +78,7 @@ export default function App() {
   const [searchParams, setSearchParams] = useSearchParams();
   const hasShownLoginToast = useRef(false);
   const lastSyncedUserIdRef = useRef(null);
+  const loginLogDedupeRef = useRef({ key: '', at: 0 });
 
   const cartIconRef = useRef(null);
   const navigateRef = useRef(navigate);
@@ -204,10 +205,15 @@ export default function App() {
   const handleNotificationsClearAll = useCallback(async () => {
     try {
       await clearAllNotifications();
-      setNotifications([]);
+      const now = new Date().toISOString();
+      setNotifications((prev) => prev.map((item) => (
+        item.bell_hidden_at
+          ? item
+          : { ...item, bell_hidden_at: now, read_at: item.read_at || now }
+      )));
       setUnreadCount(0);
     } catch (err) {
-      console.error('Failed to clear notifications:', err);
+      console.error('Failed to clear bell notifications:', err);
       showToast(
         translations[lang].clearNotificationsFailed,
         'error',
@@ -218,14 +224,23 @@ export default function App() {
   const handleNotificationDismiss = useCallback(async (notificationId) => {
     const item = notifications.find((entry) => entry.id === notificationId);
     try {
-      const removed = await dismissNotification(notificationId);
-      if (!removed) return;
-      setNotifications((prev) => prev.filter((entry) => entry.id !== notificationId));
+      const hidden = await dismissNotification(notificationId);
+      if (!hidden) return;
+      const now = new Date().toISOString();
+      setNotifications((prev) => prev.map((entry) => (
+        entry.id === notificationId
+          ? {
+            ...entry,
+            bell_hidden_at: entry.bell_hidden_at || now,
+            read_at: entry.read_at || now,
+          }
+          : entry
+      )));
       if (item && !item.read_at) {
         setUnreadCount((count) => Math.max(0, count - 1));
       }
     } catch (err) {
-      console.error('Failed to dismiss notification:', err);
+      console.error('Failed to hide bell notification:', err);
       showToast(
         translations[lang].dismissNotificationFailed,
         'error',
@@ -256,6 +271,13 @@ export default function App() {
   const handleRefreshInbox = useCallback(() => {
     refreshNotifications(user?.id, 40);
   }, [refreshNotifications, user?.id]);
+
+  const handleOpenNotificationsInbox = useCallback(async () => {
+    if (unreadCount > 0) {
+      await handleNotificationsMarkAllRead();
+    }
+    navigate('/notifications');
+  }, [unreadCount, handleNotificationsMarkAllRead, navigate]);
 
   useEffect(() => () => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -462,6 +484,30 @@ export default function App() {
     return userData;
   }, [siteStatus, t.maintenanceLoginBlocked]);
 
+  const recordLoginSuccess = useCallback(async (email, userId = null) => {
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const dedupeKey = userId || normalizedEmail;
+    if (!dedupeKey) return;
+
+    const now = Date.now();
+    if (
+      loginLogDedupeRef.current.key === dedupeKey
+      && now - loginLogDedupeRef.current.at < 5000
+    ) {
+      return;
+    }
+    loginLogDedupeRef.current = { key: dedupeKey, at: now };
+
+    await logAuthEvent('login_success', {
+      email: normalizedEmail || email || null,
+    });
+  }, []);
+
+  const recordLoginSuccessRef = useRef(recordLoginSuccess);
+  useEffect(() => {
+    recordLoginSuccessRef.current = recordLoginSuccess;
+  }, [recordLoginSuccess]);
+
   const handleAuthLogin = async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
@@ -481,7 +527,6 @@ export default function App() {
       throw new Error('Failed to load user profile');
     }
 
-    await logAuthEvent('login_success', { email });
     return rejectMaintenanceLogin(userData);
   };
 
@@ -1097,6 +1142,7 @@ export default function App() {
         showNotification(translations[loginLang].loginSuccess || 'Welcome back!');
       }
 
+      void recordLoginSuccessRef.current(userData.email, userData.id);
       refreshDataAfterAuth(userData.role);
     };
 
@@ -1125,6 +1171,12 @@ export default function App() {
         setNotificationsOpen(false);
         hasShownLoginToast.current = false;
         return;
+      }
+      if (event === 'SIGNED_IN' && session?.user) {
+        const { email, id } = session.user;
+        setTimeout(() => {
+          void recordLoginSuccessRef.current(email, id);
+        }, 0);
       }
       if (event === 'PASSWORD_RECOVERY') {
         markPasswordRecoveryPending();
@@ -1477,6 +1529,7 @@ export default function App() {
       showToast(t.maintenanceLoginBlocked, 'error');
       return;
     }
+    void recordLoginSuccess(userData.email, userData.id);
     lastSyncedUserIdRef.current = userData.id;
     setUser(userData);
     if (isUserBanned(userData)) {
@@ -1559,7 +1612,7 @@ export default function App() {
         onNotificationsClearAll={handleNotificationsClearAll}
         onNotificationDismiss={handleNotificationDismiss}
         onNotificationNavigate={handleNotificationNavigate}
-        onOpenNotificationsInbox={() => navigate('/notifications')}
+        onOpenNotificationsInbox={handleOpenNotificationsInbox}
         hasSaleOffers={hasSaleOffers}
       />
 
@@ -1626,8 +1679,6 @@ export default function App() {
           handleRefreshInbox={handleRefreshInbox}
           handleNotificationMarkRead={handleNotificationMarkRead}
           handleNotificationsMarkAllRead={handleNotificationsMarkAllRead}
-          handleNotificationsClearAll={handleNotificationsClearAll}
-          handleNotificationDismiss={handleNotificationDismiss}
           handleNotificationNavigate={handleNotificationNavigate}
           handleLogout={handleLogout}
           updateUserProfile={updateUserProfile}

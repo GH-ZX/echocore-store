@@ -81,8 +81,6 @@ export default function AppRoutes({
   handleRefreshInbox,
   handleNotificationMarkRead,
   handleNotificationsMarkAllRead,
-  handleNotificationsClearAll,
-  handleNotificationDismiss,
   handleNotificationNavigate,
   handleLogout,
   updateUserProfile,
@@ -411,8 +409,6 @@ export default function AppRoutes({
                 onRefresh={handleRefreshInbox}
                 onMarkRead={handleNotificationMarkRead}
                 onMarkAllRead={handleNotificationsMarkAllRead}
-                onClearAll={handleNotificationsClearAll}
-                onDismiss={handleNotificationDismiss}
                 onNavigate={handleNotificationNavigate}
               />
             </ProtectedRoute>

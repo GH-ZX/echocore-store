@@ -393,7 +393,10 @@ export default function Header({
             <button
               type="button"
               role="menuitem"
-              onClick={() => handleNav('/notifications')}
+              onClick={() => {
+                closeAll();
+                onOpenNotificationsInbox();
+              }}
               className="header-profile-dd-item"
             >
               <Inbox className="w-4 h-4" strokeWidth={2} />

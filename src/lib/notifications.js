@@ -240,6 +240,7 @@ export async function markAllNotificationsRead() {
   return typeof data === 'number' ? data : 0;
 }
 
+/** Hides every notification from the header bell; inbox history is kept. */
 export async function clearAllNotifications() {
   const { data, error } = await supabase.rpc('clear_all_notifications');
   if (error) {
@@ -249,6 +250,7 @@ export async function clearAllNotifications() {
   return typeof data === 'number' ? data : 0;
 }
 
+/** Hides one notification from the header bell; inbox history is kept. */
 export async function dismissNotification(notificationId) {
   const { data, error } = await supabase.rpc('dismiss_notification', {
     p_notification_id: notificationId,

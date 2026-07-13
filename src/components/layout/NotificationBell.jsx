@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Bell, CheckCheck, Loader2, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -33,6 +33,10 @@ export default function NotificationBell({
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [dismissingId, setDismissingId] = useState(null);
+  const bellNotifications = useMemo(
+    () => notifications.filter((item) => !item.bell_hidden_at),
+    [notifications],
+  );
   const { coords, updatePosition } = useHeaderDropdownPosition(triggerRef, open, {
     align: 'end',
     gap: 8,
@@ -135,7 +139,7 @@ export default function NotificationBell({
                     <CheckCheck className="w-3.5 h-3.5" strokeWidth={2} />
                   </button>
                 )}
-                {notifications.length > 0 && (
+                {bellNotifications.length > 0 && (
                   <button
                     type="button"
                     onClick={handleClearAll}
@@ -153,7 +157,7 @@ export default function NotificationBell({
                 <div className="header-notif-empty">
                   <Loader2 className="w-5 h-5 animate-spin text-[var(--accent)] mx-auto" />
                 </div>
-              ) : notifications.length === 0 ? (
+              ) : bellNotifications.length === 0 ? (
                 <div className="header-notif-empty">
                   <Bell className="w-6 h-6 mx-auto mb-2 opacity-40" strokeWidth={1.5} />
                   <div className="text-xs text-[var(--text-muted)]">
@@ -161,7 +165,7 @@ export default function NotificationBell({
                   </div>
                 </div>
               ) : (
-                notifications.map((item) => {
+                bellNotifications.map((item) => {
                   const formatted = formatNotification(item, t, lang);
                   return (
                     <InboxNotificationRow

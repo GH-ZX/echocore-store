@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bell, CheckCheck, Inbox, Loader2, Trash2 } from 'lucide-react';
-import ConfirmDialog from '../components/ui/ConfirmDialog';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Bell, Inbox, Loader2 } from 'lucide-react';
 import InboxNotificationRow from '../components/notifications/InboxNotificationRow';
 import {
   formatNotification,
@@ -25,18 +24,20 @@ export default function NotificationsView({
   onRefresh,
   onMarkRead,
   onMarkAllRead,
-  onClearAll,
-  onDismiss,
   onNavigate,
 }) {
   const [activeFilter, setActiveFilter] = useState(INBOX_FILTER_IDS.ALL);
-  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
-  const [clearing, setClearing] = useState(false);
-  const [dismissingId, setDismissingId] = useState(null);
+  const markedReadOnEnterRef = useRef(false);
 
   useEffect(() => {
     onRefresh?.();
   }, [user?.id, onRefresh]);
+
+  useEffect(() => {
+    if (markedReadOnEnterRef.current || unreadCount <= 0) return;
+    markedReadOnEnterRef.current = true;
+    onMarkAllRead?.();
+  }, [unreadCount, onMarkAllRead]);
 
   const filterOptions = useMemo(
     () => getInboxFilterOptions(t, user?.role),
@@ -48,11 +49,6 @@ export default function NotificationsView({
     [notifications, activeFilter],
   );
 
-  const filteredUnreadCount = useMemo(
-    () => countInboxFilterMatches(notifications, INBOX_FILTER_IDS.UNREAD),
-    [notifications],
-  );
-
   const handleOpenItem = useCallback(async (item) => {
     const formatted = formatNotification(item, t, lang);
     const dest = getNotificationDestination(item, formatted, user?.role);
@@ -62,30 +58,7 @@ export default function NotificationsView({
     onNavigate?.(dest);
   }, [lang, onMarkRead, onNavigate, t, user?.role]);
 
-  const handleDismiss = useCallback(async (item) => {
-    if (!item?.id || dismissingId) return;
-    setDismissingId(item.id);
-    try {
-      await onDismiss?.(item.id);
-    } finally {
-      setDismissingId(null);
-    }
-  }, [dismissingId, onDismiss]);
-
-  const handleConfirmClear = useCallback(async () => {
-    setClearing(true);
-    try {
-      await onClearAll?.();
-      setConfirmClearOpen(false);
-    } finally {
-      setClearing(false);
-    }
-  }, [onClearAll]);
-
   const emptyMessageKey = getInboxEmptyMessageKey(activeFilter);
-  const showMarkAllRead = filteredUnreadCount > 0
-    && (activeFilter === INBOX_FILTER_IDS.ALL || activeFilter === INBOX_FILTER_IDS.UNREAD);
-  const showClearAll = notifications.length > 0;
 
   return (
     <div className="max-w-2xl mx-auto px-2 sm:px-0 animate-fade-in">
@@ -139,31 +112,6 @@ export default function NotificationsView({
             );
           })}
         </div>
-
-        {(showMarkAllRead || showClearAll) && (
-          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-[var(--border)]">
-            {showMarkAllRead && (
-              <button
-                type="button"
-                onClick={onMarkAllRead}
-                className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5"
-              >
-                <CheckCheck className="w-3.5 h-3.5" />
-                {t.markAllRead}
-              </button>
-            )}
-            {showClearAll && (
-              <button
-                type="button"
-                onClick={() => setConfirmClearOpen(true)}
-                className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                {t.clearNotifications}
-              </button>
-            )}
-          </div>
-        )}
       </div>
 
       {loading && notifications.length === 0 ? (
@@ -187,8 +135,6 @@ export default function NotificationsView({
                 t={t}
                 variant="page"
                 onOpen={handleOpenItem}
-                onDismiss={handleDismiss}
-                dismissing={dismissingId === item.id}
               />
             );
           })}
@@ -198,17 +144,6 @@ export default function NotificationsView({
       <p className="text-xs text-center text-[var(--text-muted)] mt-6 pb-4">
         {t.siteInboxRetention}
       </p>
-
-      <ConfirmDialog
-        open={confirmClearOpen}
-        title={t.inboxClearConfirmTitle}
-        message={t.inboxClearConfirmMessage}
-        confirmLabel={t.clearNotifications}
-        cancelLabel={t.cancel}
-        loading={clearing}
-        onConfirm={handleConfirmClear}
-        onCancel={() => !clearing && setConfirmClearOpen(false)}
-      />
     </div>
   );
 }

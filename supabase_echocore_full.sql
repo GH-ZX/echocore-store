@@ -973,6 +973,7 @@ CREATE TABLE IF NOT EXISTS public.notifications (
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   link text,
   read_at timestamptz,
+  bell_hidden_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -982,6 +983,10 @@ CREATE INDEX IF NOT EXISTS notifications_user_created_idx
 CREATE INDEX IF NOT EXISTS notifications_user_unread_idx
   ON public.notifications (user_id, read_at)
   WHERE read_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS notifications_user_bell_visible_idx
+  ON public.notifications (user_id, created_at DESC)
+  WHERE bell_hidden_at IS NULL;
 
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
@@ -1046,7 +1051,7 @@ BEGIN
   RETURN COALESCE((
     SELECT json_agg(row_to_json(q) ORDER BY q.created_at DESC)
     FROM (
-      SELECT id, type, metadata, link, read_at, created_at
+      SELECT id, type, metadata, link, read_at, bell_hidden_at, created_at
       FROM public.notifications
       WHERE user_id = v_user_id
       ORDER BY created_at DESC
@@ -1434,8 +1439,12 @@ BEGIN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
-  DELETE FROM public.notifications
-  WHERE user_id = v_user_id;
+  UPDATE public.notifications
+  SET
+    bell_hidden_at = now(),
+    read_at = COALESCE(read_at, now())
+  WHERE user_id = v_user_id
+    AND bell_hidden_at IS NULL;
 
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN v_count;
@@ -3797,8 +3806,13 @@ BEGIN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
-  DELETE FROM public.notifications
-  WHERE id = p_notification_id AND user_id = v_user_id;
+  UPDATE public.notifications
+  SET
+    bell_hidden_at = now(),
+    read_at = COALESCE(read_at, now())
+  WHERE id = p_notification_id
+    AND user_id = v_user_id
+    AND bell_hidden_at IS NULL;
 
   GET DIAGNOSTICS v_deleted = ROW_COUNT;
   RETURN v_deleted > 0;

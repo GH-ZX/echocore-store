@@ -179,6 +179,9 @@ export async function fetchAdminSiteLogs({ limit = 50, offset = 0, category = nu
 
 export async function logAuthEvent(eventType, { email = null, metadata = {} } = {}) {
   try {
+    if (eventType === 'login_success' || eventType === 'logout' || eventType === 'signup_success') {
+      await supabase.auth.getSession();
+    }
     const { error } = await supabase.rpc('log_auth_event', {
       p_event_type: eventType,
       p_email: email,
