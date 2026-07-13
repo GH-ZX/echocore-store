@@ -58,6 +58,31 @@ export function getSamWalletDisplayName(wallet) {
   return wallet?.providerDisplayName || wallet?.provider || '';
 }
 
+/** Identifier sent to Sam API POST /v1/invoices for a linked wallet row. */
+export function getSamWalletInvoiceIdentifier(wallet) {
+  if (!wallet) return '';
+  return String(
+    wallet.walletAddress || wallet.phone || wallet.cashCode || wallet.accountNumber || wallet.id || '',
+  ).trim();
+}
+
+export function findSamWalletByIdentifier(wallets, identifier) {
+  const needle = String(identifier || '').trim().toLowerCase();
+  if (!needle || !Array.isArray(wallets)) return null;
+  return wallets.find((wallet) => {
+    const candidates = [
+      wallet.walletAddress,
+      wallet.phone,
+      wallet.cashCode,
+      wallet.accountNumber,
+      wallet.id,
+    ]
+      .filter((value) => value != null && String(value).trim() !== '')
+      .map((value) => String(value).trim().toLowerCase());
+    return candidates.includes(needle);
+  }) || null;
+}
+
 export function getSamAccountLabel(wallets, fallback = '') {
   if (!Array.isArray(wallets)) return fallback;
   const label = wallets.map((w) => w.label?.trim()).find(Boolean);

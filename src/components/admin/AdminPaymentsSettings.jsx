@@ -1,22 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Wallet,
-  Link2,
   Loader2,
   CheckCircle,
   AlertCircle,
-  ExternalLink,
   RefreshCw,
   Save,
-  Copy,
-  Smartphone,
-  Trash2,
 } from 'lucide-react';
 import { fetchStoreSettings, saveStoreSettings } from '../../lib/storeSettings';
-import { fetchSamApiSettings, listSamWallets, saveSamApiSettings } from '../../lib/samApi';
+import { fetchSamApiSettings, saveSamApiSettings } from '../../lib/samApi';
 import { uploadImage } from '../../lib/uploadImage';
-import ConfirmDialog from '../ui/ConfirmDialog';
-import { getSamWalletDisplayName } from '../../lib/samWalletFormat';
+import AdminSamApiSettings from './AdminSamApiSettings';
 
 function ManualWalletSection({
   title,
@@ -82,40 +76,13 @@ function ManualWalletSection({
   );
 }
 
-function WalletPickerChips({ wallets, onPick }) {
-  if (!wallets.length) return null;
-  return (
-    <div className="mt-2 flex flex-wrap gap-2">
-      {wallets.map((wallet) => {
-        const id = wallet.walletAddress || wallet.phone || wallet.cashCode || wallet.accountNumber || wallet.id;
-        const label = getSamWalletDisplayName(wallet) || wallet.providerDisplayName || wallet.provider || 'Wallet';
-        const isSyriatel = wallet.provider === 'syriatel';
-        return (
-          <button
-            key={String(wallet.id || id)}
-            type="button"
-            onClick={() => onPick(String(id), isSyriatel ? 'syriatel' : 'shamcash')}
-            className="action-chip text-xs font-mono"
-          >
-            {label}: {String(id).slice(0, 12)}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 export default function AdminPaymentsSettings({ t = {}, onSaved }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [samTesting, setSamTesting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [shamQrUploading, setShamQrUploading] = useState(false);
   const [syriatelQrUploading, setSyriatelQrUploading] = useState(false);
-  const [samWallets, setSamWallets] = useState([]);
-  const [deleteKeyOpen, setDeleteKeyOpen] = useState(false);
-  const [deletingKey, setDeletingKey] = useState(false);
 
   const [samForm, setSamForm] = useState({
     sam_api_enabled: false,
@@ -141,6 +108,17 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
 
   const isApiMode = samForm.sam_wallet_mode === 'api';
   const apiKeyLocked = !!samForm.sam_api_key_set;
+
+  const notifyError = useCallback((message) => {
+    if (message) setError(message);
+    else setError('');
+  }, []);
+
+  const notifySuccess = useCallback((message) => {
+    if (!message) return;
+    setSuccess(message);
+    setTimeout(() => setSuccess(''), 3000);
+  }, []);
 
   const load = async () => {
     setLoading(true);
@@ -233,98 +211,6 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
     }
   };
 
-  const handleSamTestWallets = async () => {
-    setSamTesting(true);
-    setError('');
-    try {
-      if (samForm.sam_api_key?.trim()) {
-        await saveSamApiSettings({
-          enabled: samForm.sam_api_enabled,
-          walletMode: samForm.sam_wallet_mode,
-          shamcashWalletIdentifier: samForm.sam_shamcash_wallet_identifier,
-          syriatelWalletIdentifier: samForm.sam_syriatel_wallet_identifier,
-          invoiceCurrency: samForm.sam_invoice_currency,
-          apiKey: samForm.sam_api_key,
-        });
-        setSamForm((prev) => ({ ...prev, sam_api_key: '', sam_api_key_set: true }));
-      }
-
-      const wallets = await listSamWallets();
-      const list = Array.isArray(wallets) ? wallets : [];
-      setSamWallets(list);
-
-      const shamWallet = list.find((w) => w.provider !== 'syriatel');
-      const syriatelWallet = list.find((w) => w.provider === 'syriatel');
-      const pickId = (w) => {
-        if (!w) return null;
-        return w.walletAddress || w.phone || w.cashCode || w.accountNumber || w.id;
-      };
-
-      setSamForm((prev) => ({
-        ...prev,
-        sam_shamcash_wallet_identifier: prev.sam_shamcash_wallet_identifier || (pickId(shamWallet) ? String(pickId(shamWallet)) : ''),
-        sam_syriatel_wallet_identifier: prev.sam_syriatel_wallet_identifier || (pickId(syriatelWallet) ? String(pickId(syriatelWallet)) : ''),
-      }));
-
-      setSuccess(t.samWalletsLoaded);
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSamTesting(false);
-    }
-  };
-
-  const pickWallet = (identifier, provider) => {
-    if (provider === 'syriatel') {
-      setSamForm((p) => ({ ...p, sam_syriatel_wallet_identifier: identifier }));
-    } else {
-      setSamForm((p) => ({ ...p, sam_shamcash_wallet_identifier: identifier }));
-    }
-  };
-
-  const copyWebhookUrl = async () => {
-    if (!samForm.webhookUrl) return;
-    try {
-      await navigator.clipboard.writeText(samForm.webhookUrl);
-      setSuccess(t.copied);
-      setTimeout(() => setSuccess(''), 2000);
-    } catch {
-      setError(t.copyFailed);
-    }
-  };
-
-  const handleDeleteSamApiKey = async () => {
-    setDeletingKey(true);
-    setError('');
-    try {
-      const settings = await saveSamApiSettings({
-        clearApiKey: true,
-        enabled: false,
-        walletMode: samForm.sam_wallet_mode,
-        shamcashWalletIdentifier: samForm.sam_shamcash_wallet_identifier,
-        syriatelWalletIdentifier: samForm.sam_syriatel_wallet_identifier,
-        invoiceCurrency: samForm.sam_invoice_currency,
-      });
-      setSamForm((prev) => ({
-        ...prev,
-        sam_api_key: '',
-        sam_api_enabled: false,
-        sam_api_key_set: !!settings.sam_api_key_set,
-        sam_api_key_masked: settings.sam_api_key_masked || '',
-      }));
-      setSamWallets([]);
-      setDeleteKeyOpen(false);
-      setSuccess(t.samApiKeyRemoved);
-      setTimeout(() => setSuccess(''), 3000);
-      onSaved?.();
-    } catch (err) {
-      setError(err.message || t.saveFailed);
-    } finally {
-      setDeletingKey(false);
-    }
-  };
-
   const handleQrUpload = async (e, field, setUploading, folder) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -349,9 +235,6 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
     );
   }
 
-  const shamWallets = samWallets.filter((w) => w.provider !== 'syriatel');
-  const syriatelWallets = samWallets.filter((w) => w.provider === 'syriatel');
-
   return (
     <div className="space-y-6">
       <div className="card p-5 sm:p-6 border-[var(--accent)]/20">
@@ -365,17 +248,6 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
               {t.paymentsScreenHelp}
             </p>
           </div>
-          {isApiMode && (
-            <a
-              href="https://sam-api.pro/api-docs"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="action-chip text-xs gap-1.5"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              Sam API Docs
-            </a>
-          )}
         </div>
 
         <div className="mb-6 p-4 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)]">
@@ -443,150 +315,55 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
               onPayCodeChange={(e) => setForm((p) => ({ ...p, syriatel_pay_code: e.target.value }))}
               onEnabledChange={(e) => setForm((p) => ({ ...p, syriatel_enabled: e.target.checked }))}
             />
+
+            <div className="flex flex-wrap gap-2 mt-6 pt-4 border-t border-[var(--border)]">
+              <button
+                type="button"
+                onClick={() => handleSaveAll(false)}
+                disabled={saving}
+                className="btn btn-primary action-chip gap-2 !border-0"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {t.saveSettings}
+              </button>
+              <button type="button" onClick={load} className="action-chip gap-2">
+                <RefreshCw className="w-4 h-4" />
+                {t.refresh}
+              </button>
+            </div>
           </div>
         ) : (
-          <div className="space-y-4 pt-2 border-t border-[var(--border)]">
-            <p className="text-sm text-[var(--text-sec)] pt-4">{t.samApiSectionHelp}</p>
-
-            <label className="flex items-center gap-3 p-4 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] cursor-pointer">
-              <input
-                type="checkbox"
-                checked={samForm.sam_api_enabled}
-                onChange={(e) => setSamForm((p) => ({ ...p, sam_api_enabled: e.target.checked }))}
-                className="w-4 h-4 accent-[var(--accent)]"
-              />
-              <div>
-                <div className="font-semibold">{t.samApiEnabledLabel}</div>
-                <div className="text-xs text-[var(--text-muted)]">{t.samApiEnabledHelp}</div>
-              </div>
-            </label>
-
-            <div className={`rounded-xl border p-4 ${apiKeyLocked ? 'border-emerald-500/25 bg-emerald-500/5' : 'border-transparent'}`}>
-              <label className="text-xs text-[var(--text-muted)] block mb-1.5">{t.samApiKeyLabel}</label>
-              <input
-                type="password"
-                value={apiKeyLocked ? samForm.sam_api_key_masked : samForm.sam_api_key}
-                onChange={(e) => !apiKeyLocked && setSamForm((p) => ({ ...p, sam_api_key: e.target.value }))}
-                placeholder={apiKeyLocked ? '' : 'sk_...'}
-                readOnly={apiKeyLocked}
-                disabled={apiKeyLocked}
-                className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 font-mono text-sm outline-none disabled:opacity-80 disabled:cursor-not-allowed"
-                autoComplete="off"
-              />
-              <p className="text-[10px] text-[var(--text-muted)] mt-1.5">
-                {apiKeyLocked ? t.samApiKeyLocked : t.samApiKeyHelp}
-              </p>
-              {apiKeyLocked && (
-                <button
-                  type="button"
-                  onClick={() => setDeleteKeyOpen(true)}
-                  className="mt-3 action-chip border-red-500/40 text-red-400 hover:bg-red-500/10 gap-1.5"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  {t.samApiDeleteKey}
-                </button>
-              )}
-            </div>
-
-            <div>
-              <label className="text-xs text-[var(--text-muted)] block mb-1.5">{t.samInvoiceCurrencyLabel}</label>
-              <select
-                value={samForm.sam_invoice_currency}
-                onChange={(e) => setSamForm((p) => ({ ...p, sam_invoice_currency: e.target.value }))}
-                className="w-full max-w-xs bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 text-sm outline-none"
-              >
-                <option value="USD">USD</option>
-                <option value="SYP">SYP</option>
-                <option value="EUR">EUR</option>
-              </select>
-            </div>
-
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs text-[var(--text-muted)] block mb-1.5 flex items-center gap-1.5">
-                  <Wallet className="w-3.5 h-3.5 text-green-400" />
-                  {t.samShamcashWalletLabel}
-                </label>
-                <input
-                  type="text"
-                  value={samForm.sam_shamcash_wallet_identifier}
-                  onChange={(e) => setSamForm((p) => ({ ...p, sam_shamcash_wallet_identifier: e.target.value }))}
-                  className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 font-mono text-sm outline-none"
-                />
-                <WalletPickerChips wallets={shamWallets} onPick={pickWallet} />
-              </div>
-              <div>
-                <label className="text-xs text-[var(--text-muted)] block mb-1.5 flex items-center gap-1.5">
-                  <Smartphone className="w-3.5 h-3.5 text-red-400" />
-                  {t.samSyriatelWalletLabel}
-                </label>
-                <input
-                  type="text"
-                  value={samForm.sam_syriatel_wallet_identifier}
-                  onChange={(e) => setSamForm((p) => ({ ...p, sam_syriatel_wallet_identifier: e.target.value }))}
-                  className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 font-mono text-sm outline-none"
-                />
-                <WalletPickerChips wallets={syriatelWallets} onPick={pickWallet} />
-              </div>
-            </div>
-            <p className="text-[10px] text-[var(--text-muted)]">{t.receivingWalletHelp}</p>
-
-            {samForm.webhookUrl && (
-              <div>
-                <label className="text-xs text-[var(--text-muted)] block mb-1.5">{t.samWebhookUrlLabel}</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    readOnly
-                    value={samForm.webhookUrl}
-                    className="flex-1 bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl px-4 py-3 font-mono text-xs outline-none"
-                  />
-                  <button type="button" onClick={copyWebhookUrl} className="action-chip gap-1.5">
-                    <Copy className="w-4 h-4" />
-                  </button>
-                </div>
-                <p className="text-[10px] text-[var(--text-muted)] mt-1.5">{t.samWebhookUrlHelp}</p>
-              </div>
-            )}
-          </div>
+          <AdminSamApiSettings
+            t={t}
+            samForm={samForm}
+            setSamForm={setSamForm}
+            onSaved={onSaved}
+            onError={notifyError}
+            onSuccess={notifySuccess}
+            saving={saving}
+            onSaveAll={handleSaveAll}
+          />
         )}
 
-        <div className="flex flex-wrap gap-2 mt-6 pt-4 border-t border-[var(--border)]">
-          {isApiMode && (
-            <button
-              type="button"
-              onClick={handleSamTestWallets}
-              disabled={samTesting || (!samForm.sam_api_key && !samForm.sam_api_key_set)}
-              className="action-chip border-green-500/30 text-green-400 hover:bg-green-500/10 disabled:opacity-50"
-            >
-              {samTesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
-              {t.samTestWallets}
+        {isApiMode && (
+          <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-[var(--border)]">
+            {apiKeyLocked && (
+              <button
+                type="button"
+                onClick={() => handleSaveAll(false)}
+                disabled={saving}
+                className="btn btn-primary action-chip gap-2 !border-0"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {t.saveSettings}
+              </button>
+            )}
+            <button type="button" onClick={load} className="action-chip gap-2">
+              <RefreshCw className="w-4 h-4" />
+              {t.refresh}
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => handleSaveAll(false)}
-            disabled={saving}
-            className="btn btn-primary action-chip gap-2 !border-0"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {t.saveSettings}
-          </button>
-          {isApiMode && (
-            <button
-              type="button"
-              onClick={() => handleSaveAll(true)}
-              disabled={saving}
-              className="action-chip text-xs"
-            >
-              {t.samRegenerateWebhook}
-            </button>
-          )}
-          <button type="button" onClick={load} className="action-chip gap-2">
-            <RefreshCw className="w-4 h-4" />
-            {t.refresh}
-          </button>
-        </div>
+          </div>
+        )}
 
         {error && (
           <div className="mt-4 flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 text-sm">
@@ -615,18 +392,6 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
           </div>
         </div>
       </div>
-
-      <ConfirmDialog
-        open={deleteKeyOpen}
-        title={t.samApiDeleteKey}
-        message={t.samApiDeleteKeyConfirm}
-        confirmLabel={t.samApiDeleteKey}
-        cancelLabel={t.cancel}
-        variant="danger"
-        loading={deletingKey}
-        onConfirm={handleDeleteSamApiKey}
-        onCancel={() => !deletingKey && setDeleteKeyOpen(false)}
-      />
     </div>
   );
 }
