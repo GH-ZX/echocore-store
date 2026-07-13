@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ArrowLeft, Loader2, CheckCircle, Wallet, QrCode, Clock, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Loader2, CheckCircle, Wallet, QrCode, Clock, AlertCircle, Info } from 'lucide-react';
 import {
   RECHARGE_PRESETS,
   validateRechargeAmount,
@@ -272,6 +272,9 @@ export default function RechargeView({
   const activeMethodLabel = t[activeDisplay.methodLabelKey] || activeMethod;
   const activeIsApiWallet = isApiWalletMethod(activeMethod, paymentConfig);
   const activeInvoice = activeRequest?.invoice;
+  const showShamcashGuide = step !== 'completed'
+    && (selectedMethod === 'ShamCash' || activeMethod === 'ShamCash');
+  const shamcashGuideSteps = t.rechargeShamcashGuideSteps || [];
 
   if (loadingRequest) {
     return (
@@ -315,6 +318,27 @@ export default function RechargeView({
           <h1 className="text-3xl font-black mb-2">{t.rechargeTitle}</h1>
           <p className="text-[var(--text-sec)]">{rechargeSubtitle}</p>
         </div>
+
+        {showShamcashGuide && shamcashGuideSteps.length > 0 && (
+          <div className="mb-8 rounded-2xl border border-[var(--accent)]/25 bg-[var(--accent)]/5 p-5 sm:p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <Info className="w-5 h-5 text-[var(--accent)] flex-shrink-0 mt-0.5" aria-hidden="true" />
+              <h2 className="font-bold text-sm sm:text-base text-[var(--text-primary)]">
+                {t.rechargeShamcashGuideTitle}
+              </h2>
+            </div>
+            <ol className="space-y-2.5 text-sm text-[var(--text-sec)] leading-relaxed list-decimal list-inside marker:text-[var(--accent)] marker:font-semibold">
+              {shamcashGuideSteps.map((stepText) => (
+                <li key={stepText}>{stepText}</li>
+              ))}
+            </ol>
+            {t.rechargeShamcashGuideRefNote && (
+              <p className="mt-4 text-xs text-[var(--accent)] font-medium leading-relaxed">
+                {t.rechargeShamcashGuideRefNote}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="mb-8 p-6 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] text-center">
           <div className="text-sm text-[var(--text-muted)] mb-1">{t.currentBalance}</div>

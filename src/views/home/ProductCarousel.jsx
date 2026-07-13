@@ -5,6 +5,7 @@ import AdminEditButton from '../../components/admin/AdminEditButton';
 
 import { brandUserText } from '../../lib/branding';
 import { presetImageUrl } from '../../lib/imageUtils';
+import { getGameCoverUrl } from '../../lib/gameImages';
 import { extractDominantLogoColor, isCanvasSafeUrl, sampleLogoColorFromUrl } from '../../lib/logoColor';
 
 const AUTOPLAY_MS = 6000;
@@ -73,7 +74,7 @@ export default function ProductCarousel({
   }, [embla]);
 
   const getCoverUrl = useCallback(
-    (item) => presetImageUrl(item.image_url || item.image || placeholderCover, 'carouselCover'),
+    (item) => presetImageUrl(getGameCoverUrl(item) || item.image || placeholderCover, 'carouselCover'),
     [placeholderCover],
   );
 

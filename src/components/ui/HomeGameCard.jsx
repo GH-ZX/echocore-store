@@ -1,7 +1,7 @@
 import { Ticket, Gamepad2 } from 'lucide-react';
 import AdminEditButton from '../admin/AdminEditButton';
 import BorderGlow from './BorderGlow';
-import { presetImageUrl } from '../../lib/imageUtils';
+import { getGameCardImageUrl, presetGameCardImage } from '../../lib/gameImages';
 import { isVoucherGame } from '../../lib/catalogUtils';
 import { brandUserText } from '../../lib/branding';
 
@@ -29,6 +29,7 @@ export default function HomeGameCard({
   if (!game) return null;
 
   const gameName = brandUserText(isAr ? game.name_ar : game.name_en);
+  const cardImageUrl = getGameCardImageUrl(game);
 
   const metaLabel = isVoucher
     ? (packs != null
@@ -67,9 +68,9 @@ export default function HomeGameCard({
         tabIndex={teaser ? -1 : undefined}
       >
         <div className="relative aspect-[16/10] sm:aspect-[4/3] overflow-hidden bg-[var(--bg-elevated)] flex-shrink-0">
-          {game.image_url ? (
+          {cardImageUrl ? (
             <img
-              src={presetImageUrl(game.image_url, 'cardCover')}
+              src={presetGameCardImage(cardImageUrl)}
               alt={gameName}
               loading="lazy"
               decoding="async"

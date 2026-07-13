@@ -6,6 +6,7 @@ import Modal from '../ui/Modal';
 import ImageFocusPicker from './ImageFocusPicker';
 import GameImageSearch from './GameImageSearch';
 import SiteImagePicker from './SiteImagePicker';
+import { dedupeGameLogoAgainstCover } from '../../lib/gameImages';
 
 export default function AdminGameEditModal({
   game,
@@ -107,6 +108,7 @@ export default function AdminGameEditModal({
 
       if (logoFile) finalLogo = await uploadImage(logoFile, 'game-logo');
       if (coverFile) finalImage = await uploadImage(coverFile, 'game-cover');
+      finalLogo = dedupeGameLogoAgainstCover(finalLogo, finalImage);
 
       await onSave({
         id: game?.id || null,

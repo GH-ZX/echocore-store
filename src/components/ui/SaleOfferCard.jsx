@@ -6,6 +6,7 @@ import { getOfferDisplayName } from '../../lib/offerDisplay';
 import { getFulfillmentGameForOffer } from '../../lib/gameRegions';
 import OfferPackLabel from './OfferPackLabel';
 import { presetImageUrl } from '../../lib/imageUtils';
+import { getGameCardImageUrl } from '../../lib/gameImages';
 
 export default function SaleOfferCard({
   offer,
@@ -33,6 +34,9 @@ export default function SaleOfferCard({
       ? Math.round((1 - parseFloat(offer.price) / parseFloat(offer.original_price)) * 100)
       : null;
 
+  const gameCardImage = getGameCardImageUrl(game);
+  const saleCardImage = offer.sale_image_url || gameCardImage;
+
   return (
     <BorderGlow
       edgeSensitivity={25}
@@ -49,9 +53,9 @@ export default function SaleOfferCard({
     >
       {/* Image */}
       <div className="relative aspect-[16/10] sm:aspect-[4/3] overflow-hidden bg-[var(--bg-elevated)] flex-shrink-0">
-        {offer.sale_image_url || game.image_url ? (
+        {saleCardImage ? (
           <img
-            src={presetImageUrl(offer.sale_image_url || game.image_url, 'cardCover')}
+            src={presetImageUrl(saleCardImage, 'cardCover')}
             alt={offerName}
             className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             loading="lazy"

@@ -127,7 +127,19 @@ const ar = {
     },
     {
       q: 'ما هي طرق الدفع المتاحة؟',
-      a: 'ندعم الدفع عبر شام كاش والرصيد. بايننس باي والبطاقات الائتمانية قريباً.',
+      a: 'ندعم الدفع عبر شام كاش وسيرياتيل كاش لشحن الرصيد، والشراء مباشرة من رصيد حسابك. بايننس باي والبطاقات الائتمانية قريباً.',
+    },
+    {
+      q: 'كيف أشحن رصيدي عبر شام كاش؟',
+      a: 'اضغط «شحن الرصيد» من الموقع، اختر المبلغ، ثم «متابعة للدفع». في صفحة الدفع أرسل المبلغ إلى رمز QR أو إلى رقم الدفع أسفل الرمز عبر تطبيق شام كاش. بعد التحويل انسخ رقم العملية من التطبيق — يجب أن يبدأ بعلامة # متبوعة بالأرقام فقط (مثال: #324065688) — والصقه في خانة التحقق. عند قبول العملية تُعاد إلى الموقع ويُضاف الرصيد إلى حسابك.',
+    },
+    {
+      q: 'كيف أشتري عرضاً باستخدام الرصيد؟',
+      a: 'بعد شحن الرصيد، اختر اللعبة والعرض المناسب، أضفه إلى السلة أو اضغط «اشترِ الآن»، ثم اختر «الدفع من الرصيد» عند إتمام الشراء. يُخصم المبلغ فوراً ويبدأ التسليم مباشرة.',
+    },
+    {
+      q: 'ما هو معرف اللاعب (UID) ولماذا أحتاجه؟',
+      a: 'معرف اللاعب هو رقم حسابك داخل اللعبة. نحتاجه لإرسال الشحن مباشرة إلى حسابك. تأكد من إدخاله بشكل صحيح قبل الدفع — أي خطأ قد يؤخر التسليم أو يتطلب مراجعة الدعم.',
     },
     {
       q: 'هل يمكنني استخدام الكود على أي حساب؟',
@@ -297,7 +309,19 @@ const en = {
     },
     {
       q: 'What payment methods are available?',
-      a: 'We support ShamCash and account balance. Binance Pay and cards are coming soon.',
+      a: 'We support ShamCash and Syriatel Cash for balance top-ups, and paying directly from your account balance. Binance Pay and cards are coming soon.',
+    },
+    {
+      q: 'How do I recharge via ShamCash?',
+      a: 'Tap Recharge Balance on the site, choose an amount, then Continue to payment. On the payment page, send the exact amount to the QR code or to the pay code shown below it in the ShamCash app. After paying, copy the transaction ID from the app — it must start with # followed by digits only (e.g. #324065688) — and paste it into the verification field. Once accepted, you return to the site and your balance is credited.',
+    },
+    {
+      q: 'How do I buy an offer with my balance?',
+      a: 'After topping up, pick a game and offer, add it to cart or tap Buy Now, then choose Pay from balance at checkout. The amount is deducted instantly and delivery starts right away.',
+    },
+    {
+      q: 'What is a player UID and why do I need it?',
+      a: 'Your player UID is your in-game account ID. We need it to deliver top-ups directly to your account. Double-check it before paying — mistakes can delay delivery or require support review.',
     },
     {
       q: 'Can I use the code on any account?',
