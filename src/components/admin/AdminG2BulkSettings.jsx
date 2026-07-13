@@ -224,6 +224,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
       autoSyncEnabled: payload.g2bulk_auto_sync_enabled,
       autoSyncHour: Number(payload.g2bulk_auto_sync_hour),
       autoSyncTimezone: payload.g2bulk_auto_sync_timezone,
+      autoApprove: payload.g2bulk_auto_approve,
       apiKey: apiKeyInput.trim() ? apiKeyInput.trim() : undefined,
     });
     if (apiKeyInput.trim()) setApiKeyInput('');
@@ -986,6 +987,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         open={pullPanelOpen}
         onClose={() => setPullPanelOpen(false)}
         t={t}
+        lang={lang}
         catalogMode={catalogMode}
         initialSelection={pullSelection}
         onLoaded={handlePullSelectionLoaded}

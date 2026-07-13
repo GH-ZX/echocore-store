@@ -42,8 +42,6 @@ export default function BuyView({
 
   const { offer, game } = resolveOfferRoute(offers, games, { gameSlug, offerSlug });
 
-  const availableServers = game && Array.isArray(game.servers) ? game.servers : [];
-
   const anyManualReady = hasAnyManualWalletReady(paymentConfig);
 
   const [playerUid, setPlayerUid] = useState('');
@@ -477,36 +475,18 @@ export default function BuyView({
           <div>
             <label className="text-xs text-[var(--text-muted)] inline-flex items-center gap-1 mb-1">
               <Server className="w-3.5 h-3.5" />
-              {t.selectServer || 'Server / Region'}
+              {t.serverLabel || 'Server ID'}
               <span className="text-red-400 ml-1">*</span>
             </label>
-
-            {availableServers.length > 0 ? (
-              <select
-                value={playerServer}
-                onChange={(e) => setPlayerServer(e.target.value)}
-                className="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 focus:border-[var(--accent)] outline-none"
-                required
-              >
-                <option value="">{t.selectServer}</option>
-                {availableServers.map((srv, idx) => (
-                  <option key={idx} value={srv}>{srv}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type="text"
-                value={playerServer}
-                onChange={(e) => setPlayerServer(e.target.value)}
-                placeholder={t.serverPlaceholder || 'Enter server / region (e.g. Europe, China, America)'}
-                className="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 font-mono focus:border-[var(--accent)] outline-none"
-              />
-            )}
-            {availableServers.length > 0 && (
-              <p className="text-[10px] text-[var(--text-muted)] mt-1">{t.availableServers} ({availableServers.length})</p>
-            )}
+            <input
+              type="text"
+              value={playerServer}
+              onChange={(e) => setPlayerServer(e.target.value)}
+              placeholder={t.serverPlaceholder || 'Enter server ID (e.g. 1, 2, 3)'}
+              className="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 font-mono focus:border-[var(--accent)] outline-none"
+            />
             {showRecipientFields && !playerServer && (
-              <div className="text-xs text-amber-400 mt-1">{t.serverRequired || 'A server or region is required for top-up orders.'}</div>
+              <div className="text-xs text-amber-400 mt-1">{t.serverRequired || 'A server ID is required for this game.'}</div>
             )}
           </div>
 

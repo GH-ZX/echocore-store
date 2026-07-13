@@ -1,6 +1,6 @@
 export function resolveGameUidStorageKey(game) {
   if (!game) return '';
-  return String(game.parent_game_id || game.id || '');
+  return String(game.id || '');
 }
 
 export function normalizeGamePlayerUids(map) {

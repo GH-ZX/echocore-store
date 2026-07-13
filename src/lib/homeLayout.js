@@ -286,7 +286,7 @@ export function evaluateHomeSectionStatus(section, context = {}) {
       return { hidden: false, empty: offerCount === 0 };
     case 'game_picks': {
       const valid = (section.game_ids || []).filter((id) => (
-        games.some((game) => game.id === id && !game.parent_game_id)
+        games.some((game) => game.id === id)
       ));
       return { hidden: false, empty: valid.length === 0 };
     }

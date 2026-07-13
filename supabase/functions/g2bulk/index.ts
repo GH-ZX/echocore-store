@@ -51,21 +51,6 @@ async function readJson(req: Request) {
   }
 }
 
-async function getGamesTableColumns(serviceClient: ReturnType<typeof createClient>): Promise<Set<string>> {
-  try {
-    const { error } = await serviceClient.from('games').select('id').limit(1);
-    if (!error) return new Set();
-    const message = String(error.message || '');
-    const match = message.match(/column\s+"?([a-zA-Z0-9_]+)"?/i);
-    if (match) {
-      return new Set([match[1].toLowerCase()]);
-    }
-  } catch {
-    // ignore and fall back to best-effort writes
-  }
-  return new Set();
-}
-
 async function g2bulkFetch(
   apiKey: string,
   path: string,
@@ -112,7 +97,7 @@ async function resolveApiKeyRaw(serviceClient: ReturnType<typeof createClient>) 
 async function loadStoreSettingsRow(serviceClient: ReturnType<typeof createClient>) {
   const { data, error } = await serviceClient
     .from('store_settings')
-    .select('g2bulk_enabled, g2bulk_markup_percent, g2bulk_charm_pricing_enabled, g2bulk_catalog_only, g2bulk_catalog_mode, g2bulk_last_sync_at, g2bulk_last_check_at, g2bulk_check_summary, g2bulk_auto_sync_enabled, g2bulk_auto_sync_hour, g2bulk_auto_sync_timezone, g2bulk_pull_selection, g2bulk_api_key')
+    .select('g2bulk_enabled, g2bulk_markup_percent, g2bulk_charm_pricing_enabled, g2bulk_catalog_only, g2bulk_catalog_mode, g2bulk_last_sync_at, g2bulk_last_check_at, g2bulk_check_summary, g2bulk_auto_sync_enabled, g2bulk_auto_sync_hour, g2bulk_auto_sync_timezone, g2bulk_auto_approve, g2bulk_pull_selection, g2bulk_api_key')
     .eq('id', 1)
     .maybeSingle();
 
@@ -140,6 +125,7 @@ function buildSettingsEnvelope(row: Json | null | undefined, envKey: string | nu
     g2bulk_auto_sync_enabled: settingsRow.g2bulk_auto_sync_enabled !== false,
     g2bulk_auto_sync_hour: Number(settingsRow.g2bulk_auto_sync_hour ?? 5),
     g2bulk_auto_sync_timezone: String(settingsRow.g2bulk_auto_sync_timezone || 'Asia/Damascus'),
+    g2bulk_auto_approve: settingsRow.g2bulk_auto_approve !== false,
     g2bulk_pull_selection: settingsRow.g2bulk_pull_selection || {},
     g2bulk_api_key_set: !!(apiKey || envKeyTrimmed),
     g2bulk_api_key_masked: apiKey
@@ -156,15 +142,6 @@ function slugify(value: string) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80) || 'game';
-}
-
-function childGameSlug(baseKey: string, code: string) {
-  const parentSlug = slugify(baseKey);
-  const codeSlug = slugify(code);
-  if (codeSlug === parentSlug) {
-    return `${parentSlug}--${codeSlug}`.slice(0, 80);
-  }
-  return codeSlug;
 }
 
 function formatSyncError(err: unknown) {
@@ -371,63 +348,127 @@ function mergePullSelections(saved: PullSelection, db: PullSelection): PullSelec
   if (isEmptyPullSelection(saved)) {
     return normalizePullSelection(db);
   }
+  return normalizePullSelection(saved);
+}
+
+function slugifyPullKey(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'game';
+}
+
+function slugifyUnderscoreKey(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80) || 'game';
+}
+
+function buildCatalogKeyIndex(games: Json[]) {
+  const keyToCanonical = new Map<string, string>();
+  for (const game of games) {
+    const code = String(game.code || '').trim();
+    if (!code) continue;
+    for (const alias of [code, code.toLowerCase(), slugifyPullKey(code), slugifyUnderscoreKey(code)]) {
+      if (alias) keyToCanonical.set(alias, code);
+    }
+  }
+  return keyToCanonical;
+}
+
+function resolveCatalogBaseKey(key: string, index: Map<string, string>) {
+  const raw = String(key || '').trim();
+  if (!raw) return '';
+  return index.get(raw)
+    || index.get(raw.toLowerCase())
+    || index.get(slugifyPullKey(raw))
+    || index.get(slugifyUnderscoreKey(raw))
+    || '';
+}
+
+function prunePullSelectionToCatalog(
+  selection: PullSelection,
+  catalog: { games: Json[]; accounts: Json[]; giftCards: Json[] },
+): PullSelection {
+  const index = buildCatalogKeyIndex(catalog.games || []);
+  const validCodes = new Set(
+    (catalog.games || []).map((g) => String(g.code || '').trim()).filter(Boolean),
+  );
+  const validAccountIds = new Set(
+    (catalog.accounts || []).map((row) => Number(row.categoryId)).filter((value) => Number.isFinite(value)),
+  );
+  const validGiftIds = new Set(
+    (catalog.giftCards || []).map((row) => Number(row.categoryId)).filter((value) => Number.isFinite(value)),
+  );
+
+  const pruneKeys = (keys: string[]) => [...new Set(
+    keys
+      .map((value) => resolveCatalogBaseKey(value, index))
+      .filter((code) => code && validCodes.has(code)),
+  )];
+
+  const pruneIds = (ids: number[], valid: Set<number>) => [...new Set(
+    ids.filter((value) => Number.isFinite(value) && valid.has(value)),
+  )];
 
   return normalizePullSelection({
-    topupSyncBaseKeys: [...new Set([...saved.topupSyncBaseKeys, ...db.topupSyncBaseKeys])],
-    topupLiveBaseKeys: [...new Set([...saved.topupLiveBaseKeys, ...db.topupLiveBaseKeys])],
-    accountSyncCategoryIds: [...new Set([...saved.accountSyncCategoryIds, ...db.accountSyncCategoryIds])],
-    accountLiveCategoryIds: [...new Set([...saved.accountLiveCategoryIds, ...db.accountLiveCategoryIds])],
-    giftSyncCategoryIds: [...new Set([...saved.giftSyncCategoryIds, ...db.giftSyncCategoryIds])],
-    giftLiveCategoryIds: [...new Set([...saved.giftLiveCategoryIds, ...db.giftLiveCategoryIds])],
-    carouselBaseKeys: saved.carouselBaseKeys.length > 0 ? saved.carouselBaseKeys : db.carouselBaseKeys,
+    ...selection,
+    topupSyncBaseKeys: pruneKeys(selection.topupSyncBaseKeys),
+    topupLiveBaseKeys: pruneKeys(selection.topupLiveBaseKeys),
+    accountSyncCategoryIds: pruneIds(selection.accountSyncCategoryIds, validAccountIds),
+    accountLiveCategoryIds: pruneIds(selection.accountLiveCategoryIds, validAccountIds),
+    giftSyncCategoryIds: pruneIds(selection.giftSyncCategoryIds, validGiftIds),
+    giftLiveCategoryIds: pruneIds(selection.giftLiveCategoryIds, validGiftIds),
+    carouselBaseKeys: pruneKeys(selection.carouselBaseKeys),
+  });
+}
+
+function pullSelectionFingerprint(selection: PullSelection) {
+  const normalized = normalizePullSelection(selection);
+  return JSON.stringify({
+    topupSyncBaseKeys: normalized.topupSyncBaseKeys,
+    topupLiveBaseKeys: normalized.topupLiveBaseKeys,
+    accountSyncCategoryIds: normalized.accountSyncCategoryIds,
+    accountLiveCategoryIds: normalized.accountLiveCategoryIds,
+    giftSyncCategoryIds: normalized.giftSyncCategoryIds,
+    giftLiveCategoryIds: normalized.giftLiveCategoryIds,
+    carouselBaseKeys: normalized.carouselBaseKeys,
   });
 }
 
 async function buildDatabasePullSelectionFromDb(
   serviceClient: ReturnType<typeof createClient>,
 ): Promise<PullSelection> {
-  const [{ data: parents }, { data: voucherGames }, { data: children }] = await Promise.all([
+  const [{ data: topupGames }, { data: voucherGames }] = await Promise.all([
     serviceClient
       .from('games')
-      .select('id, slug, show_in_carousel, carousel_order')
+      .select('id, slug, g2bulk_game_code, name_en, show_in_carousel, carousel_order')
       .eq('catalog_source', 'g2bulk')
-      .is('parent_game_id', null)
-      .eq('redemption_method', 'uid'),
+      .eq('redemption_method', 'uid')
+      .not('g2bulk_game_code', 'is', null),
     serviceClient
       .from('games')
       .select('g2bulk_source_id, catalog_segment, name_en')
       .eq('catalog_source', 'g2bulk')
       .eq('redemption_method', 'redeem_code'),
-    serviceClient
-      .from('games')
-      .select('parent_game_id, g2bulk_game_code, name_en')
-      .eq('catalog_source', 'g2bulk')
-      .not('parent_game_id', 'is', null)
-      .not('g2bulk_game_code', 'is', null),
   ]);
 
-  const parentIdToChild = new Map<string, Json>();
-  for (const child of children || []) {
-    const parentId = String(child.parent_game_id || '').trim();
-    if (!parentId || parentIdToChild.has(parentId)) continue;
-    parentIdToChild.set(parentId, child);
-  }
-
   const topupSyncBaseKeys: string[] = [];
-  const carouselRows: { baseKey: string; order: number }[] = [];
+  const carouselRows: { code: string; order: number }[] = [];
 
-  for (const parent of parents || []) {
-    const slug = String(parent.slug || '').trim();
-    if (!slug) continue;
-    const child = parentIdToChild.get(String(parent.id || '').trim());
-    const baseKey = child?.g2bulk_game_code
-      ? parseG2BulkGameMeta(String(child.g2bulk_game_code), String(child.name_en || '')).baseKey
-      : slug;
-    topupSyncBaseKeys.push(baseKey);
-    if (parent.show_in_carousel) {
+  for (const game of topupGames || []) {
+    const code = String(game.g2bulk_game_code || '').trim();
+    if (!code) continue;
+    topupSyncBaseKeys.push(code);
+    if (game.show_in_carousel) {
       carouselRows.push({
-        baseKey,
-        order: Number(parent.carousel_order ?? 999),
+        code,
+        order: Number(game.carousel_order ?? 999),
       });
     }
   }
@@ -449,7 +490,7 @@ async function buildDatabasePullSelectionFromDb(
     topupLiveBaseKeys: [],
     accountSyncCategoryIds,
     giftSyncCategoryIds,
-    carouselBaseKeys: carouselRows.map((row) => row.baseKey),
+    carouselBaseKeys: carouselRows.map((row) => row.code),
   });
 }
 
@@ -463,15 +504,15 @@ async function loadPullSelection(serviceClient: ReturnType<typeof createClient>)
 }
 
 async function buildPullCatalogLists(serviceClient: ReturnType<typeof createClient>) {
-  const [validGames, categoriesPayload, syncedParents, syncedVoucherGames] = await Promise.all([
+  const [validGames, categoriesPayload, syncedGames, syncedVoucherGames] = await Promise.all([
     fetchG2GamesPublic().then((rows) => filterValidG2Games(rows)),
     fetch(`${G2BULK_BASE}/category`).then((res) => res.json().catch(() => ({}))),
     serviceClient
       .from('games')
-      .select('slug')
+      .select('g2bulk_game_code, name_en')
       .eq('catalog_source', 'g2bulk')
-      .is('parent_game_id', null)
-      .eq('redemption_method', 'uid'),
+      .eq('redemption_method', 'uid')
+      .not('g2bulk_game_code', 'is', null),
     serviceClient
       .from('games')
       .select('g2bulk_source_id')
@@ -479,44 +520,29 @@ async function buildPullCatalogLists(serviceClient: ReturnType<typeof createClie
       .eq('redemption_method', 'redeem_code'),
   ]);
 
-  const topupGroups = new Map<string, {
-    baseKey: string;
-    baseName: string;
-    image_url: string | null;
-    variantCount: number;
-  }>();
-
-  for (const game of validGames) {
-    const code = String(game.code || '').trim();
-    if (!code) continue;
-    const meta = parseG2BulkGameMeta(code, String(game.name || code));
-    const imageUrl = absImageUrl(game.image_url as string | undefined);
-    if (!topupGroups.has(meta.baseKey)) {
-      topupGroups.set(meta.baseKey, {
-        baseKey: meta.baseKey,
-        baseName: meta.baseName,
-        image_url: imageUrl,
-        variantCount: 0,
-      });
-    }
-    const group = topupGroups.get(meta.baseKey)!;
-    group.variantCount += 1;
-    if (!group.image_url && imageUrl) group.image_url = imageUrl;
-  }
-
-  const syncedTopupSlugs = new Set(
-    (syncedParents || []).map((row) => String(row.slug || '').trim()).filter(Boolean),
+  const syncedCodes = new Set(
+    (syncedGames || []).map((row) => String(row.g2bulk_game_code || '').trim()).filter(Boolean),
   );
 
-  const games = [...topupGroups.values()]
-    .map((group) => ({
-      baseKey: group.baseKey,
-      baseName: group.baseName,
-      image_url: group.image_url,
-      variantCount: group.variantCount,
-      synced: syncedTopupSlugs.has(slugify(group.baseKey)),
-    }))
-    .sort((a, b) => a.baseName.localeCompare(b.baseName));
+  const games = validGames
+    .filter((g) => {
+      const code = String(g.code || '').trim();
+      return !!code;
+    })
+    .map((g) => {
+      const code = String(g.code || '').trim();
+      const meta = parseG2BulkGameMeta(code, String(g.name || code));
+      const displayName = meta.regionLabel !== 'Global'
+        ? `${meta.baseName} (${meta.regionLabel})`
+        : meta.baseName;
+      return {
+        code,
+        name: displayName,
+        image_url: absImageUrl(g.image_url as string | undefined),
+        synced: syncedCodes.has(code),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const categories = Array.isArray(categoriesPayload.categories) ? categoriesPayload.categories : [];
 
@@ -550,8 +576,6 @@ async function buildPullCatalogLists(serviceClient: ReturnType<typeof createClie
 
   return { games, accounts, giftCards };
 }
-
-
 
 async function isAdmin(userClient: ReturnType<typeof createClient>, userId: string) {
   const { data } = await userClient
@@ -847,6 +871,9 @@ Deno.serve(async (req) => {
     if (payload.autoSyncTimezone !== undefined) {
       updates.g2bulk_auto_sync_timezone = String(payload.autoSyncTimezone || 'Asia/Damascus');
     }
+    if (payload.autoApprove !== undefined) {
+      updates.g2bulk_auto_approve = !!payload.autoApprove;
+    }
 
     const { error } = await serviceClient.from('store_settings').update(updates).eq('id', 1);
     if (error) {
@@ -1098,71 +1125,6 @@ Deno.serve(async (req) => {
     const now = new Date().toISOString();
 
     const { markup, charmPricing } = await loadStorePricingSettings(serviceClient);
-    const gamesTableColumns = await getGamesTableColumns(serviceClient);
-    const hasGroupBaseKeyColumn = gamesTableColumns.has('group_base_key') || gamesTableColumns.size === 0;
-
-    async function ensureParentGame(
-      meta: { baseKey: string; baseName: string },
-      variant: Json,
-      syncNow: string,
-    ): Promise<string> {
-      const parentSlug = slugify(meta.baseKey);
-      const { data: existingParent } = await serviceClient
-        .from('games')
-        .select('id')
-        .eq('slug', parentSlug)
-        .is('parent_game_id', null)
-        .maybeSingle();
-
-      const imageUrl = absImageUrl(variant.image_url as string | undefined);
-      const parentDescription = buildTopupDescription(meta);
-      const parentRow = {
-        name_en: meta.baseName,
-        name_ar: meta.baseName,
-        slug: parentSlug,
-        points_name: 'Top-up',
-        image_url: imageUrl,
-        logo_url: imageUrl,
-        description_en: parentDescription,
-        description_ar: parentDescription,
-        redemption_method: 'uid',
-        catalog_source: 'g2bulk',
-        catalog_segment: 'topup',
-        active: true,
-        show_in_carousel: false,
-        g2bulk_synced_at: syncNow,
-        parent_game_id: null,
-        region_label: null,
-        g2bulk_game_code: null,
-        g2bulk_source_id: null,
-        ...(hasGroupBaseKeyColumn ? { group_base_key: meta.baseKey } : {}),
-      };
-
-      if (existingParent?.id) {
-        const { error } = await serviceClient.from('games').update(parentRow).eq('id', existingParent.id);
-        if (error) throw error;
-        return existingParent.id as string;
-      }
-
-      const { data: bySlug } = await serviceClient
-        .from('games')
-        .select('id')
-        .eq('slug', parentSlug)
-        .maybeSingle();
-      if (bySlug?.id) {
-        const { error } = await serviceClient.from('games').update(parentRow).eq('id', bySlug.id);
-        if (error) throw error;
-        return bySlug.id as string;
-      }
-
-      const { data: inserted, error } = await serviceClient
-        .from('games')
-        .insert(parentRow)
-        .select('id')
-        .single();
-      if (error) throw error;
-      return inserted.id as string;
-    }
 
     async function syncTopupGame(
       g: Json,
@@ -1178,24 +1140,22 @@ Deno.serve(async (req) => {
       let offersSkipped = 0;
 
       const meta = parseG2BulkGameMeta(code, String(g.name || code));
-      const parentId = await ensureParentGame(meta, g, syncNow);
-      const childSlug = childGameSlug(meta.baseKey, code);
+      const slug = slugify(code);
       const imageUrl = absImageUrl(g.image_url as string | undefined);
 
-      const [catRes, fieldNotes, servers] = await Promise.all([
+      const [catRes, fieldNotes] = await Promise.all([
         fetch(`${G2BULK_BASE}/games/${encodeURIComponent(code)}/catalogue`),
         fetchGameFieldNotes(code),
-        fetchGameServersList(code),
       ]);
       const catPayload = await catRes.json().catch(() => ({}));
       const catalogues = Array.isArray(catPayload.catalogues) ? catPayload.catalogues : [];
 
-      const childDescription = buildTopupDescription(meta, fieldNotes);
-      const childDisplayName = meta.regionLabel !== 'Global'
+      const description = buildTopupDescription(meta, fieldNotes);
+      const displayName = meta.regionLabel !== 'Global'
         ? `${meta.baseName} (${meta.regionLabel})`
         : meta.baseName;
 
-      const { data: existingChild } = await serviceClient
+      const { data: existing } = await serviceClient
         .from('games')
         .select('id')
         .eq('g2bulk_game_code', code)
@@ -1208,15 +1168,15 @@ Deno.serve(async (req) => {
         meta.baseKey,
       );
 
-      const childRow = {
-        name_en: childDisplayName,
-        name_ar: childDisplayName,
-        slug: childSlug,
+      const gameRow = {
+        name_en: displayName,
+        name_ar: displayName,
+        slug,
         points_name: inferredPointsName || 'Top-up',
         image_url: imageUrl,
         logo_url: imageUrl,
-        description_en: childDescription,
-        description_ar: childDescription,
+        description_en: description,
+        description_ar: description,
         g2bulk_game_code: code,
         g2bulk_source_id: g.id ?? null,
         redemption_method: 'uid',
@@ -1225,30 +1185,29 @@ Deno.serve(async (req) => {
         active: catalogues.length > 0,
         show_in_carousel: false,
         g2bulk_synced_at: syncNow,
-        parent_game_id: parentId,
+        parent_game_id: null,
         region_label: meta.regionLabel,
-        servers: servers.length > 0 ? servers : [],
-        ...(hasGroupBaseKeyColumn ? { group_base_key: meta.baseKey } : {}),
+        servers: [],
       };
 
-      let gameId = existingChild?.id as string | undefined;
+      let gameId = existing?.id as string | undefined;
       if (gameId) {
-        const { error } = await serviceClient.from('games').update(childRow).eq('id', gameId);
+        const { error } = await serviceClient.from('games').update(gameRow).eq('id', gameId);
         if (error) throw error;
       } else {
         const { data: bySlug } = await serviceClient
           .from('games')
           .select('id')
-          .eq('slug', childSlug)
+          .eq('slug', slug)
           .maybeSingle();
         if (bySlug?.id) {
-          const { error } = await serviceClient.from('games').update(childRow).eq('id', bySlug.id);
+          const { error } = await serviceClient.from('games').update(gameRow).eq('id', bySlug.id);
           if (error) throw error;
           gameId = bySlug.id as string;
         } else {
           const { data: inserted, error } = await serviceClient
             .from('games')
-            .insert(childRow)
+            .insert(gameRow)
             .select('id')
             .single();
           if (error) throw error;
@@ -1256,20 +1215,6 @@ Deno.serve(async (req) => {
           gamesSynced += 1;
         }
       }
-
-      if (inferredPointsName) {
-        await serviceClient
-          .from('games')
-          .update({ points_name: inferredPointsName })
-          .eq('id', parentId);
-      }
-
-      await serviceClient
-        .from('games')
-        .update({ active: false })
-        .eq('g2bulk_game_code', code)
-        .is('parent_game_id', null)
-        .neq('id', parentId);
 
       const liveNames: string[] = [];
 
@@ -1558,15 +1503,22 @@ Deno.serve(async (req) => {
         await serviceClient.from('offers').update({ active: false }).eq('catalog_source', 'manual');
       }
 
-      const pullSelection = await loadPullSelection(serviceClient);
-      const selectedBaseKeys = new Set(pullSelection.topupSyncBaseKeys);
+      const pullSelection = prunePullSelectionToCatalog(
+        await loadPullSelection(serviceClient),
+        {
+          games: filterValidG2Games(await fetchG2GamesPublic()).map((g) => ({
+            code: String(g.code || '').trim(),
+          })),
+          accounts: [],
+          giftCards: [],
+        },
+      );
+      const selectedCodes = new Set(pullSelection.topupSyncBaseKeys);
       const allValidGames = filterValidG2Games(await fetchG2GamesPublic());
-      const validGames = selectedBaseKeys.size > 0
+      const validGames = selectedCodes.size > 0
         ? allValidGames.filter((game) => {
           const code = String(game.code || '').trim();
-          if (!code) return false;
-          const meta = parseG2BulkGameMeta(code, String(game.name || code));
-          return selectedBaseKeys.has(meta.baseKey);
+          return code && selectedCodes.has(code);
         })
         : [];
 
@@ -1589,7 +1541,7 @@ Deno.serve(async (req) => {
         success: true,
         phase: 'init',
         totalGames: validGames.length,
-        selectedGames: selectedBaseKeys.size,
+        selectedGames: validGames.length,
         syncedAt: now,
       });
     }
@@ -1696,12 +1648,12 @@ Deno.serve(async (req) => {
       const pullSelection = normalizePullSelection(state?.pullSelection || await loadPullSelection(serviceClient));
       const carouselBaseKeys = pullSelection.carouselBaseKeys;
 
-      const { data: parentGames } = await serviceClient
+      const { data: topupGames } = await serviceClient
         .from('games')
-        .select('id, slug')
+        .select('id, g2bulk_game_code, name_en')
         .eq('catalog_source', 'g2bulk')
         .eq('redemption_method', 'uid')
-        .is('parent_game_id', null);
+        .not('g2bulk_game_code', 'is', null);
 
       await serviceClient
         .from('games')
@@ -1710,14 +1662,17 @@ Deno.serve(async (req) => {
 
       const carouselIds: string[] = [];
       for (let i = 0; i < carouselBaseKeys.length; i++) {
-        const slug = slugify(carouselBaseKeys[i]);
-        const parent = (parentGames || []).find((row) => String(row.slug) === slug);
-        if (parent?.id) {
-          carouselIds.push(parent.id as string);
+        const targetCode = carouselBaseKeys[i];
+        const matching = (topupGames || []).filter((row) => {
+          const code = String(row.g2bulk_game_code || '').trim();
+          return code && code === targetCode;
+        });
+        for (const game of matching) {
+          carouselIds.push(game.id as string);
           await serviceClient
             .from('games')
             .update({ show_in_carousel: true, carousel_order: i })
-            .eq('id', parent.id);
+            .eq('id', game.id);
         }
       }
 
@@ -2141,117 +2096,83 @@ Deno.serve(async (req) => {
 
     if (subAction === 'listGames') {
       const g2Games = await fetchG2GamesPublic();
-      const groups = new Map<string, { baseKey: string; baseName: string; image_url: string | null; variantCount: number }>();
-
-      for (const g of g2Games) {
-        const code = String(g.code || '').trim();
-        if (!code || SKIP_GAME_CODES.has(code.toLowerCase())) continue;
-        const meta = parseG2BulkGameMeta(code, String(g.name || code));
-        const image = absImageUrl(g.image_url as string | undefined);
-        if (!groups.has(meta.baseKey)) {
-          groups.set(meta.baseKey, {
-            baseKey: meta.baseKey,
-            baseName: meta.baseName,
-            image_url: image,
-            variantCount: 0,
-          });
-        }
-        const group = groups.get(meta.baseKey)!;
-        group.variantCount += 1;
-        if (!group.image_url && image) group.image_url = image;
-      }
-
-      const games = [...groups.values()].map((group) => ({
-        id: `live:parent:${group.baseKey}`,
-        slug: slugify(group.baseKey),
-        name_en: group.baseName,
-        name_ar: group.baseName,
-        points_name: 'Top-up',
-        image_url: group.image_url,
-        logo_url: group.image_url,
-        redemption_method: 'uid',
-        catalog_source: 'live',
-        active: true,
-        group_base_key: group.baseKey,
-        variant_count: group.variantCount,
-      }));
+      const games = g2Games
+        .filter((g) => {
+          const code = String(g.code || '').trim();
+          return code && !SKIP_GAME_CODES.has(code.toLowerCase());
+        })
+        .map((g) => {
+          const code = String(g.code || '').trim();
+          const meta = parseG2BulkGameMeta(code, String(g.name || code));
+          const displayName = meta.regionLabel !== 'Global'
+            ? `${meta.baseName} (${meta.regionLabel})`
+            : meta.baseName;
+          return {
+            id: `live:game:${code}`,
+            slug: slugify(code),
+            code,
+            name_en: displayName,
+            name_ar: displayName,
+            points_name: 'Top-up',
+            image_url: absImageUrl(g.image_url as string | undefined),
+            logo_url: absImageUrl(g.image_url as string | undefined),
+            redemption_method: 'uid',
+            catalog_source: 'live',
+            active: true,
+            g2bulk_game_code: code,
+          };
+        });
 
       return jsonResponse({ success: true, games });
     }
 
     if (subAction === 'gameGroup') {
-      const baseKey = String(body.baseKey || '').trim().toLowerCase();
-      if (!baseKey) return jsonResponse({ success: false, message: 'baseKey required' }, 400);
+      const code = String(body.code || '').trim();
+      if (!code) return jsonResponse({ success: false, message: 'code required' }, 400);
 
       const g2Games = await fetchG2GamesPublic();
-      const variants = g2Games.filter((g) => {
-        const code = String(g.code || '').trim();
-        if (!code || SKIP_GAME_CODES.has(code.toLowerCase())) return false;
-        return parseG2BulkGameMeta(code, String(g.name || code)).baseKey === baseKey;
-      });
+      const g = g2Games.find((row) => String(row.code || '').trim() === code);
+      if (!g) return jsonResponse({ success: false, message: 'Game not found' }, 404);
 
-      const parentMeta = variants[0]
-        ? parseG2BulkGameMeta(String(variants[0].code), String(variants[0].name))
-        : { baseKey, baseName: baseKey, regionLabel: 'Global' };
+      const meta = parseG2BulkGameMeta(code, String(g.name || code));
+      const displayName = meta.regionLabel !== 'Global'
+        ? `${meta.baseName} (${meta.regionLabel})`
+        : meta.baseName;
 
-      const games: Json[] = [];
-      const offers: Json[] = [];
-      const parentId = `live:parent:${baseKey}`;
+      const catRes = await fetch(`${G2BULK_BASE}/games/${encodeURIComponent(code)}/catalogue`);
+      const catPayload = await catRes.json().catch(() => ({}));
+      const catalogues = Array.isArray(catPayload.catalogues) ? catPayload.catalogues : [];
 
-      const variantPayloads = await Promise.all(variants.map(async (g) => {
-        const code = String(g.code || '').trim();
-        const meta = parseG2BulkGameMeta(code, String(g.name || code));
-        const catRes = await fetch(`${G2BULK_BASE}/games/${encodeURIComponent(code)}/catalogue`);
-        const catPayload = await catRes.json().catch(() => ({}));
-        const catalogues = Array.isArray(catPayload.catalogues) ? catPayload.catalogues : [];
-        return { g, code, meta, catalogues };
-      }));
+      const pointsName = resolvePointsName(catalogues, code, meta.baseName, meta.baseKey);
+      const gameRow = {
+        id: `live:game:${code}`,
+        slug: slugify(code),
+        code,
+        name_en: displayName,
+        name_ar: displayName,
+        points_name: pointsName || 'Top-up',
+        image_url: absImageUrl(g.image_url as string | undefined),
+        catalog_source: 'live',
+        redemption_method: 'uid',
+        catalog_segment: 'topup',
+        active: catalogues.length > 0,
+        g2bulk_game_code: code,
+      };
 
-      const parentPointsName = resolvePointsName(
-        variantPayloads.flatMap((payload) => payload.catalogues),
-        baseKey,
-        parentMeta.baseName,
-        baseKey,
-      );
-
-      for (const { g, code, meta, catalogues } of variantPayloads) {
-        const variantId = `live:variant:${code}`;
-        const variantPointsName = resolvePointsName(catalogues, code, meta.baseName, meta.baseKey)
-          || parentPointsName;
-
-        games.push({
-          id: variantId,
-          slug: slugify(code),
-          parent_game_id: parentId,
-          region_label: meta.regionLabel,
-          g2bulk_game_code: code,
-          name_en: String(g.name || meta.baseName),
-          name_ar: String(g.name || meta.baseName),
-          points_name: variantPointsName || 'Top-up',
-          image_url: absImageUrl(g.image_url as string | undefined),
-          catalog_source: 'live',
-          redemption_method: 'uid',
-          catalog_segment: 'topup',
-          active: true,
-        });
-
-        for (const item of catalogues) {
+      const offers = catalogues
+        .filter((item) => {
+          const name = String(item.name || '').trim();
+          const cost = Number(item.amount);
+          return name && Number.isFinite(cost) && cost > 0;
+        })
+        .map((item) => {
           const catalogueName = String(item.name || '').trim();
           const cost = Number(item.amount);
-          if (!catalogueName || !Number.isFinite(cost) || cost <= 0) continue;
-
-          const displayName = formatCatalogueOfferName(
-            catalogueName,
-            code,
-            meta.baseName,
-            meta.baseKey,
-          );
-
-          offers.push({
+          return {
             id: `live:topup:${code}:${catalogueName}`,
-            game_id: variantId,
-            name_en: displayName,
-            name_ar: displayName,
+            game_id: gameRow.id,
+            name_en: formatCatalogueOfferName(catalogueName, code, meta.baseName, meta.baseKey),
+            name_ar: formatCatalogueOfferName(catalogueName, code, meta.baseName, meta.baseKey),
             price: priceFromCost(cost, markup, charmPricing),
             region: meta.regionLabel,
             g2bulk_type: 'topup',
@@ -2260,24 +2181,10 @@ Deno.serve(async (req) => {
             g2bulk_cost_usd: cost,
             catalog_source: 'live',
             active: true,
-          });
-        }
-      }
+          };
+        });
 
-      const parent = {
-        id: parentId,
-        slug: slugify(baseKey),
-        name_en: parentMeta.baseName,
-        name_ar: parentMeta.baseName,
-        points_name: parentPointsName || 'Top-up',
-        group_base_key: baseKey,
-        catalog_source: 'live',
-        redemption_method: 'uid',
-        active: variants.length > 0,
-        image_url: absImageUrl(variants[0]?.image_url as string | undefined),
-      };
-
-      return jsonResponse({ success: true, parent, games, offers });
+      return jsonResponse({ success: true, game: gameRow, offers });
     }
 
     if (subAction === 'vouchers') {
@@ -2389,74 +2296,45 @@ Deno.serve(async (req) => {
         if (!code || !catalogueName) continue;
 
         const meta = parseG2BulkGameMeta(code, String(raw.game_name || code));
-        const parentSlug = slugify(meta.baseKey);
-        let parentId: string;
+        const slug = slugify(code);
 
-        const { data: existingParent } = await serviceClient
-          .from('games')
-          .select('id')
-          .eq('slug', parentSlug)
-          .is('parent_game_id', null)
-          .maybeSingle();
-
-        if (existingParent?.id) {
-          parentId = existingParent.id as string;
-        } else {
-          const { data: insertedParent, error: parentError } = await serviceClient
-            .from('games')
-            .insert({
-              name_en: meta.baseName,
-              name_ar: meta.baseName,
-              slug: parentSlug,
-              points_name: 'Top-up',
-              redemption_method: 'uid',
-              catalog_source: 'g2bulk',
-              active: true,
-              show_in_carousel: false,
-              g2bulk_synced_at: now,
-              group_base_key: meta.baseKey,
-            })
-            .select('id')
-            .single();
-          if (parentError) throw parentError;
-          parentId = insertedParent.id as string;
-        }
-
-        const { data: existingChild } = await serviceClient
+        const { data: existingGame } = await serviceClient
           .from('games')
           .select('id')
           .eq('g2bulk_game_code', code)
           .maybeSingle();
 
-        const childRow = {
-          name_en: String(raw.game_name || `${meta.baseName} (${meta.regionLabel})`),
-          name_ar: String(raw.game_name || `${meta.baseName} (${meta.regionLabel})`),
-          slug: childGameSlug(meta.baseKey, code),
-          parent_game_id: parentId,
-          region_label: meta.regionLabel,
-          g2bulk_game_code: code,
+        const displayName = String(raw.game_name || `${meta.baseName} (${meta.regionLabel})`);
+
+        const gameRow = {
+          name_en: displayName,
+          name_ar: displayName,
+          slug,
+          points_name: 'Top-up',
           redemption_method: 'uid',
           catalog_source: 'g2bulk',
           active: true,
           show_in_carousel: false,
+          region_label: meta.regionLabel,
+          g2bulk_game_code: code,
           g2bulk_synced_at: now,
         };
 
-        let childId = existingChild?.id as string | undefined;
-        if (childId) {
-          await serviceClient.from('games').update(childRow).eq('id', childId);
+        let gameId = existingGame?.id as string | undefined;
+        if (gameId) {
+          await serviceClient.from('games').update(gameRow).eq('id', gameId);
         } else {
-          const { data: insertedChild, error: childError } = await serviceClient
+          const { data: inserted, error: insertError } = await serviceClient
             .from('games')
-            .insert(childRow)
+            .insert(gameRow)
             .select('id')
             .single();
-          if (childError) throw childError;
-          childId = insertedChild.id as string;
+          if (insertError) throw insertError;
+          gameId = inserted.id as string;
         }
 
         const cost = Number(raw.g2bulk_cost_usd ?? raw.price);
-        const displayName = formatCatalogueOfferName(
+        const offerDisplayName = formatCatalogueOfferName(
           catalogueName,
           code,
           meta.baseName,
@@ -2464,9 +2342,9 @@ Deno.serve(async (req) => {
         );
 
         const offerRow = {
-          game_id: childId,
-          name_en: displayName,
-          name_ar: displayName,
+          game_id: gameId,
+          name_en: offerDisplayName,
+          name_ar: offerDisplayName,
           price: Number.isFinite(cost) && cost > 0
             ? priceFromCost(cost, markup, charmPricing)
             : Number(raw.price) || 0.01,
@@ -2482,7 +2360,7 @@ Deno.serve(async (req) => {
         const { data: existingOffer } = await serviceClient
           .from('offers')
           .select('id')
-          .eq('game_id', childId)
+          .eq('game_id', gameId)
           .eq('g2bulk_catalogue_name', catalogueName)
           .maybeSingle();
 
@@ -2590,11 +2468,15 @@ Deno.serve(async (req) => {
         buildPullCatalogLists(serviceClient),
         buildDatabasePullSelectionFromDb(serviceClient),
       ]);
-      const selection = mergePullSelections(savedSelection, databaseSelection);
+      const mergedSelection = mergePullSelections(savedSelection, databaseSelection);
+      const selection = prunePullSelectionToCatalog(mergedSelection, catalog);
       const catalogMode = deriveCatalogMode(selection);
       let persisted = false;
 
-      if (isEmptyPullSelection(savedSelection) && !isEmptyPullSelection(databaseSelection)) {
+      const shouldPersist = pullSelectionFingerprint(savedSelection) !== pullSelectionFingerprint(selection)
+        || (isEmptyPullSelection(savedSelection) && !isEmptyPullSelection(databaseSelection));
+
+      if (shouldPersist) {
         const { error: persistError } = await serviceClient
           .from('store_settings')
           .update({
@@ -2627,7 +2509,8 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, message: 'Admin only' }, 403);
     }
 
-    const selection = normalizePullSelection({
+    const catalog = await buildPullCatalogLists(serviceClient);
+    const selection = prunePullSelectionToCatalog(normalizePullSelection({
       topupSyncBaseKeys: body.topupSyncBaseKeys,
       topupLiveBaseKeys: body.topupLiveBaseKeys,
       topupBaseKeys: body.topupBaseKeys,
@@ -2638,7 +2521,7 @@ Deno.serve(async (req) => {
       giftLiveCategoryIds: body.giftLiveCategoryIds,
       giftCategoryIds: body.giftCategoryIds,
       carouselBaseKeys: body.carouselBaseKeys,
-    });
+    }), catalog);
     const catalogMode = body.catalogMode === 'live' || body.catalogMode === 'sync'
       ? body.catalogMode
       : deriveCatalogMode(selection);
@@ -2673,13 +2556,7 @@ Deno.serve(async (req) => {
       .delete({ count: 'exact' })
       .eq('catalog_source', 'g2bulk');
 
-    const { count: childCount } = await serviceClient
-      .from('games')
-      .delete({ count: 'exact' })
-      .eq('catalog_source', 'g2bulk')
-      .not('parent_game_id', 'is', null);
-
-    const { count: parentCount } = await serviceClient
+    const { count: deletedGames } = await serviceClient
       .from('games')
       .delete({ count: 'exact' })
       .eq('catalog_source', 'g2bulk');
@@ -2696,7 +2573,7 @@ Deno.serve(async (req) => {
       success: true,
       cleared: true,
       offersRemoved: offerCount ?? 0,
-      gamesRemoved: (childCount ?? 0) + (parentCount ?? 0),
+      gamesRemoved: deletedGames ?? 0,
     });
   }
 

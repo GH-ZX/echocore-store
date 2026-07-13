@@ -440,7 +440,7 @@ export default function AdminHomeLayoutSettings({
   );
 
   const pickableGames = useMemo(
-    () => topupGames.filter((game) => !game.parent_game_id),
+    () => topupGames,
     [topupGames],
   );
 

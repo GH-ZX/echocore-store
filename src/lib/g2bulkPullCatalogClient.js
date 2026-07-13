@@ -2,23 +2,14 @@ import { classifyVoucherSegment } from './catalogSegments';
 import { supabase } from './supabase';
 import { normalizePullSelection } from './pullCatalogUtils';
 
-function slugifyCatalogKey(value = '') {
-  return String(value)
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80) || 'game';
-}
-
 async function fetchSyncedPullFlags() {
   const [topupRes, voucherRes] = await Promise.all([
     supabase
       .from('games')
-      .select('slug')
+      .select('g2bulk_game_code')
       .eq('catalog_source', 'g2bulk')
-      .is('parent_game_id', null)
-      .eq('redemption_method', 'uid'),
+      .eq('redemption_method', 'uid')
+      .not('g2bulk_game_code', 'is', null),
     supabase
       .from('games')
       .select('g2bulk_source_id')
@@ -30,8 +21,8 @@ async function fetchSyncedPullFlags() {
   if (voucherRes.error) throw voucherRes.error;
 
   return {
-    topupSlugs: new Set(
-      (topupRes.data || []).map((row) => String(row.slug || '').trim()).filter(Boolean),
+    topupCodes: new Set(
+      (topupRes.data || []).map((row) => String(row.g2bulk_game_code || '').trim()).filter(Boolean),
     ),
     voucherCategoryIds: new Set(
       (voucherRes.data || [])
@@ -43,11 +34,10 @@ async function fetchSyncedPullFlags() {
 
 function markCatalogSynced(catalog = {}, flags = {}) {
   const games = (catalog.games || []).map((item) => {
-    const baseKey = String(item.baseKey || '').trim();
-    const slugKey = slugifyCatalogKey(baseKey);
+    const code = String(item.code || '').trim();
     return {
       ...item,
-      synced: flags.topupSlugs?.has(slugKey) || flags.topupSlugs?.has(baseKey),
+      synced: flags.topupCodes?.has(code),
     };
   });
 
@@ -66,15 +56,14 @@ function markCatalogSynced(catalog = {}, flags = {}) {
 
 function mapBrowseGamesToPullRows(games = []) {
   return games.map((game) => {
-    const baseKey = String(game.group_base_key || game.slug || '').trim();
+    const code = String(game.code || game.g2bulk_game_code || '').trim();
     return {
-      baseKey,
-      baseName: game.name_en || game.name_ar || baseKey,
+      code,
+      name: game.name_en || game.name_ar || code,
       image_url: game.image_url || game.logo_url || null,
-      variantCount: Number(game.variant_count) || 1,
       synced: false,
     };
-  }).filter((row) => row.baseKey);
+  }).filter((row) => row.code);
 }
 
 function splitCategoriesToPullRows(categories = []) {

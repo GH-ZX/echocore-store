@@ -2240,7 +2240,8 @@ CREATE OR REPLACE FUNCTION public.save_g2bulk_settings(
   p_auto_sync_hour smallint DEFAULT null,
   p_auto_sync_timezone text DEFAULT null,
   p_catalog_mode text DEFAULT null,
-  p_charm_pricing_enabled boolean DEFAULT null
+  p_charm_pricing_enabled boolean DEFAULT null,
+  p_auto_approve boolean DEFAULT null
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -2265,6 +2266,7 @@ BEGIN
     g2bulk_auto_sync_enabled = COALESCE(p_auto_sync_enabled, g2bulk_auto_sync_enabled, true),
     g2bulk_auto_sync_hour = COALESCE(p_auto_sync_hour, g2bulk_auto_sync_hour, 5),
     g2bulk_auto_sync_timezone = COALESCE(nullif(trim(p_auto_sync_timezone), ''), g2bulk_auto_sync_timezone, 'Asia/Damascus'),
+    g2bulk_auto_approve = COALESCE(p_auto_approve, g2bulk_auto_approve, true),
     g2bulk_api_key = CASE
       WHEN p_api_key IS NOT NULL THEN v_trim_key
       ELSE g2bulk_api_key
@@ -2276,8 +2278,8 @@ BEGIN
 END;
 $;
 
-REVOKE EXECUTE ON FUNCTION public.save_g2bulk_settings(boolean, numeric, text, boolean, boolean, smallint, text, text, boolean) FROM public;
-GRANT EXECUTE ON FUNCTION public.save_g2bulk_settings(boolean, numeric, text, boolean, boolean, smallint, text, text, boolean) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.save_g2bulk_settings(boolean, numeric, text, boolean, boolean, smallint, text, text, boolean, boolean) FROM public;
+GRANT EXECUTE ON FUNCTION public.save_g2bulk_settings(boolean, numeric, text, boolean, boolean, smallint, text, text, boolean, boolean) TO authenticated;
 
 -- =============================================================================
 -- Â§12  G2Bulk pull selection
@@ -2292,6 +2294,9 @@ ALTER TABLE public.store_settings
 
 ALTER TABLE public.store_settings
   ADD COLUMN IF NOT EXISTS g2bulk_pull_selection jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+ALTER TABLE public.store_settings
+  ADD COLUMN IF NOT EXISTS g2bulk_auto_approve boolean NOT NULL DEFAULT true;
 
 CREATE OR REPLACE FUNCTION public.get_g2bulk_settings()
 RETURNS jsonb
@@ -2321,6 +2326,7 @@ BEGIN
     'g2bulk_auto_sync_enabled', COALESCE(v_row.g2bulk_auto_sync_enabled, true),
     'g2bulk_auto_sync_hour', COALESCE(v_row.g2bulk_auto_sync_hour, 5),
     'g2bulk_auto_sync_timezone', COALESCE(v_row.g2bulk_auto_sync_timezone, 'Asia/Damascus'),
+    'g2bulk_auto_approve', COALESCE(v_row.g2bulk_auto_approve, true),
     'g2bulk_pull_selection', COALESCE(v_row.g2bulk_pull_selection, '{}'::jsonb),
     'g2bulk_api_key_set', v_key IS NOT NULL,
     'g2bulk_api_key_masked', CASE
@@ -2392,6 +2398,7 @@ STABLE AS $$
     'samInvoiceCurrency', COALESCE((SELECT sam_invoice_currency FROM store_settings WHERE id = 1), 'USD'),
     'g2bulkCatalogOnly', COALESCE((SELECT g2bulk_catalog_only FROM store_settings WHERE id = 1), true),
     'g2bulkCatalogMode', COALESCE((SELECT g2bulk_catalog_mode FROM store_settings WHERE id = 1), 'sync'),
+    'g2bulkAutoApprove', COALESCE((SELECT g2bulk_auto_approve FROM store_settings WHERE id = 1), true),
     'g2bulkPullSelection', COALESCE((SELECT g2bulk_pull_selection FROM store_settings WHERE id = 1), '{}'::jsonb)
   );
 $$;

@@ -79,7 +79,6 @@ export default function AdminGiftForm({
 
   const isVoucher = game ? isVoucherGame(game) : false;
   const needsUid = game && !isVoucher && (game.redemption_method === 'uid' || game.redemption_method === 'both');
-  const servers = game && Array.isArray(game.servers) ? game.servers : [];
 
   const purchasableOffers = useMemo(
     () => [...offers]
@@ -341,21 +340,18 @@ export default function AdminGiftForm({
         </div>
       )}
 
-      {needsUid && servers.length > 0 && (
+      {needsUid && (
         <div>
           <label className="text-xs font-semibold text-[var(--text-muted)] block mb-1.5">
             {t.serverLabel}
           </label>
-          <select
+          <input
+            type="text"
             value={playerServer}
             onChange={(e) => setPlayerServer(e.target.value)}
-            className="input w-full"
-          >
-            <option value="">{t.selectServer}</option>
-            {servers.map((server) => (
-              <option key={server} value={server}>{server}</option>
-            ))}
-          </select>
+            placeholder={t.serverPlaceholder || 'Enter server ID (e.g. 1, 2, 3)'}
+            className="input w-full font-mono"
+          />
         </div>
       )}
 

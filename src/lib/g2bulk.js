@@ -31,6 +31,9 @@ async function parseInvokeError(error, { sanitizeForUser = false } = {}) {
   if (/failed to send a request to the edge function/i.test(message)) {
     message = 'Could not reach the G2Bulk Edge Function. Check your connection or redeploy supabase/functions/g2bulk.';
   }
+  if (/relay error invoking the edge function/i.test(message)) {
+    message = 'G2Bulk Edge Function timed out or crashed on the server. Redeploy supabase/functions/g2bulk and retry.';
+  }
   return sanitizeForUser ? brandUserText(message) : message;
 }
 
@@ -73,6 +76,7 @@ export async function saveG2bulkSettings({
   autoSyncEnabled,
   autoSyncHour,
   autoSyncTimezone,
+  autoApprove,
 }) {
   const data = await invokeG2bulk({
     action: 'saveSettings',
@@ -85,6 +89,7 @@ export async function saveG2bulkSettings({
     autoSyncEnabled: autoSyncEnabled !== undefined ? !!autoSyncEnabled : undefined,
     autoSyncHour: autoSyncHour !== undefined ? Number(autoSyncHour) : undefined,
     autoSyncTimezone: autoSyncTimezone !== undefined ? (autoSyncTimezone?.trim() || null) : undefined,
+    autoApprove: autoApprove !== undefined ? !!autoApprove : undefined,
   });
 
   if (data?.settings) {

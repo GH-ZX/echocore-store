@@ -1,4 +1,4 @@
-import { ShoppingCart, Zap, Globe, Server, Package } from 'lucide-react';
+import { ShoppingCart, Zap, Globe, Package } from 'lucide-react';
 import AdminOfferCostBadge from '../admin/AdminOfferCostBadge';
 import { formatPrice, getOfferDiscount, getOfferDisplayName } from '../../lib/offerDisplay';
 
@@ -16,7 +16,6 @@ export default function OfferPurchasePanel({
 }) {
   const isAr = lang === 'ar';
   const discount = getOfferDiscount(offer);
-  const servers = Array.isArray(game?.servers) ? game.servers : [];
   const packLabel = getOfferDisplayName(offer, lang, {
     game,
     games,
@@ -60,14 +59,7 @@ export default function OfferPurchasePanel({
           </div>
         )}
 
-        {servers.length > 0 && (
-          <div className="catalog-purchase-panel__meta">
-            <div className="flex items-start gap-2 text-sm text-[var(--text-sec)]">
-              <Server className="w-4 h-4 text-[var(--accent)] shrink-0 mt-0.5" />
-              <span>{t.availableServers || 'Servers'}: <strong>{servers.join(', ')}</strong></span>
-            </div>
-          </div>
-        )}
+        
 
         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/8 px-3 py-2.5 text-xs text-emerald-200/90 flex items-start gap-2">
           <Zap className="w-4 h-4 shrink-0 mt-0.5" />

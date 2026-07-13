@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  AlertTriangle,
   ChevronDown,
   ExternalLink,
   Loader2,
@@ -10,6 +11,7 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
+import ConfirmDialog from '../ui/ConfirmDialog';
 import {
   ORDER_STATUS_FILTER_IDS,
   countOrdersForFilter,
@@ -84,6 +86,7 @@ export default function AdminOrdersManager({
   refreshOrders,
   onApproveOrder,
   onRejectOrder,
+  onFulfillOrder,
   onNotify,
 }) {
   const navigate = useNavigate();
@@ -99,6 +102,7 @@ export default function AdminOrdersManager({
   const [statusFilter, setStatusFilter] = useState(ORDER_STATUS_FILTER_IDS.ALL);
   const [expandedOrderId, setExpandedOrderId] = useState(highlightOrderId || null);
   const [processingOrderId, setProcessingOrderId] = useState(null);
+  const [fulfillConfirmOrder, setFulfillConfirmOrder] = useState(null);
   const [resolvedUserId, setResolvedUserId] = useState('');
   const [userFilterProfile, setUserFilterProfile] = useState(null);
   const [userFilterLoading, setUserFilterLoading] = useState(false);
@@ -200,6 +204,25 @@ export default function AdminOrdersManager({
     && (order.status === 'pending_payment' || order.status === 'payment_sent')
   );
 
+  const needsManualFulfillment = (order) => (
+    order.status === 'completed'
+    && (order.fulfillment_status === 'pending' || order.fulfillment_status === 'failed')
+  );
+
+  const handleFulfillOrder = async (orderId) => {
+    if (!onFulfillOrder) return;
+    setProcessingOrderId(orderId);
+    setFulfillConfirmOrder(null);
+    try {
+      await onFulfillOrder(orderId);
+      notifySuccess(t.orderFulfilled || 'Order fulfilled');
+    } catch (err) {
+      notifyError(err.message);
+    } finally {
+      setProcessingOrderId(null);
+    }
+  };
+
   const handleApproveOrder = async (orderId) => {
     if (!onApproveOrder) return;
     setProcessingOrderId(orderId);
@@ -298,6 +321,23 @@ export default function AdminOrdersManager({
               className="btn btn-secondary text-xs py-2 px-3"
             >
               {t.rejectShort}
+            </button>
+          </div>
+        )}
+
+        {needsManualFulfillment(order) && onFulfillOrder && (
+          <div className="flex flex-wrap gap-2 mt-4">
+            <button
+              type="button"
+              onClick={() => setFulfillConfirmOrder(order)}
+              disabled={processingOrderId === order.id}
+              className="btn btn-primary text-xs py-2 px-3 inline-flex items-center gap-1.5"
+            >
+              {processingOrderId === order.id ? (
+                <>{t.sending}</>
+              ) : (
+                <>{t.adminFulfillOrder || 'Fulfill order'}</>
+              )}
             </button>
           </div>
         )}
@@ -473,6 +513,12 @@ export default function AdminOrdersManager({
                   <div className="admin-order-row-leading">
                     <div className="admin-order-ref">{formatOrderDisplayId(order)}</div>
                     <OrderStatusBadge status={order.status} t={t} />
+                    {needsManualFulfillment(order) && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                        <AlertTriangle className="w-3 h-3" />
+                        {t.autoFulfillDisabledBadge || 'Manual'}
+                      </span>
+                    )}
                   </div>
 
                   <div className="admin-order-row-body min-w-0">
@@ -516,9 +562,20 @@ export default function AdminOrdersManager({
                 {isExpanded && renderExpandedDetails(order)}
               </div>
             );
-          })}
+          }          )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!fulfillConfirmOrder}
+        title={t.fulfillOrderConfirmTitle}
+        message={t.fulfillOrderConfirmMessage}
+        confirmLabel={t.adminFulfillOrder}
+        cancelLabel={t.cancel}
+        loading={processingOrderId === fulfillConfirmOrder?.id}
+        onConfirm={() => handleFulfillOrder(fulfillConfirmOrder?.id)}
+        onCancel={() => setFulfillConfirmOrder(null)}
+      />
     </div>
   );
 }

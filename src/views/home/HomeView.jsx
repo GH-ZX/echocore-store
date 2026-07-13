@@ -10,9 +10,7 @@ import HomeExpandableGrid from '../../components/home/HomeExpandableGrid';
 import AdminAddCard from '../../components/admin/AdminAddCard';
 import { getCarouselGames, resolveCarouselLogo } from '../../lib/carouselUtils';
 import {
-  getChildGameIds,
   getDisplayGameForOffer,
-  getRegionVariantsWithOffers,
   offerBelongsToStorefront,
 } from '../../lib/gameRegions';
 import {
@@ -47,10 +45,8 @@ function resolveCarouselDescription(game, games = [], offers = [], t = {}) {
     };
   }
 
-  const children = getRegionVariantsWithOffers(games, game.id, offers);
-  const childWithCopy = children.find((row) => row.description_en || row.description_ar);
-  const en = stripPlainText(game.description_en || childWithCopy?.description_en || '');
-  const ar = stripPlainText(game.description_ar || childWithCopy?.description_ar || '');
+  const en = stripPlainText(game.description_en || '');
+  const ar = stripPlainText(game.description_ar || '');
   return {
     description_en: brandUserText(en),
     description_ar: brandUserText(ar || en),
@@ -127,17 +123,12 @@ export default function HomeView({
   );
 
   const topupGamesWithStats = useMemo(() => topupGames.map((game) => {
-    const childIds = getChildGameIds(games, game);
     const activeOffers = offers.filter(
-      (offer) => childIds.includes(offer.game_id) && offer.active !== false,
+      (offer) => offer.game_id === game.id && offer.active !== false,
     );
-    const regions = getRegionVariantsWithOffers(games, game.id, offers);
-
     const description = getGameMarketingDescription(game, lang, games, offers, t);
-
     return {
       ...game,
-      region_count: regions.length > 1 ? regions.length : game.region_count,
       packCount: activeOffers.length,
       marketingDescription: description,
     };
@@ -450,7 +441,6 @@ export default function HomeView({
       case 'game_picks': {
         const picked = (section.game_ids || [])
           .map((id) => topupGames.find((game) => game.id === id) || games.find((game) => game.id === id))
-          .filter((game) => game && !game.parent_game_id)
           .filter(Boolean);
         if (picked.length === 0 && !loading && !(isAdmin && onAddGame)) return null;
         return renderSectionBlock(

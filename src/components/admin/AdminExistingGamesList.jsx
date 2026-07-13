@@ -3,14 +3,10 @@ import { Edit } from 'lucide-react';
 
 function matchesFilter(game, filterId) {
   switch (filterId) {
-    case 'parents':
-      return !game.parent_game_id;
     case 'topup':
       return game.redemption_method === 'uid' || game.redemption_method === 'both' || !game.redemption_method;
     case 'redeem':
       return game.redemption_method === 'redeem_code';
-    case 'variants':
-      return !!game.parent_game_id;
     default:
       return true;
   }
@@ -38,7 +34,7 @@ export default function AdminExistingGamesList({
   onDelete: _onDelete,
 }) {
   const isAr = lang === 'ar';
-  const [filter, setFilter] = useState('parents');
+  const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
 
   const offerCountByGame = useMemo(() => {
@@ -85,11 +81,9 @@ export default function AdminExistingGamesList({
             onChange={(e) => setFilter(e.target.value)}
             className="input text-xs py-2 w-full sm:w-auto min-w-0"
           >
-            <option value="parents">{t.filterStorefront || (isAr ? 'واجهة المتجر' : 'Storefront')}</option>
             <option value="all">{t.allGamesOption || (isAr ? 'كل الألعاب' : 'All Games')}</option>
             <option value="topup">{t.filterTopup || (isAr ? 'شحن' : 'Top-up')}</option>
             <option value="redeem">{t.filterRedeem || (isAr ? 'أكواد' : 'Redeem')}</option>
-            <option value="variants">{t.filterVariants || (isAr ? 'مناطق' : 'Variants')}</option>
           </select>
         </div>
       </div>
@@ -139,11 +133,6 @@ export default function AdminExistingGamesList({
                         {t.redemptionUid || 'UID'}
                       </span>
                     )}
-                    {game.parent_game_id && (
-                      <span className="px-1 py-0.5 bg-white/5 text-[var(--text-sec)] rounded text-[10px]">
-                        {isAr ? 'منطقة' : 'Variant'}
-                      </span>
-                    )}
                     {game.region_label && <span>• {game.region_label}</span>}
                     {game.show_in_carousel && (
                       <span className="px-1 py-0.5 bg-amber-500/10 text-amber-300 rounded text-[10px]">
@@ -156,11 +145,7 @@ export default function AdminExistingGamesList({
                       </span>
                     )}
                   </div>
-                  {Array.isArray(game.servers) && game.servers.length > 0 && (
-                    <div className="text-[10px] mt-1 text-[var(--accent)]/80 truncate">
-                      {game.servers.join(' • ')}
-                    </div>
-                  )}
+                  
                 </div>
 
                 <div className="flex items-center gap-1 self-end sm:self-auto opacity-100 sm:opacity-60 sm:group-hover:opacity-100 transition-opacity">

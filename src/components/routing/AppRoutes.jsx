@@ -99,6 +99,7 @@ export default function AppRoutes({
   handleRechargeApproved,
   handleApproveOrder,
   handleRejectOrder,
+  handleFulfillOrder,
   handleDevBalanceCredited,
   handlePreviewHomepage,
   handleAdminGiftOrder,
@@ -525,6 +526,7 @@ export default function AppRoutes({
                 onRechargeApproved={handleRechargeApproved}
                 onApproveOrder={handleApproveOrder}
                 onRejectOrder={handleRejectOrder}
+                onFulfillOrder={handleFulfillOrder}
                 onDevBalanceCredited={handleDevBalanceCredited}
                 onPreviewHomepage={handlePreviewHomepage}
               />

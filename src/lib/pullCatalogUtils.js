@@ -117,41 +117,24 @@ export function hasPullSelection(pull = {}, { includeGiftCards = true } = {}) {
 
 function parentMatchesTopupKey(game, keySet) {
   if (!game || keySet.size === 0) return false;
-  const slug = String(game.slug || '').trim();
-  const baseKey = String(game.group_base_key || '').trim();
-  return keySet.has(slug) || keySet.has(baseKey);
+  const code = String(game.g2bulk_game_code || '').trim();
+  return code && keySet.has(code);
 }
 
 export function filterGamesByPullSelection(games = [], pull = {}) {
   const normalized = normalizePullSelection(pull);
-  const selectedTopup = new Set(normalized.topupBaseKeys);
+  const selectedCodes = new Set(normalized.topupBaseKeys);
   const accountIds = new Set(normalized.accountCategoryIds);
   const giftIds = new Set(normalized.giftCategoryIds);
 
-  if (selectedTopup.size === 0 && accountIds.size === 0 && giftIds.size === 0) {
+  if (selectedCodes.size === 0 && accountIds.size === 0 && giftIds.size === 0) {
     return games;
   }
 
-  const parentIds = new Set();
-  games.forEach((game) => {
-    if (game.parent_game_id) return;
-    if (game.redemption_method === 'uid' && parentMatchesTopupKey(game, selectedTopup)) {
-      parentIds.add(game.id);
-    }
-    if (game.redemption_method === 'redeem_code') {
-      if (voucherMatchesCategorySets(game, accountIds, giftIds)) {
-        parentIds.add(game.id);
-      }
-    }
-    if (game.group_base_key && selectedTopup.has(game.group_base_key)) {
-      parentIds.add(game.id);
-    }
-  });
-
   return games.filter((game) => {
     if (game.catalog_source === 'live') {
-      const baseKey = String(game.group_base_key || game.slug || '').trim();
-      if (baseKey && normalized.topupLiveBaseKeys.includes(baseKey)) return true;
+      const code = String(game.code || game.g2bulk_game_code || '').trim();
+      if (code && normalized.topupLiveBaseKeys.includes(code)) return true;
       if (game.redemption_method === 'redeem_code') {
         return voucherMatchesCategorySets(
           game,
@@ -161,11 +144,8 @@ export function filterGamesByPullSelection(games = [], pull = {}) {
       }
       return false;
     }
-    if (game.parent_game_id) {
-      return parentIds.has(game.parent_game_id);
-    }
     if (game.redemption_method === 'uid') {
-      return parentIds.has(game.id);
+      return parentMatchesTopupKey(game, selectedCodes);
     }
     if (game.redemption_method === 'redeem_code') {
       return voucherMatchesCategorySets(
@@ -174,7 +154,7 @@ export function filterGamesByPullSelection(games = [], pull = {}) {
         new Set(normalized.giftSyncCategoryIds),
       );
     }
-    return true;
+    return false;
   });
 }
 
@@ -198,22 +178,13 @@ export function isEmptyPullSelection(pull = {}) {
     && normalized.giftCategoryIds.length === 0;
 }
 
+/** Saved selection wins; DB rebuild is only a fallback when nothing was saved yet. */
 export function mergePullSelections(saved = {}, database = {}) {
   const savedNorm = normalizePullSelection(saved);
-  const dbNorm = normalizePullSelection(database);
-  if (isEmptyPullSelection(savedNorm)) return dbNorm;
-
-  return normalizePullSelection({
-    topupSyncBaseKeys: [...new Set([...savedNorm.topupSyncBaseKeys, ...dbNorm.topupSyncBaseKeys])],
-    topupLiveBaseKeys: [...new Set([...savedNorm.topupLiveBaseKeys, ...dbNorm.topupLiveBaseKeys])],
-    accountSyncCategoryIds: [...new Set([...savedNorm.accountSyncCategoryIds, ...dbNorm.accountSyncCategoryIds])],
-    accountLiveCategoryIds: [...new Set([...savedNorm.accountLiveCategoryIds, ...dbNorm.accountLiveCategoryIds])],
-    giftSyncCategoryIds: [...new Set([...savedNorm.giftSyncCategoryIds, ...dbNorm.giftSyncCategoryIds])],
-    giftLiveCategoryIds: [...new Set([...savedNorm.giftLiveCategoryIds, ...dbNorm.giftLiveCategoryIds])],
-    carouselBaseKeys: savedNorm.carouselBaseKeys.length > 0
-      ? savedNorm.carouselBaseKeys
-      : dbNorm.carouselBaseKeys,
-  });
+  if (isEmptyPullSelection(savedNorm)) {
+    return normalizePullSelection(database);
+  }
+  return savedNorm;
 }
 
 function slugifyPullKey(value = '') {
@@ -237,16 +208,16 @@ function slugifyUnderscoreKey(value = '') {
 export function buildCatalogKeyIndex(games = []) {
   const keyToCanonical = new Map();
   for (const game of games) {
-    const baseKey = String(game.baseKey || '').trim();
-    if (!baseKey) continue;
+    const code = String(game.code || '').trim();
+    if (!code) continue;
     const aliases = [
-      baseKey,
-      baseKey.toLowerCase(),
-      slugifyPullKey(baseKey),
-      slugifyUnderscoreKey(baseKey),
+      code,
+      code.toLowerCase(),
+      slugifyPullKey(code),
+      slugifyUnderscoreKey(code),
     ];
     aliases.forEach((alias) => {
-      if (alias) keyToCanonical.set(alias, baseKey);
+      if (alias) keyToCanonical.set(alias, code);
     });
   }
   return keyToCanonical;
@@ -254,29 +225,71 @@ export function buildCatalogKeyIndex(games = []) {
 
 export function resolveCatalogBaseKey(key, index) {
   const raw = String(key || '').trim();
-  if (!raw) return raw;
+  if (!raw) return '';
   return index.get(raw)
     || index.get(raw.toLowerCase())
     || index.get(slugifyPullKey(raw))
     || index.get(slugifyUnderscoreKey(raw))
-    || raw;
+    || '';
+}
+
+function buildValidCatalogGameCodes(catalog = {}) {
+  return new Set(
+    (catalog.games || [])
+      .map((game) => String(game.code || '').trim())
+      .filter(Boolean),
+  );
+}
+
+function buildValidVoucherCategoryIds(catalog = {}) {
+  return {
+    accounts: new Set(
+      (catalog.accounts || [])
+        .map((row) => Number(row.categoryId))
+        .filter((value) => Number.isFinite(value)),
+    ),
+    giftCards: new Set(
+      (catalog.giftCards || [])
+        .map((row) => Number(row.categoryId))
+        .filter((value) => Number.isFinite(value)),
+    ),
+  };
+}
+
+/** Drop legacy baseKeys and API-removed games/vouchers from a saved pull selection. */
+export function pruneSelectionToCatalog(selection = {}, catalog = {}) {
+  const normalized = normalizePullSelection(selection);
+  const index = buildCatalogKeyIndex(catalog.games || []);
+  const validCodes = buildValidCatalogGameCodes(catalog);
+  const voucherIds = buildValidVoucherCategoryIds(catalog);
+
+  const pruneKeys = (keys = []) => [...new Set(
+    keys
+      .map((value) => resolveCatalogBaseKey(value, index))
+      .filter((code) => code && validCodes.has(code)),
+  )];
+
+  const pruneIds = (ids = [], valid = new Set()) => [...new Set(
+    ids
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && valid.has(value)),
+  )];
+
+  return normalizePullSelection({
+    ...normalized,
+    topupSyncBaseKeys: pruneKeys(normalized.topupSyncBaseKeys),
+    topupLiveBaseKeys: pruneKeys(normalized.topupLiveBaseKeys),
+    accountSyncCategoryIds: pruneIds(normalized.accountSyncCategoryIds, voucherIds.accounts),
+    accountLiveCategoryIds: pruneIds(normalized.accountLiveCategoryIds, voucherIds.accounts),
+    giftSyncCategoryIds: pruneIds(normalized.giftSyncCategoryIds, voucherIds.giftCards),
+    giftLiveCategoryIds: pruneIds(normalized.giftLiveCategoryIds, voucherIds.giftCards),
+    carouselBaseKeys: pruneKeys(normalized.carouselBaseKeys),
+  });
 }
 
 export function alignSelectionSetsToCatalog(selection, catalog = {}) {
-  const index = buildCatalogKeyIndex(catalog.games || []);
-  const alignKey = (value) => resolveCatalogBaseKey(value, index);
-  const alignSet = (set) => new Set([...set].map(alignKey).filter(Boolean));
-  const alignIdSet = (set) => new Set([...set].map((value) => Number(value)).filter((value) => Number.isFinite(value)));
-
-  return {
-    topupSyncBaseKeys: alignSet(selection.topupSyncBaseKeys),
-    topupLiveBaseKeys: alignSet(selection.topupLiveBaseKeys),
-    accountSyncCategoryIds: alignIdSet(selection.accountSyncCategoryIds),
-    accountLiveCategoryIds: alignIdSet(selection.accountLiveCategoryIds),
-    giftSyncCategoryIds: alignIdSet(selection.giftSyncCategoryIds),
-    giftLiveCategoryIds: alignIdSet(selection.giftLiveCategoryIds),
-    carouselBaseKeys: alignSet(selection.carouselBaseKeys),
-  };
+  const pruned = pruneSelectionToCatalog(selectionPayloadFromSets(selection), catalog);
+  return selectionSetsFromPayload(pruned);
 }
 
 export function selectionSetsFromPayload(payload = {}, catalog = null) {
@@ -380,10 +393,9 @@ export function syncedPullSelection(pull = {}) {
   };
 }
 
-/** Ensure catalog rows already in the store appear selected in the pull panel */
-export function applySyncedCatalogToSelection(catalog = {}, selection, catalogMode = 'sync') {
-  const lane = catalogModeSelectionKeys(catalogMode);
-  const next = {
+/** @deprecated Synced DB rows are no longer auto-added — admin picks games explicitly. */
+export function applySyncedCatalogToSelection(_catalog = {}, selection) {
+  return {
     topupSyncBaseKeys: new Set(selection.topupSyncBaseKeys),
     topupLiveBaseKeys: new Set(selection.topupLiveBaseKeys),
     accountSyncCategoryIds: new Set(selection.accountSyncCategoryIds),
@@ -392,32 +404,6 @@ export function applySyncedCatalogToSelection(catalog = {}, selection, catalogMo
     giftLiveCategoryIds: new Set(selection.giftLiveCategoryIds),
     carouselBaseKeys: new Set(selection.carouselBaseKeys),
   };
-
-  (catalog.games || []).forEach((item) => {
-    if (!item?.synced || !item.baseKey) return;
-    const key = String(item.baseKey).trim();
-    if (!next[lane.topup].has(key)) {
-      next[lane.topup].add(key);
-    }
-  });
-
-  (catalog.accounts || []).forEach((item) => {
-    if (!item?.synced || item.categoryId == null) return;
-    const categoryId = Number(item.categoryId);
-    if (!next[lane.account].has(categoryId)) {
-      next[lane.account].add(categoryId);
-    }
-  });
-
-  (catalog.giftCards || []).forEach((item) => {
-    if (!item?.synced || item.categoryId == null) return;
-    const categoryId = Number(item.categoryId);
-    if (!next[lane.gift].has(categoryId)) {
-      next[lane.gift].add(categoryId);
-    }
-  });
-
-  return next;
 }
 
 export function filterLiveCatalog(catalog = {}, pull = {}) {
@@ -427,7 +413,8 @@ export function filterLiveCatalog(catalog = {}, pull = {}) {
   const liveGiftIds = new Set(normalized.giftLiveCategoryIds);
 
   const games = (catalog.games || []).filter((game) => {
-    if (game.group_base_key && liveKeys.has(game.group_base_key)) return true;
+    const code = String(game.code || game.g2bulk_game_code || '').trim();
+    if (code && liveKeys.has(code)) return true;
     if (game.redemption_method === 'redeem_code') {
       return voucherMatchesCategorySets(game, liveAccountIds, liveGiftIds);
     }

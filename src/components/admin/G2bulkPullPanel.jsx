@@ -13,7 +13,6 @@ import {
 } from '../../lib/catalogNav';
 import {
   alignSelectionSetsToCatalog,
-  applySyncedCatalogToSelection,
   catalogModeSelectionKeys,
   hasPullSelection,
   normalizeCatalogMode,
@@ -36,6 +35,73 @@ const VOUCHER_FILTER_OPTIONS = [
   { id: VOUCHER_FILTER_PLATFORM, labelKey: 'voucherFilterPlatform' },
   { id: VOUCHER_FILTER_GAME, labelKey: 'voucherFilterGame' },
 ];
+
+const REGION_LABELS_AR = {
+  'Global': 'عالمي',
+  'Turkey': 'تركيا',
+  'SEA': 'جنوب شرق آسيا',
+  'Europe': 'أوروبا',
+  'North America': 'أمريكا الشمالية',
+  'Latin America': 'أمريكا اللاتينية',
+  'Middle East': 'الشرق الأوسط',
+  'MENA': 'الشرق الأوسط',
+  'Korea': 'كوريا',
+  'Japan': 'اليابان',
+  'India': 'الهند',
+  'Indonesia': 'إندونيسيا',
+  'Russia': 'روسيا',
+  'China': 'الصين',
+  'Brazil': 'البرازيل',
+  'Oceania': 'أوقيانوسيا',
+  'Taiwan': 'تايوان',
+  'Hong Kong': 'هونغ كونغ',
+  'Singapore': 'سنغافورة',
+  'Philippines': 'الفلبين',
+  'Malaysia': 'ماليزيا',
+  'Thailand': 'تايلاند',
+  'Vietnam': 'فيتنام',
+  'Cambodia': 'كمبوديا',
+  'UAE': 'الإمارات',
+  'Saudi Arabia': 'السعودية',
+  'Pakistan': 'باكستان',
+  'United Kingdom': 'المملكة المتحدة',
+  'Germany': 'ألمانيا',
+  'France': 'فرنسا',
+  'Italy': 'إيطاليا',
+  'Spain': 'إسبانيا',
+  'Mexico': 'المكسيك',
+  'Argentina': 'الأرجنتين',
+  'Egypt': 'مصر',
+  'Iraq': 'العراق',
+  'Syria': 'سوريا',
+  'Jordan': 'الأردن',
+  'Lebanon': 'لبنان',
+  'Morocco': 'المغرب',
+  'Algeria': 'الجزائر',
+  'Tunisia': 'تونس',
+  'Qatar': 'قطر',
+  'Kuwait': 'الكويت',
+  'Bahrain': 'البحرين',
+  'Oman': 'عمان',
+  'Bangladesh': 'بنغلاديش',
+  'Nepal': 'نيبال',
+  'Sri Lanka': 'سريلانكا',
+  'Australia': 'أستراليا',
+  'New Zealand': 'نيوزيلندا',
+  'Canada': 'كندا',
+};
+
+function translateRegion(name, lang) {
+  if (lang !== 'ar' || !name) return name;
+  const match = name.match(/^(.+)\s*\(([^)]+)\)\s*$/);
+  if (match) {
+    const base = match[1].trim();
+    const region = match[2].trim();
+    const translated = REGION_LABELS_AR[region];
+    return translated ? `${base} (${translated})` : name;
+  }
+  return name;
+}
 
 function emptySelection() {
   return {
@@ -90,7 +156,7 @@ function CarouselToggle({ checked, onToggle, label, title, className = '' }) {
 function buildSelectionFromCatalog(data, catalog, {
   preserveUserEdits = false,
   currentSelection = null,
-  catalogMode = 'sync',
+  catalogMode: _catalogMode = 'sync',
 } = {}) {
   const effectiveSelection = (
     preserveUserEdits && currentSelection
@@ -105,15 +171,14 @@ function buildSelectionFromCatalog(data, catalog, {
       catalog,
     );
 
-  return preserveUserEdits
-    ? baseSets
-    : applySyncedCatalogToSelection(catalog, baseSets, catalogMode);
+  return baseSets;
 }
 
 export default function G2bulkPullPanel({
   open,
   onClose,
   t = {},
+  lang = 'en',
   catalogMode = 'sync',
   initialSelection = null,
   onSaved,
@@ -293,7 +358,7 @@ export default function G2bulkPullPanel({
   );
 
   const getItemKey = (item) => {
-    if (activeTab === TABS.topups) return String(item.baseKey || '').trim();
+    if (activeTab === TABS.topups) return String(item.code || '').trim();
     const categoryId = Number(item.categoryId);
     return Number.isFinite(categoryId) ? categoryId : null;
   };
@@ -308,7 +373,7 @@ export default function G2bulkPullPanel({
     carouselBaseKeys: new Set(prev.carouselBaseKeys),
   });
 
-  const isGameSelectedIn = (state, baseKey) => state[modeKeys.topup].has(baseKey);
+  const isGameSelectedIn = (state, code) => state[modeKeys.topup].has(code);
 
   const isVoucherSelectedIn = (state, item) => {
     const laneKey = getVoucherLaneKey(item);
@@ -318,7 +383,7 @@ export default function G2bulkPullPanel({
 
   const isItemSelectedIn = (state, item) => (
     activeTab === TABS.topups
-      ? isGameSelectedIn(state, item.baseKey)
+      ? isGameSelectedIn(state, item.code)
       : isVoucherSelectedIn(state, item)
   );
 
@@ -328,13 +393,13 @@ export default function G2bulkPullPanel({
     const list = activeTab === TABS.topups ? catalog.games : filteredVoucherItems;
     const q = query.trim().toLowerCase();
     const baseList = !q ? list : list.filter((item) => {
-      const name = String(item.baseName || item.title || '').toLowerCase();
+      const name = String(item.name || item.title || '').toLowerCase();
       return name.includes(q);
     });
 
     const isSelectedInList = (item) => {
       if (activeTab === TABS.topups) {
-        const key = String(item.baseKey || '').trim();
+        const key = String(item.code || '').trim();
         return key ? selection[modeKeys.topup].has(key) : false;
       }
       const laneKey = item.voucherKind === 'account' ? modeKeys.account : modeKeys.gift;
@@ -358,7 +423,7 @@ export default function G2bulkPullPanel({
   const toggleItem = (item) => {
     markSelectionEdited();
     if (activeTab === TABS.topups) {
-      const key = item.baseKey;
+      const key = item.code;
       setSelection((prev) => {
         const next = cloneSelection(prev);
         if (isGameSelectedIn(prev, key)) {
@@ -389,7 +454,7 @@ export default function G2bulkPullPanel({
   const toggleCarousel = (item) => {
     if (resolvedCatalogMode !== 'sync') return;
     markSelectionEdited();
-    const key = item.baseKey;
+    const key = item.code;
     setSelection((prev) => {
       const next = cloneSelection(prev);
       if (!next[modeKeys.topup].has(key)) {
@@ -407,7 +472,7 @@ export default function G2bulkPullPanel({
       const next = cloneSelection(prev);
       if (activeTab === TABS.topups) {
         activeItems.forEach((item) => {
-          next[modeKeys.topup].add(item.baseKey);
+          next[modeKeys.topup].add(item.code);
         });
       } else {
         activeItems.forEach((item) => {
@@ -424,8 +489,8 @@ export default function G2bulkPullPanel({
       const next = cloneSelection(prev);
       if (activeTab === TABS.topups) {
         activeItems.forEach((item) => {
-          next[modeKeys.topup].delete(item.baseKey);
-          next.carouselBaseKeys.delete(item.baseKey);
+          next[modeKeys.topup].delete(item.code);
+          next.carouselBaseKeys.delete(item.code);
         });
       } else {
         activeItems.forEach((item) => {
@@ -723,8 +788,8 @@ export default function G2bulkPullPanel({
                     const selected = isSelected(item);
                     const inCarousel = activeTab === TABS.topups
                       && resolvedCatalogMode === 'sync'
-                      && selection.carouselBaseKeys.has(item.baseKey);
-                    const title = item.baseName || item.title;
+                      && selection.carouselBaseKeys.has(item.code);
+                    const title = translateRegion(item.name || item.title, lang);
                     const inStore = !!item.synced;
                     const voucherTag = item.voucherKind === 'account'
                       ? t.g2bulkPullPlatformTag
@@ -732,7 +797,7 @@ export default function G2bulkPullPanel({
                         ? t.g2bulkPullGameTag
                         : '';
                     const meta = activeTab === TABS.topups
-                      ? `${item.variantCount} ${t.g2bulkPullRegions}${inStore ? ` · ${t.g2bulkPullStoreBadge}` : ''}${inCarousel ? ` · ${t.g2bulkPullCarousel}` : ''}`
+                      ? `${item.code || ''}${inStore ? ` · ${t.g2bulkPullStoreBadge}` : ''}${inCarousel ? ` · ${t.g2bulkPullCarousel}` : ''}`
                       : `${item.productCount || 0} ${t.g2bulkPullProducts}${voucherTag ? ` · ${voucherTag}` : ''}${inStore ? ` · ${t.g2bulkPullStoreBadge}` : ''}`;
 
                     return (

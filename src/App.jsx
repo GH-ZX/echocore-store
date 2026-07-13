@@ -688,6 +688,11 @@ export default function App() {
   };
 
   const tryFulfillOrder = async (orderId) => {
+    // Check the g2bulk_auto_approve toggle — when off, skip auto-fulfillment
+    if (paymentConfig.g2bulkAutoApprove === false) {
+      console.log('Auto-fulfill disabled by admin setting — leaving order', orderId, 'for manual approval');
+      return;
+    }
     try {
       await fulfillOrderG2bulk(orderId);
     } catch (e) {
@@ -698,6 +703,18 @@ export default function App() {
           : (e.message || 'Auto-fulfillment failed — check admin dashboard'),
         'error',
       );
+    }
+  };
+
+  const handleFulfillOrder = async (orderId) => {
+    try {
+      await fulfillOrderG2bulk(orderId);
+      showNotification(t.orderFulfilled || 'Order fulfilled successfully');
+    } catch (e) {
+      console.error('Manual fulfillment:', e);
+      showToast(e.message || 'Fulfillment failed', 'error');
+    } finally {
+      if (user?.role === 'admin') fetchOrders();
     }
   };
 
@@ -905,8 +922,7 @@ export default function App() {
 
   const addGameToCarousel = async (game) => {
     if (!game?.id) return;
-    const topupParents = games.filter((g) => !g.parent_game_id && g.redemption_method !== 'redeem_code');
-    const carouselGames = getCarouselGames(topupParents);
+    const carouselGames = getCarouselGames(games);
     if (carouselGames.some((g) => g.id === game.id)) return;
 
     const updates = [
@@ -1217,14 +1233,13 @@ export default function App() {
       catalogMode: paymentConfig.g2bulkCatalogMode || 'sync',
     });
     if (!result) return;
-    if (result.parent || result.games) {
-      handleLiveCatalogUpdate(result);
-      return;
+    if (result.games) {
+      setGames((prev) => mergeCatalogRows(prev, result.games));
     }
     if (result.offers) {
       setOffers((prev) => mergeCatalogRows(prev, result.offers));
     }
-  }, [paymentConfig.g2bulkCatalogMode, handleLiveCatalogUpdate]);
+  }, [paymentConfig.g2bulkCatalogMode]);
 
   const resolveCheckoutOffers = async (items = []) => resolveOffersForCheckout(items, {
     onOffersMerged: (merge) => setOffers(merge),
@@ -1585,6 +1600,7 @@ export default function App() {
           handleRechargeApproved={handleRechargeApproved}
           handleApproveOrder={handleApproveOrder}
           handleRejectOrder={handleRejectOrder}
+          handleFulfillOrder={handleFulfillOrder}
           handleDevBalanceCredited={handleDevBalanceCredited}
           handlePreviewHomepage={handlePreviewHomepage}
           handleAdminGiftOrder={handleAdminGiftOrder}
