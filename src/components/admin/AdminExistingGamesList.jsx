@@ -35,7 +35,7 @@ export default function AdminExistingGamesList({
   t = {},
   editingGameId = null,
   onEdit,
-  onDelete,
+  onDelete: _onDelete,
 }) {
   const isAr = lang === 'ar';
   const [filter, setFilter] = useState('parents');

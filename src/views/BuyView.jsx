@@ -180,7 +180,7 @@ export default function BuyView({
           notifyError(brandUserText(validationMessage));
           return;
         }
-      } catch (e) {
+      } catch (_e) {
         notifyError(brandUserText(t.playerValidationFailed || t.validationFailed || 'We could not validate this account for the selected game right now.'));
         return;
       }

@@ -1,3 +1,4 @@
+/* global module */
 (function() {
   const MIN_RECONNECT_MS = 500;
   const MAX_RECONNECT_MS = 30000;
@@ -25,7 +26,9 @@
   function sessionKey() {
     try {
       return window.sessionStorage && window.sessionStorage.getItem('brainstorm-session-key');
-    } catch (e) {}
+    } catch {
+      /* empty */
+    }
     return null;
   }
 
@@ -96,7 +99,7 @@
 
     ws.onmessage = (msg) => {
       let data;
-      try { data = JSON.parse(msg.data); } catch (e) { return; }
+      try { data = JSON.parse(msg.data); } catch (_e) { return; }
       if (data.type === 'reload') window.location.reload();
     };
 
@@ -114,7 +117,7 @@
     };
 
     // Let onclose own reconnection so we don't schedule it twice.
-    ws.onerror = () => { try { ws.close(); } catch (e) {} };
+    ws.onerror = () => { try { ws.close(); } catch { /* ignore */ } };
   }
 
   function sendEvent(event) {

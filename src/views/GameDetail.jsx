@@ -21,7 +21,7 @@ import {
   resolveStorefrontGame,
   storefrontGameHasOffers,
 } from '../lib/gameRegions';
-import { fetchLiveGameGroup, isLiveCatalogId } from '../lib/liveCatalog';
+import { fetchLiveGameGroup } from '../lib/liveCatalog';
 import { sortOffersByPrice } from '../lib/offerDisplay';
 import { buildGameBreadcrumb } from '../lib/catalogNav';
 import { formatMessage } from '../lib/i18n';

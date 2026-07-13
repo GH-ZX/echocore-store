@@ -327,6 +327,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
       setForm((prev) => ({ ...prev, g2bulk_catalog_mode: catalogMode }));
     }
     await handleSyncCatalog({ selectionOverride: selection });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const catalogMode = normalizeCatalogMode(form.g2bulk_catalog_mode);

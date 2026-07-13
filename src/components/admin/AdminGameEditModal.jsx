@@ -1,12 +1,12 @@
 import { useEffect, useState, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { uploadImage } from '../../lib/uploadImage';
-import ConfirmDialog from '../ui/ConfirmDialog';
+// import ConfirmDialog from '../ui/ConfirmDialog';
 import Modal from '../ui/Modal';
 import ImageFocusPicker from './ImageFocusPicker';
 import GameImageSearch from './GameImageSearch';
 
-export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose, onSave, onDelete }) {
+export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose, onSave, onDelete: _onDelete }) {
   const [form, setForm] = useState({
     name_en: '',
     slug: '',
@@ -24,8 +24,10 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
   const [coverFile, setCoverFile] = useState(null);
   const [coverPreviewUrl, setCoverPreviewUrl] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting] = useState(false);
+  /* unused: showDeleteConfirm
+  const [_showDeleteConfirm, _setShowDeleteConfirm] = useState(false);
+  */
   const [error, setError] = useState('');
 
   const isNew = !game?.id;
@@ -120,6 +122,7 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
     }
   };
 
+  /*
   const handleDelete = async () => {
     if (!game?.id || !onDelete) return;
     setError('');
@@ -135,6 +138,7 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
       setDeleting(false);
     }
   };
+  */
 
   return (
     <Modal open={!!game} onClose={onClose} size="xl" zIndex={100} ariaLabelledBy="admin-game-edit-title">

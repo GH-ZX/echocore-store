@@ -41,7 +41,6 @@ import {
   filterOffersByPullSelection,
   filterLiveCatalog,
   normalizePullSelection,
-  syncedPullSelection,
 } from './lib/pullCatalogUtils';
 import { applyTheme, fetchSiteTheme, normalizeThemeOverrides } from './lib/theme';
 import { DEFAULT_HOME_LAYOUT, fetchHomeLayout, normalizeHomeLayout } from './lib/homeLayout';
@@ -754,13 +753,13 @@ export default function App() {
     return data;
   };
 
-  const deleteProduct = async (productId) => {
+  const deleteProduct = async (_productId) => {
     const message = t.g2bulkDeletionDisabled || 'Deleting products is disabled. Use the G2Bulk selection menu to deselect items from the store.';
     showToast(message, 'warning');
     throw new Error(message);
   };
 
-  const deleteGame = async (gameId) => {
+  const deleteGame = async (_gameId) => {
     const message = t.g2bulkDeletionDisabled || 'Deleting games is disabled. Use the G2Bulk selection menu to deselect items from the store.';
     showToast(message, 'warning');
     throw new Error(message);
@@ -1159,6 +1158,7 @@ export default function App() {
     setOffers(filteredOffers);
   };
 
+  /*
   const loadHybridCatalog = async (config) => {
     setLoadingGames(true);
     try {
@@ -1203,6 +1203,7 @@ export default function App() {
       setLoadingGames(false);
     }
   };
+  */
 
   const handleLiveCatalogUpdate = useCallback(({ parent, games: variantGames = [], offers: groupOffers = [] }) => {
     setGames((prev) => mergeCatalogRows(prev, [parent, ...variantGames].filter(Boolean)));
