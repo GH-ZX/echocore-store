@@ -2,8 +2,18 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { uploadImage } from '../../lib/uploadImage';
 import Modal from '../ui/Modal';
+import SiteImagePicker from './SiteImagePicker';
+import { getVoucherCategoryId } from '../../lib/pullCatalogUtils';
 
-export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t = {}, onClose, onSave }) {
+export default function AdminOfferEditModal({
+  offer,
+  games = [],
+  offers = [],
+  lang = 'en',
+  t = {},
+  onClose,
+  onSave,
+}) {
   const [form, setForm] = useState({
     game_id: '',
     name_en: '',
@@ -23,6 +33,8 @@ export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t 
   const [error, setError] = useState('');
 
   const isNew = !offer?.id;
+  const selectedGame = games.find((g) => String(g.id) === String(form.game_id));
+  const g2bulkCategoryId = selectedGame ? getVoucherCategoryId(selectedGame) : null;
 
   useEffect(() => {
     if (!offer) return;
@@ -237,11 +249,23 @@ export default function AdminOfferEditModal({ offer, games = [], lang = 'en', t 
 
           <div>
             <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 block">{t.salePhotoOptional || 'Sale photo (optional)'}</label>
+            <SiteImagePicker
+              t={t}
+              games={games}
+              offers={offers}
+              g2bulkGameCode={selectedGame?.g2bulk_game_code || ''}
+              g2bulkCategoryId={g2bulkCategoryId}
+              fieldLabel={t.siteImagePickerSale}
+              onSelect={(url) => {
+                setSaleCoverFile(null);
+                setForm((prev) => ({ ...prev, sale_image_url: url }));
+              }}
+            />
             <input
               type="file"
               accept="image/*"
               onChange={(e) => setSaleCoverFile(e.target.files?.[0] || null)}
-              className="input text-sm file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-[var(--accent)] file:text-[#040812]"
+              className="input text-sm mt-2 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-[var(--accent)] file:text-[#040812]"
             />
             <input
               placeholder={t.orPasteSalePhotoURL || 'Or paste image URL'}

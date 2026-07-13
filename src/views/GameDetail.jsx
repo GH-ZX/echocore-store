@@ -184,6 +184,8 @@ export default function GameDetail({
       {isAdmin && editingGame && (
         <AdminGameEditModal
           game={game}
+          games={games}
+          offers={offers}
           lang={lang}
           t={t}
           onClose={() => setEditingGame(false)}
@@ -198,6 +200,7 @@ export default function GameDetail({
         <AdminOfferEditModal
           offer={editingOffer}
           games={games}
+          offers={offers}
           lang={lang}
           t={t}
           onClose={() => setEditingOffer(null)}

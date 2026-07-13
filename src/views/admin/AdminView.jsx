@@ -979,6 +979,8 @@ export default function AdminView({
       {gameModal && (
         <AdminGameEditModal
           game={gameModal}
+          games={games}
+          offers={offers}
           lang={lang}
           t={t}
           onClose={() => setGameModal(null)}

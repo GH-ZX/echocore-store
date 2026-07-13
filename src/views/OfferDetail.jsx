@@ -176,6 +176,7 @@ export default function OfferDetail({
         <AdminOfferEditModal
           offer={offer}
           games={games}
+          offers={offers}
           lang={lang}
           t={t}
           onClose={() => setEditingOffer(false)}
@@ -185,6 +186,8 @@ export default function OfferDetail({
       {isAdmin && editingGame && game && (
         <AdminGameEditModal
           game={game}
+          games={games}
+          offers={offers}
           lang={lang}
           t={t}
           onClose={() => setEditingGame(false)}

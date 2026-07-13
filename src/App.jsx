@@ -1699,6 +1699,7 @@ export default function App() {
         <AdminOfferEditModal
           offer={adminEditOffer}
           games={games}
+          offers={offers}
           lang={lang}
           t={t}
           onClose={() => setAdminEditOffer(null)}
@@ -1709,6 +1710,8 @@ export default function App() {
       {isAdmin && adminEditGame && (
         <AdminGameEditModal
           game={adminEditGame}
+          games={games}
+          offers={offers}
           lang={lang}
           t={t}
           onClose={() => setAdminEditGame(null)}

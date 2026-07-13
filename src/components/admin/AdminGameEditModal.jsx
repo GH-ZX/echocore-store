@@ -5,8 +5,18 @@ import { uploadImage } from '../../lib/uploadImage';
 import Modal from '../ui/Modal';
 import ImageFocusPicker from './ImageFocusPicker';
 import GameImageSearch from './GameImageSearch';
+import SiteImagePicker from './SiteImagePicker';
 
-export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose, onSave, onDelete: _onDelete }) {
+export default function AdminGameEditModal({
+  game,
+  games = [],
+  offers = [],
+  lang = 'en',
+  t = {},
+  onClose,
+  onSave,
+  onDelete: _onDelete,
+}) {
   const [form, setForm] = useState({
     name_en: '',
     slug: '',
@@ -242,7 +252,18 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
 
           <div>
             <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 block">{t.logoForCarousel || 'Logo'}</label>
-            <input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} className="input text-sm" />
+            <SiteImagePicker
+              t={t}
+              games={games}
+              offers={offers}
+              g2bulkGameCode={form.g2bulk_game_code}
+              fieldLabel={t.siteImagePickerLogo}
+              onSelect={(url) => {
+                setLogoFile(null);
+                setForm((prev) => ({ ...prev, logo_url: url }));
+              }}
+            />
+            <input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} className="input text-sm mt-2" />
             <input
               placeholder={t.orPasteLogoURL || 'Or logo URL'}
               value={form.logo_url}
@@ -253,6 +274,22 @@ export default function AdminGameEditModal({ game, lang = 'en', t = {}, onClose,
 
           <div>
             <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 block">{t.coverPhoto || 'Cover photo'}</label>
+            <SiteImagePicker
+              t={t}
+              games={games}
+              offers={offers}
+              g2bulkGameCode={form.g2bulk_game_code}
+              fieldLabel={t.siteImagePickerCover}
+              onSelect={(url) => {
+                setCoverFile(null);
+                setForm((prev) => ({
+                  ...prev,
+                  image_url: url,
+                  carousel_focus_x: 50,
+                  carousel_focus_y: 50,
+                }));
+              }}
+            />
             <input
               type="file"
               accept="image/*"
