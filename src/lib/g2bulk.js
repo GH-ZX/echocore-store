@@ -411,3 +411,8 @@ export async function clearG2bulkSyncedCatalog() {
 export async function fulfillOrderG2bulk(orderId) {
   return invokeG2bulk({ action: 'fulfillOrder', orderId }, { sanitizeForUser: true });
 }
+
+/** Pre-checkout: verify G2Bulk can fulfill before balance is deducted */
+export async function checkFulfillmentAvailability({ items = [] } = {}) {
+  return invokeG2bulk({ action: 'checkFulfillmentAvailability', items }, { sanitizeForUser: true });
+}

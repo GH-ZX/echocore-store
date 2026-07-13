@@ -184,6 +184,7 @@ export default function SuccessView({
   const presentation = getOrderReceiptPresentation(orderDetails, t);
   const tone = presentation.tone;
   const toneStyle = TONE_STYLES[tone] || TONE_STYLES.info;
+  const balanceRefunded = orderDetails?.g2bulk_metadata?.balance_refunded === true;
   const fulfillmentFailed = isOrderPaid(orderDetails) && fulfillmentStatus === 'failed';
   const isAwaitingFulfillment = isOrderPaid(orderDetails)
     && !hasCodes
@@ -390,8 +391,8 @@ export default function SuccessView({
       )}
 
       {fulfillmentFailed && (
-        <div className="card p-6 mb-6 text-center border border-red-500/30 bg-red-500/5 text-red-300">
-          <p>{t.orderFulfillmentFailedSupport}</p>
+        <div className={`card p-6 mb-6 text-center border ${balanceRefunded ? 'border-amber-500/30 bg-amber-500/5 text-amber-200' : 'border-red-500/30 bg-red-500/5 text-red-300'}`}>
+          <p>{balanceRefunded ? t.orderFulfillmentRefundedSupport : t.orderFulfillmentFailedSupport}</p>
         </div>
       )}
 

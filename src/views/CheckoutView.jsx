@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ArrowLeft, Loader2, QrCode, Clock, CheckCircle, Gift, Wallet } from 'lucide-react';
 import {
@@ -13,6 +13,10 @@ import SamInvoicePaymentPanel from '../components/SamInvoicePaymentPanel';
 import { markOrderPaymentSent } from '../lib/orders';
 import { formatMessage } from '../lib/i18n';
 import { getAdminGiftPath, getAdminDashboardPath } from '../lib/adminRoutes';
+import {
+  getFulfillmentUnavailableMessage,
+  inspectFulfillmentAvailability,
+} from '../lib/fulfillmentAvailability';
 
 export default function CheckoutView({
   t,
@@ -34,6 +38,7 @@ export default function CheckoutView({
   const [step, setStep] = useState('method');
   const [activeOrder, setActiveOrder] = useState(null);
   const [selectedMethod, setSelectedMethod] = useState('balance');
+  const [stockCheck, setStockCheck] = useState({ loading: false, available: true, message: '' });
 
   const location = useLocation();
   const totalNum = cart.reduce((s, i) => s + parseFloat(i.price), 0);
@@ -64,6 +69,35 @@ export default function CheckoutView({
   const paymentDisplay = getManualPaymentDisplay(paymentConfig, paymentMethod);
   const methodLabel = t[paymentDisplay.methodLabelKey] || paymentMethod;
   const methodReady = isPaymentMethodReady(paymentMethod, paymentConfig);
+
+  const refreshStockCheck = useCallback(async () => {
+    if (selectedMethod !== 'balance' || cart.length === 0) {
+      setStockCheck({ loading: false, available: true, message: '' });
+      return;
+    }
+
+    setStockCheck((prev) => ({ ...prev, loading: true }));
+    try {
+      const result = await inspectFulfillmentAvailability(
+        cart.map((item) => ({ offer_id: item.id, quantity: 1 })),
+      );
+      setStockCheck({
+        loading: false,
+        available: !!result?.available,
+        message: result?.available ? '' : getFulfillmentUnavailableMessage(result, t),
+      });
+    } catch {
+      setStockCheck({
+        loading: false,
+        available: false,
+        message: t.fulfillmentSupplierUnreachable,
+      });
+    }
+  }, [selectedMethod, cart, t]);
+
+  useEffect(() => {
+    refreshStockCheck();
+  }, [refreshStockCheck]);
 
   const handleCheckoutProcess = async () => {
     if (selectedMethod === 'balance') {
@@ -320,12 +354,19 @@ export default function CheckoutView({
           </div>
         )}
 
+        {selectedMethod === 'balance' && !stockCheck.loading && !stockCheck.available && (
+          <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            {stockCheck.message || t.fulfillmentOutOfStock}
+          </div>
+        )}
+
         <button
           onClick={handleCheckoutProcess}
           disabled={
             isProcessing
             || cart.length === 0
             || (selectedMethod === 'balance' && !hasEnoughBalance)
+            || (selectedMethod === 'balance' && (stockCheck.loading || !stockCheck.available))
             || (selectedMethod !== 'balance' && !usableMethods.some((m) => m.id === selectedMethod))
             || (isManualWalletMethod(selectedMethod) && !isPaymentMethodReady(selectedMethod, paymentConfig))
           }

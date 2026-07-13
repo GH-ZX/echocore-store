@@ -122,6 +122,14 @@ export function formatNotification(item, t = {}, lang = 'ar') {
       body: applyTemplate(t.notifFulfillmentFailedBody, { amount }),
       tone: 'danger',
     },
+    fulfillment_failed_refunded: {
+      title: t.notifFulfillmentRefundedTitle,
+      body: applyTemplate(t.notifFulfillmentRefundedBody, {
+        amount,
+        newBalance: formatMoney(m.newBalance),
+      }),
+      tone: 'warning',
+    },
     admin_announcement: {
       title: m.title || t.notifAdminAnnouncementTitle,
       body: m.body || '',
@@ -175,6 +183,7 @@ export function getNotificationDestination(item, formatted, userRole) {
     || item?.type === 'topup_delivered'
     || item?.type === 'order_fulfilled'
     || item?.type === 'fulfillment_failed'
+    || item?.type === 'fulfillment_failed_refunded'
   )) {
     return { path: `/success?orderId=${orderId}` };
   }

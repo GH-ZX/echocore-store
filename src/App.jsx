@@ -13,6 +13,7 @@ import { createOrderAtomic, confirmOrderPayment, rejectOrderPayment } from './li
 import { adminGiftOrder, pollOrderFulfillment } from './lib/adminGifts';
 import { mergeGamePlayerUidIntoProfile } from './lib/gamePlayerUid';
 import { fulfillOrderG2bulk } from './lib/g2bulk';
+import { assertBalanceFulfillmentAvailable } from './lib/fulfillmentAvailability';
 import { createOrderInvoice } from './lib/samApi';
 import { isApiWalletMode, isManualWalletMethod } from './lib/paymentMethods';
 import {
@@ -559,6 +560,10 @@ export default function App() {
       quantity: 1
     }));
 
+    if (paymentMethod === 'balance') {
+      await assertBalanceFulfillmentAvailable(items, t);
+    }
+
     const data = await createOrderAtomic({
       userId: user.id,
       total,
@@ -662,6 +667,10 @@ export default function App() {
       player_server: player_server || null
     }];
 
+    if (paymentMethod === 'balance') {
+      await assertBalanceFulfillmentAvailable(items, t);
+    }
+
     const data = await createOrderAtomic({
       userId: user.id,
       total: amount,
@@ -721,12 +730,17 @@ export default function App() {
       await fulfillOrderG2bulk(orderId);
     } catch (e) {
       console.error('G2Bulk fulfillment:', e);
-      showToast(
-        lang === 'ar'
-          ? 'فشل التوريد التلقائي — راجع لوحة الإدارة'
-          : (e.message || 'Auto-fulfillment failed — check admin dashboard'),
-        'error',
-      );
+      if (user?.id) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('balance')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (profile?.balance != null) {
+          setUser((prev) => (prev ? { ...prev, balance: parseFloat(profile.balance) || 0 } : prev));
+        }
+      }
+      showToast(e.message || t.fulfillmentSupplierUnreachable, 'error');
     }
   };
 

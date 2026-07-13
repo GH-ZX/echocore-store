@@ -23,6 +23,10 @@ import { getAdminGiftPath } from '../lib/adminRoutes';
 import { getGameOfferPath } from '../lib/offerRoutes';
 import { g2bulkCheckPlayer } from '../lib/g2bulk';
 import {
+  getFulfillmentUnavailableMessage,
+  inspectFulfillmentAvailability,
+} from '../lib/fulfillmentAvailability';
+import {
   gameShowsServerField,
   resolvePlayerServerForOrder,
 } from '../lib/gameServers';
@@ -109,6 +113,53 @@ export default function BuyView({
       setPlayerServer((prev) => prev.trim() || saved.server);
     }
   }, [isValidOffer, showUidForm, game, user?.game_player_uids]);
+
+  const isUidCompleteForStock = !showUidForm || playerUid.trim().length > 2;
+  const [stockCheck, setStockCheck] = useState({ loading: false, available: true, message: '' });
+
+  useEffect(() => {
+    if (!isValidOffer || selectedMethod !== 'balance' || !offer?.id || !isUidCompleteForStock) {
+      setStockCheck({ loading: false, available: true, message: '' });
+      return undefined;
+    }
+
+    let cancelled = false;
+    setStockCheck((prev) => ({ ...prev, loading: true }));
+
+    inspectFulfillmentAvailability([{
+      offer_id: offer.id,
+      quantity: 1,
+      player_uid: showUidForm ? playerUid.trim() || null : null,
+    }])
+      .then((result) => {
+        if (cancelled) return;
+        setStockCheck({
+          loading: false,
+          available: !!result?.available,
+          message: result?.available ? '' : getFulfillmentUnavailableMessage(result, t),
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setStockCheck({
+          loading: false,
+          available: false,
+          message: t.fulfillmentSupplierUnreachable,
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isValidOffer,
+    selectedMethod,
+    offer?.id,
+    playerUid,
+    showUidForm,
+    isUidCompleteForStock,
+    t,
+  ]);
 
   if (catalogLoading) {
     return (
@@ -578,6 +629,12 @@ export default function BuyView({
           </div>
         )}
 
+        {selectedMethod === 'balance' && !stockCheck.loading && !stockCheck.available && (
+          <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            {stockCheck.message || t.fulfillmentOutOfStock}
+          </div>
+        )}
+
         <button
           type="button"
           onClick={startPurchase}
@@ -586,6 +643,7 @@ export default function BuyView({
             || isProcessing
             || !user
             || (selectedMethod === 'balance' && !hasEnough)
+            || (selectedMethod === 'balance' && (stockCheck.loading || !stockCheck.available))
             || (isManualWallet && !methodReady)
           }
           className="btn btn-primary w-full py-5 text-xl font-black disabled:opacity-50"

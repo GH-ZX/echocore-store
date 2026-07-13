@@ -17,6 +17,7 @@ const ORDER_TYPES = new Set([
   'topup_delivered',
   'order_fulfilled',
   'fulfillment_failed',
+  'fulfillment_failed_refunded',
   'admin_order_payment_sent',
 ]);
 

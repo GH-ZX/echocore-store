@@ -56,6 +56,7 @@ async function g2bulkFetch(
   path: string,
   init: RequestInit = {},
   idempotencyKey?: string,
+  timeoutMs = 12000,
 ) {
   const headers = new Headers(init.headers);
   headers.set('X-API-Key', apiKey);
@@ -66,7 +67,16 @@ async function g2bulkFetch(
     headers.set('X-Idempotency-Key', idempotencyKey);
   }
 
-  const res = await fetch(`${G2BULK_BASE}${path}`, { ...init, headers });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  let res: Response;
+  try {
+    res = await fetch(`${G2BULK_BASE}${path}`, { ...init, headers, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+
   const text = await res.text();
   let data: Json = {};
   try {
@@ -662,6 +672,103 @@ type FulfillItemResult =
   | { ok: true; skipped?: boolean; g2bulkOrderId?: string; deliveryItems?: string[]; metadata?: Json }
   | { ok: false; error: string };
 
+type AvailabilityItem = {
+  offer_id?: string;
+  quantity?: number;
+  player_uid?: string | null;
+};
+
+async function evaluateFulfillmentAvailability(
+  serviceClient: ReturnType<typeof createClient>,
+  apiKey: string | null,
+  rawItems: AvailabilityItem[],
+) {
+  const items = Array.isArray(rawItems) ? rawItems.filter((row) => row?.offer_id) : [];
+  if (!items.length) {
+    return { available: false, reason: 'items_required' };
+  }
+
+  const settingsRow = await loadStoreSettingsRow(serviceClient);
+  if (!settingsRow?.g2bulk_enabled) {
+    return { available: false, reason: 'supplier_disabled' };
+  }
+
+  if (!apiKey) {
+    return { available: false, reason: 'supplier_not_configured' };
+  }
+
+  const offerIds = items.map((row) => String(row.offer_id));
+  const { data: offers, error: offersError } = await serviceClient
+    .from('offers')
+    .select('id, name_en, g2bulk_cost_usd, g2bulk_type, g2bulk_product_id, g2bulk_catalogue_name, games(g2bulk_game_code, redemption_method)')
+    .in('id', offerIds);
+
+  if (offersError) {
+    return { available: false, reason: 'supplier_unreachable', message: offersError.message };
+  }
+
+  let totalSupplierCost = 0;
+
+  for (const item of items) {
+    const offer = (offers || []).find((row) => String(row.id) === String(item.offer_id));
+    if (!offer) {
+      return { available: false, reason: 'offer_not_found' };
+    }
+
+    const qty = Math.max(1, Number(item.quantity) || 1);
+    const game = (offer.games || {}) as Json;
+    const g2bulkType = (offer.g2bulk_type as string)
+      || (game.redemption_method === 'redeem_code' ? 'voucher' : 'topup');
+    const hasMapping = g2bulkType === 'voucher'
+      ? !!offer.g2bulk_product_id
+      : !!(game.g2bulk_game_code && (offer.g2bulk_catalogue_name || offer.name_en));
+
+    if (!hasMapping) {
+      return { available: false, reason: 'not_mapped', offerName: offer.name_en };
+    }
+
+    if (g2bulkType === 'topup' && !String(item.player_uid || '').trim()) {
+      return { available: false, reason: 'player_id_required' };
+    }
+
+    const cost = Number(offer.g2bulk_cost_usd);
+    if (!Number.isFinite(cost) || cost <= 0) {
+      return { available: false, reason: 'missing_supplier_cost', offerName: offer.name_en };
+    }
+
+    totalSupplierCost += cost * qty;
+  }
+
+  try {
+    const { res, data } = await g2bulkFetch(apiKey, '/getMe', {}, undefined, 8000);
+    if (!res.ok || data.success === false) {
+      return { available: false, reason: 'supplier_unreachable' };
+    }
+
+    const walletBalance = Number(data.balance);
+    if (!Number.isFinite(walletBalance)) {
+      return { available: false, reason: 'supplier_unreachable' };
+    }
+
+    if (walletBalance + 0.001 < totalSupplierCost) {
+      return {
+        available: false,
+        reason: 'out_of_stock',
+        walletBalance,
+        requiredCost: totalSupplierCost,
+      };
+    }
+
+    return {
+      available: true,
+      walletBalance,
+      requiredCost: totalSupplierCost,
+    };
+  } catch {
+    return { available: false, reason: 'supplier_unreachable' };
+  }
+}
+
 async function fulfillG2bulkOrderItem(
   apiKey: string,
   orderId: string,
@@ -795,6 +902,16 @@ Deno.serve(async (req) => {
   const apiKey = await resolveApiKeyRaw(serviceClient);
   if (['getMe', 'fulfillOrder'].includes(action) && !apiKey) {
     return jsonResponse({ success: false, message: 'G2Bulk API key not configured' }, 400);
+  }
+
+  if (action === 'checkFulfillmentAvailability') {
+    if (!userId) {
+      return jsonResponse({ success: false, message: 'Not authenticated' }, 401);
+    }
+
+    const rawItems = Array.isArray(body.items) ? body.items as AvailabilityItem[] : [];
+    const result = await evaluateFulfillmentAvailability(serviceClient, apiKey, rawItems);
+    return jsonResponse({ success: true, ...result });
   }
 
   if (action === 'getMe') {
