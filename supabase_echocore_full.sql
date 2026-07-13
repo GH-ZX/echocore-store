@@ -4327,6 +4327,20 @@ BEGIN
       WHEN sam_webhook_secret IS NULL OR length(trim(sam_webhook_secret)) = 0 THEN public.new_sam_webhook_secret()
       ELSE sam_webhook_secret
     END,
+    shamcash_enabled = CASE
+      WHEN COALESCE(nullif(trim(p_wallet_mode), ''), sam_wallet_mode, 'manual') = 'api'
+        AND COALESCE(nullif(trim(p_shamcash_wallet_identifier), ''), sam_shamcash_wallet_identifier) IS NOT NULL
+        AND length(trim(COALESCE(nullif(trim(p_shamcash_wallet_identifier), ''), sam_shamcash_wallet_identifier))) > 0
+      THEN true
+      ELSE shamcash_enabled
+    END,
+    syriatel_enabled = CASE
+      WHEN COALESCE(nullif(trim(p_wallet_mode), ''), sam_wallet_mode, 'manual') = 'api'
+        AND COALESCE(nullif(trim(p_syriatel_wallet_identifier), ''), sam_syriatel_wallet_identifier) IS NOT NULL
+        AND length(trim(COALESCE(nullif(trim(p_syriatel_wallet_identifier), ''), sam_syriatel_wallet_identifier))) > 0
+      THEN true
+      ELSE syriatel_enabled
+    END,
     updated_at = now()
   WHERE id = 1;
 
@@ -4345,8 +4359,30 @@ SECURITY DEFINER
 SET search_path = public
 STABLE AS $$
   SELECT json_build_object(
-    'shamcash', COALESCE((SELECT shamcash_enabled FROM store_settings WHERE id = 1), false),
-    'syriatel', COALESCE((SELECT syriatel_enabled FROM store_settings WHERE id = 1), false),
+    'shamcash', COALESCE((
+      SELECT CASE
+        WHEN COALESCE(sam_wallet_mode, 'manual') = 'api' THEN
+          sam_api_enabled
+          AND sam_shamcash_wallet_identifier IS NOT NULL
+          AND length(trim(sam_shamcash_wallet_identifier)) > 0
+          AND sam_webhook_secret IS NOT NULL
+          AND length(trim(sam_webhook_secret)) > 0
+        ELSE shamcash_enabled
+      END
+      FROM store_settings WHERE id = 1
+    ), false),
+    'syriatel', COALESCE((
+      SELECT CASE
+        WHEN COALESCE(sam_wallet_mode, 'manual') = 'api' THEN
+          sam_api_enabled
+          AND sam_syriatel_wallet_identifier IS NOT NULL
+          AND length(trim(sam_syriatel_wallet_identifier)) > 0
+          AND sam_webhook_secret IS NOT NULL
+          AND length(trim(sam_webhook_secret)) > 0
+        ELSE syriatel_enabled
+      END
+      FROM store_settings WHERE id = 1
+    ), false),
     'binance', COALESCE((SELECT binance_enabled FROM store_settings WHERE id = 1), false),
     'mastercard', COALESCE((SELECT mastercard_enabled FROM store_settings WHERE id = 1), false),
     'shamcashMerchantName', COALESCE((SELECT shamcash_merchant_name FROM store_settings WHERE id = 1), 'ECHOCORE Store'),
@@ -4382,8 +4418,6 @@ STABLE AS $$
     'samShamcashApiReady', COALESCE((
       SELECT sam_api_enabled
         AND sam_wallet_mode = 'api'
-        AND sam_api_key IS NOT NULL
-        AND length(trim(sam_api_key)) > 0
         AND sam_shamcash_wallet_identifier IS NOT NULL
         AND length(trim(sam_shamcash_wallet_identifier)) > 0
         AND sam_webhook_secret IS NOT NULL
@@ -4393,8 +4427,6 @@ STABLE AS $$
     'samSyriatelApiReady', COALESCE((
       SELECT sam_api_enabled
         AND sam_wallet_mode = 'api'
-        AND sam_api_key IS NOT NULL
-        AND length(trim(sam_api_key)) > 0
         AND sam_syriatel_wallet_identifier IS NOT NULL
         AND length(trim(sam_syriatel_wallet_identifier)) > 0
         AND sam_webhook_secret IS NOT NULL
@@ -4404,8 +4436,6 @@ STABLE AS $$
     'samApiReady', COALESCE((
       SELECT sam_api_enabled
         AND sam_wallet_mode = 'api'
-        AND sam_api_key IS NOT NULL
-        AND length(trim(sam_api_key)) > 0
         AND sam_webhook_secret IS NOT NULL
         AND length(trim(sam_webhook_secret)) > 0
         AND (
@@ -4480,11 +4510,8 @@ BEGIN
   IF v_wallet_mode = 'api' THEN
     IF v_method = 'ShamCash' THEN
       SELECT COALESCE((
-        SELECT shamcash_enabled
-          AND sam_api_enabled
+        SELECT sam_api_enabled
           AND sam_wallet_mode = 'api'
-          AND sam_api_key IS NOT NULL
-          AND length(trim(sam_api_key)) > 0
           AND sam_shamcash_wallet_identifier IS NOT NULL
           AND length(trim(sam_shamcash_wallet_identifier)) > 0
           AND sam_webhook_secret IS NOT NULL
@@ -4496,11 +4523,8 @@ BEGIN
       END IF;
     ELSE
       SELECT COALESCE((
-        SELECT syriatel_enabled
-          AND sam_api_enabled
+        SELECT sam_api_enabled
           AND sam_wallet_mode = 'api'
-          AND sam_api_key IS NOT NULL
-          AND length(trim(sam_api_key)) > 0
           AND sam_syriatel_wallet_identifier IS NOT NULL
           AND length(trim(sam_syriatel_wallet_identifier)) > 0
           AND sam_webhook_secret IS NOT NULL
@@ -5086,13 +5110,10 @@ BEGIN
         SELECT COALESCE((
           SELECT sam_api_enabled
             AND sam_wallet_mode = 'api'
-            AND sam_api_key IS NOT NULL
-            AND length(trim(sam_api_key)) > 0
             AND sam_shamcash_wallet_identifier IS NOT NULL
             AND length(trim(sam_shamcash_wallet_identifier)) > 0
             AND sam_webhook_secret IS NOT NULL
             AND length(trim(sam_webhook_secret)) > 0
-            AND shamcash_enabled
           FROM store_settings WHERE id = 1
         ), false) INTO v_method_ready;
 
@@ -5121,13 +5142,10 @@ BEGIN
         SELECT COALESCE((
           SELECT sam_api_enabled
             AND sam_wallet_mode = 'api'
-            AND sam_api_key IS NOT NULL
-            AND length(trim(sam_api_key)) > 0
             AND sam_syriatel_wallet_identifier IS NOT NULL
             AND length(trim(sam_syriatel_wallet_identifier)) > 0
             AND sam_webhook_secret IS NOT NULL
             AND length(trim(sam_webhook_secret)) > 0
-            AND syriatel_enabled
           FROM store_settings WHERE id = 1
         ), false) INTO v_method_ready;
 
