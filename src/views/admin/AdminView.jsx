@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { getAdminDashboardPath, getAdminOrdersPath, isValidAdminTabSegment, resolveAdminTabFromPath } from '../../lib/adminRoutes';
 import { getOrderCustomerLabel } from '../../lib/adminOrderFilters';
 import { formatOrderDisplayId } from '../../lib/orderReceipt';
-import { Trash2, Plus, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Zap, FlaskConical, PanelLeftClose, PanelLeftOpen, Users, ScrollText } from 'lucide-react';
+import { Trash2, Plus, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Zap, PanelLeftClose, PanelLeftOpen, Users, ScrollText } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uploadImage } from '../../lib/uploadImage';
 import { centerActiveMobileTab, resetPageHorizontalScroll } from '../../lib/adminMobileNav';
@@ -19,7 +19,6 @@ const AdminHomeLayoutSettings = lazy(() => import('../../components/admin/AdminH
 const AdminReviewsManager = lazy(() => import('../../components/admin/AdminReviewsManager'));
 const AdminRechargeManager = lazy(() => import('../../components/admin/AdminRechargeManager'));
 const AdminG2BulkSettings = lazy(() => import('../../components/admin/AdminG2BulkSettings'));
-const AdminDevTools = lazy(() => import('../../components/admin/AdminDevTools'));
 const AdminUsersManager = lazy(() => import('../../components/admin/AdminUsersManager'));
 const AdminOrdersManager = lazy(() => import('../../components/admin/AdminOrdersManager'));
 const AdminSiteLogs = lazy(() => import('../../components/admin/AdminSiteLogs'));
@@ -54,7 +53,6 @@ function buildAdminNavItems(t) {
     { id: 'reviews', label: t.reviewsTab, shortLabel: t.tabReviewsShort, icon: MessageSquare },
     { id: 'users', label: t.usersTab, shortLabel: t.tabUsersShort, icon: Users },
     { id: 'logs', label: t.logsTab, shortLabel: t.tabLogsShort, icon: ScrollText },
-    { id: 'devtools', label: t.devToolsTab, shortLabel: 'DEV', icon: FlaskConical },
   ];
 }
 
@@ -85,7 +83,7 @@ export default function AdminView({
   onApproveOrder,
   onRejectOrder,
   onFulfillOrder,
-  onDevBalanceCredited,
+  onDevBalanceCredited: _onDevBalanceCredited,
   onPreviewHomepage,
 }) {
   const notifyError = (message) => onNotify?.(message, 'error');
@@ -118,6 +116,10 @@ export default function AdminView({
     if (parts.length === 3 && parts[1] === 'users') return;
     if (parts[1] === 'g2bulk') {
       navigate('/dashboard/products', { replace: true });
+      return;
+    }
+    if (parts[1] === 'devtools') {
+      navigate('/dashboard', { replace: true });
       return;
     }
     if (!isValidAdminTabSegment(parts[1])) {
@@ -964,19 +966,6 @@ export default function AdminView({
           <AdminSiteLogs
             t={t}
             lang={lang}
-            onNotify={onNotify}
-          />
-        </Suspense>
-      )}
-
-      {activeTab === 'devtools' && (
-        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
-          <AdminDevTools
-            t={t}
-            lang={lang}
-            offers={offers}
-            orders={orders}
-            onBalanceCredited={onDevBalanceCredited}
             onNotify={onNotify}
           />
         </Suspense>

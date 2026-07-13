@@ -10,7 +10,6 @@ export const ADMIN_TAB_SEGMENTS = {
   recharges: 'recharges',
   theme: 'themes',
   reviews: 'reviews',
-  devtools: 'devtools',
   users: 'users',
   logs: 'logs',
 };
