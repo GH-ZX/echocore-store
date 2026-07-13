@@ -1,0 +1,46 @@
+# .claudeignore — keep noise / generated / oversized files out of Claude Code context.
+# Mirrors .gitignore; also excludes the large merged SQL dump and build artifacts.
+# (Semantics follow .gitignore globs. Safe to keep in sync with .gitignore.)
+
+# --- Secrets / local config ---
+.env
+.env.*
+!.env.example
+
+# --- Dependencies ---
+node_modules/
+
+# --- Build outputs ---
+dist/
+dist-ssr/
+build/
+.vite/
+
+# --- Coverage / cache ---
+coverage/
+.cache/
+
+# --- Logs ---
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.code-workspace
+
+# --- Large / generated repo artifacts (read specific sections via the skill refs instead) ---
+supabase_echocore_full.sql
+package-lock.json
+
+# --- Supabase CLI scratch ---
+supabase/.temp/
+
+# --- Vended skill assets: don't pull superpowers source bodies into context by default ---
+.claude/skills/superpowers-LICENSE.txt
