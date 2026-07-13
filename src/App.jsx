@@ -36,6 +36,7 @@ import { fetchSiteStatus, isLoginBlockedDuringMaintenance } from './lib/siteStat
 import MaintenanceBanner from './components/layout/MaintenanceBanner';
 import { isUserBanned } from './lib/userBan';
 import { resetSupplierWalletsStore } from './lib/adminSupplierWalletsStore';
+import { logAuthEvent } from './lib/siteLogs';
 import {
   filterGamesByPullSelection,
   filterOffersByPullSelection,
@@ -463,19 +464,23 @@ export default function App() {
   const handleAuthLogin = async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
+      await logAuthEvent('login_failed', { email });
       throw new Error(t.authError || 'Invalid credentials');
     }
 
     const authUser = data?.user;
     if (!authUser) {
+      await logAuthEvent('login_failed', { email });
       throw new Error('Login succeeded but failed to retrieve user session');
     }
 
     const userData = await resolveUserData(authUser, { createIfMissing: true });
     if (!userData) {
+      await logAuthEvent('login_failed', { email });
       throw new Error('Failed to load user profile');
     }
 
+    await logAuthEvent('login_success', { email });
     return rejectMaintenanceLogin(userData);
   };
 
@@ -490,7 +495,10 @@ export default function App() {
       password,
       options: { data: { name } }
     });
-    if (error) throw error;
+    if (error) {
+      await logAuthEvent('signup_failed', { email });
+      throw error;
+    }
 
     // Create profile immediately (trigger may or may not have run)
     if (data.user) {
@@ -508,11 +516,13 @@ export default function App() {
         if (!userData) {
           throw new Error(t.profileLoadFailed);
         }
+        await logAuthEvent('signup_success', { email });
         await rejectMaintenanceLogin(userData);
         return { success: true, autoLogin: true, userData };
       }
     }
 
+    await logAuthEvent('signup_success', { email });
     return { success: true, message: 'Check your email to confirm your account (if required by your Supabase settings).' };
   };
 
@@ -1465,6 +1475,7 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    await logAuthEvent('logout', { email: user?.email || null });
     await supabase.auth.signOut();
     lastSyncedUserIdRef.current = null;
     resetSupplierWalletsStore();

@@ -5216,5 +5216,10 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text) FROM public;
 GRANT EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text) TO authenticated;
 
+-- =============================================================================
+-- §28 Site logs (admin activity feed)
+-- Apply scripts/site-logs-migration.sql on existing projects (table + RPCs + hooks).
+-- =============================================================================
+
 -- END OF ECHOCORE SUPABASE SETUP
 -- =============================================================================

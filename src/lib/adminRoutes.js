@@ -12,6 +12,7 @@ export const ADMIN_TAB_SEGMENTS = {
   reviews: 'reviews',
   devtools: 'devtools',
   users: 'users',
+  logs: 'logs',
 };
 
 export const ADMIN_SEGMENT_TO_TAB = Object.fromEntries(

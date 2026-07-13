@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { getAdminDashboardPath, getAdminOrdersPath, isValidAdminTabSegment, resolveAdminTabFromPath } from '../../lib/adminRoutes';
 import { getOrderCustomerLabel } from '../../lib/adminOrderFilters';
 import { formatOrderDisplayId } from '../../lib/orderReceipt';
-import { Trash2, Plus, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Zap, FlaskConical, PanelLeftClose, PanelLeftOpen, Users } from 'lucide-react';
+import { Trash2, Plus, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Zap, FlaskConical, PanelLeftClose, PanelLeftOpen, Users, ScrollText } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uploadImage } from '../../lib/uploadImage';
 import { centerActiveMobileTab, resetPageHorizontalScroll } from '../../lib/adminMobileNav';
@@ -22,6 +22,7 @@ const AdminG2BulkSettings = lazy(() => import('../../components/admin/AdminG2Bul
 const AdminDevTools = lazy(() => import('../../components/admin/AdminDevTools'));
 const AdminUsersManager = lazy(() => import('../../components/admin/AdminUsersManager'));
 const AdminOrdersManager = lazy(() => import('../../components/admin/AdminOrdersManager'));
+const AdminSiteLogs = lazy(() => import('../../components/admin/AdminSiteLogs'));
 
 function AdminTabLoader({ label = 'Loading...' }) {
   return (
@@ -52,6 +53,7 @@ function buildAdminNavItems(t) {
     { id: 'theme', label: t.themeTab, shortLabel: t.tabThemeShort, icon: Palette },
     { id: 'reviews', label: t.reviewsTab, shortLabel: t.tabReviewsShort, icon: MessageSquare },
     { id: 'users', label: t.usersTab, shortLabel: t.tabUsersShort, icon: Users },
+    { id: 'logs', label: t.logsTab, shortLabel: t.tabLogsShort, icon: ScrollText },
     { id: 'devtools', label: t.devToolsTab, shortLabel: 'DEV', icon: FlaskConical },
   ];
 }
@@ -950,6 +952,16 @@ export default function AdminView({
       {activeTab === 'users' && (
         <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
           <AdminUsersManager
+            t={t}
+            lang={lang}
+            onNotify={onNotify}
+          />
+        </Suspense>
+      )}
+
+      {activeTab === 'logs' && (
+        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+          <AdminSiteLogs
             t={t}
             lang={lang}
             onNotify={onNotify}
