@@ -71,6 +71,7 @@ export default function AdminGiftForm({
   const [searching, setSearching] = useState(false);
   const [recipientPickerOpen, setRecipientPickerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [giftResult, setGiftResult] = useState(null);
 
   const selectedOffer = useMemo(
     () => offers.find((o) => o.id === offerId) || initialOffer || null,
@@ -189,6 +190,7 @@ export default function AdminGiftForm({
     }
 
     setSubmitting(true);
+    setGiftResult(null);
     try {
       const result = await onSubmit?.({
         targetUserId: recipient.id,
@@ -199,10 +201,28 @@ export default function AdminGiftForm({
         adminNote: adminNote.trim() || null,
       });
 
-      notifySuccess(formatMessage(t.adminGiftSuccess, {
-        user: getProfileAdminLabel(recipient, t.adminUsersUnnamed),
-        offer: getOfferCatalogOptionLabel(selectedOffer, games, lang, offers),
-      }));
+      const fulfillment = result?.fulfillment || {};
+      setGiftResult({ result, fulfillment });
+
+      if (fulfillment.status === 'failed') {
+        notifyError(fulfillment.error || t.adminGiftFulfillmentFailed);
+        return;
+      }
+
+      if (fulfillment.timedOut || fulfillment.status === 'fulfilling') {
+        notifySuccess(t.adminGiftFulfillmentPending);
+      } else if (fulfillment.codes?.length) {
+        notifySuccess(formatMessage(t.adminGiftFulfilledCode, {
+          codes: fulfillment.codes.join(', '),
+        }));
+      } else if (fulfillment.status === 'fulfilled' && needsUid) {
+        notifySuccess(t.adminGiftFulfilledTopup);
+      } else {
+        notifySuccess(formatMessage(t.adminGiftSuccess, {
+          user: getProfileAdminLabel(recipient, t.adminUsersUnnamed),
+          offer: getOfferCatalogOptionLabel(selectedOffer, games, lang, offers),
+        }));
+      }
 
       onSuccess?.(result);
     } catch (err) {
@@ -392,6 +412,15 @@ export default function AdminGiftForm({
         <p className="text-[10px] text-[var(--text-muted)] mt-1">{t.adminGiftNoteHelp}</p>
       </div>
 
+      {giftResult?.fulfillment?.codes?.length > 0 && (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm">
+          <div className="text-emerald-300 font-semibold mb-1">{t.adminGiftDeliveredCodes}</div>
+          <div className="font-mono text-xs break-all text-emerald-100">
+            {giftResult.fulfillment.codes.join('\n')}
+          </div>
+        </div>
+      )}
+
       <div className="flex gap-2 pt-2">
         <button
           type="submit"
@@ -399,7 +428,7 @@ export default function AdminGiftForm({
           className="btn btn-primary flex-1 py-3 font-bold inline-flex items-center justify-center gap-2"
         >
           {submitting ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /> {t.sending}</>
+            <><Loader2 className="w-4 h-4 animate-spin" /> {t.adminGiftFulfilling}</>
           ) : (
             <><Gift className="w-4 h-4" /> {t.adminGiftSend}</>
           )}

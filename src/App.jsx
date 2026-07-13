@@ -10,7 +10,7 @@ import {
 import { supabase, resolveUserData } from './lib/supabase';
 import { fetchAdminProfileSummaries } from './lib/adminModeration';
 import { createOrderAtomic, confirmOrderPayment, rejectOrderPayment } from './lib/orders';
-import { adminGiftOrder } from './lib/adminGifts';
+import { adminGiftOrder, pollOrderFulfillment } from './lib/adminGifts';
 import { mergeGamePlayerUidIntoProfile } from './lib/gamePlayerUid';
 import { fulfillOrderG2bulk } from './lib/g2bulk';
 import { createOrderInvoice } from './lib/samApi';
@@ -597,15 +597,29 @@ export default function App() {
 
   const handleAdminGiftOrder = async (params) => {
     const result = await adminGiftOrder(params);
-    if (result?.orderId) {
-      try {
-        await tryFulfillOrder(result.orderId);
-      } catch (err) {
-        console.error('Gift fulfillment failed:', err);
-      }
-      if (user?.role === 'admin') fetchOrders();
+    if (!result?.orderId) return result;
+
+    let fulfillmentError = null;
+    try {
+      await fulfillOrderG2bulk(result.orderId);
+    } catch (err) {
+      fulfillmentError = err;
     }
-    return result;
+
+    const polled = await pollOrderFulfillment(result.orderId);
+    if (user?.role === 'admin') fetchOrders();
+
+    return {
+      ...result,
+      fulfillment: {
+        status: polled.status,
+        codes: polled.codes,
+        timedOut: polled.timedOut,
+        error: fulfillmentError?.message
+          || polled.order?.g2bulk_metadata?.last_error
+          || null,
+      },
+    };
   };
 
   const handleDevBalanceCredited = (result) => {

@@ -93,7 +93,12 @@ export function formatNotification(item, t = {}, lang = 'ar') {
     },
     delivery_ready: {
       title: t.notifDeliveryReadyTitle,
-      body: applyTemplate(t.notifDeliveryReadyBody, { amount }),
+      body: Array.isArray(m.codes) && m.codes.length > 0
+        ? applyTemplate(t.notifDeliveryReadyBodyWithCodes, {
+          amount,
+          codes: m.codes.map((code) => String(code)).join(', '),
+        })
+        : applyTemplate(t.notifDeliveryReadyBody, { amount }),
       tone: 'success',
     },
     topup_delivered: {

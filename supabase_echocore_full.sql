@@ -2040,7 +2040,12 @@ SECURITY DEFINER
 SET search_path = public AS $$
 DECLARE
   v_order public.orders%ROWTYPE;
+  v_prev_status text;
   v_meta jsonb;
+  v_has_uid boolean := false;
+  v_has_codes boolean := false;
+  v_codes jsonb := '[]'::jsonb;
+  v_link text;
 BEGIN
   SELECT * INTO v_order FROM public.orders WHERE id = p_order_id FOR UPDATE;
 
@@ -2048,7 +2053,9 @@ BEGIN
     RAISE EXCEPTION 'Order not found';
   END IF;
 
+  v_prev_status := v_order.fulfillment_status;
   v_meta := COALESCE(v_order.g2bulk_metadata, '{}'::jsonb) || COALESCE(p_metadata, '{}'::jsonb);
+
   IF p_error IS NOT NULL THEN
     v_meta := v_meta || jsonb_build_object('last_error', p_error, 'failed_at', now());
   END IF;
@@ -2065,6 +2072,91 @@ BEGIN
     fulfillment_status = p_fulfillment_status,
     delivery_items = COALESCE(p_delivery_items, delivery_items)
   WHERE order_id = p_order_id;
+
+  v_link := '/success?orderId=' || p_order_id::text;
+
+  IF p_fulfillment_status = 'fulfilled'
+    AND v_prev_status IS DISTINCT FROM 'fulfilled'
+    AND v_order.user_id IS NOT NULL
+  THEN
+    SELECT EXISTS (
+      SELECT 1 FROM public.order_items
+      WHERE order_id = p_order_id
+        AND player_uid IS NOT NULL
+        AND length(trim(player_uid)) > 0
+    ) INTO v_has_uid;
+
+    IF p_delivery_items IS NOT NULL AND jsonb_typeof(p_delivery_items) = 'array' THEN
+      v_codes := p_delivery_items;
+      v_has_codes := jsonb_array_length(v_codes) > 0;
+    END IF;
+
+    IF NOT v_has_codes THEN
+      SELECT COALESCE(jsonb_agg(to_jsonb(di) ORDER BY oi.created_at), '[]'::jsonb)
+      INTO v_codes
+      FROM public.order_items oi
+      CROSS JOIN LATERAL jsonb_array_elements(
+        CASE
+          WHEN oi.delivery_items IS NULL THEN '[]'::jsonb
+          WHEN jsonb_typeof(oi.delivery_items) = 'array' THEN oi.delivery_items
+          ELSE jsonb_build_array(oi.delivery_items)
+        END
+      ) AS di
+      WHERE oi.order_id = p_order_id;
+
+      v_has_codes := COALESCE(jsonb_array_length(v_codes), 0) > 0;
+    END IF;
+
+    IF v_has_uid AND NOT v_has_codes THEN
+      PERFORM public.notify_user(
+        v_order.user_id,
+        'topup_delivered',
+        jsonb_build_object(
+          'orderId', p_order_id,
+          'amount', v_order.total,
+          'giftMessage', v_order.gift_message
+        ),
+        v_link
+      );
+    ELSIF v_has_codes THEN
+      PERFORM public.notify_user(
+        v_order.user_id,
+        'delivery_ready',
+        jsonb_build_object(
+          'orderId', p_order_id,
+          'amount', v_order.total,
+          'codes', v_codes,
+          'giftMessage', v_order.gift_message
+        ),
+        v_link
+      );
+    ELSE
+      PERFORM public.notify_user(
+        v_order.user_id,
+        'order_fulfilled',
+        jsonb_build_object(
+          'orderId', p_order_id,
+          'amount', v_order.total,
+          'giftMessage', v_order.gift_message
+        ),
+        v_link
+      );
+    END IF;
+  ELSIF p_fulfillment_status = 'failed'
+    AND v_prev_status IS DISTINCT FROM 'failed'
+    AND v_order.user_id IS NOT NULL
+  THEN
+    PERFORM public.notify_user(
+      v_order.user_id,
+      'fulfillment_failed',
+      jsonb_build_object(
+        'orderId', p_order_id,
+        'amount', v_order.total,
+        'error', COALESCE(p_error, v_meta->>'last_error')
+      ),
+      v_link
+    );
+  END IF;
 
   RETURN jsonb_build_object(
     'orderId', p_order_id,
@@ -4171,6 +4263,7 @@ END;
 $$;
 
 DROP FUNCTION IF EXISTS public.save_sam_api_settings(boolean, text, text, text, text, text, boolean);
+DROP FUNCTION IF EXISTS public.save_sam_api_settings(boolean, text, text, text, text, text, boolean, boolean);
 
 CREATE OR REPLACE FUNCTION public.save_sam_api_settings(
   p_enabled boolean,
@@ -4179,7 +4272,8 @@ CREATE OR REPLACE FUNCTION public.save_sam_api_settings(
   p_syriatel_wallet_identifier text DEFAULT null,
   p_invoice_currency text DEFAULT 'USD',
   p_api_key text DEFAULT null,
-  p_regenerate_webhook_secret boolean DEFAULT false
+  p_regenerate_webhook_secret boolean DEFAULT false,
+  p_clear_api_key boolean DEFAULT false
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -4204,18 +4298,22 @@ BEGIN
 
   UPDATE public.store_settings
   SET
-    sam_api_enabled = COALESCE(p_enabled, false),
+    sam_api_enabled = CASE
+      WHEN COALESCE(p_clear_api_key, false) THEN false
+      ELSE COALESCE(p_enabled, false)
+    END,
     sam_wallet_mode = COALESCE(nullif(trim(p_wallet_mode), ''), sam_wallet_mode, 'manual'),
     sam_shamcash_wallet_identifier = COALESCE(nullif(trim(p_shamcash_wallet_identifier), ''), sam_shamcash_wallet_identifier),
     sam_syriatel_wallet_identifier = COALESCE(nullif(trim(p_syriatel_wallet_identifier), ''), sam_syriatel_wallet_identifier),
     sam_invoice_currency = COALESCE(nullif(trim(p_invoice_currency), ''), sam_invoice_currency, 'USD'),
     sam_api_key = CASE
+      WHEN COALESCE(p_clear_api_key, false) THEN null
       WHEN p_api_key IS NOT NULL THEN v_trim_key
       ELSE sam_api_key
     END,
     sam_webhook_secret = CASE
-      WHEN p_regenerate_webhook_secret THEN encode(gen_random_bytes(24), 'hex')
-      WHEN sam_webhook_secret IS NULL OR length(trim(sam_webhook_secret)) = 0 THEN encode(gen_random_bytes(24), 'hex')
+      WHEN p_regenerate_webhook_secret THEN public.new_sam_webhook_secret()
+      WHEN sam_webhook_secret IS NULL OR length(trim(sam_webhook_secret)) = 0 THEN public.new_sam_webhook_secret()
       ELSE sam_webhook_secret
     END,
     updated_at = now()
@@ -4225,8 +4323,8 @@ BEGIN
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.save_sam_api_settings(boolean, text, text, text, text, text, boolean) FROM public;
-GRANT EXECUTE ON FUNCTION public.save_sam_api_settings(boolean, text, text, text, text, text, boolean) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.save_sam_api_settings(boolean, text, text, text, text, text, boolean, boolean) FROM public;
+GRANT EXECUTE ON FUNCTION public.save_sam_api_settings(boolean, text, text, text, text, text, boolean, boolean) TO authenticated;
 
 -- 6. Public payment config
 CREATE OR REPLACE FUNCTION public.get_payment_methods()
@@ -5027,36 +5125,6 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text) FROM public;
 GRANT EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text) TO authenticated;
-
--- =============================================================================
--- §28 Sam API clear-key
-DROP FUNCTION IF EXISTS public.save_sam_api_settings(boolean, text, text, text, text, text, boolean);
-DROP FUNCTION IF EXISTS public.save_sam_api_settings(boolean, text, text, text, text, text, boolean, boolean);
-CREATE OR REPLACE FUNCTION public.save_sam_api_settings(
-  p_enabled boolean, p_wallet_mode text DEFAULT 'manual',
-  p_shamcash_wallet_identifier text DEFAULT null, p_syriatel_wallet_identifier text DEFAULT null,
-  p_invoice_currency text DEFAULT 'USD', p_api_key text DEFAULT null,
-  p_regenerate_webhook_secret boolean DEFAULT false, p_clear_api_key boolean DEFAULT false
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $
-DECLARE v_trim_key text;
-BEGIN
-  IF NOT public.is_admin() THEN RAISE EXCEPTION 'Unauthorized'; END IF;
-  IF p_wallet_mode IS NOT NULL AND p_wallet_mode NOT IN ('manual', 'api') THEN RAISE EXCEPTION 'Invalid wallet mode'; END IF;
-  IF p_invoice_currency IS NOT NULL AND p_invoice_currency NOT IN ('USD', 'SYP', 'EUR') THEN RAISE EXCEPTION 'Invalid invoice currency'; END IF;
-  v_trim_key := nullif(trim(p_api_key), '');
-  UPDATE public.store_settings SET
-    sam_api_enabled = CASE WHEN COALESCE(p_clear_api_key, false) THEN false ELSE COALESCE(p_enabled, false) END,
-    sam_wallet_mode = COALESCE(nullif(trim(p_wallet_mode), ''), sam_wallet_mode, 'manual'),
-    sam_shamcash_wallet_identifier = COALESCE(nullif(trim(p_shamcash_wallet_identifier), ''), sam_shamcash_wallet_identifier),
-    sam_syriatel_wallet_identifier = COALESCE(nullif(trim(p_syriatel_wallet_identifier), ''), sam_syriatel_wallet_identifier),
-    sam_invoice_currency = COALESCE(nullif(trim(p_invoice_currency), ''), sam_invoice_currency, 'USD'),
-    sam_api_key = CASE WHEN COALESCE(p_clear_api_key, false) THEN null WHEN p_api_key IS NOT NULL THEN v_trim_key ELSE sam_api_key END,
-    sam_webhook_secret = CASE WHEN p_regenerate_webhook_secret THEN public.new_sam_webhook_secret() WHEN sam_webhook_secret IS NULL OR length(trim(sam_webhook_secret)) = 0 THEN public.new_sam_webhook_secret() ELSE sam_webhook_secret END,
-    updated_at = now() WHERE id = 1;
-  RETURN public.get_sam_api_settings();
-END; $;
-REVOKE EXECUTE ON FUNCTION public.save_sam_api_settings(boolean, text, text, text, text, text, boolean, boolean) FROM public;
-GRANT EXECUTE ON FUNCTION public.save_sam_api_settings(boolean, text, text, text, text, text, boolean, boolean) TO authenticated;
 
 -- END OF ECHOCORE SUPABASE SETUP
 -- =============================================================================
