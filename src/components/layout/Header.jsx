@@ -368,27 +368,7 @@ export default function Header({
                   onOpenPayments={() => handleNav('/dashboard/payments')}
                 />
               </div>
-            ) : (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => { onRecharge(); setProfileOpen(false); }}
-                className="header-profile-dd-balance"
-              >
-                <span className="header-profile-dd-balance-icon" aria-hidden="true">
-                  <Wallet strokeWidth={2} />
-                </span>
-                <span className="header-profile-dd-balance-copy">
-                  <span className="header-profile-dd-balance-label">
-                    {t.recharge}
-                  </span>
-                  <span className="header-profile-dd-balance-hint">
-                    {t.topUpWallet}
-                  </span>
-                </span>
-                <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
-              </button>
-            )}
+            ) : null}
 
             <button
               type="button"
@@ -434,6 +414,22 @@ export default function Header({
     )
     : null;
 
+  const headerWalletButton = user && !isAdmin && !isSearchOpen ? (
+    <button
+      type="button"
+      onClick={() => { onRecharge(); closeAll(); }}
+      className="header-btn header-wallet-chip"
+      aria-label={`${t.balance} — $${(user.balance || 0).toFixed(2)}`}
+      title={t.topUpWallet}
+    >
+      <span className="header-wallet-chip-icon" aria-hidden="true">
+        <Wallet strokeWidth={2} />
+      </span>
+      <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
+      <span className="header-wallet-chip-label">{t.balance}</span>
+    </button>
+  ) : null;
+
   const profileDropdown = user ? (
     <div className="relative">
       <button
@@ -473,8 +469,6 @@ export default function Header({
       <div ref={desktopSearchRef} className="header-toolbar">
         {renderSearchControl('desktop')}
 
-        {!isSearchOpen && <span className="header-toolbar-divider" aria-hidden="true" />}
-
         <button
           type="button"
           onClick={onLangToggle}
@@ -489,24 +483,27 @@ export default function Header({
             <Globe strokeWidth={2} />
           )}
         </button>
-      </div>
 
-      {cartButton()}
+        {!isSearchOpen && cartButton()}
+      </div>
 
       {user ? (
         <div className="header-account-group">
           {!isMobile && notificationBell}
+          {!isMobile && headerWalletButton}
           {profileDropdown}
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => navigate('/login')}
-          className="header-btn header-btn--accent gap-1.5 px-3.5 lg:px-4"
-        >
-          <User className="w-4 h-4" strokeWidth={2} />
-          <span className="text-sm font-bold">{t.login}</span>
-        </button>
+        !isSearchOpen && (
+          <button
+            type="button"
+            onClick={() => navigate('/login')}
+            className="header-btn header-btn--accent gap-1.5 px-3.5 lg:px-4"
+          >
+            <User className="w-4 h-4" strokeWidth={2} />
+            <span className="text-sm font-bold">{t.login}</span>
+          </button>
+        )
       )}
     </div>
   );

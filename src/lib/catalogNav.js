@@ -8,6 +8,7 @@ export const CATALOG_NAV_ITEMS = [
     path: '/games',
     icon: Gamepad2,
     labelKey: 'g2bulkTopupsNav',
+    shortLabelKey: 'headerNavTopups',
     descKey: 'g2bulkTopupsDesc',
     fallbackEn: 'Instant Game Top-Ups',
     fallbackAr: 'شحن الألعاب الفوري',
@@ -18,6 +19,7 @@ export const CATALOG_NAV_ITEMS = [
     path: '/gift-cards',
     icon: Ticket,
     labelKey: 'g2bulkVouchersNav',
+    shortLabelKey: 'headerNavGiftCards',
     descKey: 'g2bulkVouchersDesc',
     fallbackEn: 'Gift Cards & Vouchers',
     fallbackAr: 'بطاقات الهدايا والقسائم',
@@ -35,6 +37,11 @@ export const VOUCHER_FILTER_GAME = 'game';
 export function getCatalogNavLabel(t, lang, item) {
   if (t?.[item.labelKey]) return t[item.labelKey];
   return lang === 'ar' ? item.fallbackAr : item.fallbackEn;
+}
+
+export function getCatalogNavShortLabel(t, lang, item) {
+  if (item.shortLabelKey && t?.[item.shortLabelKey]) return t[item.shortLabelKey];
+  return getCatalogNavLabel(t, lang, item);
 }
 
 export function getCatalogNavDesc(t, lang, item) {
