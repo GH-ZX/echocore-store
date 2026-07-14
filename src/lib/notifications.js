@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getAdminDashboardPath } from './adminRoutes';
+import { getInvoiceRouteFromNotification } from './invoiceBuilder';
 
 const RPC_SETUP_MSG =
   'Notifications are not configured. Run supabase_echocore_full.sql in the Supabase SQL Editor.';
@@ -168,21 +169,16 @@ export function getNotificationDestination(item, formatted, userRole) {
 
   const metadata = item?.metadata || {};
   const orderId = metadata.orderId;
+  const invoicePath = getInvoiceRouteFromNotification(item);
 
   if (item?.type === 'recharge_payment_sent' || item?.type === 'recharge_rejected') {
     return { path: '/recharge' };
   }
-  if (item?.type === 'recharge_approved') {
-    return { path: '/profile' };
+  if (invoicePath) {
+    return { path: invoicePath };
   }
   if (orderId && (
-    item?.type === 'purchase_completed'
-    || item?.type === 'order_completed'
-    || item?.type === 'order_gifted'
-    || item?.type === 'delivery_ready'
-    || item?.type === 'topup_delivered'
-    || item?.type === 'order_fulfilled'
-    || item?.type === 'fulfillment_failed'
+    item?.type === 'fulfillment_failed'
     || item?.type === 'fulfillment_failed_refunded'
   )) {
     return { path: `/success?orderId=${orderId}` };

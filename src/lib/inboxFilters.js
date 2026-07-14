@@ -3,6 +3,7 @@ export const INBOX_FILTER_IDS = {
   UNREAD: 'unread',
   ORDERS: 'orders',
   RECHARGES: 'recharges',
+  INVOICES: 'invoices',
   ADMIN: 'admin',
   MESSAGES: 'messages',
 };
@@ -28,6 +29,16 @@ const RECHARGE_TYPES = new Set([
   'admin_recharge_payment_sent',
 ]);
 
+const INVOICE_TYPES = new Set([
+  'purchase_completed',
+  'order_completed',
+  'order_gifted',
+  'delivery_ready',
+  'topup_delivered',
+  'order_fulfilled',
+  'recharge_approved',
+]);
+
 const ADMIN_TYPES = new Set([
   'admin_recharge_payment_sent',
   'admin_recharge_completed',
@@ -48,6 +59,7 @@ export function getInboxFilterOptions(t = {}, userRole) {
     { id: INBOX_FILTER_IDS.UNREAD, label: t.inboxFilterUnread },
     { id: INBOX_FILTER_IDS.ORDERS, label: t.inboxFilterOrders },
     { id: INBOX_FILTER_IDS.RECHARGES, label: t.inboxFilterRecharges },
+    { id: INBOX_FILTER_IDS.INVOICES, label: t.inboxFilterInvoices },
     { id: INBOX_FILTER_IDS.MESSAGES, label: t.inboxFilterMessages },
   ];
 
@@ -68,6 +80,8 @@ export function matchesInboxFilter(item, filterId = INBOX_FILTER_IDS.ALL) {
       return ORDER_TYPES.has(item.type);
     case INBOX_FILTER_IDS.RECHARGES:
       return RECHARGE_TYPES.has(item.type);
+    case INBOX_FILTER_IDS.INVOICES:
+      return INVOICE_TYPES.has(item.type);
     case INBOX_FILTER_IDS.ADMIN:
       return ADMIN_TYPES.has(item.type);
     case INBOX_FILTER_IDS.MESSAGES:
@@ -94,6 +108,8 @@ export function getInboxEmptyMessageKey(filterId = INBOX_FILTER_IDS.ALL) {
       return 'inboxEmptyOrders';
     case INBOX_FILTER_IDS.RECHARGES:
       return 'inboxEmptyRecharges';
+    case INBOX_FILTER_IDS.INVOICES:
+      return 'inboxEmptyInvoices';
     case INBOX_FILTER_IDS.ADMIN:
       return 'inboxEmptyAdmin';
     case INBOX_FILTER_IDS.MESSAGES:

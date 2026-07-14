@@ -21,6 +21,8 @@ import {
   shouldTriggerFulfillment,
   isOrderPaid,
 } from '../lib/orderReceipt';
+import { isInvoiceReadyForOrder } from '../lib/invoices';
+import { INVOICE_KIND } from '../lib/invoiceBuilder';
 
 async function copyText(text) {
   if (!text) return false;
@@ -197,6 +199,7 @@ export default function SuccessView({
     && (fulfillmentStatus === 'fulfilling' || fulfillmentStatus === 'pending');
   const showTopupDetails = isOrderPaid(orderDetails) && hasUid && fulfillmentStatus === 'fulfilled';
   const allCodesText = deliveryCodes.join('\n');
+  const showInvoiceLink = isInvoiceReadyForOrder(orderDetails);
 
   if (isAwaitingFulfillment) {
     return (
@@ -406,10 +409,19 @@ export default function SuccessView({
       )}
 
       <div className="flex flex-col sm:flex-row gap-3 justify-center">
+        {showInvoiceLink && (
+          <button
+            type="button"
+            onClick={() => navigate(`/invoice/${INVOICE_KIND.ORDER}/${orderDetails.id}`)}
+            className="btn btn-primary px-6 py-3"
+          >
+            {t.viewInvoice}
+          </button>
+        )}
         <button type="button" onClick={() => navigate('/profile')} className="btn btn-secondary px-6 py-3">
           {t.myOrdersLink}
         </button>
-        <button type="button" onClick={() => navigate('/')} className="btn btn-primary px-8 py-3">
+        <button type="button" onClick={() => navigate('/')} className="btn btn-secondary px-8 py-3">
           {t.backToHomeSuccess || t.backToHome}
         </button>
       </div>

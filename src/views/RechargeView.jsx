@@ -234,6 +234,7 @@ export default function RechargeView({
     }
 
     setCompletedRecharge({
+      requestId: completion?.requestId || activeRequest?.requestId,
       amount,
       newBalance: newBalance ?? balance,
     });
@@ -242,9 +243,11 @@ export default function RechargeView({
     setStep('completed');
     notifySuccess(t.rechargeSuccess);
 
-    window.setTimeout(() => {
-      navigate(returnTo || '/');
-    }, 1400);
+    if (returnTo) {
+      window.setTimeout(() => {
+        navigate(returnTo);
+      }, 1400);
+    }
   };
 
   const handleInvoiceExpired = () => {
@@ -369,13 +372,24 @@ export default function RechargeView({
                 })}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={resetToAmount}
-              className="btn btn-primary w-full py-4 font-bold"
-            >
-              {t.rechargeAgain}
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3">
+              {completedRecharge.requestId && (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/invoice/recharge/${completedRecharge.requestId}`)}
+                  className="btn btn-primary flex-1 py-4 font-bold"
+                >
+                  {t.viewInvoice}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={resetToAmount}
+                className="btn btn-secondary flex-1 py-4 font-bold"
+              >
+                {t.rechargeAgain}
+              </button>
+            </div>
           </div>
         )}
 

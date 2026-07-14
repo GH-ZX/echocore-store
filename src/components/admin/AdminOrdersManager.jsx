@@ -31,6 +31,8 @@ import {
   getOrderStatusLabel,
   getOrderStatusTone,
 } from '../../lib/orderReceipt';
+import { isInvoiceReadyForOrder } from '../../lib/invoices';
+import { INVOICE_KIND } from '../../lib/invoiceBuilder';
 import {
   formatProfileUsername,
   getProfileAdminLabel,
@@ -357,6 +359,19 @@ export default function AdminOrdersManager({
             <div className="text-[var(--text-muted)] text-xs">{t.noItemsRecorded}</div>
           )}
         </div>
+
+        {isInvoiceReadyForOrder(order) && (
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => navigate(`/invoice/${INVOICE_KIND.ORDER}/${order.id}`)}
+              className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              {t.viewInvoice}
+            </button>
+          </div>
+        )}
       </div>
     );
   };

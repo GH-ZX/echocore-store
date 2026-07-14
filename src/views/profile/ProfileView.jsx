@@ -41,6 +41,8 @@ import {
   emptyProfileValue,
 } from '../../lib/profile';
 import { getOrderStatusLabel } from '../../lib/orderReceipt';
+import { isInvoiceReadyForOrder } from '../../lib/invoices';
+import { INVOICE_KIND } from '../../lib/invoiceBuilder';
 import { formatMessage } from '../../lib/i18n';
 import {
   canChangeUsername,
@@ -908,11 +910,15 @@ export default function ProfileView({
                 {userOrders.map((order) => {
                   const items = order.order_items || [];
                   const preview = items.map((i) => i.name_snapshot).join(', ') || '—';
+                  const invoiceReady = isInvoiceReadyForOrder(order);
+                  const orderPath = invoiceReady
+                    ? `/invoice/${INVOICE_KIND.ORDER}/${order.id}`
+                    : `/success?orderId=${order.id}`;
                   return (
                     <button
                       key={order.id}
                       type="button"
-                      onClick={() => navigate(`/success?orderId=${order.id}`)}
+                      onClick={() => navigate(orderPath)}
                       className="profile-list-item w-full text-left group"
                     >
                       <div className="flex items-start justify-between gap-2">

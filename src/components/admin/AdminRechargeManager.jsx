@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Loader2, CheckCircle, XCircle, RefreshCw, Wallet, HandCoins } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Loader2, CheckCircle, XCircle, RefreshCw, Wallet, HandCoins, FileText } from 'lucide-react';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import AdminManualBalanceCredit from './AdminManualBalanceCredit';
 import AdminCustomerBalances from './AdminCustomerBalances';
@@ -16,6 +17,8 @@ import {
   isSamApiAwaitingPayment,
   needsLegacyManualReview,
 } from '../../lib/adminRecharge';
+import { isInvoiceReadyForRecharge } from '../../lib/invoices';
+import { INVOICE_KIND } from '../../lib/invoiceBuilder';
 
 const FILTER_OPTIONS = [
   { id: 'all', labelKey: 'adminRechargeFilterAll' },
@@ -60,6 +63,7 @@ function RechargeStatusBadge({ displayStatus, t }) {
 }
 
 export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, onNotify }) {
+  const navigate = useNavigate();
   const onNotifyRef = useRef(onNotify);
   useEffect(() => {
     onNotifyRef.current = onNotify;
@@ -322,6 +326,16 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
                           >
                             <HandCoins className="w-3.5 h-3.5" />
                             {t.adminManualCreditGrant}
+                          </button>
+                        ) : isInvoiceReadyForRecharge(req) ? (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/invoice/${INVOICE_KIND.RECHARGE}/${req.id}`)}
+                            className="action-chip gap-1 text-xs !py-1.5"
+                            title={t.viewInvoice}
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            {t.viewInvoice}
                           </button>
                         ) : (
                           <span className="text-[10px] text-[var(--text-muted)]">—</span>

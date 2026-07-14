@@ -29,6 +29,10 @@ const BannedView = lazy(() => import('../../views/BannedView'));
 const AdminView = lazy(() => import('../../views/admin/AdminView'));
 const AdminGiftView = lazy(() => import('../../views/admin/AdminGiftView'));
 const SuccessView = lazy(() => import('../../views/SuccessView'));
+const InvoiceView = lazy(() => import('../../views/InvoiceView'));
+const TestViewReceipt = import.meta.env.DEV
+  ? lazy(() => import('../../views/TestViewReceipt'))
+  : null;
 const NotFoundView = lazy(() => import('../../views/NotFoundView'));
 const PrivacyView = lazy(() => import('../../views/PrivacyView'));
 const TermsView = lazy(() => import('../../views/TermsView'));
@@ -403,6 +407,24 @@ export default function AppRoutes({
         />
 
         <Route
+          path="/invoice/:kind/:id"
+          element={(
+            <ProtectedRoute user={user} loadingAuth={loadingAuth} lang={lang}>
+              <Suspense fallback={<PageLoader t={t} />}>
+                <InvoiceView
+                  navigate={navigate}
+                  t={t}
+                  lang={lang}
+                  user={user}
+                  games={games}
+                  offers={offers}
+                />
+              </Suspense>
+            </ProtectedRoute>
+          )}
+        />
+
+        <Route
           path="/notifications"
           element={(
             <ProtectedRoute user={user} loadingAuth={loadingAuth} lang={lang}>
@@ -556,6 +578,17 @@ export default function AppRoutes({
         />
 
         <Route path="/product" element={<Navigate to="/" replace />} />
+
+        {import.meta.env.DEV && TestViewReceipt && (
+          <Route
+            path="/dev/receipt-preview"
+            element={(
+              <Suspense fallback={<PageLoader t={t} />}>
+                <TestViewReceipt t={t} lang={lang} navigate={navigate} />
+              </Suspense>
+            )}
+          />
+        )}
 
         <Route
           path="*"
