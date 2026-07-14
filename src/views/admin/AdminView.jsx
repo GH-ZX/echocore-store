@@ -8,6 +8,7 @@ import { supabase } from '../../lib/supabase';
 
 import { centerActiveMobileTab, resetPageHorizontalScroll } from '../../lib/adminMobileNav';
 import { getCatalogOfferStats } from '../../lib/catalogUtils';
+import AdminProfitOverview from '../../components/admin/AdminProfitOverview';
 import AdminSupplierWalletsCard from '../../components/ui/AdminSupplierWalletsCard';
 import { useAdminSupplierWallets } from '../../hooks/useAdminSupplierWallets';
 import AdminExistingGamesList from '../../components/admin/AdminExistingGamesList';
@@ -470,6 +471,8 @@ export default function AdminView({
               </p>
             </div>
           </div>
+
+          <AdminProfitOverview orders={orders} offers={offers} t={t} />
 
           {/* Recent Orders */}
           <div className="card p-4 sm:p-6">
