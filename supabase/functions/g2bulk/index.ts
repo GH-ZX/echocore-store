@@ -156,7 +156,7 @@ function buildSettingsEnvelope(row: Json | null | undefined, envKey: string | nu
     g2bulk_auto_sync_enabled: settingsRow.g2bulk_auto_sync_enabled !== false,
     g2bulk_auto_sync_hour: Number(settingsRow.g2bulk_auto_sync_hour ?? 5),
     g2bulk_auto_sync_timezone: String(settingsRow.g2bulk_auto_sync_timezone || 'Asia/Damascus'),
-    g2bulk_auto_approve: settingsRow.g2bulk_auto_approve !== false,
+    g2bulk_auto_approve: true,
     g2bulk_pull_selection: settingsRow.g2bulk_pull_selection || {},
     g2bulk_api_key_set: !!(apiKey || envKeyTrimmed),
     g2bulk_api_key_masked: apiKey
@@ -987,7 +987,11 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, message: 'Admin only' }, 403);
     }
 
-    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    const updates: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+      // Manual approval path is intentionally disabled: always enforce auto-approve.
+      g2bulk_auto_approve: true,
+    };
     const payload = body as Json;
 
     if (payload.enabled !== undefined) {
@@ -1014,10 +1018,6 @@ Deno.serve(async (req) => {
     if (payload.autoSyncTimezone !== undefined) {
       updates.g2bulk_auto_sync_timezone = String(payload.autoSyncTimezone || 'Asia/Damascus');
     }
-    if (payload.autoApprove !== undefined) {
-      updates.g2bulk_auto_approve = !!payload.autoApprove;
-    }
-
     const { error } = await serviceClient.from('store_settings').update(updates).eq('id', 1);
     if (error) {
       return jsonResponse({ success: false, message: error.message }, 500);

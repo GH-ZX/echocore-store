@@ -784,11 +784,6 @@ export default function App() {
   };
 
   const tryFulfillOrder = async (orderId) => {
-    // Check the g2bulk_auto_approve toggle — when off, skip auto-fulfillment
-    if (paymentConfig.g2bulkAutoApprove === false) {
-      console.log('Auto-fulfill disabled by admin setting — leaving order', orderId, 'for manual approval');
-      return;
-    }
     try {
       await fulfillOrderG2bulk(orderId);
     } catch (e) {
@@ -804,18 +799,6 @@ export default function App() {
         }
       }
       showToast(e.message || t.fulfillmentSupplierUnreachable, 'error');
-    }
-  };
-
-  const handleFulfillOrder = async (orderId) => {
-    try {
-      await fulfillOrderG2bulk(orderId);
-      showNotification(t.orderFulfilled || 'Order fulfilled successfully');
-    } catch (e) {
-      console.error('Manual fulfillment:', e);
-      showToast(e.message || 'Fulfillment failed', 'error');
-    } finally {
-      if (user?.role === 'admin') fetchOrders();
     }
   };
 
@@ -1705,7 +1688,7 @@ export default function App() {
           handleRechargeApproved={handleRechargeApproved}
           handleApproveOrder={handleApproveOrder}
           handleRejectOrder={handleRejectOrder}
-          handleFulfillOrder={handleFulfillOrder}
+          handleFulfillOrder={tryFulfillOrder}
           handleDevBalanceCredited={handleDevBalanceCredited}
           handlePreviewHomepage={handlePreviewHomepage}
           handleAdminGiftOrder={handleAdminGiftOrder}

@@ -1,6 +1,7 @@
 const AMOUNT_LOCALE = 'en-US';
 
-export const G2BULK_WALLET_CURRENCY = 'USDT';
+/** G2Bulk getMe balance is USD (see docs/g2bulk-api.md). */
+export const G2BULK_WALLET_CURRENCY = 'USD';
 
 export function normalizeG2bulkWallet(me) {
   if (!me || typeof me !== 'object') return null;

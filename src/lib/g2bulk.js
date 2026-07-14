@@ -92,7 +92,6 @@ export async function saveG2bulkSettings({
   autoSyncEnabled,
   autoSyncHour,
   autoSyncTimezone,
-  autoApprove,
 }) {
   const data = await invokeG2bulk({
     action: 'saveSettings',
@@ -104,7 +103,6 @@ export async function saveG2bulkSettings({
     autoSyncEnabled: autoSyncEnabled !== undefined ? !!autoSyncEnabled : undefined,
     autoSyncHour: autoSyncHour !== undefined ? Number(autoSyncHour) : undefined,
     autoSyncTimezone: autoSyncTimezone !== undefined ? (autoSyncTimezone?.trim() || null) : undefined,
-    autoApprove: autoApprove !== undefined ? !!autoApprove : undefined,
   });
 
   if (data?.settings) {
