@@ -388,6 +388,10 @@ SET search_path = public AS $$
 DECLARE
   caller_role text;
 BEGIN
+  IF current_setting('echocore.allow_balance_change', true) IN ('1', 'true') THEN
+    RETURN NEW;
+  END IF;
+
   IF auth.uid() IS NULL THEN
     RETURN NEW;
   END IF;
@@ -446,6 +450,8 @@ BEGIN
   IF current_bal IS NULL OR current_bal < p_amount THEN
     RAISE EXCEPTION 'Insufficient balance';
   END IF;
+
+  PERFORM set_config('echocore.allow_balance_change', '1', true);
 
   UPDATE public.profiles
     SET balance = balance - p_amount
@@ -3513,6 +3519,10 @@ AS $$
 DECLARE
   caller_role text;
 BEGIN
+  IF current_setting('echocore.allow_balance_change', true) IN ('1', 'true') THEN
+    RETURN NEW;
+  END IF;
+
   IF auth.uid() IS NULL THEN
     RETURN NEW;
   END IF;
@@ -5106,6 +5116,8 @@ BEGIN
 
   IF p_payment_method = 'balance' THEN
     v_order_status := 'completed';
+
+    PERFORM set_config('echocore.allow_balance_change', '1', true);
 
     UPDATE profiles
     SET

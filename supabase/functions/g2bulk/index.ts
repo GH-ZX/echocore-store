@@ -7,6 +7,9 @@ import {
 import { priceFromCost } from './charmPricing.ts';
 
 const G2BULK_BASE = 'https://api.g2bulk.com/v1';
+/** G2Bulk docs: poll every 2–5w s; MLBB top-ups can exceed 45 s. */
+const G2BULK_POLL_INTERVAL_MS = 2_500;
+const G2BULK_POLL_TIMEOUT_MS = 50_000;
 const SKIP_GAME_CODES = new Set(['test', 'demo', 'sandbox']);
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -653,7 +656,8 @@ async function isAdmin(userClient: ReturnType<typeof createClient>, userId: stri
 }
 
 async function pollVoucherDelivery(apiKey: string, g2bulkOrderId: number) {
-  for (let i = 0; i < 15; i++) {
+  const deadline = Date.now() + G2BULK_POLL_TIMEOUT_MS;
+  while (Date.now() < deadline) {
     const { res, data } = await g2bulkFetch(apiKey, `/orders/${g2bulkOrderId}/delivery`);
     if (res.status === 200 && Array.isArray(data.delivery_items)) {
       return { ok: true as const, items: data.delivery_items as string[], data };
@@ -661,13 +665,14 @@ async function pollVoucherDelivery(apiKey: string, g2bulkOrderId: number) {
     if (res.status === 410) {
       return { ok: false as const, error: (data.message as string) || 'Order refunded' };
     }
-    await sleep(3000);
+    await sleep(G2BULK_POLL_INTERVAL_MS);
   }
   return { ok: false as const, error: 'Delivery polling timed out' };
 }
 
 async function pollGameOrderStatus(apiKey: string, g2bulkOrderId: number) {
-  for (let i = 0; i < 15; i++) {
+  const deadline = Date.now() + G2BULK_POLL_TIMEOUT_MS;
+  while (Date.now() < deadline) {
     const { res, data } = await g2bulkFetch(apiKey, '/games/order/status', {
       method: 'POST',
       body: JSON.stringify({ order_id: g2bulkOrderId }),
@@ -679,7 +684,7 @@ async function pollGameOrderStatus(apiKey: string, g2bulkOrderId: number) {
     if (status === 'FAILED' || status === 'REFUNDED') {
       return { ok: false as const, error: (data.message as string) || 'Top-up failed' };
     }
-    await sleep(3000);
+    await sleep(G2BULK_POLL_INTERVAL_MS);
   }
   return { ok: false as const, error: 'Top-up status polling timed out' };
 }
