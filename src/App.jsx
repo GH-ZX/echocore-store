@@ -598,7 +598,7 @@ export default function App() {
     const preparedCart = await resolveCheckoutOffers(currentCart);
     const { items: syncedCart, removedCount } = syncCartWithOffers(preparedCart, offers.length ? offers : preparedCart);
     if (syncedCart.length === 0) {
-      throw new Error(lang === 'ar' ? 'السلة فارغة أو العروض لم تعد متاحة' : 'Cart is empty or offers are no longer available');
+      throw new Error(t.cartEmptyOrUnavailable);
     }
     if (removedCount > 0) {
       setCart(syncedCart);
@@ -1472,10 +1472,7 @@ export default function App() {
     if (!cartsAreEquivalent(cart, items)) {
       setCart(items);
       if (removedCount > 0) {
-        showNotification(
-          t.cartItemsRemoved
-            || (lang === 'ar' ? 'تمت إزالة عروض غير متاحة من السلة' : 'Unavailable offers were removed from your cart'),
-        );
+        showNotification(t.cartItemsRemoved);
       }
     }
     if (priceUpdated) setCartPriceUpdated(true);

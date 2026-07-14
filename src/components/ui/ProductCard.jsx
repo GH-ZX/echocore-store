@@ -24,9 +24,7 @@ export default function ProductCard({
   compact = false 
 }) {
   const name = lang === 'ar' ? product.name_ar : product.name_en;
-  const categoryLabel = product.category === 'games' 
-    ? (t.game || (lang === 'ar' ? 'شحن ألعاب' : 'PC Games')) 
-    : (t.digitalCard || (lang === 'ar' ? 'بطاقات رقمية' : 'Digital Cards'));
+  const categoryLabel = product.category === 'games' ? t.game : t.digitalCard;
 
   // Fallback image (use placeholder or external)
   const placeholder = new URL('../../assets/placeholder-cover.svg', import.meta.url).href;
@@ -91,8 +89,7 @@ export default function ProductCard({
           </h3>
           {!compact && (
             <p className="text-[13px] text-text-sec line-clamp-2 mb-3">
-              {lang === 'ar' ? product.description_ar : product.description_en || 
-                (t.instantDelivery || 'توصيل فوري • آمن 100%')}
+              {lang === 'ar' ? product.description_ar : product.description_en || t.instantDelivery}
             </p>
           )}
         </div>
@@ -110,13 +107,13 @@ export default function ProductCard({
                 onClick={handleBuyNow}
                 className="btn btn-primary px-3 py-2 text-xs active:scale-[0.985]"
               >
-                {lang === 'ar' ? 'اشترِ' : 'Buy'}
+                {t.buy}
               </button>
             )}
             <button
               onClick={handleAdd}
               className="btn btn-secondary p-3 active:scale-[0.985]"
-              title={t.addToCart || (lang === 'ar' ? 'أضف للسلة' : 'Add to cart')}
+              title={t.addToCart}
             >
               <ShoppingCart className="w-4 h-4" />
             </button>

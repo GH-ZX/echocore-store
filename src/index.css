@@ -4598,6 +4598,46 @@ html, body {
   border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
 }
 
+.catalog-offer-meta-panel {
+  border-color: color-mix(in srgb, var(--accent) 14%, var(--border));
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--accent) 6%, var(--bg-surface)),
+    color-mix(in srgb, var(--bg-elevated) 70%, transparent)
+  );
+}
+
+.catalog-offer-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+}
+
+.catalog-offer-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.25rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  background: color-mix(in srgb, var(--bg-primary) 55%, transparent);
+  font-size: 0.8125rem;
+  color: var(--text-sec);
+}
+
+.catalog-offer-meta-chip__label {
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.catalog-offer-meta-chip strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
 .catalog-step-num {
   display: inline-flex;
   align-items: center;

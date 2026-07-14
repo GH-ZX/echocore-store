@@ -19,7 +19,8 @@ Bilingual (Arabic / English) game top-up and digital cards storefront. React + S
 - Admin-only supplier cost on offer cards (`g2bulk_cost_usd`)
 - Game pack currency labels (UC, diamonds, Riftcrystal, …) + per-game marketing copy
 - ShamCash / Sam API recharge + checkout
-- Centralized i18n (`translations.js` / `pageContent.js`)
+- Order & recharge **invoices** (PNG/PDF) — `/invoice/:kind/:id`
+- Centralized i18n (`translations.js` / `pageContent.js`) with smart game/offer description fallbacks
 - Custom domain on GitHub Pages
 
 **Full database setup:** [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) · [عربي](./SUPABASE_SETUP.ar.md)
@@ -75,9 +76,10 @@ Details: [RUNNING.md](./RUNNING.md) · [PROJECT_MAP.md](./PROJECT_MAP.md)
 src/
 ├── App.jsx                 # State, handlers, shell
 ├── components/routing/     # AppRoutes, loaders, guards
-├── views/                  # Page components
-├── data/                   # translations, pageContent
-└── lib/                    # Supabase, cart, payments, theme
+├── components/invoices/    # InvoiceDocument, download actions
+├── views/                  # Page components (OfferDetail, InvoiceView, …)
+├── data/                   # translations, pageContent (incl. redeem steps)
+└── lib/                    # Supabase, cart, payments, invoices, i18n helpers
 supabase_echocore_full.sql  # Complete DB setup (run this)
 ```
 

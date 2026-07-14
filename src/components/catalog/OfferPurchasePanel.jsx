@@ -14,7 +14,6 @@ export default function OfferPurchasePanel({
   onAddToCart,
   className = '',
 }) {
-  const isAr = lang === 'ar';
   const discount = getOfferDiscount(offer);
   const packLabel = getOfferDisplayName(offer, lang, {
     game,
@@ -26,7 +25,7 @@ export default function OfferPurchasePanel({
     <aside className={`catalog-purchase-panel card p-5 sm:p-6 h-fit ${className}`}>
       <div className="space-y-5">
         <div>
-          <div className="text-xs uppercase tracking-wider text-[var(--text-muted)] mb-1">{t.price || 'Price'}</div>
+          <div className="text-xs uppercase tracking-wider text-[var(--text-muted)] mb-1">{t.price}</div>
           {offer.is_sale && offer.original_price && (
             <div className="text-sm line-through text-[var(--text-muted)]">${formatPrice(offer.original_price)}</div>
           )}
@@ -34,7 +33,7 @@ export default function OfferPurchasePanel({
             <div className="text-4xl sm:text-5xl font-black text-[var(--accent)]">${formatPrice(offer.price)}</div>
             {offer.is_sale && (
               <span className="text-[10px] px-2 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/25 font-bold">
-                {discount ? `-${discount}%` : (t.sale || 'SALE')}
+                {discount ? `-${discount}%` : t.sale}
               </span>
             )}
           </div>
@@ -45,7 +44,7 @@ export default function OfferPurchasePanel({
           <div className="catalog-purchase-panel__meta">
             <div className="flex items-center gap-2 text-sm text-[var(--text-sec)]">
               <Package className="w-4 h-4 text-[var(--accent)] shrink-0" />
-              <span>{t.youReceive || 'You receive'}: <strong className="text-[var(--text-primary)]">{packLabel}</strong></span>
+              <span>{t.youReceive}: <strong className="text-[var(--text-primary)] offer-pack-label">{packLabel}</strong></span>
             </div>
           </div>
         )}
@@ -54,7 +53,7 @@ export default function OfferPurchasePanel({
           <div className="catalog-purchase-panel__meta">
             <div className="flex items-center gap-2 text-sm text-[var(--text-sec)]">
               <Globe className="w-4 h-4 text-[var(--accent)] shrink-0" />
-              <span>{t.region || 'Region'}: <strong>{offer.region || game.region_label}</strong></span>
+              <span>{t.region}: <strong>{offer.region || game.region_label}</strong></span>
             </div>
           </div>
         )}
@@ -72,7 +71,7 @@ export default function OfferPurchasePanel({
             onClick={() => onBuyNow?.(offer)}
             className="btn btn-primary w-full py-3.5 sm:py-4 text-base font-black touch-manipulation"
           >
-            {t.buyNow || (isAr ? 'اشترِ الآن' : 'Buy now')}
+            {t.buyNow}
           </button>
           <button
             type="button"
@@ -80,7 +79,7 @@ export default function OfferPurchasePanel({
             className="btn btn-secondary w-full py-3 text-sm inline-flex items-center justify-center gap-2 touch-manipulation"
           >
             <ShoppingCart className="w-4 h-4" />
-            {t.addToCart || (isAr ? 'أضف للسلة' : 'Add to cart')}
+            {t.addToCart}
           </button>
         </div>
       </div>

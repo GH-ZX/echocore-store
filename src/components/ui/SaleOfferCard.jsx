@@ -123,7 +123,7 @@ export default function SaleOfferCard({
             }}
             className="flex-1 btn btn-secondary text-[11px] sm:text-xs py-2 px-2 min-w-0"
           >
-            {t.details || (isAr ? 'تفاصيل' : 'Details')}
+            {t.details}
           </button>
           <button
             type="button"
@@ -133,7 +133,7 @@ export default function SaleOfferCard({
             }}
             className="flex-1 btn btn-primary text-[11px] sm:text-xs py-2 px-2 font-semibold min-w-0"
           >
-            {isAr ? 'اشترِ' : 'Buy'}
+            {t.buy}
           </button>
         </div>
       </div>

@@ -4,7 +4,7 @@ import InvoiceDocument from '../components/invoices/InvoiceDocument';
 import InvoiceDownloadActions from '../components/invoices/InvoiceDownloadActions';
 import {
   getInvoicePreviewSample,
-  INVOICE_PREVIEW_OPTIONS,
+  getInvoicePreviewOptions,
 } from '../lib/invoicePreviewMocks';
 
 /**
@@ -22,12 +22,12 @@ export default function TestViewReceipt({
   const [sampleId, setSampleId] = useState('redeem');
   const [downloading, setDownloading] = useState(null);
 
+  const previewOptions = useMemo(() => getInvoicePreviewOptions(t), [t]);
+
   const invoice = useMemo(
     () => getInvoicePreviewSample(sampleId, lang),
     [sampleId, lang],
   );
-
-  const sampleLabel = (option) => (lang === 'ar' ? option.labelAr : option.labelEn);
 
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 animate-fade-in">
@@ -39,12 +39,10 @@ export default function TestViewReceipt({
             </div>
             <div>
               <h1 className="text-lg font-black">
-                {lang === 'ar' ? 'معاينة شكل الفاتورة (تجريبي)' : 'Invoice preview (dev only)'}
+                {t.invoicePreviewTitle}
               </h1>
               <p className="text-sm text-[var(--text-sec)] mt-1">
-                {lang === 'ar'
-                  ? 'بيانات وهمية فقط — لا تؤثر على الطلبات أو الشحن الحقيقي.'
-                  : 'Mock data only — does not touch real orders or recharges.'}
+                {t.invoicePreviewDesc}
               </p>
             </div>
           </div>
@@ -55,13 +53,13 @@ export default function TestViewReceipt({
               className="btn btn-secondary text-sm py-2 px-3 inline-flex items-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" />
-              {t.backToHome || (lang === 'ar' ? 'الرئيسية' : 'Home')}
+              {t.backToHome}
             </button>
           )}
         </div>
 
         <div className="flex flex-wrap gap-2 mt-4">
-          {INVOICE_PREVIEW_OPTIONS.map((option) => {
+          {previewOptions.map((option) => {
             const active = sampleId === option.id;
             return (
               <button
@@ -70,7 +68,7 @@ export default function TestViewReceipt({
                 onClick={() => setSampleId(option.id)}
                 className={`inbox-filter-chip ${active ? 'inbox-filter-chip--active' : ''}`}
               >
-                {sampleLabel(option)}
+                {option.label}
               </button>
             );
           })}
@@ -83,14 +81,14 @@ export default function TestViewReceipt({
               onClick={() => setLang('ar')}
               className={`inbox-filter-chip ${lang === 'ar' ? 'inbox-filter-chip--active' : ''}`}
             >
-              العربية
+              {t.langArabic}
             </button>
             <button
               type="button"
               onClick={() => setLang('en')}
               className={`inbox-filter-chip ${lang === 'en' ? 'inbox-filter-chip--active' : ''}`}
             >
-              English
+              {t.langEnglish}
             </button>
           </div>
 

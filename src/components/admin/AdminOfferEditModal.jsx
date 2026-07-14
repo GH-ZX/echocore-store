@@ -238,13 +238,16 @@ export default function AdminOfferEditModal({
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 block">{t.description || 'Description'}</label>
+            <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 block">{t.description}</label>
             <textarea
-              placeholder={t.descriptionOneEnough || 'Description'}
+              placeholder={t.descriptionOneEnough}
               value={form.description_en}
               onChange={(e) => setForm({ ...form, description_en: e.target.value })}
               className="input w-full h-24 resize-y"
             />
+            <p className="text-[11px] text-[var(--text-muted)] mt-1.5 leading-relaxed">
+              {t.offerDescriptionPlaceholderHelp}
+            </p>
           </div>
 
           <div>

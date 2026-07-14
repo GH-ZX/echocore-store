@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Settings2, ChevronUp, ChevronDown, Plus } fr
 import AdminEditButton from '../../components/admin/AdminEditButton';
 
 import { brandUserText } from '../../lib/branding';
+import { formatMessage } from '../../lib/i18n';
 import { presetImageUrl } from '../../lib/imageUtils';
 import { getGameCoverUrl } from '../../lib/gameImages';
 import { extractDominantLogoColor, isCanvasSafeUrl, sampleLogoColorFromUrl } from '../../lib/logoColor';
@@ -126,7 +127,7 @@ export default function ProductCarousel({
       className={sectionClassName}
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
-      aria-label={lang === 'ar' ? 'سلايدر الألعاب المميزة' : 'Featured games carousel'}
+      aria-label={t.featuredGamesCarouselAria}
     >
       {isAdmin && (
         <div className="absolute top-3 left-3 z-40 flex flex-wrap items-center gap-2">
@@ -136,11 +137,11 @@ export default function ProductCarousel({
             className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--accent)]/40 bg-black/60 backdrop-blur-md px-3 py-1.5 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/20 transition-all"
           >
             <Settings2 className="w-3.5 h-3.5" />
-            {t.manageCarousel || 'Manage Carousel'}
+            {t.manageCarousel}
           </button>
           {currentItem && (
             <AdminEditButton
-              label={t.editSlide || 'Edit Slide'}
+              label={t.editSlide}
               onClick={() => onEditGame?.(currentItem)}
               className="bg-black/60 backdrop-blur-md"
             />
@@ -151,9 +152,7 @@ export default function ProductCarousel({
       {slides.length === 0 && isAdmin && onPickCarouselGame ? (
         <div className="p-6 sm:p-8 text-center space-y-4">
           <p className="text-sm text-[var(--text-muted)] max-w-md mx-auto">
-            {lang === 'ar'
-              ? 'لا توجد شرائح في الكاروسيل. اختر من الألعاب الموجودة في المتجر.'
-              : 'No carousel slides yet. Pick from games already in your store.'}
+            {t.carouselEmptyAdminHint}
           </p>
           <button
             type="button"
@@ -161,7 +160,7 @@ export default function ProductCarousel({
             className="btn btn-primary inline-flex items-center gap-2 min-h-[44px]"
           >
             <Plus className="w-4 h-4" />
-            {t.addToCarousel || (lang === 'ar' ? 'إضافة إلى الكاروسيل' : 'Add to carousel')}
+            {t.addToCarousel}
           </button>
         </div>
       ) : slides.length > 0 && (
@@ -262,7 +261,7 @@ export default function ProductCarousel({
           type="button"
           onClick={() => embla?.scrollPrev()}
           className="absolute left-3 sm:left-4 md:left-5 top-1/2 z-20 -translate-y-1/2 flex h-9 w-9 md:h-11 md:w-11 items-center justify-center rounded-full border border-white/20 bg-black/50 backdrop-blur-sm text-white transition-all duration-200 hover:border-white/50 hover:bg-black/70 hover:scale-110 active:scale-95 shadow-[0_2px_16px_rgba(0,0,0,0.5)]"
-          aria-label={lang === 'ar' ? 'السابق' : 'Previous'}
+          aria-label={t.carouselPreviousAria}
         >
           <ChevronLeft className="w-5 h-5" />
         </button>
@@ -270,7 +269,7 @@ export default function ProductCarousel({
           type="button"
           onClick={() => embla?.scrollNext()}
           className="absolute right-3 sm:right-4 md:right-5 top-1/2 z-20 -translate-y-1/2 flex h-9 w-9 md:h-11 md:w-11 items-center justify-center rounded-full border border-white/20 bg-black/50 backdrop-blur-sm text-white transition-all duration-200 hover:border-white/50 hover:bg-black/70 hover:scale-110 active:scale-95 shadow-[0_2px_16px_rgba(0,0,0,0.5)]"
-          aria-label={lang === 'ar' ? 'التالي' : 'Next'}
+          aria-label={t.carouselNextAria}
         >
           <ChevronRight className="w-5 h-5" />
         </button>
@@ -312,7 +311,7 @@ export default function ProductCarousel({
                     className={`carousel-thumb group relative flex flex-col items-center gap-1.5 px-3 py-2.5 sm:px-4 sm:py-3 min-w-[76px] sm:min-w-[92px] max-w-[110px] transition-all duration-300 snap-start hover:bg-white/[0.04] overflow-hidden touch-manipulation ${
                       isActive ? 'carousel-thumb--active' : ''
                     }`}
-                    aria-label={lang === 'ar' ? `انتقل الى ${item.name_ar}` : `Switch to ${item.name_en}`}
+                    aria-label={formatMessage(t.carouselGoToSlideAria, { name: slideLabel })}
                     aria-current={isActive ? 'true' : undefined}
                   >
                     {isActive && (
@@ -385,7 +384,7 @@ export default function ProductCarousel({
                         onClick={(e) => { e.stopPropagation(); onEditGame?.(item); }}
                         className="p-1 rounded text-[var(--accent)]/70 hover:text-[var(--accent)] text-[9px] font-bold"
                       >
-                        {t.edit || 'Edit'}
+                        {t.edit}
                       </button>
                       <button
                         type="button"
@@ -415,7 +414,7 @@ export default function ProductCarousel({
                 type="button"
                 onClick={onPickCarouselGame}
                 className="group relative flex flex-col items-center justify-center gap-1 px-4 py-3 sm:px-5 sm:py-4 min-w-[80px] sm:min-w-[96px] transition-all duration-300 snap-start hover:bg-white/[0.03]"
-                aria-label={t.addToCarousel || (lang === 'ar' ? 'إضافة إلى الكاروسيل' : 'Add to carousel')}
+                aria-label={t.addToCarousel}
               >
                 <div className="h-8 sm:h-10 flex items-center justify-center px-1.5 transition-all duration-300 opacity-50 group-hover:opacity-100 group-hover:scale-[1.02]">
                   <Plus

@@ -837,7 +837,7 @@ export default function ProfileView({
           { icon: Receipt, label: t.totalSpent, value: `$${totalSpent.toFixed(2)}`, color: 'text-[var(--accent)]' },
           {
             icon: Wallet,
-            label: t.g2bulkBalance,
+            label: t.supplierWalletBalance,
             value: supplierWalletsLoading
               ? '…'
               : (g2bulkWallet

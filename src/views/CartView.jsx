@@ -15,7 +15,6 @@ export default function CartView({
   onCheckout,
   priceUpdated = false,
 }) {
-  const isAr = lang === 'ar';
   const uidBlocked = cartRequiresPlayerUid(cart, games);
 
   return (
@@ -24,7 +23,7 @@ export default function CartView({
 
       {priceUpdated && cart.length > 0 && (
         <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          {t.cartPricesUpdated || (isAr ? 'تم تحديث أسعار بعض العناصر في سلتك.' : 'Some item prices in your cart were updated.')}
+          {t.cartPricesUpdated}
         </div>
       )}
 
@@ -32,7 +31,7 @@ export default function CartView({
         <div className="card py-20 text-center">
           <p className="text-2xl font-bold text-[var(--text-sec)] mb-2">{t.emptyCart}</p>
           <p className="text-sm text-[var(--text-muted)]">
-            {t.cartEmptyHint || (isAr ? 'ابدأ التسوق من الصفحة الرئيسية' : 'Start shopping from the homepage')}
+            {t.cartEmptyHint}
           </p>
         </div>
       ) : (
@@ -47,7 +46,7 @@ export default function CartView({
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold truncate">{name}</div>
-                    <div className="text-xs text-[var(--text-sec)]">Qty 1 • Digital delivery</div>
+                    <div className="text-xs text-[var(--text-sec)]">{t.cartLineQtyDelivery}</div>
                   </div>
                   <div className="font-mono font-black text-xl">${parseFloat(item.price).toFixed(2)}</div>
                   <button
@@ -81,7 +80,7 @@ export default function CartView({
               {t.checkout}
             </button>
             <div className="text-xs text-center text-[var(--text-muted)] mt-3">
-              {t.secureCheckoutNote || (isAr ? 'دفع آمن • تسليم فوري' : 'Secure checkout • Instant delivery')}
+              {t.secureCheckoutNote}
             </div>
           </div>
         </div>

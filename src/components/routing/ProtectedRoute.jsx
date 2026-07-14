@@ -1,10 +1,12 @@
 import { Navigate, useLocation } from 'react-router-dom';
+import { getT } from '../../lib/i18n';
 
 function PageLoader({ lang = 'ar' }) {
+  const t = getT(lang);
   return (
     <div className="flex items-center justify-center min-h-[40vh]">
       <div className="text-[var(--text-sec)] animate-pulse">
-        {lang === 'ar' ? 'جاري التحميل...' : 'Loading...'}
+        {t.loading}
       </div>
     </div>
   );

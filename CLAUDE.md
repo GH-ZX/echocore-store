@@ -55,7 +55,11 @@ src/
 │   ├─ supabase.js         # Single Supabase client instance
 │   ├─ cart.js             # Cart CRUD, price calculations, charm pricing rules
 │   ├─ payments.js         # Integration with G2Bulk & Sam‑API wallets
-│   └─ i18n.js             # `getT()`/`formatMessage()` for AR/EN strings
+│   ├─ i18n.js             # `getT()`/`formatMessage()` for AR/EN strings
+│   ├─ gameDescriptions.js / offerDescriptions.js  # Default copy with placeholders
+│   ├─ redeemInstructions.js  # Per-slug steps from pageContent
+│   └─ invoice*.js         # Invoice build, fetch, PNG/PDF download
+├─ components/invoices/    # InvoiceDocument, InvoiceDownloadActions
 ├─ data/                   # `translations.js` (key/value strings) and `pageContent.js`
 ├─ views/                  # Route‑level page components (Home, Catalog, Dashboard, Checkout)
 └─ assets/                 # Static assets (icons, images that are not uploaded)

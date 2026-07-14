@@ -13,8 +13,6 @@ export default function SaleOffersView({
   onEditOffer,
   isAdmin = false,
 }) {
-  const isAr = lang === 'ar';
-
   const saleOffers = getSaleOffers(offers);
 
   return (
@@ -22,16 +20,14 @@ export default function SaleOffersView({
       <div className="mb-6 sm:mb-8">
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2">
           <h1 className="sale-offers-page-title text-2xl sm:text-3xl md:text-4xl font-black">
-            {isAr ? t.saleOffers || 'عروض الخصم' : t.saleOffers || 'Sale Offers'}
+            {t.saleOffers}
           </h1>
           <span className="sale-offers-deals-pill px-3 py-1 text-xs font-bold rounded-full">
-            {isAr ? t.deals || 'خصومات' : t.deals || 'DEALS'}
+            {t.deals}
           </span>
         </div>
         <p className="text-sm sm:text-base text-[var(--text-secondary)]">
-          {isAr
-            ? t.bestDiscounts || 'أفضل العروض والخصومات على شحن الألعاب'
-            : t.bestDiscounts || 'Best discounts and deals on game top-ups'}
+          {t.bestDiscounts}
         </p>
       </div>
 
@@ -39,7 +35,7 @@ export default function SaleOffersView({
         <div className="card p-8 sm:p-12 text-center">
           <div className="text-2xl mb-2">🔥</div>
           <p className="text-[var(--text-sec)]">
-            {isAr ? t.noSaleOffers || 'لا توجد عروض خصم حالياً. تحقق لاحقاً!' : t.noSaleOffers || 'No sale offers right now. Check back later!'}
+            {t.noSaleOffers}
           </p>
         </div>
       ) : (

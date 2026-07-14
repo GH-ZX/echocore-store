@@ -92,7 +92,7 @@ const ar = {
     {
       heading: 'المنتجات الرقمية',
       body: [
-        'جميع العروض سلع رقمية (شحن، نقاط، أكواد). التسليم يتم بعد تأكيد الدفع وفق طريقة الاسترداد الخاصة بكل لعبة.',
+        'جميع العروض سلع رقمية: شحن، نقاط، أو أكواد. التسليم يتم بعد تأكيد الدفع وفق طريقة الشحن أو تفعيل الكود لكل لعبة.',
         'أنت مسؤول عن إدخال معرف اللاعب (UID) والسيرفر الصحيح عند الطلب.',
       ],
     },
@@ -177,8 +177,53 @@ const ar = {
     {
       number: '04',
       title: 'استلم الكود فوراً',
-      desc: 'بعد تأكيد الدفع، سيصلك الكود فوراً عبر البريد الإلكتروني ويظهر أيضاً في حسابك على الموقع. استخدمه داخل اللعبة مباشرة.',
+      desc: 'بعد تأكيد الدفع، سيصلك الكود فوراً عبر البريد الإلكتروني ويظهر أيضاً في حسابك على الموقع. فعّله داخل اللعبة مباشرة.',
     },
+  ],
+  redeemSteps: {
+    valorant: [
+      'افتح متجر Valorant أو موقع Riot Games.',
+      'سجّل الدخول بحسابك.',
+      'اختر تفعيل الكود أو Redeem Code.',
+      'الصق الكود واضغط تأكيد.',
+    ],
+    'pubg-mobile': [
+      'افتح PUBG Mobile.',
+      'اذهب إلى المتجر ثم Redeem.',
+      'أدخل كود الشحن واضغط OK.',
+    ],
+    'mobile-legends': [
+      'افتح Mobile Legends.',
+      'اذهب إلى المتجر ثم شحن.',
+      'اختر كود وأدخل كود الشحن.',
+    ],
+    steam: [
+      'افتح Steam على الكمبيوتر أو الموقع.',
+      'من القائمة: Games ثم Activate a Product on Steam.',
+      'أدخل الكود واتبع الخطوات.',
+    ],
+    xbox: [
+      'افتح microsoft.com/redeem أو تطبيق Xbox.',
+      'سجّل الدخول بحساب Microsoft.',
+      'أدخل الكود واضغط التالي.',
+    ],
+    playstation: [
+      'افتح PlayStation Store على الجهاز أو الموقع.',
+      'اختر Redeem Codes.',
+      'أدخل الكود واضغط تأكيد.',
+    ],
+  },
+  redeemStepsGeneric: [
+    'افتح اللعبة أو المنصة المرتبطة بالمنتج.',
+    'ابحث عن خيار تفعيل الكود أو شحن الكود.',
+    'أدخل الكود الظاهر في هذه الفاتورة بالضبط.',
+    'احتفظ بهذه الفاتورة للرجوع إليها عند الحاجة.',
+  ],
+  topupInvoiceSteps: [
+    'تم تسجيل بيانات الحساب أدناه للتسليم المباشر.',
+    'لا حاجة لنسخ كود — يُشحن الرصيد إلى UID أو السيرفر المذكور.',
+    'تحقق من مطابقة UID والسيرفر مع ما أدخلته عند الشراء.',
+    'احتفظ بهذه الفاتورة للمراجعة عند أي استفسار.',
   ],
 };
 
@@ -359,8 +404,53 @@ const en = {
     {
       number: '04',
       title: 'Receive Your Code Instantly',
-      desc: 'Once payment is confirmed, you receive the code instantly via email and it also appears in your account. Redeem it directly in-game.',
+      desc: 'Once payment is confirmed, you receive the code instantly via email and it also appears in your account. Use it in-game right away.',
     },
+  ],
+  redeemSteps: {
+    valorant: [
+      'Open the Valorant store or Riot Games website.',
+      'Sign in to your account.',
+      'Choose Redeem Code.',
+      'Paste the code and confirm.',
+    ],
+    'pubg-mobile': [
+      'Open PUBG Mobile.',
+      'Go to Shop → Redeem.',
+      'Enter the top-up code and tap OK.',
+    ],
+    'mobile-legends': [
+      'Open Mobile Legends.',
+      'Go to Shop → Recharge.',
+      'Choose Code and enter your top-up code.',
+    ],
+    steam: [
+      'Open Steam on desktop or the website.',
+      'Go to Games → Activate a Product on Steam.',
+      'Enter the code and follow the prompts.',
+    ],
+    xbox: [
+      'Open microsoft.com/redeem or the Xbox app.',
+      'Sign in to your Microsoft account.',
+      'Enter the code and continue.',
+    ],
+    playstation: [
+      'Open PlayStation Store on your device or browser.',
+      'Select Redeem Codes.',
+      'Enter the code and confirm.',
+    ],
+  },
+  redeemStepsGeneric: [
+    'Open the game or platform linked to this product.',
+    'Find the code activation or top-up option.',
+    'Enter the code shown on this invoice exactly.',
+    'Keep this invoice for your records.',
+  ],
+  topupInvoiceSteps: [
+    'Account details below were submitted for direct top-up delivery.',
+    'No code needed — balance is sent to the UID or server listed.',
+    'Verify the UID and server match what you entered at checkout.',
+    'Keep this invoice for support if anything looks wrong.',
   ],
 };
 

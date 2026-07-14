@@ -207,10 +207,10 @@ export default function SuccessView({
         <div className="card p-8 sm:p-10 text-center border border-[var(--accent)]/20 bg-[var(--bg-surface)]/60">
           <Loader2 className="w-10 h-10 animate-spin text-[var(--accent)] mx-auto mb-4" />
           <h1 className="text-2xl sm:text-3xl font-black mb-2">
-            {t.orderProcessingTitle || 'Your order is being processed'}
+            {t.orderProcessingTitle}
           </h1>
           <p className="text-[var(--text-sec)] max-w-xl mx-auto leading-relaxed">
-            {t.orderProcessingSubtitle || 'We are waiting for G2Bulk to confirm the delivery or top-up result for this purchase.'}
+            {t.orderProcessingSubtitle}
           </p>
           <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-[var(--border)] px-3 py-2 text-sm text-[var(--text-muted)]">
             <Clock className="w-4 h-4" />
@@ -362,12 +362,12 @@ export default function SuccessView({
         <div className="card p-6 mb-6 border border-emerald-500/25 bg-emerald-500/5">
           <h2 className="font-bold text-lg mb-3 flex items-center gap-2 text-emerald-400">
             <UserRound className="w-5 h-5" />
-            {t.topUpSentSuccess || 'Top-up request received'}
+            {t.topUpSentSuccess}
           </h2>
-          <p className="text-[var(--text-sec)] text-sm mb-4">{t.topUpSentDesc || 'Your top-up request is ready for delivery to the recipient below.'}</p>
+          <p className="text-[var(--text-sec)] text-sm mb-4">{t.topUpSentDesc}</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-xl border border-[var(--border)] p-4 text-sm">
-              <div className="text-[var(--text-muted)] text-xs mb-1">{t.playerUidLabel || 'Player ID'}</div>
+              <div className="text-[var(--text-muted)] text-xs mb-1">{t.playerUidLabel}</div>
               <div className="font-mono text-[var(--accent)] text-lg break-all">{playerUid}</div>
             </div>
             {playerServer && (
@@ -391,7 +391,7 @@ export default function SuccessView({
               <div>{new Date(orderDetails.created_at).toLocaleString(lang === 'ar' ? 'ar-SY' : 'en-US')}</div>
             </div>
           </div>
-          <p className="text-xs text-[var(--text-muted)] mt-3">{t.topUpArrivesSoon || 'The delivery will be processed shortly after payment confirmation.'}</p>
+          <p className="text-xs text-[var(--text-muted)] mt-3">{t.topUpArrivesSoon}</p>
         </div>
       )}
 
@@ -422,7 +422,7 @@ export default function SuccessView({
           {t.myOrdersLink}
         </button>
         <button type="button" onClick={() => navigate('/')} className="btn btn-secondary px-8 py-3">
-          {t.backToHomeSuccess || t.backToHome}
+          {t.backToHomeSuccess}
         </button>
       </div>
     </div>

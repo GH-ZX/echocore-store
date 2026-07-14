@@ -6,8 +6,8 @@ import { formatMessage } from '../../lib/i18n';
 function paymentMethodLabel(method, t) {
   if (method === 'balance') return t.payFromBalance;
   if (method === 'admin_gift') return t.orderPaymentGift;
-  if (method === 'ShamCash') return t.shamCash || 'ShamCash';
-  if (method === 'SyriatelCash') return t.syriatelCash || 'Syriatel Cash';
+  if (method === 'ShamCash') return t.shamCash;
+  if (method === 'SyriatelCash') return t.syriatelCash;
   return method || '—';
 }
 
@@ -157,9 +157,9 @@ export default function InvoiceDocument({
             <thead>
               <tr>
                 <th>{t.itemsPurchased}</th>
-                <th>{t.invoiceTableQty || 'Qty'}</th>
-                <th>{t.invoiceTablePrice || 'Price'}</th>
-                <th>{t.invoiceTableLineTotal || 'Total'}</th>
+                <th>{t.invoiceTableQty}</th>
+                <th>{t.invoiceTablePrice}</th>
+                <th>{t.invoiceTableLineTotal}</th>
               </tr>
             </thead>
             <tbody>

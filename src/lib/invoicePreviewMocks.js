@@ -106,11 +106,15 @@ export const INVOICE_PREVIEW_SAMPLES = {
   },
 };
 
-export const INVOICE_PREVIEW_OPTIONS = [
-  { id: 'redeem', labelAr: 'شراء ريديم كود', labelEn: 'Redeem code purchase' },
-  { id: 'topup', labelAr: 'شحن UID', labelEn: 'UID top-up' },
-  { id: 'recharge', labelAr: 'شحن ShamCash', labelEn: 'ShamCash recharge' },
-];
+export const INVOICE_PREVIEW_SAMPLE_IDS = ['redeem', 'topup', 'recharge'];
+
+export function getInvoicePreviewOptions(t = {}) {
+  return [
+    { id: 'redeem', label: t.invoicePreviewSampleRedeem },
+    { id: 'topup', label: t.invoicePreviewSampleTopup },
+    { id: 'recharge', label: t.invoicePreviewSampleRecharge },
+  ];
+}
 
 export function getInvoicePreviewSample(sampleId, lang = 'ar') {
   const base = INVOICE_PREVIEW_SAMPLES[sampleId] || INVOICE_PREVIEW_SAMPLES.redeem;

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Loader2, List } from 'lucide-react';
+import { FileText, Globe, List, Loader2, Package, Zap } from 'lucide-react';
 import AdminEditButton from '../components/admin/AdminEditButton';
 import AdminGameEditModal from '../components/admin/AdminGameEditModal';
 import AdminOfferEditModal from '../components/admin/AdminOfferEditModal';
@@ -8,15 +8,22 @@ import CatalogHero from '../components/catalog/CatalogHero';
 import CatalogPageShell from '../components/catalog/CatalogPageShell';
 import AdminOfferCostBadge from '../components/admin/AdminOfferCostBadge';
 import OfferPurchasePanel from '../components/catalog/OfferPurchasePanel';
-import { brandUserText } from '../lib/branding';
 import {
   getGameDisplayName,
   getOfferDisplayName,
   getRedemptionSteps,
 } from '../lib/offerDisplay';
+import { getOfferDescription } from '../lib/offerDescriptions';
 import { resolveOfferRoute } from '../lib/offerRoutes';
 import { buildGameBreadcrumb } from '../lib/catalogNav';
 import MobileBuyBar from '../components/catalog/MobileBuyBar';
+
+function redemptionMethodLabel(game, t) {
+  if (game?.redemption_method === 'uid') return t.redemptionUid;
+  if (game?.redemption_method === 'redeem_code') return t.redemptionCode;
+  if (game?.redemption_method) return t.redemptionBoth;
+  return t.instantDelivery;
+}
 
 export default function OfferDetail({
   games,
@@ -59,16 +66,17 @@ export default function OfferDetail({
     );
   }
 
+  const descriptionContext = { game, games, relatedOffers: offers };
   const gameName = displayGame ? getGameDisplayName(displayGame, lang) : '';
-  const offerName = getOfferDisplayName(offer, lang, { game, games, relatedOffers: offers });
-  const description = brandUserText(
-    (lang === 'ar' ? offer.description_ar : offer.description_en) || t.instantDeliveryNote,
-  );
+  const offerName = getOfferDisplayName(offer, lang, descriptionContext);
+  const description = getOfferDescription(offer, lang, descriptionContext, t);
   const steps = getRedemptionSteps(game, t, lang);
   const heroImage = offer.sale_image_url || offer.image_url || displayGame?.image_url;
   const catalogTrail = displayGame
     ? buildGameBreadcrumb(displayGame, t, lang, navigate, { offerName })
     : null;
+  const regionLabel = offer.region || game?.region_label || null;
+  const deliveryLabel = redemptionMethodLabel(game, t);
 
   return (
     <CatalogPageShell
@@ -92,8 +100,8 @@ export default function OfferDetail({
         imageUrl={heroImage}
         logoUrl={displayGame?.logo_url}
         title={offerName}
-        subtitle={gameName}
-        meta={offer.region || game?.region_label || null}
+        subtitle={gameName || description}
+        meta={regionLabel}
         badges={offer.is_sale ? [{ label: t.sale, className: 'border-red-400/30 bg-red-500/15 text-red-200' }] : []}
       />
 
@@ -112,9 +120,36 @@ export default function OfferDetail({
         />
 
         <div className="space-y-5 sm:space-y-6 min-w-0 order-2 lg:order-1">
+          <section className="card p-5 sm:p-6 catalog-offer-meta-panel">
+            <div className="catalog-offer-meta-row">
+              {gameName && (
+                <div className="catalog-offer-meta-chip">
+                  <Package className="w-3.5 h-3.5 shrink-0 text-[var(--accent)]" />
+                  <span className="catalog-offer-meta-chip__label">{t.offerDetailYouReceiveLabel}</span>
+                  <strong className="offer-pack-label">{offerName}</strong>
+                </div>
+              )}
+              {regionLabel && (
+                <div className="catalog-offer-meta-chip">
+                  <Globe className="w-3.5 h-3.5 shrink-0 text-[var(--accent)]" />
+                  <span className="catalog-offer-meta-chip__label">{t.region}</span>
+                  <strong>{regionLabel}</strong>
+                </div>
+              )}
+              <div className="catalog-offer-meta-chip">
+                <Zap className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                <span className="catalog-offer-meta-chip__label">{t.offerDetailDeliveryLabel}</span>
+                <strong>{deliveryLabel}</strong>
+              </div>
+            </div>
+          </section>
+
           <section className="card p-5 sm:p-6">
             <div className="flex items-center justify-between gap-2 mb-4">
-              <h2 className="font-bold text-lg sm:text-xl">{t.description}</h2>
+              <h2 className="font-bold text-lg sm:text-xl inline-flex items-center gap-2">
+                <FileText className="w-5 h-5 text-[var(--accent)] shrink-0" />
+                {t.description}
+              </h2>
               {isAdmin && (
                 <AdminEditButton label={t.edit} onClick={() => setEditingOffer(true)} />
               )}
@@ -134,9 +169,6 @@ export default function OfferDetail({
                 </li>
               ))}
             </ol>
-            <p className="text-xs text-[var(--text-muted)] mt-4 pt-4 border-t border-[var(--border)]">
-              {t.instantDeliveryNote}
-            </p>
           </section>
 
           {displayGame && (
@@ -150,7 +182,6 @@ export default function OfferDetail({
             </button>
           )}
         </div>
-
       </div>
 
       <MobileBuyBar>

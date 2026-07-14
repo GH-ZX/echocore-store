@@ -19,7 +19,8 @@ English: [README.md](./README.md)
 - تكلفة المورد للمسؤول فقط على بطاقات العروض (`g2bulk_cost_usd`)
 - تسميات عملة الحزم ونصوص تسويقية لكل لعبة
 - شحن وشراء ShamCash / Sam API
-- ترجمة مركزية (`translations.js` / `pageContent.js`)
+- **فواتير** للطلبات وشحن الرصيد (PNG/PDF) — `/invoice/:kind/:id`
+- ترجمة مركزية مع أوصاف افتراضية للألعاب والعروض (`translations.js` / `pageContent.js`)
 - نطاق مخصص على GitHub Pages
 
 **إعداد قاعدة البيانات:** [SUPABASE_SETUP.ar.md](./SUPABASE_SETUP.ar.md)
@@ -75,9 +76,10 @@ npm run dev
 src/
 ├── App.jsx
 ├── components/routing/     # AppRoutes والمسارات
-├── views/
-├── data/                   # الترجمات والمحتوى
-└── lib/
+├── components/invoices/    # مكوّنات الفاتورة
+├── views/                  # الصفحات (OfferDetail، InvoiceView، …)
+├── data/                   # الترجمات وخطوات الشحن
+└── lib/                    # Supabase، السلة، الفواتير، i18n
 supabase_echocore_full.sql  # إعداد قاعدة البيانات — شغّل هذا
 ```
 
