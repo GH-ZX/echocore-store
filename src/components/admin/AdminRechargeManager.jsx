@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Loader2, CheckCircle, XCircle, RefreshCw, Wallet } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, RefreshCw, Wallet, HandCoins } from 'lucide-react';
+import AdminManualBalanceCredit from './AdminManualBalanceCredit';
+import AdminCustomerBalances from './AdminCustomerBalances';
 import {
   fetchAdminRechargeRequests,
   approveRechargeRequest,
@@ -12,6 +14,7 @@ const FILTER_OPTIONS = [
   { id: 'payment_sent', labelKey: 'adminRechargeFilterAwaiting' },
   { id: 'pending', labelKey: 'adminRechargeFilterNew' },
   { id: 'rejected', labelKey: 'adminRechargeFilterRejected' },
+  { id: 'cancelled', labelKey: 'adminRechargeFilterCancelled' },
 ];
 
 const STATUS_LABEL_KEYS = {
@@ -72,6 +75,8 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
   const [processingId, setProcessingId] = useState(null);
   const [filter, setFilter] = useState('all');
   const [requests, setRequests] = useState([]);
+  const [creditPreset, setCreditPreset] = useState(null);
+  const [balancesRefreshKey, setBalancesRefreshKey] = useState(0);
   const loadInFlightRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -102,6 +107,7 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
         `${t.rechargeApproved} +$${parseFloat(result.amount).toFixed(2)}`,
       );
       onApproved?.(result);
+      setBalancesRefreshKey((key) => key + 1);
       await load();
     } catch (err) {
       notifyError(err.message);
@@ -124,9 +130,51 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
   };
 
   const needsManualReview = (status) => status === 'pending' || status === 'payment_sent';
+  const canRecoverBalance = (status) => status === 'cancelled' || status === 'rejected';
+
+  const openRecoveryCredit = (req) => {
+    setCreditPreset({
+      user: {
+        id: req.user_id,
+        name: req.user_name,
+        email: null,
+        balance: null,
+      },
+      amount: req.amount,
+      requestId: req.id,
+    });
+  };
+
+  const openCreditForUser = (user) => {
+    setCreditPreset({
+      user,
+      amount: null,
+      requestId: null,
+    });
+  };
 
   return (
     <div className="space-y-4">
+      <AdminCustomerBalances
+        t={t}
+        onNotify={onNotify}
+        refreshKey={balancesRefreshKey}
+        onSelectForCredit={openCreditForUser}
+      />
+
+      <AdminManualBalanceCredit
+        t={t}
+        lang={lang}
+        onNotify={onNotify}
+        presetUser={creditPreset?.user || null}
+        presetAmount={creditPreset?.amount ?? null}
+        presetRequestId={creditPreset?.requestId || null}
+        onCredited={() => {
+          setCreditPreset(null);
+          setBalancesRefreshKey((key) => key + 1);
+          load();
+        }}
+      />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-black flex items-center gap-2">
@@ -234,6 +282,16 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
                               </button>
                             </div>
                           </div>
+                        ) : canRecoverBalance(req.status) ? (
+                          <button
+                            type="button"
+                            onClick={() => openRecoveryCredit(req)}
+                            className="action-chip gap-1 text-xs !py-1.5"
+                            title={t.adminManualCreditRecover}
+                          >
+                            <HandCoins className="w-3.5 h-3.5" />
+                            {t.adminManualCreditRecover}
+                          </button>
                         ) : (
                           <span className="text-[10px] text-[var(--text-muted)]">—</span>
                         )}

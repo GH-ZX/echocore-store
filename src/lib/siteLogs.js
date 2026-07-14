@@ -101,8 +101,20 @@ export function formatSiteLog(item, t = {}, lang = 'ar') {
     },
     cancelled: {
       title: t.siteLogRechargeCancelledTitle,
-      body: applyTemplate(t.siteLogRechargeCancelledBody, { user, amount }),
-      tone: 'info',
+      body: m.reason === 'sam_invoice_expired'
+        ? applyTemplate(t.siteLogRechargeExpiredBody, { user, amount })
+        : applyTemplate(t.siteLogRechargeCancelledBody, { user, amount }),
+      tone: m.reason === 'sam_invoice_expired' ? 'warning' : 'info',
+    },
+    manual_credit: {
+      title: t.siteLogManualCreditTitle,
+      body: applyTemplate(t.siteLogManualCreditBody, {
+        user,
+        amount,
+        admin: m.adminName || (lang === 'ar' ? 'الإدارة' : 'Admin'),
+        reason: m.reason || '',
+      }),
+      tone: 'success',
     },
     placed: {
       title: t.siteLogOrderPlacedTitle,

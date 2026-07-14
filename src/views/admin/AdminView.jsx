@@ -903,6 +903,7 @@ export default function AdminView({
             t={t}
             lang={lang}
             onSaved={onPaymentSettingsSaved}
+            onNotify={onNotify}
           />
         </Suspense>
       )}

@@ -11,6 +11,7 @@ import { fetchStoreSettings, saveStoreSettings } from '../../lib/storeSettings';
 import { fetchSamApiSettings, saveSamApiSettings } from '../../lib/samApi';
 import { uploadImage } from '../../lib/uploadImage';
 import AdminSamApiSettings from './AdminSamApiSettings';
+import AdminManualBalanceCredit from './AdminManualBalanceCredit';
 
 function ManualWalletSection({
   title,
@@ -76,7 +77,7 @@ function ManualWalletSection({
   );
 }
 
-export default function AdminPaymentsSettings({ t = {}, onSaved }) {
+export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved, onNotify }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -378,6 +379,13 @@ export default function AdminPaymentsSettings({ t = {}, onSaved }) {
           </div>
         )}
       </div>
+
+      <AdminManualBalanceCredit
+        t={t}
+        lang={lang}
+        onNotify={onNotify}
+        className="mb-6"
+      />
 
       <div className="card p-5 sm:p-6 opacity-80">
         <h3 className="font-bold mb-3">{t.otherPaymentMethods}</h3>
