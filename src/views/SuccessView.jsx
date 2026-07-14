@@ -12,7 +12,12 @@ import {
   AlertTriangle,
   Gift,
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { fetchMyOrderReceipt } from '../lib/orders';
+import {
+  canUserAccessOrderReceipt,
+  consumeOrderFulfillMarker,
+  isValidOrderUuid,
+} from '../lib/orderAccess';
 import {
   formatOrderDisplayId,
   extractDeliveryCodes,
@@ -68,10 +73,12 @@ export default function SuccessView({
   navigate,
   t = {},
   lang = 'ar',
+  user,
   onFulfillOrder,
 }) {
   const [searchParams] = useSearchParams();
-  const orderId = searchParams.get('orderId');
+  const rawOrderId = searchParams.get('orderId');
+  const orderId = isValidOrderUuid(rawOrderId) ? rawOrderId.trim() : null;
   const [orderDetails, setOrderDetails] = useState(null);
   const [orderItems, setOrderItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -79,26 +86,25 @@ export default function SuccessView({
   const fulfillStarted = useRef(false);
 
   const loadOrder = useCallback(async () => {
-    if (!orderId) return null;
+    if (!orderId || !user?.id) return null;
 
-    const { data: order } = await supabase
-      .from('orders')
-      .select('*')
-      .eq('id', orderId)
-      .maybeSingle();
+    const receipt = await fetchMyOrderReceipt(orderId);
+    const order = receipt?.order || null;
+    const items = receipt?.items || [];
 
-    const { data: items } = await supabase
-      .from('order_items')
-      .select('*')
-      .eq('order_id', orderId);
+    if (!canUserAccessOrderReceipt(order, user)) {
+      setOrderDetails(null);
+      setOrderItems([]);
+      return { order: null, items: [] };
+    }
 
-    setOrderDetails(order || null);
-    setOrderItems(items || []);
-    return { order, items: items || [] };
-  }, [orderId]);
+    setOrderDetails(order);
+    setOrderItems(items);
+    return { order, items };
+  }, [orderId, user]);
 
   useEffect(() => {
-    if (!orderId) {
+    if (!orderId || !user?.id) {
       setLoading(false);
       return undefined;
     }
@@ -134,11 +140,13 @@ export default function SuccessView({
       cancelled = true;
       if (pollTimer) clearTimeout(pollTimer);
     };
-  }, [orderId, loadOrder]);
+  }, [orderId, user?.id, loadOrder]);
 
   useEffect(() => {
-    if (!orderDetails || !orderId || fulfillStarted.current) return;
+    if (!orderDetails || !orderId || fulfillStarted.current || !user?.id) return;
+    if (!canUserAccessOrderReceipt(orderDetails, user)) return;
     if (!shouldTriggerFulfillment(orderDetails) || !onFulfillOrder) return;
+    if (!consumeOrderFulfillMarker(orderId)) return;
 
     fulfillStarted.current = true;
     onFulfillOrder(orderId)
@@ -147,7 +155,7 @@ export default function SuccessView({
         console.error('Order fulfillment:', err);
         fulfillStarted.current = false;
       });
-  }, [orderDetails, orderId, onFulfillOrder, loadOrder]);
+  }, [orderDetails, orderId, user, onFulfillOrder, loadOrder]);
 
   const handleCopy = async (text, key) => {
     const ok = await copyText(text);

@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { getAdminDashboardPath } from './adminRoutes';
+import { getAdminDashboardPath, getAdminOrdersPath } from './adminRoutes';
 import { getInvoiceRouteFromNotification } from './invoiceBuilder';
 
 const RPC_SETUP_MSG =
@@ -162,14 +162,51 @@ export function formatNotification(item, t = {}, lang = 'ar') {
   return { ...fallback, ...(templates[item?.type] || {}) };
 }
 
-export function getNotificationDestination(item, formatted, userRole) {
-  if (userRole === 'admin' && formatted.adminTab) {
-    return { path: getAdminDashboardPath(formatted.adminTab) };
-  }
+const ADMIN_RECHARGE_TYPES = new Set([
+  'admin_recharge_payment_sent',
+  'admin_recharge_completed',
+  'recharge_payment_sent',
+  'recharge_approved',
+  'recharge_rejected',
+]);
 
+const ADMIN_ORDER_TYPES = new Set([
+  'admin_order_payment_sent',
+  'order_payment_sent',
+  'order_completed',
+  'purchase_completed',
+  'order_gifted',
+  'delivery_ready',
+  'topup_delivered',
+  'order_fulfilled',
+  'fulfillment_failed',
+  'fulfillment_failed_refunded',
+]);
+
+export function getNotificationDestination(item, formatted, userRole) {
   const metadata = item?.metadata || {};
   const orderId = metadata.orderId;
+  const requestId = metadata.requestId;
   const invoicePath = getInvoiceRouteFromNotification(item);
+
+  if (userRole === 'admin') {
+    if (invoicePath) {
+      return { path: invoicePath };
+    }
+    if (ADMIN_RECHARGE_TYPES.has(item?.type)) {
+      return {
+        path: getAdminDashboardPath('recharges'),
+        state: requestId ? { highlightRechargeId: requestId } : undefined,
+      };
+    }
+    if (ADMIN_ORDER_TYPES.has(item?.type) && orderId) {
+      return { path: getAdminOrdersPath({ orderId }) };
+    }
+    if (formatted.adminTab) {
+      return { path: getAdminDashboardPath(formatted.adminTab) };
+    }
+    return { path: getAdminDashboardPath('inbox') };
+  }
 
   if (item?.type === 'recharge_payment_sent' || item?.type === 'recharge_rejected') {
     return { path: '/recharge' };
@@ -197,6 +234,8 @@ export function getNotificationDestination(item, formatted, userRole) {
   }
   return { path: '/profile' };
 }
+
+export const INBOX_FETCH_LIMIT = 500;
 
 export async function fetchNotifications(limit = 30) {
   const { data, error } = await supabase.rpc('get_my_notifications', { p_limit: limit });

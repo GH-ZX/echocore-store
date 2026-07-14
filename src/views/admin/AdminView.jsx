@@ -1,15 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { getAdminDashboardPath, getAdminOrdersPath, isValidAdminTabSegment, resolveAdminTabFromPath } from '../../lib/adminRoutes';
-import { getOrderCustomerLabel } from '../../lib/adminOrderFilters';
-import { formatOrderDisplayId } from '../../lib/orderReceipt';
-import { Trash2, Plus, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Percent, Zap, PanelLeftClose, PanelLeftOpen, Users, ScrollText } from 'lucide-react';
+import { getAdminDashboardPath, isValidAdminTabSegment, resolveAdminTabFromPath } from '../../lib/adminRoutes';
+import { Trash2, Plus, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Percent, PanelLeftClose, PanelLeftOpen, Users, ScrollText, Bell } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 import { centerActiveMobileTab, resetPageHorizontalScroll } from '../../lib/adminMobileNav';
+import { formatMessage } from '../../lib/i18n';
 import { getCatalogOfferStats } from '../../lib/catalogUtils';
-import AdminProfitOverview from '../../components/admin/AdminProfitOverview';
-import AdminSupplierWalletsCard from '../../components/ui/AdminSupplierWalletsCard';
+import { matchesAdminActivityFilter } from '../../lib/inboxFilters';
+import AdminOverviewPanel from '../../components/admin/AdminOverviewPanel';
 import { useAdminSupplierWallets } from '../../hooks/useAdminSupplierWallets';
 import AdminExistingGamesList from '../../components/admin/AdminExistingGamesList';
 import AdminSaleDiscountsManager from '../../components/admin/AdminSaleDiscountsManager';
@@ -22,6 +21,7 @@ const AdminReviewsManager = lazy(() => import('../../components/admin/AdminRevie
 const AdminRechargeManager = lazy(() => import('../../components/admin/AdminRechargeManager'));
 const AdminG2BulkSettings = lazy(() => import('../../components/admin/AdminG2BulkSettings'));
 const AdminUsersManager = lazy(() => import('../../components/admin/AdminUsersManager'));
+const AdminInboxManager = lazy(() => import('../../components/admin/AdminInboxManager'));
 const AdminOrdersManager = lazy(() => import('../../components/admin/AdminOrdersManager'));
 const AdminSiteLogs = lazy(() => import('../../components/admin/AdminSiteLogs'));
 
@@ -49,8 +49,9 @@ function buildAdminNavItems(t) {
     { id: 'home', label: t.homeLayoutTab, shortLabel: t.tabHomeShort, icon: LayoutGrid },
     { id: 'products', label: t.gamesAndOffers, shortLabel: t.tabGamesShort, icon: Package },
     { id: 'orders', label: t.ordersTab, shortLabel: t.tabOrdersShort, icon: ShoppingCart },
-    { id: 'payments', label: t.paymentsTab, shortLabel: t.tabPaymentsShort, icon: Wallet },
     { id: 'recharges', label: t.rechargesTab, shortLabel: t.tabRechargesShort, icon: CircleDollarSign },
+    { id: 'inbox', label: t.adminInboxTab, shortLabel: t.tabInboxShort, icon: Bell },
+    { id: 'payments', label: t.paymentsTab, shortLabel: t.tabPaymentsShort, icon: Wallet },
     { id: 'theme', label: t.themeTab, shortLabel: t.tabThemeShort, icon: Palette },
     { id: 'reviews', label: t.reviewsTab, shortLabel: t.tabReviewsShort, icon: MessageSquare },
     { id: 'users', label: t.usersTab, shortLabel: t.tabUsersShort, icon: Users },
@@ -84,8 +85,15 @@ export default function AdminView({
   onApproveOrder,
   onRejectOrder,
   onFulfillOrder,
+  paymentConfig = {},
   onDevBalanceCredited: _onDevBalanceCredited,
   onPreviewHomepage,
+  notifications = [],
+  unreadCount = 0,
+  notificationsLoading = false,
+  onRefreshInbox,
+  onNotificationMarkRead,
+  onNotificationsMarkAllRead,
 }) {
   const notifyError = (message) => onNotify?.(message, 'error');
   const notifySuccess = (message) => onNotify?.(message, 'success');
@@ -280,8 +288,15 @@ export default function AdminView({
     [offers, games],
   );
   const totalOrders = orders.length;
-  const totalRevenue = orders.reduce((sum, o) => sum + parseFloat(o.total || 0), 0).toFixed(2);
+  const totalRevenue = orders
+    .filter((order) => order.status === 'completed' && order.payment_method !== 'admin_gift')
+    .reduce((sum, order) => sum + parseFloat(order.total || 0), 0)
+    .toFixed(2);
   const recentOrders = [...orders].slice(0, 5);
+  const inboxUnreadCount = useMemo(
+    () => notifications.filter((item) => !item.read_at && matchesAdminActivityFilter(item)).length,
+    [notifications],
+  );
 
   return (
     <div
@@ -325,6 +340,11 @@ export default function AdminView({
               >
                 <Icon className="admin-nav-btn__icon" aria-hidden="true" />
                 <span className="admin-nav-btn__label">{tab.label}</span>
+                {tab.id === 'inbox' && inboxUnreadCount > 0 ? (
+                  <span className="admin-nav-badge" aria-label={formatMessage(t.adminInboxUnreadActivity, { count: inboxUnreadCount })}>
+                    {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
+                  </span>
+                ) : null}
               </button>
             );
           })}
@@ -351,6 +371,11 @@ export default function AdminView({
               >
                 <Icon className="admin-mobile-tab__icon" aria-hidden="true" />
                 <span className="admin-mobile-tab__label">{tab.shortLabel}</span>
+                {tab.id === 'inbox' && inboxUnreadCount > 0 ? (
+                  <span className="admin-nav-badge admin-nav-badge--mobile">
+                    {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
+                  </span>
+                ) : null}
               </button>
             );
           })}
@@ -370,150 +395,28 @@ export default function AdminView({
 
       {/* OVERVIEW TAB */}
       {activeTab === 'overview' && (
-        <div className="space-y-8">
-          <AdminSupplierWalletsCard
-            t={t}
-            variant="card"
-            g2bulkBalance={g2bulkWallet?.balance ?? 0}
-            g2bulkUsername={g2bulkWallet?.username}
-            g2bulkError={g2bulkError}
-            g2bulkFetched={g2bulkFetched}
-            samWallets={samWallets}
-            samError={samError}
-            samNotConfigured={samNotConfigured}
-            samFetched={samFetched}
-            loading={supplierWalletsLoading}
-            onRefresh={refreshSupplierWallets}
-            onOpenDashboard={() => setAdminTab('products')}
-            onOpenPayments={() => setAdminTab('payments')}
-          />
-
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="dash-stat-card card p-4 sm:p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-[var(--text-sec)] text-sm">{t.catalogGames}</div>
-                  <div className="text-3xl sm:text-4xl font-black mt-1">{catalogStats.games}</div>
-                  <p className="text-[10px] text-[var(--text-muted)] mt-1 leading-snug">
-                    {t.catalogGamesHelp}
-                  </p>
-                </div>
-                <div className="dash-stat-icon">
-                  <Package className="w-8 h-8 sm:w-10 sm:h-10 text-[var(--accent)]" />
-                </div>
-              </div>
-            </div>
-
-            <div className="dash-stat-card card p-4 sm:p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-[var(--text-sec)] text-sm">{t.topupPacks}</div>
-                  <div className="text-3xl sm:text-4xl font-black mt-1">{catalogStats.topupPacks}</div>
-                  <p className="text-[10px] text-[var(--text-muted)] mt-1 leading-snug">
-                    {t.topupPacksHelp}
-                  </p>
-                </div>
-                <div className="dash-stat-icon">
-                  <Zap className="w-8 h-8 sm:w-10 sm:h-10 text-[var(--accent)]" />
-                </div>
-              </div>
-            </div>
-
-            <div className="dash-stat-card card p-4 sm:p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-[var(--text-sec)] text-sm">{t.giftCodes}</div>
-                  <div className="text-3xl sm:text-4xl font-black mt-1">{catalogStats.giftCodes}</div>
-                  <p className="text-[10px] text-[var(--text-muted)] mt-1 leading-snug">
-                    {t.giftCodesHelp}
-                  </p>
-                </div>
-                <div className="dash-stat-icon">
-                  <Plus className="w-8 h-8 sm:w-10 sm:h-10 text-violet-300" />
-                </div>
-              </div>
-            </div>
-
-            <div className="dash-stat-card card p-4 sm:p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-[var(--text-sec)] text-sm">{t.totalOrders}</div>
-                  <div className="text-3xl sm:text-4xl font-black mt-1">{totalOrders}</div>
-                </div>
-                <div className="dash-stat-icon">
-                  <ShoppingCart className="w-8 h-8 sm:w-10 sm:h-10 text-[var(--accent)]" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="dash-stat-card dash-stat-card--success card p-4 sm:p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-[var(--text-sec)] text-sm">{t.totalRevenue}</div>
-                  <div className="text-3xl sm:text-4xl font-black mt-1 text-[var(--success)]">${totalRevenue}</div>
-                </div>
-                <div className="dash-stat-icon dash-stat-icon--success">
-                  <BarChart3 className="w-8 h-8 sm:w-10 sm:h-10 text-[var(--success)]" />
-                </div>
-              </div>
-            </div>
-
-            <div className="card p-4 sm:p-6 text-sm text-[var(--text-sec)] leading-relaxed">
-              <p className="font-semibold text-[var(--text-primary)] mb-2">
-                {t.catalogStatsLegend}
-              </p>
-              <p>{t.catalogStatsLegendBody}</p>
-              <p className="text-xs text-[var(--text-muted)] mt-2">
-                {t.catalogTotalPacks}: {catalogStats.totalPacks}
-              </p>
-            </div>
-          </div>
-
-          <AdminProfitOverview orders={orders} offers={offers} t={t} />
-
-          {/* Recent Orders */}
-          <div className="card p-4 sm:p-6">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
-              <div className="min-w-0">
-                <h3 className="font-bold text-lg sm:text-xl">{t.recentOrders}</h3>
-                <p className="text-xs text-[var(--text-muted)]">{t.last5Orders}</p>
-              </div>
-              <button onClick={() => setAdminTab('orders')} className="text-sm text-[var(--accent)] hover:underline self-start sm:self-auto flex-shrink-0">View All →</button>
-            </div>
-
-            {loadingOrders ? (
-              <div className="text-[var(--text-sec)]">{t.loadingOrders}</div>
-            ) : recentOrders.length === 0 ? (
-              <div className="text-[var(--text-sec)] py-8 text-center">{t.noOrdersYet}</div>
-            ) : (
-              <div className="space-y-3">
-                {recentOrders.map(order => {
-                  const customer = getOrderCustomerLabel(order, t);
-                  return (
-                    <div 
-                      key={order.id} 
-                      onClick={() => navigate(getAdminOrdersPath({ orderId: order.id }))}
-                      className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between p-3 sm:p-4 bg-[var(--bg-primary)] rounded-xl border border-[var(--border)] hover:border-[var(--accent)]/30 cursor-pointer"
-                    >
-                      <div className="min-w-0">
-                        <div className="font-mono text-xs text-[var(--text-muted)]">#{formatOrderDisplayId(order)}</div>
-                        <div className="text-sm truncate">{customer}</div>
-                        <div className="text-xs text-[var(--text-muted)]">{new Date(order.created_at).toLocaleDateString()}</div>
-                      </div>
-                      <div className="sm:text-right flex-shrink-0">
-                        <div className="font-bold text-lg">${parseFloat(order.total || 0).toFixed(2)}</div>
-                        <div className="text-xs text-[var(--text-sec)]">{order.payment_method || 'N/A'} • {(order.order_items?.length || 0)} items</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
+        <AdminOverviewPanel
+          t={t}
+          lang={lang}
+          navigate={navigate}
+          setAdminTab={setAdminTab}
+          catalogStats={catalogStats}
+          totalOrders={totalOrders}
+          totalRevenue={totalRevenue}
+          orders={orders}
+          offers={offers}
+          recentOrders={recentOrders}
+          loadingOrders={loadingOrders}
+          g2bulkWallet={g2bulkWallet}
+          g2bulkError={g2bulkError}
+          g2bulkFetched={g2bulkFetched}
+          samWallets={samWallets}
+          samError={samError}
+          samNotConfigured={samNotConfigured}
+          samFetched={samFetched}
+          supplierWalletsLoading={supplierWalletsLoading}
+          refreshSupplierWallets={refreshSupplierWallets}
+        />
       )}
 
       {/* PRODUCTS TAB */}
@@ -689,6 +592,7 @@ export default function AdminView({
             onRejectOrder={onRejectOrder}
             onFulfillOrder={onFulfillOrder}
             onNotify={onNotify}
+            paymentConfig={paymentConfig}
           />
         </Suspense>
       )}
@@ -711,6 +615,7 @@ export default function AdminView({
             lang={lang}
             onNotify={onNotify}
             onApproved={onRechargeApproved}
+            paymentConfig={paymentConfig}
           />
         </Suspense>
       )}
@@ -754,6 +659,21 @@ export default function AdminView({
             t={t}
             lang={lang}
             onNotify={onNotify}
+          />
+        </Suspense>
+      )}
+
+      {activeTab === 'inbox' && (
+        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+          <AdminInboxManager
+            t={t}
+            lang={lang}
+            notifications={notifications}
+            unreadCount={unreadCount}
+            loading={notificationsLoading}
+            onRefresh={onRefreshInbox}
+            onMarkRead={onNotificationMarkRead}
+            onMarkAllRead={onNotificationsMarkAllRead}
           />
         </Suspense>
       )}

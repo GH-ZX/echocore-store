@@ -214,7 +214,12 @@ export default function CheckoutView({
             </div>
           </div>
 
-          {isApiWallet && activeOrder.invoice ? (
+          {isApiWallet && !activeOrder.invoice ? (
+            <div className="text-center py-6 rounded-2xl border border-amber-500/30 bg-amber-500/10">
+              <Clock className="w-8 h-8 mx-auto text-amber-300 mb-2" />
+              <p className="text-sm text-amber-100">{t.samInvoiceUnavailable}</p>
+            </div>
+          ) : isApiWallet && activeOrder.invoice ? (
             <SamInvoicePaymentPanel
               t={t}
               lang={lang}

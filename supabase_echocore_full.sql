@@ -1304,15 +1304,26 @@ SET search_path = public AS $$
 DECLARE
   v_order public.orders%ROWTYPE;
   v_ref text;
+  v_wallet_mode text;
 BEGIN
   IF NOT public.is_admin() THEN
     RAISE EXCEPTION 'Unauthorized';
   END IF;
 
+  SELECT COALESCE(sam_wallet_mode, 'manual')
+  INTO v_wallet_mode
+  FROM store_settings
+  WHERE id = 1;
+
   SELECT * INTO v_order FROM public.orders WHERE id = p_order_id FOR UPDATE;
 
   IF v_order.id IS NULL THEN
     RAISE EXCEPTION 'Order not found';
+  END IF;
+
+  IF v_wallet_mode = 'api'
+    AND v_order.payment_method IN ('ShamCash', 'SyriatelCash') THEN
+    RAISE EXCEPTION 'Manual order approval is not used in Sam API wallet mode';
   END IF;
 
   IF v_order.status NOT IN ('pending_payment', 'payment_sent') THEN
@@ -1574,9 +1585,19 @@ DECLARE
   v_order public.orders%ROWTYPE;
   v_user_name text;
   v_current_balance numeric;
+  v_wallet_mode text;
 BEGIN
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  SELECT COALESCE(sam_wallet_mode, 'manual')
+  INTO v_wallet_mode
+  FROM store_settings
+  WHERE id = 1;
+
+  IF v_wallet_mode = 'api' THEN
+    RAISE EXCEPTION 'Manual payment confirmation is not used in Sam API wallet mode';
   END IF;
 
   SELECT * INTO v_order
@@ -2094,6 +2115,10 @@ BEGIN
 
   IF v_order.id IS NULL THEN
     RAISE EXCEPTION 'Order not found';
+  END IF;
+
+  IF v_order.status IS DISTINCT FROM 'completed' THEN
+    RAISE EXCEPTION 'Order is not paid';
   END IF;
 
   v_prev_status := v_order.fulfillment_status;
@@ -5050,6 +5075,46 @@ REVOKE EXECUTE ON FUNCTION public.cancel_order_from_sam_invoice(text) FROM publi
 GRANT EXECUTE ON FUNCTION public.cancel_order_from_sam_invoice(text) TO service_role;
 
 -- =============================================================================
+-- §26b Owner-only order receipt (success page / no IDOR)
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION public.get_my_order_receipt(p_order_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+STABLE AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_order jsonb;
+  v_items jsonb;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  SELECT to_jsonb(o.*) INTO v_order
+  FROM public.orders o
+  WHERE o.id = p_order_id
+    AND o.user_id = v_user_id;
+
+  IF v_order IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT COALESCE(jsonb_agg(to_jsonb(oi.*) ORDER BY oi.created_at), '[]'::jsonb)
+  INTO v_items
+  FROM public.order_items oi
+  WHERE oi.order_id = p_order_id;
+
+  RETURN jsonb_build_object('order', v_order, 'items', v_items);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_my_order_receipt(uuid) FROM public;
+GRANT EXECUTE ON FUNCTION public.get_my_order_receipt(uuid) TO authenticated;
+
+-- =============================================================================
 -- §27 Canonical create_order_atomic
 -- =============================================================================
 
@@ -5067,6 +5132,7 @@ SECURITY DEFINER
 SET search_path = public AS $$
 DECLARE
   v_new_balance numeric;
+  v_current_balance numeric;
   v_order_id uuid;
   v_item jsonb;
   v_offer_price numeric;
@@ -5114,21 +5180,36 @@ BEGIN
     RAISE EXCEPTION 'Total mismatch: expected %, got %', v_server_total, p_total;
   END IF;
 
+  -- One checkout at a time per user (double-tab / double-click).
+  PERFORM pg_advisory_xact_lock(hashtext(p_user_id::text));
+
   IF p_payment_method = 'balance' THEN
     v_order_status := 'completed';
+
+    SELECT balance, dev_test_balance
+    INTO v_current_balance, v_dev_test_balance
+    FROM profiles
+    WHERE id = p_user_id
+    FOR UPDATE;
+
+    IF v_current_balance IS NULL THEN
+      RAISE EXCEPTION 'User profile not found';
+    END IF;
+
+    IF v_current_balance < p_total THEN
+      RAISE EXCEPTION 'Insufficient balance';
+    END IF;
+
+    v_new_balance := v_current_balance - p_total;
+    v_dev_test_balance := GREATEST(0, v_dev_test_balance - p_total);
 
     PERFORM set_config('echocore.allow_balance_change', '1', true);
 
     UPDATE profiles
     SET
-      balance = balance - p_total,
-      dev_test_balance = GREATEST(0, dev_test_balance - p_total)
-    WHERE id = p_user_id AND balance >= p_total
-    RETURNING balance, dev_test_balance INTO v_new_balance, v_dev_test_balance;
-
-    IF v_new_balance IS NULL THEN
-      RAISE EXCEPTION 'Insufficient balance';
-    END IF;
+      balance = v_new_balance,
+      dev_test_balance = v_dev_test_balance
+    WHERE id = p_user_id;
 
     INSERT INTO transactions (user_id, type, amount, balance_after, payment_method, reference, status)
     VALUES (p_user_id, 'purchase', -p_total, v_new_balance, 'balance', NULL, 'completed');
@@ -5136,7 +5217,9 @@ BEGIN
     v_order_status := 'pending_payment';
     SELECT balance, dev_test_balance
     INTO v_new_balance, v_dev_test_balance
-    FROM profiles WHERE id = p_user_id;
+    FROM profiles
+    WHERE id = p_user_id
+    FOR UPDATE;
 
     SELECT COALESCE(sam_wallet_mode, 'manual') INTO v_wallet_mode
     FROM store_settings WHERE id = 1;

@@ -3,10 +3,14 @@ import { supabase } from './supabase'
 const RPC_SETUP_MSG =
   'Checkout is not configured. Run supabase_echocore_full.sql in the Supabase SQL Editor.'
 
-function assertRpcData(data, error) {
+function assertRpcData(data, error, t = {}) {
   if (error) {
     if (error.message?.includes('function') && error.message?.includes('does not exist')) {
       throw new Error(RPC_SETUP_MSG)
+    }
+    const msg = error.message || ''
+    if (/insufficient balance/i.test(msg)) {
+      throw new Error(t.insufficientBalance || msg)
     }
     throw error
   }
@@ -16,14 +20,31 @@ function assertRpcData(data, error) {
   return data
 }
 
-export async function createOrderAtomic({ userId, total, paymentMethod, items }) {
+export async function fetchMyOrderReceipt(orderId) {
+  const { data, error } = await supabase.rpc('get_my_order_receipt', {
+    p_order_id: orderId,
+  })
+  if (error) {
+    if (error.message?.includes('function') && error.message?.includes('does not exist')) {
+      throw new Error(RPC_SETUP_MSG)
+    }
+    throw error
+  }
+  if (!data?.order) return null
+  return {
+    order: data.order,
+    items: Array.isArray(data.items) ? data.items : [],
+  }
+}
+
+export async function createOrderAtomic({ userId, total, paymentMethod, items, t = {} }) {
   const { data, error } = await supabase.rpc('create_order_atomic', {
     p_user_id: userId,
     p_total: total,
     p_payment_method: paymentMethod,
     p_items: items,
   })
-  return assertRpcData(data, error)
+  return assertRpcData(data, error, t)
 }
 
 export async function markOrderPaymentSent(orderId) {

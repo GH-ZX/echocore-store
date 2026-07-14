@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { isApiWalletMode } from '../../lib/paymentMethods';
 import ProtectedRoute from './ProtectedRoute';
 import SiteGate from './SiteGate';
 import LegacyOfferRedirect from './LegacyOfferRedirect';
@@ -397,12 +398,15 @@ export default function AppRoutes({
         <Route
           path="/success"
           element={(
-            <SuccessView
-              navigate={navigate}
-              t={t}
-              lang={lang}
-              onFulfillOrder={onFulfillOrder}
-            />
+            <ProtectedRoute user={user} loadingAuth={loadingAuth} lang={lang}>
+              <SuccessView
+                navigate={navigate}
+                t={t}
+                lang={lang}
+                user={user}
+                onFulfillOrder={onFulfillOrder}
+              />
+            </ProtectedRoute>
           )}
         />
 
@@ -553,11 +557,18 @@ export default function AppRoutes({
                 onReviewsChanged={refreshReviews}
                 onNotify={showToast}
                 onRechargeApproved={handleRechargeApproved}
-                onApproveOrder={handleApproveOrder}
+                onApproveOrder={isApiWalletMode(paymentConfig) ? null : handleApproveOrder}
                 onRejectOrder={handleRejectOrder}
+                paymentConfig={paymentConfig}
                 onFulfillOrder={handleFulfillOrder}
                 onDevBalanceCredited={handleDevBalanceCredited}
                 onPreviewHomepage={handlePreviewHomepage}
+                notifications={notifications}
+                unreadCount={unreadCount}
+                notificationsLoading={notificationsLoading}
+                onRefreshInbox={handleRefreshInbox}
+                onNotificationMarkRead={handleNotificationMarkRead}
+                onNotificationsMarkAllRead={handleNotificationsMarkAllRead}
               />
             ) : (
               <Navigate to="/" replace />

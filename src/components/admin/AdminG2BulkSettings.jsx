@@ -17,6 +17,7 @@ import { refreshSupplierWallets } from '../../lib/adminSupplierWalletsStore';
 import { useAdminG2bulkWallet } from '../../hooks/useAdminG2bulkWallet';
 import { countPullSelection, normalizeCatalogMode, normalizePullSelection } from '../../lib/pullCatalogUtils';
 import { formatMessage } from '../../lib/i18n';
+import { logDevEvent } from '../../lib/siteLogs';
 
 const TIMEZONE_OPTIONS = [
   { value: 'Asia/Damascus', label: 'Syria (Asia/Damascus)' },
@@ -420,6 +421,15 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     } catch (err) {
       setSyncProgress(null);
       const cancelled = controller.signal.aborted || /cancel/i.test(err.message || '');
+      if (!cancelled) {
+        logDevEvent('g2bulk_sync_failed', {
+          severity: 'danger',
+          metadata: {
+            error: err.message || t.g2bulkImportFailed,
+            endpoint: 'g2bulk/sync-catalog',
+          },
+        });
+      }
       setError(
         cancelled
           ? t.g2bulkImportCancelled

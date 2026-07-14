@@ -82,6 +82,13 @@ export function isApiWalletMethod(methodId, paymentConfig = {}) {
   return isManualWalletMethod(methodId) && isApiWalletMode(paymentConfig);
 }
 
+/** Legacy manual flow: admin approves ShamCash/Syriatel orders after user marks payment sent. */
+export function canManuallyApproveWalletOrder(order, paymentConfig = {}) {
+  if (!order || isApiWalletMode(paymentConfig)) return false;
+  if (!isManualWalletMethod(order.payment_method)) return false;
+  return order.status === 'pending_payment' || order.status === 'payment_sent';
+}
+
 export function isPaymentMethodReady(methodId, paymentConfig = {}) {
   const mode = walletMode(paymentConfig);
 

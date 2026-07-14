@@ -83,35 +83,22 @@ export async function fetchRechargeInvoiceData(
   if (rechargeError) throw rechargeError;
   if (!recharge) return null;
 
-  const [{ data: samRows }, { data: txRows }, profile] = await Promise.all([
+  const [{ data: samRows }, profile] = await Promise.all([
     supabase
       .from('sam_invoices')
-      .select('sam_invoice_id, transaction_ref, payment_method, currency, status, amount')
+      .select('payment_method, currency, status, amount')
       .eq('entity_type', 'recharge')
       .eq('entity_id', rechargeId)
       .order('created_at', { ascending: false })
       .limit(1),
-    supabase
-      .from('transactions')
-      .select('reference, balance_after, amount, created_at')
-      .eq('user_id', recharge.user_id)
-      .eq('type', 'recharge')
-      .order('created_at', { ascending: false })
-      .limit(5),
     resolveInvoiceProfile(recharge.user_id, viewer),
   ]);
 
   const samInvoice = Array.isArray(samRows) ? samRows[0] : null;
-  const transaction = (txRows || []).find((row) => {
-    const ref = recharge.reference || samInvoice?.transaction_ref;
-    if (ref && row.reference === ref) return true;
-    return Math.abs(parseFloat(row.amount || 0) - parseFloat(recharge.amount || 0)) < 0.01;
-  }) || (txRows || [])[0] || null;
 
   return buildRechargeInvoice({
     recharge,
     samInvoice,
-    transaction,
     profile,
     t,
     lang,
@@ -130,14 +117,16 @@ export function canViewRechargeInvoice(recharge, user) {
   return recharge.user_id === user.id;
 }
 
-export function isInvoiceReadyForOrder(order) {
+export function isInvoiceReadyForOrder(order, { isAdmin = false } = {}) {
   if (!order) return false;
-  if (order.status !== 'completed') return false;
-  if (order.fulfillment_status === 'fulfilled') return true;
-  if (order.payment_method === 'admin_gift') return true;
+  if (order.status === 'completed') return true;
+  if (isAdmin && order.status === 'payment_sent') return true;
   return false;
 }
 
-export function isInvoiceReadyForRecharge(recharge) {
-  return recharge?.status === 'approved';
+export function isInvoiceReadyForRecharge(recharge, { isAdmin = false } = {}) {
+  if (!recharge) return false;
+  if (recharge.status === 'approved') return true;
+  if (isAdmin && (recharge.status === 'payment_sent' || recharge.status === 'pending')) return true;
+  return false;
 }

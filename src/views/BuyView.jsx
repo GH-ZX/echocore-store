@@ -27,6 +27,7 @@ import {
   getFulfillmentUnavailableMessage,
   inspectFulfillmentAvailability,
 } from '../lib/fulfillmentAvailability';
+import { markOrderFulfillAllowed } from '../lib/orderAccess';
 import {
   gameShowsCharnameField,
   isCharnameComplete,
@@ -318,6 +319,7 @@ export default function BuyView({
       try {
         const result = await onPurchase(offer, 'balance', playerInfo);
         if (result?.orderId) {
+          markOrderFulfillAllowed(result.orderId);
           navigate(`/success?orderId=${result.orderId}`);
         }
       } catch (e) {
@@ -393,6 +395,7 @@ export default function BuyView({
     } catch {
       /* fulfillment errors surfaced elsewhere */
     }
+    markOrderFulfillAllowed(orderId);
     navigate(`/success?orderId=${orderId}`);
   };
 
@@ -424,7 +427,12 @@ export default function BuyView({
             )}
           </div>
 
-          {activeIsApiWallet && activeOrder?.invoice ? (
+          {activeIsApiWallet && !activeOrder?.invoice ? (
+            <div className="text-center py-6 rounded-2xl border border-amber-500/30 bg-amber-500/10">
+              <Clock className="w-8 h-8 mx-auto text-amber-300 mb-2" />
+              <p className="text-sm text-amber-100">{t.samInvoiceUnavailable}</p>
+            </div>
+          ) : activeIsApiWallet && activeOrder?.invoice ? (
             <SamInvoicePaymentPanel
               t={t}
               lang={lang}

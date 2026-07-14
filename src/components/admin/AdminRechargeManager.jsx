@@ -62,7 +62,13 @@ function RechargeStatusBadge({ displayStatus, t }) {
   );
 }
 
-export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, onNotify }) {
+export default function AdminRechargeManager({
+  t = {},
+  lang = 'ar',
+  onApproved,
+  onNotify,
+  paymentConfig = {},
+}) {
   const navigate = useNavigate();
   const onNotifyRef = useRef(onNotify);
   useEffect(() => {
@@ -258,10 +264,22 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
               <tbody>
                 {requests.map((req) => {
                   const displayStatus = getAdminRechargeDisplayStatus(req);
-                  const manual = needsLegacyManualReview(req);
+                  const manual = needsLegacyManualReview(req, paymentConfig);
                   const samAwaiting = isSamApiAwaitingPayment(req);
                   const recoverable = canGrantExpiredSamBalance(req);
                   const busy = processingId === req.id;
+                  const invoiceReady = isInvoiceReadyForRecharge(req, { isAdmin: true });
+                  const invoiceButton = invoiceReady ? (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/invoice/${INVOICE_KIND.RECHARGE}/${req.id}`)}
+                      className="action-chip gap-1 text-xs !py-1.5"
+                      title={t.viewInvoice}
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      {t.viewInvoice}
+                    </button>
+                  ) : null;
 
                   return (
                     <tr key={req.id} className="border-b border-[var(--border)] last:border-0 align-top">
@@ -290,7 +308,7 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
                         {manual ? (
                           <div className="inline-flex flex-col items-end gap-1.5">
                             <span className="text-[10px] text-[var(--text-muted)]">{t.adminRechargeManualHint}</span>
-                            <div className="flex gap-1.5">
+                            <div className="flex flex-wrap gap-1.5 justify-end">
                               <button
                                 type="button"
                                 onClick={() => handleApprove(req.id)}
@@ -311,33 +329,30 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
                                 <XCircle className="w-3.5 h-3.5" />
                                 {t.rejectRecharge}
                               </button>
+                              {invoiceButton}
                             </div>
                           </div>
                         ) : samAwaiting ? (
-                          <span className="text-[10px] text-[var(--text-muted)] max-w-[10rem] inline-block text-end leading-snug">
-                            {t.adminRechargeSamAwaitingHint}
-                          </span>
+                          <div className="inline-flex flex-col items-end gap-1.5">
+                            <span className="text-[10px] text-[var(--text-muted)] max-w-[10rem] inline-block text-end leading-snug">
+                              {t.adminRechargeSamAwaitingHint}
+                            </span>
+                            {invoiceButton}
+                          </div>
                         ) : recoverable ? (
-                          <button
-                            type="button"
-                            onClick={() => setGrantConfirmTarget(req)}
-                            className="action-chip gap-1 text-xs !py-1.5"
-                            title={t.adminManualCreditGrant}
-                          >
-                            <HandCoins className="w-3.5 h-3.5" />
-                            {t.adminManualCreditGrant}
-                          </button>
-                        ) : isInvoiceReadyForRecharge(req) ? (
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/invoice/${INVOICE_KIND.RECHARGE}/${req.id}`)}
-                            className="action-chip gap-1 text-xs !py-1.5"
-                            title={t.viewInvoice}
-                          >
-                            <FileText className="w-3.5 h-3.5" />
-                            {t.viewInvoice}
-                          </button>
-                        ) : (
+                          <div className="inline-flex flex-col items-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setGrantConfirmTarget(req)}
+                              className="action-chip gap-1 text-xs !py-1.5"
+                              title={t.adminManualCreditGrant}
+                            >
+                              <HandCoins className="w-3.5 h-3.5" />
+                              {t.adminManualCreditGrant}
+                            </button>
+                            {invoiceButton}
+                          </div>
+                        ) : invoiceButton || (
                           <span className="text-[10px] text-[var(--text-muted)]">—</span>
                         )}
                       </td>

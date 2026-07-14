@@ -1,6 +1,7 @@
 export const INBOX_FILTER_IDS = {
   ALL: 'all',
   UNREAD: 'unread',
+  ACTIVITY: 'activity',
   ORDERS: 'orders',
   RECHARGES: 'recharges',
   INVOICES: 'invoices',
@@ -37,6 +38,10 @@ const INVOICE_TYPES = new Set([
   'topup_delivered',
   'order_fulfilled',
   'recharge_approved',
+  'recharge_payment_sent',
+  'admin_recharge_payment_sent',
+  'admin_recharge_completed',
+  'admin_order_payment_sent',
 ]);
 
 const ADMIN_TYPES = new Set([
@@ -52,6 +57,12 @@ const MESSAGE_TYPES = new Set([
   'admin_maintenance_notice',
   'account_banned',
 ]);
+
+export function matchesAdminActivityFilter(item) {
+  return ORDER_TYPES.has(item?.type)
+    || RECHARGE_TYPES.has(item?.type)
+    || ADMIN_TYPES.has(item?.type);
+}
 
 export function getInboxFilterOptions(t = {}, userRole) {
   const options = [
@@ -70,12 +81,27 @@ export function getInboxFilterOptions(t = {}, userRole) {
   return options;
 }
 
+/** Admin dashboard inbox — recharge + order customer activity in one place. */
+export function getAdminInboxFilterOptions(t = {}) {
+  return [
+    { id: INBOX_FILTER_IDS.ACTIVITY, label: t.adminInboxFilterActivity },
+    { id: INBOX_FILTER_IDS.ALL, label: t.inboxFilterAll },
+    { id: INBOX_FILTER_IDS.UNREAD, label: t.inboxFilterUnread },
+    { id: INBOX_FILTER_IDS.RECHARGES, label: t.inboxFilterRecharges },
+    { id: INBOX_FILTER_IDS.ORDERS, label: t.inboxFilterOrders },
+    { id: INBOX_FILTER_IDS.INVOICES, label: t.inboxFilterInvoices },
+    { id: INBOX_FILTER_IDS.MESSAGES, label: t.inboxFilterMessages },
+  ];
+}
+
 export function matchesInboxFilter(item, filterId = INBOX_FILTER_IDS.ALL) {
   if (!item) return false;
 
   switch (filterId) {
     case INBOX_FILTER_IDS.UNREAD:
       return !item.read_at;
+    case INBOX_FILTER_IDS.ACTIVITY:
+      return matchesAdminActivityFilter(item);
     case INBOX_FILTER_IDS.ORDERS:
       return ORDER_TYPES.has(item.type);
     case INBOX_FILTER_IDS.RECHARGES:
@@ -104,6 +130,8 @@ export function getInboxEmptyMessageKey(filterId = INBOX_FILTER_IDS.ALL) {
   switch (filterId) {
     case INBOX_FILTER_IDS.UNREAD:
       return 'inboxEmptyUnread';
+    case INBOX_FILTER_IDS.ACTIVITY:
+      return 'adminInboxEmptyActivity';
     case INBOX_FILTER_IDS.ORDERS:
       return 'inboxEmptyOrders';
     case INBOX_FILTER_IDS.RECHARGES:

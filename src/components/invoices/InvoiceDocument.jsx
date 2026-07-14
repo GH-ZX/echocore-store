@@ -135,12 +135,6 @@ export default function InvoiceDocument({
           <h3 className="invoice-section-title">{t.orderPaymentMethodLabel}</h3>
           <div className="invoice-section-content">
             <p><span>{t.orderPaymentMethodLabel}:</span> {paymentMethodLabel(invoice.paymentMethod, t)}</p>
-            {invoice.paymentReference && (
-              <p><span>{t.invoiceTransactionRefLabel}:</span> <strong className="font-mono">{invoice.paymentReference}</strong></p>
-            )}
-            {isRecharge && invoice.balanceAfter && (
-              <p><span>{t.invoiceBalanceAfterLabel}:</span> <strong className="invoice-accent">{invoice.balanceAfter}</strong></p>
-            )}
           </div>
         </section>
       </div>

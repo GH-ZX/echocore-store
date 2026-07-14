@@ -10,6 +10,8 @@ import {
 import { supabase, resolveUserData } from './lib/supabase';
 import { fetchAdminProfileSummaries } from './lib/adminModeration';
 import { createOrderAtomic, confirmOrderPayment, rejectOrderPayment } from './lib/orders';
+import { tryAcquirePurchaseLock, releasePurchaseLock } from './lib/purchaseLock';
+import { markOrderFulfillAllowed } from './lib/orderAccess';
 import { adminGiftOrder, pollOrderFulfillment } from './lib/adminGifts';
 import { mergeGamePlayerUidIntoProfile } from './lib/gamePlayerUid';
 import { fulfillOrderG2bulk } from './lib/g2bulk';
@@ -53,6 +55,7 @@ import { DEFAULT_HOME_LAYOUT, fetchHomeLayout, normalizeHomeLayout } from './lib
 import { fetchApprovedReviews } from './lib/customerReviews';
 import {
   fetchNotifications,
+  INBOX_FETCH_LIMIT,
   fetchUnreadCount,
   markNotificationRead,
   markAllNotificationsRead,
@@ -96,6 +99,7 @@ export default function App() {
   });
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [user, setUser] = useState(null);           // { id, role, name, email? }
+  const purchaseInFlightRef = useRef(false);
 
   const [games, setGames] = useState([]);
   const [offers, setOffers] = useState([]);
@@ -278,15 +282,19 @@ export default function App() {
   }, [refreshNotifications]);
 
   const handleRefreshInbox = useCallback(() => {
-    refreshNotifications(user?.id, 40);
+    refreshNotifications(user?.id, INBOX_FETCH_LIMIT);
   }, [refreshNotifications, user?.id]);
 
   const handleOpenNotificationsInbox = useCallback(async () => {
+    if (user?.role === 'admin') {
+      navigate('/dashboard/inbox');
+      return;
+    }
     if (unreadCount > 0) {
       await handleNotificationsMarkAllRead();
     }
     navigate('/notifications');
-  }, [unreadCount, handleNotificationsMarkAllRead, navigate]);
+  }, [navigate, unreadCount, handleNotificationsMarkAllRead, user?.role]);
 
   useEffect(() => () => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -585,6 +593,22 @@ export default function App() {
     return { success: true, message: 'Check your email to confirm your account (if required by your Supabase settings).' };
   };
 
+  const runWithPurchaseGuard = async (userId, fn) => {
+    if (purchaseInFlightRef.current) {
+      throw new Error(t.purchaseInProgress);
+    }
+    if (!tryAcquirePurchaseLock(userId)) {
+      throw new Error(t.purchaseInProgress);
+    }
+    purchaseInFlightRef.current = true;
+    try {
+      return await fn();
+    } finally {
+      purchaseInFlightRef.current = false;
+      releasePurchaseLock(userId);
+    }
+  };
+
   // ============================================
   // REAL ORDER — saves to Supabase
   // Supports paying with external methods or 'balance'
@@ -594,6 +618,8 @@ export default function App() {
   const submitOrder = async (currentCart, paymentMethod) => {
     if (!user?.id) throw new Error('Not logged in');
     if (user?.role === 'admin') throw new Error(t.adminCannotPurchase);
+
+    return runWithPurchaseGuard(user.id, async () => {
 
     const preparedCart = await resolveCheckoutOffers(currentCart);
     const { items: syncedCart, removedCount } = syncCartWithOffers(preparedCart, offers.length ? offers : preparedCart);
@@ -627,6 +653,7 @@ export default function App() {
       total,
       paymentMethod,
       items,
+      t,
     });
 
     if (paymentMethod === 'balance' && data?.newBalance != null) {
@@ -660,6 +687,7 @@ export default function App() {
     }
 
     return { orderId: data.orderId, status: data.status || 'completed' };
+    });
   };
 
   const handleRechargeApproved = (result) => {
@@ -710,6 +738,8 @@ export default function App() {
     if (user?.role === 'admin') throw new Error(t.adminCannotPurchase);
     if (!offer) throw new Error('No offer');
 
+    return runWithPurchaseGuard(user.id, async () => {
+
     const [resolvedOffer] = await resolveCheckoutOffers([offer]);
     offer = resolvedOffer || offer;
 
@@ -739,6 +769,7 @@ export default function App() {
       total: amount,
       paymentMethod,
       items,
+      t,
     });
 
     if (player_uid) {
@@ -781,6 +812,7 @@ export default function App() {
     }
 
     return { orderId: data.orderId, status: data.status || 'completed' };
+    });
   };
 
   const tryFulfillOrder = async (orderId) => {
@@ -803,6 +835,9 @@ export default function App() {
   };
 
   const handleApproveOrder = async (orderId) => {
+    if (isApiWalletMode(paymentConfig)) {
+      throw new Error(t.manualOrderApprovalDisabled);
+    }
     const result = await confirmOrderPayment(orderId);
     await fetchOrders();
     if (result?.status === 'completed') {
@@ -1561,6 +1596,7 @@ export default function App() {
     }
 
     if (orderResult.status === 'completed') {
+      markOrderFulfillAllowed(orderResult.orderId);
       await tryFulfillOrder(orderResult.orderId);
       navigate(`/success?orderId=${orderResult.orderId}`);
       showNotification(`${t.successMsg} #${orderResult.orderId.slice(0, 8)}`);

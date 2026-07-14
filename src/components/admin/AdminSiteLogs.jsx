@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, RefreshCw, ScrollText } from 'lucide-react';
-import { fetchAdminSiteLogs, formatSiteLog, formatSiteLogCount } from '../../lib/siteLogs';
+import { fetchAdminSiteLogs, formatDevLogLine, formatSiteLogCount } from '../../lib/siteLogs';
 
 const FILTER_OPTIONS = [
   { id: null, labelKey: 'siteLogsFilterAll' },
@@ -8,31 +8,8 @@ const FILTER_OPTIONS = [
   { id: 'recharge', labelKey: 'siteLogsFilterRecharge' },
   { id: 'order', labelKey: 'siteLogsFilterOrder' },
   { id: 'contact', labelKey: 'siteLogsFilterContact' },
+  { id: 'dev', labelKey: 'siteLogsFilterDev' },
 ];
-
-const TONE_CLASS = {
-  info: 'admin-order-status--muted',
-  success: 'admin-order-status--success',
-  warning: 'admin-order-status--warning',
-  danger: 'admin-order-status--danger',
-};
-
-function formatLogDate(value, lang) {
-  if (!value) return '—';
-  return new Date(value).toLocaleString(lang === 'ar' ? 'ar-SY' : 'en-US', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-}
-
-function LogToneBadge({ tone, label }) {
-  const toneClass = TONE_CLASS[tone] || TONE_CLASS.info;
-  return (
-    <span className={`admin-order-status ${toneClass}`}>
-      {label}
-    </span>
-  );
-}
 
 export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
   const onNotifyRef = useRef(onNotify);
@@ -55,7 +32,7 @@ export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
     loadInFlightRef.current = true;
     setLoading(true);
     try {
-      const result = await fetchAdminSiteLogs({ limit: 100, offset: 0, category: filter });
+      const result = await fetchAdminSiteLogs({ limit: 200, offset: 0, category: filter });
       setLogs(result.logs);
       setTotal(result.total);
     } catch (err) {
@@ -73,7 +50,7 @@ export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
   }, [load]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-[var(--text)] flex items-center gap-2">
@@ -113,47 +90,35 @@ export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
         })}
       </div>
 
-      <p className="text-xs text-[var(--text-muted)]">
+      <p className="text-xs text-[var(--text-muted)] font-mono">
         {formatSiteLogCount(total, t)}
       </p>
 
-      {loading && logs.length === 0 ? (
-        <div className="flex items-center justify-center py-16 text-[var(--text-sec)] gap-2">
-          <Loader2 size={20} className="animate-spin" />
-          {t.siteLogsLoading}
-        </div>
-      ) : logs.length === 0 ? (
-        <div className="text-center py-16 text-[var(--text-sec)] text-sm">
-          {t.siteLogsEmpty}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {logs.map((item) => {
-            const formatted = formatSiteLog(item, t, lang);
+      <div className="dev-log-terminal" dir="ltr">
+        {loading && logs.length === 0 ? (
+          <div className="dev-log-line dev-log-line--info dev-log-line--status">
+            <Loader2 size={14} className="animate-spin inline-block me-2" />
+            {t.siteLogsLoading}
+          </div>
+        ) : logs.length === 0 ? (
+          <div className="dev-log-line dev-log-line--info dev-log-line--status">
+            {t.siteLogsEmpty}
+          </div>
+        ) : (
+          logs.map((item) => {
+            const line = formatDevLogLine(item, lang);
             return (
-              <article
-                key={item.id}
-                className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4"
+              <div
+                key={line.id}
+                className={`dev-log-line dev-log-line--${line.severity}`}
+                title={line.text}
               >
-                <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <LogToneBadge tone={formatted.tone} label={formatted.categoryLabel} />
-                    <span className="text-xs text-[var(--text-muted)]">
-                      {formatLogDate(formatted.createdAt, lang)}
-                    </span>
-                  </div>
-                </div>
-                <h3 className="text-sm font-semibold text-[var(--text)]">
-                  {formatted.title}
-                </h3>
-                <p className="text-sm text-[var(--text-sec)] mt-1 leading-relaxed">
-                  {formatted.body}
-                </p>
-              </article>
+                {line.text}
+              </div>
             );
-          })}
-        </div>
-      )}
+          })
+        )}
+      </div>
     </div>
   );
 }

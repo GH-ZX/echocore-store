@@ -54,7 +54,7 @@ export default function InvoiceView({
           setInvoice(null);
           return;
         }
-        if (!isInvoiceReadyForOrder(order)) {
+        if (!isInvoiceReadyForOrder(order, { isAdmin: user?.role === 'admin' })) {
           setErrorKey('invoiceNotReady');
           setInvoice(null);
           return;
@@ -82,7 +82,7 @@ export default function InvoiceView({
           setInvoice(null);
           return;
         }
-        if (!isInvoiceReadyForRecharge(recharge)) {
+        if (!isInvoiceReadyForRecharge(recharge, { isAdmin: user?.role === 'admin' })) {
           setErrorKey('invoiceNotReady');
           setInvoice(null);
           return;

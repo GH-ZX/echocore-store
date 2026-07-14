@@ -1,3 +1,5 @@
+import { isApiWalletMode } from './paymentMethods';
+
 const SAM_INVOICE_RECOVERABLE = new Set(['expired', 'failed', 'cancelled']);
 
 function hasSamInvoice(req) {
@@ -5,7 +7,8 @@ function hasSamInvoice(req) {
 }
 
 /** Legacy manual flow: user marked payment sent — admin approves or rejects. */
-export function needsLegacyManualReview(req) {
+export function needsLegacyManualReview(req, paymentConfig = {}) {
+  if (isApiWalletMode(paymentConfig)) return false;
   return req?.status === 'payment_sent';
 }
 

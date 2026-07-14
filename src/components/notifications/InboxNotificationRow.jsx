@@ -19,14 +19,19 @@ export default function InboxNotificationRow({
   item,
   formatted,
   t = {},
+  lang = 'ar',
   variant = 'page',
+  compact = false,
   onOpen,
   onDismiss,
   dismissing = false,
+  footerActions = null,
 }) {
   const unread = !item.read_at;
   const tones = variant === 'dropdown' ? compactToneClasses : toneClasses;
   const toneClass = tones[formatted.tone] || tones.info;
+  const isPageCompact = variant === 'page' && compact;
+  const textDir = lang === 'ar' ? 'rtl' : 'ltr';
 
   if (variant === 'dropdown') {
     return (
@@ -75,32 +80,51 @@ export default function InboxNotificationRow({
 
   return (
     <div
+      dir={textDir}
       className={`card inbox-notification-row border transition-colors hover:border-[var(--accent)]/35 ${toneClass} ${
-        unread ? 'ring-1 ring-[var(--accent)]/20' : ''
-      }`}
+        isPageCompact ? 'inbox-notification-row--compact' : ''
+      } ${unread ? 'ring-1 ring-[var(--accent)]/20' : ''}`}
     >
-      <button
-        type="button"
-        onClick={() => onOpen?.(item)}
-        className="inbox-notification-main w-full text-left p-4 sm:p-5 min-w-0"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-bold text-[var(--text-primary)]">
-              {formatted.title}
+      <div className="inbox-notification-body">
+        <button
+          type="button"
+          onClick={() => onOpen?.(item)}
+          className={`inbox-notification-main w-full min-w-0 ${
+            isPageCompact ? 'inbox-notification-main--compact' : 'p-4 sm:p-5 text-start'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className={`font-bold text-[var(--text-primary)] ${
+                isPageCompact ? 'text-xs leading-snug' : 'text-sm'
+              }`}
+              >
+                {formatted.title}
+              </div>
+              <div className={`text-[var(--text-sec)] mt-0.5 ${
+                isPageCompact ? 'text-[11px] leading-snug line-clamp-2' : 'text-sm mt-1 leading-relaxed'
+              }`}
+              >
+                {formatted.body}
+              </div>
+              <div className={`text-[var(--text-muted)] ${
+                isPageCompact ? 'text-[10px] mt-1' : 'text-xs mt-2'
+              }`}
+              >
+                {formatNotificationRelativeTime(item.created_at, t)}
+              </div>
             </div>
-            <div className="text-sm text-[var(--text-sec)] mt-1 leading-relaxed">
-              {formatted.body}
-            </div>
-            <div className="text-xs text-[var(--text-muted)] mt-2">
-              {formatNotificationRelativeTime(item.created_at, t)}
-            </div>
+            {unread && (
+              <span className="header-notif-dot flex-shrink-0 mt-1" aria-hidden="true" />
+            )}
           </div>
-          {unread && (
-            <span className="header-notif-dot flex-shrink-0 mt-1" aria-hidden="true" />
-          )}
-        </div>
-      </button>
+        </button>
+        {footerActions ? (
+          <div className="inbox-notification-footer">
+            {footerActions}
+          </div>
+        ) : null}
+      </div>
       {onDismiss && (
         <button
           type="button"

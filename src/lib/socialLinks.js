@@ -18,8 +18,8 @@ export const SOCIAL_LINKS = [
   {
     id: 'instagram',
     platform: 'Instagram',
-    handle: '@echocore',
-    href: 'https://instagram.com/echocore412',
+    handle: '@echocor412',
+    href: 'https://www.instagram.com/echocor412',
     accent: '#E4405F',
   },
   {
@@ -44,3 +44,9 @@ export const SOCIAL_LINKS = [
     accent: '#1877F2',
   },
 ];
+
+const STORE_CONTACT_LINK_IDS = ['instagram', 'telegram'];
+
+export function getStoreContactLinks() {
+  return SOCIAL_LINKS.filter((link) => STORE_CONTACT_LINK_IDS.includes(link.id));
+}

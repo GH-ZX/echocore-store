@@ -30,6 +30,7 @@ import {
   getOrderStatusTone,
 } from '../../lib/orderReceipt';
 import { isInvoiceReadyForOrder } from '../../lib/invoices';
+import { canManuallyApproveWalletOrder } from '../../lib/paymentMethods';
 import { INVOICE_KIND } from '../../lib/invoiceBuilder';
 import {
   formatProfileUsername,
@@ -87,6 +88,7 @@ export default function AdminOrdersManager({
   onApproveOrder,
   onRejectOrder,
   onNotify,
+  paymentConfig = {},
 }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -197,9 +199,17 @@ export default function AdminOrdersManager({
     || statusFilter !== ORDER_STATUS_FILTER_IDS.ALL
   );
 
-  const isAwaitingShamcash = (order) => (
-    order.payment_method === 'ShamCash'
+  const isAwaitingWalletPayment = (order) => (
+    (order.payment_method === 'ShamCash' || order.payment_method === 'SyriatelCash')
     && (order.status === 'pending_payment' || order.status === 'payment_sent')
+  );
+
+  const canApproveOrder = (order) => (
+    canManuallyApproveWalletOrder(order, paymentConfig) && onApproveOrder
+  );
+
+  const canRejectOrder = (order) => (
+    isAwaitingWalletPayment(order) && onRejectOrder
   );
 
   const handleApproveOrder = async (orderId) => {
@@ -283,24 +293,28 @@ export default function AdminOrdersManager({
           </div>
         )}
 
-        {isAwaitingShamcash(order) && onApproveOrder && onRejectOrder && (
+        {(canApproveOrder(order) || canRejectOrder(order)) && (
           <div className="flex flex-wrap gap-2 mt-4">
-            <button
-              type="button"
-              onClick={() => handleApproveOrder(order.id)}
-              disabled={processingOrderId === order.id}
-              className="btn btn-primary text-xs py-2 px-3"
-            >
-              {processingOrderId === order.id ? t.sending : t.approveShort}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleRejectOrder(order.id)}
-              disabled={processingOrderId === order.id}
-              className="btn btn-secondary text-xs py-2 px-3"
-            >
-              {t.rejectShort}
-            </button>
+            {canApproveOrder(order) && (
+              <button
+                type="button"
+                onClick={() => handleApproveOrder(order.id)}
+                disabled={processingOrderId === order.id}
+                className="btn btn-primary text-xs py-2 px-3"
+              >
+                {processingOrderId === order.id ? t.sending : t.approveShort}
+              </button>
+            )}
+            {canRejectOrder(order) && (
+              <button
+                type="button"
+                onClick={() => handleRejectOrder(order.id)}
+                disabled={processingOrderId === order.id}
+                className="btn btn-secondary text-xs py-2 px-3"
+              >
+                {t.rejectShort}
+              </button>
+            )}
           </div>
         )}
 
@@ -320,7 +334,7 @@ export default function AdminOrdersManager({
           )}
         </div>
 
-        {isInvoiceReadyForOrder(order) && (
+        {isInvoiceReadyForOrder(order, { isAdmin: true }) && (
           <div className="mt-4">
             <button
               type="button"

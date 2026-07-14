@@ -210,3 +210,132 @@ export async function logAuthEvent(eventType, { email = null, metadata = {} } = 
 export function formatSiteLogCount(total, t = {}) {
   return formatMessage(t.siteLogCount, { count: total });
 }
+
+const DEV_LOG_SEVERITY = {
+  success: 'OK  ',
+  info: 'INFO',
+  warning: 'WARN',
+  danger: 'ERR ',
+};
+
+const DEV_LOG_META_ORDER = [
+  'user',
+  'actor',
+  'subject',
+  'email',
+  'name',
+  'admin',
+  'adminName',
+  'amount',
+  'total',
+  'method',
+  'paymentMethod',
+  'reference',
+  'orderId',
+  'requestId',
+  'messageId',
+  'samInvoiceId',
+  'status',
+  'error',
+  'message',
+  'reason',
+  'endpoint',
+  'httpStatus',
+  'response',
+  'body',
+  'webhook',
+  'payload',
+  'code',
+  'detail',
+  'stack',
+];
+
+function formatDevLogTimestamp(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '-------------------';
+  const pad = (part) => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function escapeDevLogValue(value) {
+  if (value == null) return '';
+  if (typeof value === 'object') {
+    try {
+      const raw = JSON.stringify(value);
+      return raw.length > 240 ? `${raw.slice(0, 237)}...` : raw;
+    } catch {
+      return String(value);
+    }
+  }
+  const text = String(value).replace(/\s+/g, ' ').trim();
+  if (text.length > 120) return `${text.slice(0, 117)}...`;
+  if (/[\s|="'`]/.test(text)) return `"${text.replace(/"/g, '\'')}"`;
+  return text;
+}
+
+function buildDevLogFields(item, lang = 'ar') {
+  const metadata = { ...(item?.metadata || {}) };
+  const user = resolveUserName(item, lang);
+  const genericUser = lang === 'ar' ? 'مستخدم' : 'User';
+
+  if (user && user !== genericUser) {
+    metadata.user = metadata.userName || user;
+  }
+  if (item?.actor_name && item.actor_name !== metadata.user) {
+    metadata.actor = item.actor_name;
+  }
+  if (item?.subject_name && item.subject_name !== metadata.user) {
+    metadata.subject = item.subject_name;
+  }
+  delete metadata.userName;
+
+  const used = new Set();
+  const parts = [];
+
+  DEV_LOG_META_ORDER.forEach((key) => {
+    if (metadata[key] == null || metadata[key] === '') return;
+    parts.push(`${key}=${escapeDevLogValue(metadata[key])}`);
+    used.add(key);
+  });
+
+  Object.keys(metadata)
+    .filter((key) => !used.has(key) && metadata[key] != null && metadata[key] !== '')
+    .sort()
+    .forEach((key) => {
+      parts.push(`${key}=${escapeDevLogValue(metadata[key])}`);
+    });
+
+  return parts.join(' ');
+}
+
+export function formatDevLogLine(item, lang = 'ar') {
+  const severity = DEV_LOG_SEVERITY[item?.severity] || DEV_LOG_SEVERITY.info;
+  const tag = `${item?.category || 'unknown'}.${item?.event_type || 'event'}`;
+  const fields = buildDevLogFields(item, lang);
+  const timestamp = formatDevLogTimestamp(item?.created_at);
+  const text = fields
+    ? `${timestamp} | ${severity} | ${tag} | ${fields}`
+    : `${timestamp} | ${severity} | ${tag}`;
+
+  return {
+    text,
+    severity: item?.severity || 'info',
+    tag,
+    id: item?.id,
+  };
+}
+
+export async function logDevEvent(eventType, { severity = 'info', metadata = {} } = {}) {
+  try {
+    const { error } = await supabase.rpc('log_dev_event', {
+      p_event_type: eventType,
+      p_severity: severity,
+      p_metadata: metadata,
+    });
+    if (error && !isMissingRpc(error)) {
+      console.warn('log_dev_event failed:', error.message);
+    }
+  } catch (err) {
+    console.warn('log_dev_event failed:', err);
+  }
+}

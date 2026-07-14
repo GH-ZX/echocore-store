@@ -6,6 +6,7 @@ import SaleOfferCard from '../../components/ui/SaleOfferCard';
 import HomeGameCard from '../../components/ui/HomeGameCard';
 import CustomerReviewsSection from './CustomerReviewsSection';
 import SocialLinksHomeSection from '../../components/home/SocialLinksHomeSection';
+import HomeContactFab from '../../components/home/HomeContactFab';
 import HomeExpandableGrid from '../../components/home/HomeExpandableGrid';
 import AdminAddCard from '../../components/admin/AdminAddCard';
 import { getCarouselGames, resolveCarouselLogo } from '../../lib/carouselUtils';
@@ -464,6 +465,10 @@ export default function HomeView({
     }
   };
 
+  const contactFab = (
+    <HomeContactFab t={t} lang={lang} stacked={isAdminUser} />
+  );
+
   const previewFab = isAdminUser && typeof document !== 'undefined'
     ? createPortal(
       <button
@@ -484,6 +489,7 @@ export default function HomeView({
 
   return (
     <div className="space-y-10 sm:space-y-14 md:space-y-16 animate-fade-in">
+      {contactFab}
       {previewFab}
       {layout.map((section) => {
         const content = renderSection(section);

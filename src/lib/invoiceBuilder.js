@@ -1,4 +1,4 @@
-import { extractDeliveryCodes, formatOrderDisplayId } from './orderReceipt';
+import { extractDeliveryCodes, formatOrderDisplayId, shortOrderId } from './orderReceipt';
 import { getRedeemInstructions, getTopupSteps } from './redeemInstructions';
 import { formatProfileUsername, getProfileUsername } from './username';
 
@@ -93,7 +93,6 @@ export function buildOrderInvoice({
     customerUsername: customer.username,
     customerEmail: customer.email,
     paymentMethod: order.payment_method,
-    paymentReference: order.payment_reference || null,
     status: order.status,
     fulfillmentStatus: order.fulfillment_status || null,
     total: formatMoney(order.total),
@@ -109,38 +108,25 @@ export function buildOrderInvoice({
 export function buildRechargeInvoice({
   recharge,
   samInvoice = null,
-  transaction = null,
   profile = null,
   t = {},
 }) {
-  const reference = recharge.reference
-    || samInvoice?.transaction_ref
-    || samInvoice?.sam_invoice_id
-    || transaction?.reference
-    || null;
-
   const paymentMethod = recharge.payment_method || samInvoice?.payment_method || 'ShamCash';
   const customer = resolveInvoiceCustomer(profile);
 
   return {
     kind: INVOICE_KIND.RECHARGE,
     subtype: 'wallet_recharge',
-    invoiceNumber: reference
-      ? `RCH-${String(reference).slice(-12).toUpperCase()}`
-      : `RCH-${String(recharge.id).slice(0, 8).toUpperCase()}`,
+    invoiceNumber: `RCH-${shortOrderId(recharge.id)}`,
     rechargeId: recharge.id,
     issuedAt: recharge.updated_at || recharge.created_at,
     customerName: customer.name,
     customerUsername: customer.username,
     customerEmail: customer.email,
     paymentMethod,
-    paymentReference: reference,
-    samInvoiceId: samInvoice?.sam_invoice_id || null,
-    transactionRef: samInvoice?.transaction_ref || transaction?.reference || null,
     status: recharge.status,
     amount: formatMoney(recharge.amount),
     amountRaw: parseFloat(recharge.amount || 0),
-    balanceAfter: formatMoney(recharge.balance_after ?? transaction?.balance_after),
     currency: samInvoice?.currency || 'USD',
     lines: [],
     notes: t.invoiceRechargeNote,
@@ -158,25 +144,35 @@ export function getInvoiceRoute(invoice) {
   return null;
 }
 
+const ORDER_INVOICE_NOTIFICATION_TYPES = new Set([
+  'purchase_completed',
+  'order_completed',
+  'order_gifted',
+  'delivery_ready',
+  'topup_delivered',
+  'order_fulfilled',
+  'fulfillment_failed',
+  'fulfillment_failed_refunded',
+  'admin_order_payment_sent',
+]);
+
+const RECHARGE_INVOICE_NOTIFICATION_TYPES = new Set([
+  'recharge_approved',
+  'recharge_payment_sent',
+  'admin_recharge_payment_sent',
+  'admin_recharge_completed',
+]);
+
 export function getInvoiceRouteFromNotification(item) {
   const metadata = item?.metadata || {};
   const orderId = metadata.orderId;
   const requestId = metadata.requestId;
 
-  if (orderId && (
-    item?.type === 'purchase_completed'
-    || item?.type === 'order_completed'
-    || item?.type === 'order_gifted'
-    || item?.type === 'delivery_ready'
-    || item?.type === 'topup_delivered'
-    || item?.type === 'order_fulfilled'
-    || item?.type === 'fulfillment_failed'
-    || item?.type === 'fulfillment_failed_refunded'
-  )) {
+  if (orderId && ORDER_INVOICE_NOTIFICATION_TYPES.has(item?.type)) {
     return `/invoice/order/${orderId}`;
   }
 
-  if (requestId && item?.type === 'recharge_approved') {
+  if (requestId && RECHARGE_INVOICE_NOTIFICATION_TYPES.has(item?.type)) {
     return `/invoice/recharge/${requestId}`;
   }
 
