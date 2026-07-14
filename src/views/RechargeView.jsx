@@ -25,8 +25,10 @@ import {
   normalizePayCurrency,
   getSypPerUsd,
   sypForUsd,
-  formatSypAmount,
+  formatSypExchangeRate,
+  formatUsdToSypConversion,
   isSypRateRecentlyUpdated,
+  buildRechargeCompletedMessage,
 } from '../lib/rechargeCurrency';
 import { formatMessage } from '../lib/i18n';
 
@@ -256,7 +258,9 @@ export default function RechargeView({
       amount: creditedAmount,
       requestedAmount,
       creditedAmount,
+      paidAmount: completion?.paidAmount,
       payCurrency: completion?.payCurrency || activeRequest?.payCurrency,
+      sypPerUsd: completion?.sypPerUsd ?? activeRequest?.sypPerUsd,
       newBalance: newBalance ?? balance,
     });
     setActiveRequest(null);
@@ -396,19 +400,11 @@ export default function RechargeView({
               <CheckCircle className="w-12 h-12 mx-auto text-emerald-400 mb-4" />
               <div className="text-2xl font-black text-emerald-100 mb-2">{t.rechargeSuccess}</div>
               <p className="text-sm text-[var(--text-sec)] max-w-sm mx-auto">
-                {Math.abs(
-                  parseFloat(completedRecharge.creditedAmount || completedRecharge.amount || 0)
-                  - parseFloat(completedRecharge.requestedAmount || completedRecharge.amount || 0),
-                ) >= 0.01
-                  ? formatMessage(t.rechargeCompletedPartialDesc, {
-                    credited: `$${parseFloat(completedRecharge.creditedAmount || completedRecharge.amount || 0).toFixed(2)}`,
-                    requested: `$${parseFloat(completedRecharge.requestedAmount || completedRecharge.amount || 0).toFixed(2)}`,
-                    balance: `$${Number(completedRecharge.newBalance || 0).toFixed(2)}`,
-                  })
-                  : formatMessage(t.rechargeCompletedDesc, {
-                    amount: `$${parseFloat(completedRecharge.amount || 0).toFixed(2)}`,
-                    balance: `$${Number(completedRecharge.newBalance || 0).toFixed(2)}`,
-                  })}
+                {buildRechargeCompletedMessage({
+                  completed: completedRecharge,
+                  t,
+                  formatMessage,
+                })}
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
@@ -502,8 +498,8 @@ export default function RechargeView({
                     );
                   })}
                 </div>
-                <p className="text-[10px] text-[var(--text-muted)] mt-2">
-                  {formatMessage(t.rechargeSypRateNote, { rate: formatSypAmount(sypPerUsd, lang) })}
+                <p className="text-[10px] text-[var(--text-muted)] mt-2" dir="ltr">
+                  {formatMessage(t.rechargeSypRateNote, { rate: formatSypExchangeRate(sypPerUsd) })}
                 </p>
                 {isSypRateRecentlyUpdated(paymentConfig) && (
                   <p className="text-[10px] text-amber-200/90 mt-1">{t.rechargeSypRateUpdatedNote}</p>
@@ -549,10 +545,12 @@ export default function RechargeView({
                 ${isValidAmount ? effectiveAmount.toFixed(2) : '0.00'}
               </div>
               {previewSypSendAmount != null && (
-                <div className="text-sm text-[var(--text-sec)] mt-2">
+                <div className="text-sm font-mono text-[var(--text-sec)] mt-2" dir="ltr">
                   {formatMessage(t.rechargeSypSendAmount, {
-                    syp: formatSypAmount(previewSypSendAmount, lang),
-                    usd: isValidAmount ? effectiveAmount.toFixed(2) : '0.00',
+                    conversion: formatUsdToSypConversion(
+                      isValidAmount ? effectiveAmount : 0,
+                      previewSypSendAmount,
+                    ),
                   })}
                 </div>
               )}
@@ -596,16 +594,15 @@ export default function RechargeView({
                 ${parseFloat(activeRequest.amount).toFixed(2)}
               </div>
               {activePayCurrency === 'SYP' && activeSypSendAmount != null && (
-                <div className="text-lg font-bold text-[var(--text-primary)] mt-2">
+                <div className="text-lg font-bold font-mono text-[var(--text-primary)] mt-2" dir="ltr">
                   {formatMessage(t.rechargeSypSendAmount, {
-                    syp: formatSypAmount(activeSypSendAmount, lang),
-                    usd: parseFloat(activeRequest.amount).toFixed(2),
+                    conversion: formatUsdToSypConversion(activeRequest.amount, activeSypSendAmount),
                   })}
                 </div>
               )}
               {activePayCurrency === 'SYP' && activeSypRate && (
-                <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                  {formatMessage(t.rechargeSypRateNote, { rate: formatSypAmount(activeSypRate, lang) })}
+                <p className="text-[10px] text-[var(--text-muted)] mt-1" dir="ltr">
+                  {formatMessage(t.rechargeSypRateNote, { rate: formatSypExchangeRate(activeSypRate) })}
                 </p>
               )}
               <div className="text-xs text-[var(--text-sec)] mt-1">{activeMethodLabel}</div>

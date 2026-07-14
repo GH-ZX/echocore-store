@@ -109,7 +109,7 @@ export default function NotificationBell({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 6, scale: 0.97 }}
             transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-            className="header-notif-dropdown header-glass-dropdown glass-surface"
+            className="header-notif-dropdown header-solid-dropdown solid-surface"
             style={{
               position: 'fixed',
               top: coords.top,

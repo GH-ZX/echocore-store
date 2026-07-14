@@ -734,6 +734,9 @@ CREATE TABLE IF NOT EXISTS public.recharge_requests (
   status text NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'payment_sent', 'approved', 'rejected', 'cancelled')),
   payment_method text NOT NULL DEFAULT 'ShamCash',
+  pay_currency text NOT NULL DEFAULT 'USD' CHECK (pay_currency IN ('USD', 'SYP')),
+  syp_per_usd_snapshot numeric(12,2),
+  credited_amount numeric(10,2),
   admin_note text,
   reviewed_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   reviewed_at timestamptz,
@@ -2808,7 +2811,9 @@ ALTER TABLE public.store_settings
   ADD COLUMN IF NOT EXISTS sam_invoice_method text NOT NULL DEFAULT 'shamcash',
   ADD COLUMN IF NOT EXISTS sam_wallet_identifier text,
   ADD COLUMN IF NOT EXISTS sam_invoice_currency text NOT NULL DEFAULT 'USD',
-  ADD COLUMN IF NOT EXISTS sam_webhook_secret text;
+  ADD COLUMN IF NOT EXISTS sam_webhook_secret text,
+  ADD COLUMN IF NOT EXISTS sam_syp_per_usd numeric(12,2) DEFAULT 135,
+  ADD COLUMN IF NOT EXISTS sam_syp_rate_updated_at timestamptz;
 
 ALTER TABLE public.store_settings
   DROP CONSTRAINT IF EXISTS store_settings_sam_wallet_mode_check;
@@ -2836,6 +2841,9 @@ CREATE TABLE IF NOT EXISTS public.sam_invoices (
   sam_invoice_id text NOT NULL UNIQUE,
   payment_url text,
   amount numeric(12,2) NOT NULL,
+  requested_usd_amount numeric(10,2),
+  paid_amount numeric(12,2),
+  syp_per_usd_snapshot numeric(12,2),
   currency text NOT NULL CHECK (currency IN ('USD', 'SYP', 'EUR')),
   method text NOT NULL CHECK (method IN ('shamcash', 'syriatel')),
   status text NOT NULL DEFAULT 'pending'
@@ -4294,8 +4302,10 @@ DROP FUNCTION IF EXISTS public.create_recharge_request(numeric);
 -- (removed older create_recharge_request; see later definition)
 
 
-REVOKE EXECUTE ON FUNCTION public.create_recharge_request(numeric, text) FROM public;
-GRANT EXECUTE ON FUNCTION public.create_recharge_request(numeric, text) TO authenticated;
+DROP FUNCTION IF EXISTS public.create_recharge_request(numeric, text);
+
+REVOKE EXECUTE ON FUNCTION public.create_recharge_request(numeric, text, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.create_recharge_request(numeric, text, text) TO authenticated;
 
 -- 4. Order creation — SyriatelCash manual checkout
 -- (removed create_order_atomic; canonical definition appended later)
@@ -4326,6 +4336,8 @@ BEGIN
     'sam_shamcash_wallet_identifier', v_row.sam_shamcash_wallet_identifier,
     'sam_syriatel_wallet_identifier', v_row.sam_syriatel_wallet_identifier,
     'sam_invoice_currency', COALESCE(v_row.sam_invoice_currency, 'USD'),
+    'sam_syp_per_usd', COALESCE(v_row.sam_syp_per_usd, 135),
+    'sam_syp_rate_updated_at', v_row.sam_syp_rate_updated_at,
     'sam_api_key_set', v_key IS NOT NULL,
     'sam_api_key_masked', CASE
       WHEN v_key IS NULL THEN null
@@ -4344,6 +4356,7 @@ $$;
 
 DROP FUNCTION IF EXISTS public.save_sam_api_settings(boolean, text, text, text, text, text, boolean);
 DROP FUNCTION IF EXISTS public.save_sam_api_settings(boolean, text, text, text, text, text, boolean, boolean);
+DROP FUNCTION IF EXISTS public.save_sam_api_settings(boolean, text, text, text, text, text, boolean, boolean, numeric);
 
 CREATE OR REPLACE FUNCTION public.save_sam_api_settings(
   p_enabled boolean,
@@ -4353,7 +4366,8 @@ CREATE OR REPLACE FUNCTION public.save_sam_api_settings(
   p_invoice_currency text DEFAULT 'USD',
   p_api_key text DEFAULT null,
   p_regenerate_webhook_secret boolean DEFAULT false,
-  p_clear_api_key boolean DEFAULT false
+  p_clear_api_key boolean DEFAULT false,
+  p_syp_per_usd numeric DEFAULT null
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -4361,6 +4375,8 @@ SECURITY DEFINER
 SET search_path = public AS $$
 DECLARE
   v_trim_key text;
+  v_old_rate numeric;
+  v_new_rate numeric;
 BEGIN
   IF NOT public.is_admin() THEN
     RAISE EXCEPTION 'Unauthorized';
@@ -4374,7 +4390,13 @@ BEGIN
     RAISE EXCEPTION 'Invalid invoice currency';
   END IF;
 
+  IF p_syp_per_usd IS NOT NULL AND p_syp_per_usd <= 0 THEN
+    RAISE EXCEPTION 'SYP per USD rate must be positive';
+  END IF;
+
+  SELECT sam_syp_per_usd INTO v_old_rate FROM public.store_settings WHERE id = 1;
   v_trim_key := nullif(trim(p_api_key), '');
+  v_new_rate := COALESCE(p_syp_per_usd, v_old_rate, 135);
 
   UPDATE public.store_settings
   SET
@@ -4386,6 +4408,15 @@ BEGIN
     sam_shamcash_wallet_identifier = COALESCE(nullif(trim(p_shamcash_wallet_identifier), ''), sam_shamcash_wallet_identifier),
     sam_syriatel_wallet_identifier = COALESCE(nullif(trim(p_syriatel_wallet_identifier), ''), sam_syriatel_wallet_identifier),
     sam_invoice_currency = COALESCE(nullif(trim(p_invoice_currency), ''), sam_invoice_currency, 'USD'),
+    sam_syp_per_usd = CASE
+      WHEN p_syp_per_usd IS NOT NULL THEN round(p_syp_per_usd, 2)
+      ELSE COALESCE(sam_syp_per_usd, 135)
+    END,
+    sam_syp_rate_updated_at = CASE
+      WHEN p_syp_per_usd IS NOT NULL AND round(p_syp_per_usd, 2) IS DISTINCT FROM round(COALESCE(v_old_rate, 135), 2)
+        THEN now()
+      ELSE sam_syp_rate_updated_at
+    END,
     sam_api_key = CASE
       WHEN COALESCE(p_clear_api_key, false) THEN null
       WHEN p_api_key IS NOT NULL THEN v_trim_key
@@ -4417,8 +4448,8 @@ BEGIN
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.save_sam_api_settings(boolean, text, text, text, text, text, boolean, boolean) FROM public;
-GRANT EXECUTE ON FUNCTION public.save_sam_api_settings(boolean, text, text, text, text, text, boolean, boolean) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.save_sam_api_settings(boolean, text, text, text, text, text, boolean, boolean, numeric) FROM public;
+GRANT EXECUTE ON FUNCTION public.save_sam_api_settings(boolean, text, text, text, text, text, boolean, boolean, numeric) TO authenticated;
 
 -- 6. Public payment config
 CREATE OR REPLACE FUNCTION public.get_payment_methods()
@@ -4514,6 +4545,8 @@ STABLE AS $$
       FROM store_settings WHERE id = 1
     ), false),
     'samInvoiceCurrency', COALESCE((SELECT sam_invoice_currency FROM store_settings WHERE id = 1), 'USD'),
+    'sypPerUsd', COALESCE((SELECT sam_syp_per_usd FROM store_settings WHERE id = 1), 135),
+    'sypRateUpdatedAt', (SELECT sam_syp_rate_updated_at FROM store_settings WHERE id = 1),
     'g2bulkCatalogOnly', COALESCE((SELECT g2bulk_catalog_only FROM store_settings WHERE id = 1), true),
     'g2bulkCatalogMode', COALESCE((SELECT g2bulk_catalog_mode FROM store_settings WHERE id = 1), 'sync'),
     'g2bulkPullSelection', COALESCE((SELECT g2bulk_pull_selection FROM store_settings WHERE id = 1), '{}'::jsonb)
@@ -4529,7 +4562,8 @@ GRANT EXECUTE ON FUNCTION public.get_payment_methods() TO anon, authenticated;
 -- 1. create_recharge_request — manual QR or Sam API mode (admin toggle)
 CREATE OR REPLACE FUNCTION public.create_recharge_request(
   p_amount numeric,
-  p_payment_method text DEFAULT 'ShamCash'
+  p_payment_method text DEFAULT 'ShamCash',
+  p_pay_currency text DEFAULT 'USD'
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -4544,6 +4578,8 @@ DECLARE
   v_active_count int;
   v_method text := COALESCE(nullif(trim(p_payment_method), ''), 'ShamCash');
   v_wallet_mode text;
+  v_pay_currency text := upper(COALESCE(nullif(trim(p_pay_currency), ''), 'USD'));
+  v_syp_rate numeric(12,2);
 BEGIN
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'Not authenticated';
@@ -4565,16 +4601,28 @@ BEGIN
     RAISE EXCEPTION 'Invalid payment method';
   END IF;
 
+  IF v_pay_currency NOT IN ('USD', 'SYP') THEN
+    RAISE EXCEPTION 'Invalid pay currency';
+  END IF;
+
   v_amount := round(p_amount::numeric, 2);
 
   IF v_amount < 1 OR v_amount > 500 THEN
     RAISE EXCEPTION 'Amount must be between $1 and $500';
   END IF;
 
-  SELECT COALESCE(sam_wallet_mode, 'manual')
-  INTO v_wallet_mode
+  SELECT COALESCE(sam_wallet_mode, 'manual'), COALESCE(sam_syp_per_usd, 135)
+  INTO v_wallet_mode, v_syp_rate
   FROM store_settings
   WHERE id = 1;
+
+  IF v_wallet_mode <> 'api' AND v_pay_currency = 'SYP' THEN
+    RAISE EXCEPTION 'SYP recharge is only available in Sam API mode';
+  END IF;
+
+  IF v_pay_currency = 'SYP' AND (v_syp_rate IS NULL OR v_syp_rate <= 0) THEN
+    RAISE EXCEPTION 'SYP exchange rate is not configured';
+  END IF;
 
   IF v_wallet_mode = 'api' THEN
     IF v_method = 'ShamCash' THEN
@@ -4605,6 +4653,7 @@ BEGIN
       END IF;
     END IF;
   ELSE
+    v_pay_currency := 'USD';
     IF v_method = 'ShamCash' THEN
       SELECT COALESCE((
         SELECT shamcash_enabled
@@ -4644,8 +4693,18 @@ BEGIN
   v_reference := 'ECHOCORE-' || upper(substr(replace(v_user_id::text, '-', ''), 1, 6))
     || '-' || to_char(now(), 'YYMMDD') || '-' || upper(substr(gen_random_uuid()::text, 1, 4));
 
-  INSERT INTO recharge_requests (user_id, amount, reference, status, payment_method)
-  VALUES (v_user_id, v_amount, v_reference, 'pending', v_method)
+  INSERT INTO recharge_requests (
+    user_id, amount, reference, status, payment_method, pay_currency, syp_per_usd_snapshot
+  )
+  VALUES (
+    v_user_id,
+    v_amount,
+    v_reference,
+    'pending',
+    v_method,
+    v_pay_currency,
+    CASE WHEN v_pay_currency = 'SYP' THEN round(v_syp_rate, 2) ELSE NULL END
+  )
   RETURNING id INTO v_request_id;
 
   RETURN jsonb_build_object(
@@ -4653,13 +4712,17 @@ BEGIN
     'reference', v_reference,
     'amount', v_amount,
     'status', 'pending',
-    'paymentMethod', v_method
+    'paymentMethod', v_method,
+    'payCurrency', v_pay_currency,
+    'sypPerUsd', CASE WHEN v_pay_currency = 'SYP' THEN round(v_syp_rate, 2) ELSE NULL END
   );
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.create_recharge_request(numeric, text) FROM public;
-GRANT EXECUTE ON FUNCTION public.create_recharge_request(numeric, text) TO authenticated;
+DROP FUNCTION IF EXISTS public.create_recharge_request(numeric, text);
+
+REVOKE EXECUTE ON FUNCTION public.create_recharge_request(numeric, text, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.create_recharge_request(numeric, text, text) TO authenticated;
 
 -- 2. Active recharge — include pending Sam invoice for API resume
 CREATE OR REPLACE FUNCTION public.get_my_active_recharge_request()
@@ -4694,7 +4757,8 @@ BEGIN
     'expiresAt', si.expires_at,
     'amount', si.amount,
     'currency', si.currency,
-    'status', si.status
+    'status', si.status,
+    'requestedUsdAmount', si.requested_usd_amount
   )
   INTO v_invoice
   FROM sam_invoices si
@@ -4710,6 +4774,8 @@ BEGIN
     'amount', v_row.amount,
     'status', v_row.status,
     'paymentMethod', v_row.payment_method,
+    'payCurrency', COALESCE(v_row.pay_currency, 'USD'),
+    'sypPerUsd', v_row.syp_per_usd_snapshot,
     'createdAt', v_row.created_at,
     'invoice', v_invoice
   );
@@ -4730,6 +4796,9 @@ DECLARE
   v_row public.recharge_requests%ROWTYPE;
   v_new_balance numeric;
   v_ref text;
+  v_paid numeric(12,2);
+  v_credit numeric(10,2);
+  v_rate numeric(12,2);
 BEGIN
   SELECT * INTO v_inv
   FROM public.sam_invoices
@@ -4761,7 +4830,9 @@ BEGIN
     RETURN jsonb_build_object(
       'requestId', v_row.id,
       'userId', v_row.user_id,
-      'amount', v_row.amount,
+      'amount', COALESCE(v_row.credited_amount, v_row.amount),
+      'requestedAmount', v_row.amount,
+      'creditedAmount', COALESCE(v_row.credited_amount, v_row.amount),
       'newBalance', v_new_balance,
       'status', 'approved',
       'skipped', true
@@ -4772,6 +4843,30 @@ BEGIN
     RAISE EXCEPTION 'Recharge request is not awaiting payment confirmation';
   END IF;
 
+  v_paid := round(COALESCE(v_inv.paid_amount, v_inv.amount)::numeric, 2);
+
+  IF v_paid IS NULL OR v_paid <= 0 THEN
+    RAISE EXCEPTION 'Paid amount is missing or invalid';
+  END IF;
+
+  IF v_inv.currency = 'SYP' THEN
+    v_rate := COALESCE(
+      v_inv.syp_per_usd_snapshot,
+      v_row.syp_per_usd_snapshot,
+      (SELECT sam_syp_per_usd FROM store_settings WHERE id = 1)
+    );
+    IF v_rate IS NULL OR v_rate <= 0 THEN
+      RAISE EXCEPTION 'SYP exchange rate is not configured';
+    END IF;
+    v_credit := round(v_paid / v_rate, 2);
+  ELSE
+    v_credit := round(v_paid, 2);
+  END IF;
+
+  IF v_credit < 0.01 THEN
+    RAISE EXCEPTION 'Paid amount too small to credit';
+  END IF;
+
   v_ref := COALESCE(
     nullif(trim(v_inv.transaction_ref), ''),
     nullif(trim(v_row.reference), ''),
@@ -4779,7 +4874,7 @@ BEGIN
   );
 
   UPDATE public.profiles
-  SET balance = COALESCE(balance, 0) + v_row.amount
+  SET balance = COALESCE(balance, 0) + v_credit
   WHERE id = v_row.user_id
   RETURNING balance INTO v_new_balance;
 
@@ -4788,11 +4883,12 @@ BEGIN
   END IF;
 
   INSERT INTO public.transactions (user_id, type, amount, balance_after, payment_method, reference, status)
-  VALUES (v_row.user_id, 'recharge', v_row.amount, v_new_balance, v_row.payment_method, v_ref, 'completed');
+  VALUES (v_row.user_id, 'recharge', v_credit, v_new_balance, v_row.payment_method, v_ref, 'completed');
 
   UPDATE public.recharge_requests
   SET
     status = 'approved',
+    credited_amount = v_credit,
     reviewed_at = now(),
     updated_at = now()
   WHERE id = v_row.id;
@@ -4802,18 +4898,24 @@ BEGIN
     'recharge_approved',
     jsonb_build_object(
       'requestId', v_row.id,
-      'amount', v_row.amount,
+      'amount', v_credit,
+      'requestedAmount', v_row.amount,
+      'creditedAmount', v_credit,
+      'paidAmount', v_paid,
+      'payCurrency', v_inv.currency,
       'newBalance', v_new_balance
     ),
     '/profile'
   );
 
-  -- Sam API auto-credit: no admin approval or admin inbox notification.
-
   RETURN jsonb_build_object(
     'requestId', v_row.id,
     'userId', v_row.user_id,
-    'amount', v_row.amount,
+    'amount', v_credit,
+    'requestedAmount', v_row.amount,
+    'creditedAmount', v_credit,
+    'paidAmount', v_paid,
+    'payCurrency', v_inv.currency,
     'newBalance', v_new_balance,
     'status', 'approved'
   );
@@ -5348,6 +5450,13 @@ GRANT EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb,
 -- =============================================================================
 -- §28 Site logs (admin activity feed)
 -- Apply scripts/site-logs-migration.sql on existing projects (table + RPCs + hooks).
+-- =============================================================================
+
+-- =============================================================================
+-- §29 SYP recharge + security hardening (also inlined above for fresh installs)
+-- Existing projects: scripts/sam-recharge-syp-currency-migration.sql
+--   fix-concurrent-balance-purchase.sql, fix-url-order-receipt-security.sql,
+--   disable-manual-order-approval-api-mode.sql
 -- =============================================================================
 
 -- END OF ECHOCORE SUPABASE SETUP

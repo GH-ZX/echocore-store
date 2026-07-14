@@ -9,7 +9,8 @@ import AdminDashSection from './AdminDashSection';
 import AdminDashStatCard from './AdminDashStatCard';
 import AdminProfitOverview from './AdminProfitOverview';
 import AdminSupplierWalletsCard from '../ui/AdminSupplierWalletsCard';
-import { getAdminOrdersPath } from '../../lib/adminRoutes';
+import { getAdminOrdersPath, getAdminPaymentsPath } from '../../lib/adminRoutes';
+import { getSypPerUsd } from '../../lib/rechargeCurrency';
 import { formatOrderDisplayId, getOrderStatusLabel } from '../../lib/orderReceipt';
 import { getOrderCustomerLabel } from '../../lib/adminOrderFilters';
 import { formatMessage } from '../../lib/i18n';
@@ -43,7 +44,15 @@ export default function AdminOverviewPanel({
   samFetched,
   supplierWalletsLoading,
   refreshSupplierWallets,
+  paymentConfig = {},
 }) {
+  const sypPerUsd = getSypPerUsd(paymentConfig);
+
+  const openExchangeRateSettings = () => {
+    const target = getAdminPaymentsPath({ focusSypRate: true });
+    navigate(target.pathname, { state: target.state });
+  };
+
   return (
     <div className="admin-overview space-y-6 sm:space-y-8">
       <AdminSupplierWalletsCard
@@ -58,9 +67,11 @@ export default function AdminOverviewPanel({
         samNotConfigured={samNotConfigured}
         samFetched={samFetched}
         loading={supplierWalletsLoading}
+        sypPerUsd={sypPerUsd}
         onRefresh={refreshSupplierWallets}
         onOpenDashboard={() => setAdminTab('products')}
         onOpenPayments={() => setAdminTab('payments')}
+        onOpenExchangeRate={openExchangeRateSettings}
       />
 
       <AdminDashSection

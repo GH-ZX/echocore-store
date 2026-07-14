@@ -13,6 +13,7 @@ import {
   KeyRound,
 } from 'lucide-react';
 import { listSamWallets, saveSamApiSettings } from '../../lib/samApi';
+import { formatSypExchangeRate } from '../../lib/rechargeCurrency';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import {
   findSamWalletByIdentifier,
@@ -180,8 +181,40 @@ export default function AdminSamApiSettings({
   const [samWallets, setSamWallets] = useState([]);
   const [deleteKeyOpen, setDeleteKeyOpen] = useState(false);
   const [deletingKey, setDeletingKey] = useState(false);
+  const [sypRateSaving, setSypRateSaving] = useState(false);
 
   const apiKeyLocked = !!samForm.sam_api_key_set;
+
+  const handleSaveSypRate = async () => {
+    const rate = parseFloat(samForm.sam_syp_per_usd);
+    if (!Number.isFinite(rate) || rate <= 0) {
+      onError?.(t.samSypPerUsdInvalid);
+      return;
+    }
+
+    setSypRateSaving(true);
+    onError?.('');
+    try {
+      const settings = await saveSamApiSettings({
+        enabled: samForm.sam_api_enabled,
+        walletMode: samForm.sam_wallet_mode,
+        shamcashWalletIdentifier: samForm.sam_shamcash_wallet_identifier,
+        syriatelWalletIdentifier: samForm.sam_syriatel_wallet_identifier,
+        invoiceCurrency: samForm.sam_invoice_currency,
+        sypPerUsd: rate,
+      });
+      setSamForm((prev) => ({
+        ...prev,
+        sam_syp_per_usd: settings.sam_syp_per_usd ?? rate,
+      }));
+      onSuccess?.(t.samSypPerUsdSaved);
+      onSaved?.();
+    } catch (err) {
+      onError?.(err.message || t.saveFailed);
+    } finally {
+      setSypRateSaving(false);
+    }
+  };
 
   const fetchWallets = useCallback(async ({ savePendingKey = false } = {}) => {
     setWalletsLoading(true);
@@ -388,20 +421,44 @@ export default function AdminSamApiSettings({
           </select>
         </LockedField>
 
-        <LockedField
-          label={t.samSypPerUsdLabel}
-          hint={t.samSypPerUsdHelp}
-          value={String(samForm.sam_syp_per_usd ?? 135)}
-          type="number"
-          locked={false}
-          onChange={(e) => {
-            const val = parseFloat(e.target.value);
-            setSamForm((p) => ({
-              ...p,
-              sam_syp_per_usd: Number.isFinite(val) && val > 0 ? val : p.sam_syp_per_usd,
-            }));
-          }}
-        />
+        <div id="sam-syp-rate-field">
+          <label className="text-xs text-[var(--text-muted)] block mb-1.5">
+            {t.samSypPerUsdLabel}
+          </label>
+          <div className="flex flex-wrap gap-2 items-stretch max-w-md">
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={String(samForm.sam_syp_per_usd ?? 135)}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                setSamForm((p) => ({
+                  ...p,
+                  sam_syp_per_usd: Number.isFinite(val) && val > 0 ? val : p.sam_syp_per_usd,
+                }));
+              }}
+              className="flex-1 min-w-[7rem] bg-[var(--bg-surface)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 text-sm font-mono outline-none"
+            />
+            <button
+              type="button"
+              onClick={handleSaveSypRate}
+              disabled={sypRateSaving || saving}
+              className="action-chip gap-1.5 shrink-0 !border-[var(--accent)]/40 text-[var(--accent)] hover:bg-[var(--accent)]/10 disabled:opacity-50"
+            >
+              {sypRateSaving ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4" />
+              )}
+              {t.samSypPerUsdSave}
+            </button>
+          </div>
+          <p className="text-[10px] text-[var(--text-muted)] mt-1.5">{t.samSypPerUsdHelp}</p>
+          <p className="text-xs font-mono text-[var(--text-sec)] mt-1" dir="ltr">
+            {formatSypExchangeRate(samForm.sam_syp_per_usd ?? 135)}
+          </p>
+        </div>
 
         <div className="grid sm:grid-cols-2 gap-4">
           <div>

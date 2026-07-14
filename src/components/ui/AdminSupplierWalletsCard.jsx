@@ -1,6 +1,7 @@
-import { AlertCircle, Loader2, RefreshCw, Smartphone, Wallet, Zap } from 'lucide-react';
+import { AlertCircle, Coins, Loader2, Pencil, RefreshCw, Smartphone, Wallet, Zap } from 'lucide-react';
 import { SUPPLIER_BRAND } from '../../lib/branding';
 import { getG2bulkBalanceLines } from '../../lib/g2bulkWalletFormat';
+import { formatSypExchangeRate } from '../../lib/rechargeCurrency';
 import {
   formatSamCurrencyAmount,
   getSamAccountLabel,
@@ -99,8 +100,12 @@ export default function AdminSupplierWalletsCard({
   onRefresh,
   onOpenDashboard,
   onOpenPayments,
+  onOpenExchangeRate,
+  sypPerUsd: sypPerUsdProp,
 }) {
   const rowNav = variant === 'dropdown' || variant === 'compact';
+  const sypPerUsd = sypPerUsdProp ?? null;
+  const sypRateLabel = sypPerUsd != null ? formatSypExchangeRate(sypPerUsd) : '—';
   const samLabel = isPanelVariant(variant)
     ? (t.samWalletShort || 'Sam API')
     : getSamAccountLabel(samWallets, t.samWalletTitle);
@@ -160,6 +165,52 @@ export default function AdminSupplierWalletsCard({
           onClick={rowNav ? onOpenPayments : undefined}
         />
       </div>
+
+      {onOpenExchangeRate && (
+        <div className={`supplier-wallets-exchange supplier-wallets-exchange--${variant}`}>
+          {variant === 'card' ? (
+            <div className="supplier-wallets-exchange__card">
+              <div className="supplier-wallets-exchange__meta">
+                <span className="supplier-wallets-exchange__icon" aria-hidden="true">
+                  <Coins strokeWidth={2} />
+                </span>
+                <div>
+                  <p className="supplier-wallets-exchange__title">{t.adminSypRateTitle}</p>
+                  <p className="supplier-wallets-exchange__value" dir="ltr">{sypRateLabel}</p>
+                  {t.adminSypRateHelp ? (
+                    <p className="supplier-wallets-exchange__hint">{t.adminSypRateHelp}</p>
+                  ) : null}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onOpenExchangeRate}
+                className="supplier-wallets-card__action supplier-wallets-card__action--secondary supplier-wallets-exchange__btn"
+              >
+                <Pencil className="w-3.5 h-3.5" strokeWidth={2} />
+                {t.adminSypRateEdit}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenExchangeRate}
+              className="supplier-wallets-exchange__row"
+            >
+              <span className="supplier-wallets-exchange__row-lead">
+                <span className="supplier-wallets-exchange__icon" aria-hidden="true">
+                  <Coins strokeWidth={2} />
+                </span>
+                <span className="supplier-wallets-exchange__row-copy">
+                  <span className="supplier-wallets-exchange__row-label">{t.adminSypRateTitle}</span>
+                  <span className="supplier-wallets-exchange__row-value" dir="ltr">{sypRateLabel}</span>
+                </span>
+              </span>
+              <span className="supplier-wallets-exchange__row-action">{t.adminSypRateEdit}</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {showIdleHint && (
         <p className="supplier-wallets-card__idle-hint">{idleHint}</p>

@@ -18,6 +18,8 @@ import SiteNav, { MobileNavLinks } from './SiteNav';
 import NotificationBell from './NotificationBell';
 import ProfileAvatar from '../profile/ProfileAvatar';
 import { useHeaderDropdownPosition } from '../../hooks/useHeaderDropdownPosition';
+import { getSypPerUsd } from '../../lib/rechargeCurrency';
+import { getAdminPaymentsPath } from '../../lib/adminRoutes';
 
 const iconBtn = (extra = '') => `header-btn header-btn-icon ${extra}`.trim();
 
@@ -61,6 +63,7 @@ export default function Header({
   onNotificationNavigate = () => {},
   onOpenNotificationsInbox = () => {},
   hasSaleOffers = true,
+  paymentConfig = {},
 }) {
   const location = useLocation();
   const isMobile = useIsMobile();
@@ -94,6 +97,7 @@ export default function Header({
   } = useAdminSupplierWallets(isAdmin, { fetchOnMount: true, pollIntervalMs: 0 });
   const profileUsername = getProfileUsername(user);
   const profileUsernameLabel = profileUsername ? formatProfileUsername(profileUsername) : '';
+  const sypPerUsd = getSypPerUsd(paymentConfig);
 
   const closeAll = useCallback(() => {
     setIsMenuOpen(false);
@@ -256,8 +260,14 @@ export default function Header({
     );
   };
 
-  const handleNav = (path) => {
-    navigate(path);
+  const openExchangeRateSettings = useCallback(() => {
+    const target = getAdminPaymentsPath({ focusSypRate: true });
+    navigate(target.pathname, { state: target.state });
+    closeAll();
+  }, [navigate, closeAll]);
+
+  const handleNav = (path, navState) => {
+    navigate(path, navState ? { state: navState } : undefined);
     closeAll();
   };
 
@@ -318,7 +328,7 @@ export default function Header({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 6, scale: 0.97 }}
           transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-          className="header-profile-dropdown header-glass-dropdown glass-surface"
+          className="header-profile-dropdown header-solid-dropdown solid-surface"
           style={{
             position: 'fixed',
             top: profileCoords.top,
@@ -364,8 +374,10 @@ export default function Header({
                   samFetched={samFetched}
                   loading={supplierWalletsLoading}
                   idle={supplierWalletsIdle}
+                  sypPerUsd={sypPerUsd}
                   onOpenDashboard={() => handleNav('/dashboard')}
                   onOpenPayments={() => handleNav('/dashboard/payments')}
+                  onOpenExchangeRate={openExchangeRateSettings}
                 />
               </div>
             ) : null}
@@ -644,8 +656,10 @@ export default function Header({
                             samFetched={samFetched}
                             loading={supplierWalletsLoading}
                             idle={supplierWalletsIdle}
+                            sypPerUsd={sypPerUsd}
                             onOpenDashboard={() => handleNav('/dashboard')}
                             onOpenPayments={() => handleNav('/dashboard/payments')}
+                            onOpenExchangeRate={openExchangeRateSettings}
                           />
                         </div>
                       ) : (

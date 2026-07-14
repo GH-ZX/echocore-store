@@ -6,7 +6,7 @@ export const DEFAULT_THEME = {
   'bg-primary': '#040812',
   'bg-surface': '#0a1329',
   'bg-elevated': '#111c36',
-  'bg-header': 'rgba(6, 11, 25, 0.92)',
+  'bg-header': '#060b19',
   'text-primary': '#f0f4f8',
   'text-secondary': '#a8b4c4',
   'text-muted': '#6e7d92',
@@ -106,7 +106,7 @@ export const DEFAULT_THEME = {
   'starfield-twinkle': '1',
 
   /* Dashboard accents */
-  'dash-card-bg': 'color-mix(in srgb, var(--bg-surface) 92%, transparent)',
+  'dash-card-bg': 'var(--bg-surface)',
   'dash-stat-glow': 'color-mix(in srgb, var(--accent) 18%, transparent)',
   'dash-tab-active': 'var(--accent)',
 };
@@ -134,10 +134,6 @@ export function isGrid3DBackground(type = '') {
 export const APPEARANCE_THEME_KEYS = [
   'color-mode',
   'glows-enabled',
-  'surfaces-opacity-enabled',
-  'surfaces-opacity',
-  'surfaces-style',
-  'surfaces-glass-blur',
   'background-type',
   'aurora-enabled',
   'aurora-responsive',
@@ -995,7 +991,7 @@ export function buildFullTheme(overrides = {}) {
   const glowsEnabled = (overrides['glows-enabled'] ?? base['glows-enabled'] ?? 'true') !== 'false';
 
   if (!overrides['bg-header'] && base['bg-primary']?.startsWith('#')) {
-    base['bg-header'] = hexToRgba(base['bg-primary'], lightMode ? 0.88 : 0.92);
+    base['bg-header'] = base['bg-elevated'] || base['bg-primary'];
   }
 
   if (!overrides['gradient-accent']) {
@@ -1066,85 +1062,45 @@ export function buildFullTheme(overrides = {}) {
     }
   }
 
-  deriveGlassTextTokens(base, lightMode);
-  deriveSurfaceStyle(base, overrides, lightMode);
+  normalizeSolidSurfaces(base);
 
   return base;
 }
 
-export function resolveSurfacesStyle(overrides = {}, base = {}) {
-  const explicit = overrides['surfaces-style'] ?? base['surfaces-style'];
-  if (explicit && explicit !== 'solid') return explicit;
-  if (explicit === 'solid') return 'solid';
-
-  const enabled = (overrides['surfaces-opacity-enabled'] ?? base['surfaces-opacity-enabled'] ?? 'false') !== 'false';
-  return enabled ? 'transparent' : 'solid';
+export function resolveSurfacesStyle() {
+  return 'solid';
 }
 
-function deriveGlassTextTokens(base, lightMode = false) {
-  const primary = base['text-primary'] || DEFAULT_THEME['text-primary'];
-  const secondary = base['text-secondary'] || DEFAULT_THEME['text-secondary'];
-  const muted = base['text-muted'] || DEFAULT_THEME['text-muted'];
+function normalizeSolidSurfaces(base) {
+  base['surfaces-style'] = 'solid';
+  base['surfaces-opacity-enabled'] = 'false';
+  base['dash-card-bg'] = base['dash-card-bg']?.includes('transparent')
+    ? DEFAULT_THEME['dash-card-bg']
+    : (base['dash-card-bg'] || DEFAULT_THEME['dash-card-bg']);
 
-  base['glass-text-primary'] = primary;
-  if (lightMode) {
-    base['glass-text-secondary'] = blendHex(secondary, '#1e293b', 0.68);
-    base['glass-text-muted'] = blendHex(muted, '#334155', 0.58);
-  } else {
-    base['glass-text-secondary'] = blendHex(primary, secondary, 0.4);
-    base['glass-text-muted'] = blendHex(primary, muted, 0.52);
+  if (base['bg-header']?.startsWith('rgba') || String(base['bg-header'] || '').includes('transparent')) {
+    base['bg-header'] = base['bg-elevated'] || base['bg-primary'] || DEFAULT_THEME['bg-header'];
+  }
+  if (base['bg-surface']?.startsWith('rgba') || String(base['bg-surface'] || '').includes('transparent')) {
+    base['bg-surface'] = DEFAULT_THEME['bg-surface'];
+  }
+  if (base['bg-elevated']?.startsWith('rgba') || String(base['bg-elevated'] || '').includes('transparent')) {
+    base['bg-elevated'] = DEFAULT_THEME['bg-elevated'];
   }
 }
 
-function deriveSurfaceStyle(base, overrides, lightMode = false) {
-  const style = resolveSurfacesStyle(overrides, base);
-  base['surfaces-style'] = style;
-
-  const rawOpacity = parseFloat(base['surfaces-opacity'] ?? '0.88');
-  const opacity = Math.min(1, Math.max(0.25, Number.isFinite(rawOpacity) ? rawOpacity : 0.88));
-  base['surfaces-opacity'] = String(Number(opacity.toFixed(2)));
-
-  const rawBlur = parseFloat(base['surfaces-glass-blur'] ?? '24');
-  const blurPx = Math.min(32, Math.max(12, Number.isFinite(rawBlur) ? rawBlur : 24));
-  base['surfaces-glass-blur'] = String(Math.round(blurPx));
-  base['surfaces-glass-fill'] = String(Number(Math.min(0.88, Math.max(0.55, opacity * 0.82)).toFixed(2)));
-  base['glass-blur'] = `${Math.round(blurPx)}px`;
-  base['glass-fill'] = String(Math.round(parseFloat(base['surfaces-glass-fill']) * 100));
-
-  if (style === 'solid') return;
-
-  const toTranslucent = (color, alpha = opacity) => {
-    if (!color) return color;
-    if (color.startsWith('#')) return hexToRgba(color.slice(0, 7), alpha);
-    return `color-mix(in srgb, ${color} ${Math.round(alpha * 100)}%, transparent)`;
-  };
-
-  const surface = base['bg-surface'];
-  const elevated = base['bg-elevated'];
-
-  // Frosted cards use CSS glass-panel (bg-header tint) — do not mutate surface tokens.
-  if (style === 'transparent') {
-    if (surface) base['bg-surface'] = toTranslucent(surface);
-    if (elevated) base['bg-elevated'] = toTranslucent(elevated);
-
-    const header = base['bg-header'];
-    if (header?.startsWith('#')) {
-      base['bg-header'] = hexToRgba(header.slice(0, 7), opacity);
-    } else if (header?.startsWith('rgba')) {
-      base['bg-header'] = `color-mix(in srgb, ${header} ${Math.round(opacity * 100)}%, transparent)`;
-    } else if (base['bg-primary']?.startsWith('#')) {
-      base['bg-header'] = hexToRgba(base['bg-primary'], opacity * (lightMode ? 0.88 : 0.92));
-    }
-
-    if (surface) {
-      base['dash-card-bg'] = toTranslucent(surface, Math.min(1, opacity * 0.92));
-    }
-  } else if (surface) {
-    base['dash-card-bg'] = `color-mix(in srgb, var(--bg-header) ${base['glass-fill']}%, transparent)`;
-  }
-}
-
-const STRIP_THEME_KEYS = new Set([]);
+const STRIP_THEME_KEYS = new Set([
+  'surfaces-opacity-enabled',
+  'surfaces-opacity',
+  'surfaces-style',
+  'surfaces-glass-blur',
+  'surfaces-glass-fill',
+  'glass-blur',
+  'glass-fill',
+  'glass-text-primary',
+  'glass-text-secondary',
+  'glass-text-muted',
+]);
 
 export function sanitizeThemeOverrides(overrides = {}) {
   return Object.fromEntries(
@@ -1190,12 +1146,8 @@ export function applyTheme(overrides = {}, { persist = true, replace = false } =
     'data-logo-bg-enabled',
     (clean['logo-bg-enabled'] ?? theme['logo-bg-enabled'] ?? 'true') !== 'false' ? 'true' : 'false',
   );
-  const surfacesStyle = resolveSurfacesStyle(clean, theme);
-  root.setAttribute('data-surfaces-style', surfacesStyle);
-  root.setAttribute(
-    'data-surfaces-opacity-enabled',
-    surfacesStyle !== 'solid' ? 'true' : 'false',
-  );
+  root.setAttribute('data-surfaces-style', 'solid');
+  root.setAttribute('data-surfaces-opacity-enabled', 'false');
 
   if (persist) {
     try {
@@ -1273,12 +1225,8 @@ export function bootstrapThemeFromStorage() {
     if (!raw) return false;
     const overrides = JSON.parse(raw);
     const root = document.documentElement;
-    const style = resolveSurfacesStyle(overrides, { ...DEFAULT_THEME, ...overrides });
-    root.setAttribute('data-surfaces-style', style);
-    root.setAttribute(
-      'data-surfaces-opacity-enabled',
-      style !== 'solid' ? 'true' : 'false',
-    );
+    root.setAttribute('data-surfaces-style', 'solid');
+    root.setAttribute('data-surfaces-opacity-enabled', 'false');
     if (overrides['color-mode']) {
       root.setAttribute('data-color-mode', String(overrides['color-mode']));
     }

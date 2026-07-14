@@ -64,6 +64,13 @@ export function getAdminDashboardPath(tabId = 'overview') {
   return `/dashboard/${segment}`;
 }
 
+export const ADMIN_FOCUS_SYP_RATE_STATE = { focusSypRate: true };
+
+export function getAdminPaymentsPath({ focusSypRate = false } = {}) {
+  const base = getAdminDashboardPath('payments');
+  return focusSypRate ? { pathname: base, state: ADMIN_FOCUS_SYP_RATE_STATE } : base;
+}
+
 export function getAdminSaleDiscountsPath() {
   return getAdminDashboardPath('products');
 }

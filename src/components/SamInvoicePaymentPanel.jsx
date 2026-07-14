@@ -38,7 +38,7 @@ export default function SamInvoicePaymentPanel({
   const displayPayAmount = formatInvoicePayLabel({
     currency: payCurrency,
     amount: payAmount,
-    lang,
+    usdAmount: invoice?.requestedUsdAmount,
   });
 
   const handlePaid = useCallback((completion) => {

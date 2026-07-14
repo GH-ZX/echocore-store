@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Wallet,
   Loader2,
@@ -78,6 +79,8 @@ function ManualWalletSection({
 }
 
 export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved, onNotify }) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -163,6 +166,20 @@ export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved, on
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    if (loading || !location.state?.focusSypRate) return undefined;
+
+    const timer = window.setTimeout(() => {
+      const field = document.getElementById('sam-syp-rate-field');
+      field?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const input = field?.querySelector('input');
+      input?.focus({ preventScroll: true });
+      navigate(location.pathname, { replace: true, state: null });
+    }, 280);
+
+    return () => window.clearTimeout(timer);
+  }, [loading, location.pathname, location.state, navigate]);
 
   const handleSaveAll = async (regenerateWebhookSecret = false) => {
     setSaving(true);

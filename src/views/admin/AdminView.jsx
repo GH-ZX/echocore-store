@@ -354,7 +354,7 @@ export default function AdminView({
       <div className="admin-main">
         <nav
           ref={mobileNavRef}
-          className="admin-mobile-nav glass-panel flex md:hidden"
+          className="admin-mobile-nav flex md:hidden"
           aria-label={t.adminNavLabel}
         >
           {adminNavItems.map((tab) => {
@@ -416,6 +416,7 @@ export default function AdminView({
           samFetched={samFetched}
           supplierWalletsLoading={supplierWalletsLoading}
           refreshSupplierWallets={refreshSupplierWallets}
+          paymentConfig={paymentConfig}
         />
       )}
 

@@ -1643,6 +1643,7 @@ export default function App() {
         onNotificationNavigate={handleNotificationNavigate}
         onOpenNotificationsInbox={handleOpenNotificationsInbox}
         hasSaleOffers={hasSaleOffers}
+        paymentConfig={paymentConfig}
       />
 
       <MaintenanceBanner
