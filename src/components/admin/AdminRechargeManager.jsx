@@ -9,6 +9,13 @@ import {
   approveRechargeRequest,
   rejectRechargeRequest,
 } from '../../lib/recharge';
+import {
+  canGrantExpiredSamBalance,
+  getAdminRechargeDisplayStatus,
+  getAdminRechargeStatusTone,
+  isSamApiAwaitingPayment,
+  needsLegacyManualReview,
+} from '../../lib/adminRecharge';
 
 const FILTER_OPTIONS = [
   { id: 'all', labelKey: 'adminRechargeFilterAll' },
@@ -25,14 +32,7 @@ const STATUS_LABEL_KEYS = {
   approved: 'adminRechargeStatusApproved',
   rejected: 'adminRechargeStatusRejected',
   cancelled: 'adminRechargeStatusCancelled',
-};
-
-const STATUS_TONE = {
-  pending: 'pending',
-  payment_sent: 'warning',
-  approved: 'success',
-  rejected: 'danger',
-  cancelled: 'neutral',
+  sam_awaiting: 'adminRechargeStatusSamAwaiting',
 };
 
 function formatRechargeDate(value, lang) {
@@ -49,12 +49,12 @@ function getPaymentMethodLabel(method, t) {
   return method || '—';
 }
 
-function RechargeStatusBadge({ status, t }) {
-  const tone = STATUS_TONE[status] || 'muted';
-  const labelKey = STATUS_LABEL_KEYS[status];
+function RechargeStatusBadge({ displayStatus, t }) {
+  const tone = getAdminRechargeStatusTone(displayStatus);
+  const labelKey = STATUS_LABEL_KEYS[displayStatus];
   return (
     <span className={`admin-order-status admin-order-status--${tone}`}>
-      {labelKey ? t[labelKey] : status}
+      {labelKey ? t[labelKey] : displayStatus}
     </span>
   );
 }
@@ -132,9 +132,6 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
       setProcessingId(null);
     }
   };
-
-  const needsManualReview = (status) => status === 'pending' || status === 'payment_sent';
-  const canRecoverBalance = (status) => status === 'cancelled' || status === 'rejected';
 
   const openRecoveryCredit = (req) => {
     setCreditPreset({
@@ -256,7 +253,10 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
               </thead>
               <tbody>
                 {requests.map((req) => {
-                  const manual = needsManualReview(req.status);
+                  const displayStatus = getAdminRechargeDisplayStatus(req);
+                  const manual = needsLegacyManualReview(req);
+                  const samAwaiting = isSamApiAwaitingPayment(req);
+                  const recoverable = canGrantExpiredSamBalance(req);
                   const busy = processingId === req.id;
 
                   return (
@@ -280,7 +280,7 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
                         {formatRechargeDate(req.created_at, lang)}
                       </td>
                       <td className="p-3">
-                        <RechargeStatusBadge status={req.status} t={t} />
+                        <RechargeStatusBadge displayStatus={displayStatus} t={t} />
                       </td>
                       <td className="p-3 text-end whitespace-nowrap">
                         {manual ? (
@@ -309,7 +309,11 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
                               </button>
                             </div>
                           </div>
-                        ) : canRecoverBalance(req.status) ? (
+                        ) : samAwaiting ? (
+                          <span className="text-[10px] text-[var(--text-muted)] max-w-[10rem] inline-block text-end leading-snug">
+                            {t.adminRechargeSamAwaitingHint}
+                          </span>
+                        ) : recoverable ? (
                           <button
                             type="button"
                             onClick={() => setGrantConfirmTarget(req)}

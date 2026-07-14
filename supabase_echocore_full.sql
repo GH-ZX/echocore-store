@@ -883,9 +883,23 @@ BEGIN
         r.admin_note,
         r.created_at,
         r.updated_at,
-        p.name AS user_name
+        p.name AS user_name,
+        inv.sam_invoice_id,
+        inv.sam_invoice_status,
+        inv.sam_invoice_expires_at
       FROM recharge_requests r
       LEFT JOIN profiles p ON p.id = r.user_id
+      LEFT JOIN LATERAL (
+        SELECT
+          si.sam_invoice_id,
+          si.status AS sam_invoice_status,
+          si.expires_at AS sam_invoice_expires_at
+        FROM public.sam_invoices si
+        WHERE si.entity_type = 'recharge'
+          AND si.entity_id = r.id
+        ORDER BY si.created_at DESC
+        LIMIT 1
+      ) inv ON true
       WHERE (p_status IS NULL OR p_status = 'all' OR r.status = p_status)
       ORDER BY r.created_at DESC
       LIMIT 100
