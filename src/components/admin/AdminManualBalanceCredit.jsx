@@ -25,6 +25,7 @@ export default function AdminManualBalanceCredit({
   presetAmount = null,
   presetRequestId = null,
   presetTransactionRef = '',
+  presetReason = '',
   className = '',
 }) {
   const notifyError = useCallback((message) => onNotify?.(message, 'error'), [onNotify]);
@@ -56,6 +57,10 @@ export default function AdminManualBalanceCredit({
   useEffect(() => {
     if (presetTransactionRef) setTransactionRef(presetTransactionRef);
   }, [presetTransactionRef]);
+
+  useEffect(() => {
+    if (presetReason) setReason(presetReason);
+  }, [presetReason]);
 
   const { valid: amountValid, value: amountValue } = validateManualCreditAmount(amount);
   const refCheck = validateShamcashTransactionRef(transactionRef);

@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, CheckCircle, XCircle, RefreshCw, Wallet, HandCoins } from 'lucide-react';
+import ConfirmDialog from '../ui/ConfirmDialog';
 import AdminManualBalanceCredit from './AdminManualBalanceCredit';
 import AdminCustomerBalances from './AdminCustomerBalances';
+import { formatMessage } from '../../lib/i18n';
 import {
   fetchAdminRechargeRequests,
   approveRechargeRequest,
@@ -77,7 +79,9 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
   const [requests, setRequests] = useState([]);
   const [creditPreset, setCreditPreset] = useState(null);
   const [balancesRefreshKey, setBalancesRefreshKey] = useState(0);
+  const [grantConfirmTarget, setGrantConfirmTarget] = useState(null);
   const loadInFlightRef = useRef(false);
+  const manualCreditRef = useRef(null);
 
   const load = useCallback(async () => {
     if (loadInFlightRef.current) return;
@@ -142,6 +146,11 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
       },
       amount: req.amount,
       requestId: req.id,
+      defaultReason: t.adminManualCreditReason_shamcashExpiredRecovery,
+    });
+    setGrantConfirmTarget(null);
+    requestAnimationFrame(() => {
+      manualCreditRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   };
 
@@ -162,19 +171,37 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
         onSelectForCredit={openCreditForUser}
       />
 
-      <AdminManualBalanceCredit
+      <div ref={manualCreditRef}>
+        <AdminManualBalanceCredit
         t={t}
         lang={lang}
         onNotify={onNotify}
         presetUser={creditPreset?.user || null}
         presetAmount={creditPreset?.amount ?? null}
         presetRequestId={creditPreset?.requestId || null}
+        presetReason={creditPreset?.defaultReason || ''}
         onCredited={() => {
           setCreditPreset(null);
           setBalancesRefreshKey((key) => key + 1);
           load();
         }}
+        />
+      </div>
+
+      <ConfirmDialog
+        open={!!grantConfirmTarget}
+        title={t.adminManualCreditGrantConfirmTitle}
+        message={grantConfirmTarget ? formatMessage(t.adminManualCreditGrantConfirmBody, {
+          amount: `$${parseFloat(grantConfirmTarget.amount || 0).toFixed(2)}`,
+          user: grantConfirmTarget.user_name || t.adminUsersUnnamed,
+        }) : ''}
+        confirmLabel={t.adminManualCreditGrantConfirmAction}
+        cancelLabel={t.cancel}
+        variant="primary"
+        onConfirm={() => grantConfirmTarget && openRecoveryCredit(grantConfirmTarget)}
+        onCancel={() => setGrantConfirmTarget(null)}
       />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-black flex items-center gap-2">
@@ -285,12 +312,12 @@ export default function AdminRechargeManager({ t = {}, lang = 'ar', onApproved, 
                         ) : canRecoverBalance(req.status) ? (
                           <button
                             type="button"
-                            onClick={() => openRecoveryCredit(req)}
+                            onClick={() => setGrantConfirmTarget(req)}
                             className="action-chip gap-1 text-xs !py-1.5"
-                            title={t.adminManualCreditRecover}
+                            title={t.adminManualCreditGrant}
                           >
                             <HandCoins className="w-3.5 h-3.5" />
-                            {t.adminManualCreditRecover}
+                            {t.adminManualCreditGrant}
                           </button>
                         ) : (
                           <span className="text-[10px] text-[var(--text-muted)]">—</span>
