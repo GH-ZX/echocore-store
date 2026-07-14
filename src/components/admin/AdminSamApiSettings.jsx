@@ -193,6 +193,7 @@ export default function AdminSamApiSettings({
           shamcashWalletIdentifier: samForm.sam_shamcash_wallet_identifier,
           syriatelWalletIdentifier: samForm.sam_syriatel_wallet_identifier,
           invoiceCurrency: samForm.sam_invoice_currency,
+          sypPerUsd: samForm.sam_syp_per_usd,
           apiKey: samForm.sam_api_key,
         });
         setSamForm((prev) => ({ ...prev, sam_api_key: '', sam_api_key_set: true }));
@@ -269,6 +270,7 @@ export default function AdminSamApiSettings({
         shamcashWalletIdentifier: samForm.sam_shamcash_wallet_identifier,
         syriatelWalletIdentifier: samForm.sam_syriatel_wallet_identifier,
         invoiceCurrency: samForm.sam_invoice_currency,
+        sypPerUsd: samForm.sam_syp_per_usd,
       });
       setSamForm((prev) => ({
         ...prev,
@@ -385,6 +387,21 @@ export default function AdminSamApiSettings({
             <option value="EUR">EUR</option>
           </select>
         </LockedField>
+
+        <LockedField
+          label={t.samSypPerUsdLabel}
+          hint={t.samSypPerUsdHelp}
+          value={String(samForm.sam_syp_per_usd ?? 135)}
+          type="number"
+          locked={false}
+          onChange={(e) => {
+            const val = parseFloat(e.target.value);
+            setSamForm((p) => ({
+              ...p,
+              sam_syp_per_usd: Number.isFinite(val) && val > 0 ? val : p.sam_syp_per_usd,
+            }));
+          }}
+        />
 
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
@@ -520,7 +537,7 @@ export default function AdminSamApiSettings({
         <button
           type="button"
           onClick={() => onSaveAll(false)}
-          disabled={saving || apiKeyLocked}
+          disabled={saving}
           className="btn btn-primary action-chip gap-2 !border-0 disabled:opacity-50"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}

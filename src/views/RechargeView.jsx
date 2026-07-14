@@ -21,6 +21,13 @@ import {
 } from '../lib/paymentMethods';
 import { createRechargeInvoice, mapSamRechargeError } from '../lib/samApi';
 import SamInvoicePaymentPanel from '../components/SamInvoicePaymentPanel';
+import {
+  normalizePayCurrency,
+  getSypPerUsd,
+  sypForUsd,
+  formatSypAmount,
+  isSypRateRecentlyUpdated,
+} from '../lib/rechargeCurrency';
 import { formatMessage } from '../lib/i18n';
 
 async function cancelPendingRecharge(requestId) {
@@ -67,7 +74,10 @@ export default function RechargeView({
   const [activeRequest, setActiveRequest] = useState(null);
   const [invoiceError, setInvoiceError] = useState('');
   const [completedRecharge, setCompletedRecharge] = useState(null);
+  const [payCurrency, setPayCurrency] = useState('USD');
 
+  const sypPerUsd = getSypPerUsd(paymentConfig);
+  const sypRechargeAvailable = isApiMode && sypPerUsd != null;
   const methodReady = isPaymentMethodReady(selectedMethod, paymentConfig);
   const anyReady = hasAnyManualWalletReady(paymentConfig);
   const paymentDisplay = getManualPaymentDisplay(paymentConfig, selectedMethod);
@@ -105,6 +115,9 @@ export default function RechargeView({
 
         if (existing.paymentMethod) {
           setSelectedMethod(existing.paymentMethod);
+        }
+        if (existing.payCurrency) {
+          setPayCurrency(normalizePayCurrency(existing.payCurrency));
         }
 
         const apiWallet = isApiWalletMethod(existing.paymentMethod, paymentConfig);
@@ -176,7 +189,11 @@ export default function RechargeView({
     setInvoiceError('');
 
     try {
-      const result = await createRechargeRequest(effectiveAmount, selectedMethod);
+      const result = await createRechargeRequest(
+        effectiveAmount,
+        selectedMethod,
+        sypRechargeAvailable ? payCurrency : 'USD',
+      );
       const apiWallet = isApiWalletMethod(selectedMethod, paymentConfig);
 
       if (apiWallet) {
@@ -222,20 +239,24 @@ export default function RechargeView({
   };
 
   const handleInvoicePaid = (completion) => {
-    const amount = completion?.amount ?? activeRequest?.amount;
+    const creditedAmount = completion?.creditedAmount ?? completion?.amount ?? activeRequest?.amount;
+    const requestedAmount = completion?.requestedAmount ?? activeRequest?.amount;
     const newBalance = completion?.newBalance;
 
     if (newBalance != null) {
       onRechargePaid?.({
         userId: completion?.userId || user?.id,
         newBalance,
-        amount,
+        amount: creditedAmount,
       });
     }
 
     setCompletedRecharge({
       requestId: completion?.requestId || activeRequest?.requestId,
-      amount,
+      amount: creditedAmount,
+      requestedAmount,
+      creditedAmount,
+      payCurrency: completion?.payCurrency || activeRequest?.payCurrency,
       newBalance: newBalance ?? balance,
     });
     setActiveRequest(null);
@@ -275,6 +296,15 @@ export default function RechargeView({
   const activeMethodLabel = t[activeDisplay.methodLabelKey] || activeMethod;
   const activeIsApiWallet = isApiWalletMethod(activeMethod, paymentConfig);
   const activeInvoice = activeRequest?.invoice;
+  const activePayCurrency = normalizePayCurrency(activeRequest?.payCurrency || payCurrency);
+  const activeSypRate = activeRequest?.sypPerUsd || sypPerUsd;
+  const activeSypSendAmount = activePayCurrency === 'SYP' && activeSypRate
+    ? (activeInvoice?.amount ?? sypForUsd(activeRequest?.amount, activeSypRate))
+    : null;
+  const effectivePayCurrency = normalizePayCurrency(payCurrency);
+  const previewSypSendAmount = effectivePayCurrency === 'SYP' && sypPerUsd && isValidAmount
+    ? sypForUsd(effectiveAmount, sypPerUsd)
+    : null;
   const showShamcashGuide = step !== 'completed'
     && (selectedMethod === 'ShamCash' || activeMethod === 'ShamCash');
   const shamcashGuideSteps = t.rechargeShamcashGuideSteps || [];
@@ -366,10 +396,19 @@ export default function RechargeView({
               <CheckCircle className="w-12 h-12 mx-auto text-emerald-400 mb-4" />
               <div className="text-2xl font-black text-emerald-100 mb-2">{t.rechargeSuccess}</div>
               <p className="text-sm text-[var(--text-sec)] max-w-sm mx-auto">
-                {formatMessage(t.rechargeCompletedDesc, {
-                  amount: `$${parseFloat(completedRecharge.amount || 0).toFixed(2)}`,
-                  balance: `$${Number(completedRecharge.newBalance || 0).toFixed(2)}`,
-                })}
+                {Math.abs(
+                  parseFloat(completedRecharge.creditedAmount || completedRecharge.amount || 0)
+                  - parseFloat(completedRecharge.requestedAmount || completedRecharge.amount || 0),
+                ) >= 0.01
+                  ? formatMessage(t.rechargeCompletedPartialDesc, {
+                    credited: `$${parseFloat(completedRecharge.creditedAmount || completedRecharge.amount || 0).toFixed(2)}`,
+                    requested: `$${parseFloat(completedRecharge.requestedAmount || completedRecharge.amount || 0).toFixed(2)}`,
+                    balance: `$${Number(completedRecharge.newBalance || 0).toFixed(2)}`,
+                  })
+                  : formatMessage(t.rechargeCompletedDesc, {
+                    amount: `$${parseFloat(completedRecharge.amount || 0).toFixed(2)}`,
+                    balance: `$${Number(completedRecharge.newBalance || 0).toFixed(2)}`,
+                  })}
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
@@ -441,6 +480,37 @@ export default function RechargeView({
               </div>
             )}
 
+            {sypRechargeAvailable && (
+              <div className="mb-6">
+                <div className="text-sm font-semibold mb-3 text-[var(--text-sec)]">{t.rechargePayCurrencyLabel}</div>
+                <div className="grid grid-cols-2 gap-3">
+                  {['USD', 'SYP'].map((code) => {
+                    const active = payCurrency === code;
+                    return (
+                      <button
+                        key={code}
+                        type="button"
+                        onClick={() => setPayCurrency(code)}
+                        className={`py-3 rounded-2xl border font-bold transition-all ${
+                          active
+                            ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
+                            : 'border-[var(--border)] hover:border-[var(--accent)]/60'
+                        }`}
+                      >
+                        {code === 'USD' ? t.rechargePayCurrencyUsd : t.rechargePayCurrencySyp}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-[var(--text-muted)] mt-2">
+                  {formatMessage(t.rechargeSypRateNote, { rate: formatSypAmount(sypPerUsd, lang) })}
+                </p>
+                {isSypRateRecentlyUpdated(paymentConfig) && (
+                  <p className="text-[10px] text-amber-200/90 mt-1">{t.rechargeSypRateUpdatedNote}</p>
+                )}
+              </div>
+            )}
+
             <div className="mb-6">
               <div className="text-sm font-semibold mb-3 text-[var(--text-sec)]">{t.paymentMethod}</div>
               <div className="space-y-2">
@@ -478,7 +548,21 @@ export default function RechargeView({
               <div className="text-3xl font-black font-mono text-[var(--accent)]">
                 ${isValidAmount ? effectiveAmount.toFixed(2) : '0.00'}
               </div>
+              {previewSypSendAmount != null && (
+                <div className="text-sm text-[var(--text-sec)] mt-2">
+                  {formatMessage(t.rechargeSypSendAmount, {
+                    syp: formatSypAmount(previewSypSendAmount, lang),
+                    usd: isValidAmount ? effectiveAmount.toFixed(2) : '0.00',
+                  })}
+                </div>
+              )}
               <div className="text-xs text-[var(--text-muted)] mt-1">{methodLabel}</div>
+              {effectivePayCurrency === 'SYP' && (
+                <p className="text-[10px] text-[var(--text-muted)] mt-2 max-w-md mx-auto">{t.rechargeSypPartialCreditNote}</p>
+              )}
+              {effectivePayCurrency === 'USD' && isApiMode && (
+                <p className="text-[10px] text-[var(--text-muted)] mt-2 max-w-md mx-auto">{t.rechargeUsdPartialCreditNote}</p>
+              )}
             </div>
 
             <button
@@ -511,7 +595,23 @@ export default function RechargeView({
               <div className="text-4xl font-black font-mono text-[var(--accent)]">
                 ${parseFloat(activeRequest.amount).toFixed(2)}
               </div>
+              {activePayCurrency === 'SYP' && activeSypSendAmount != null && (
+                <div className="text-lg font-bold text-[var(--text-primary)] mt-2">
+                  {formatMessage(t.rechargeSypSendAmount, {
+                    syp: formatSypAmount(activeSypSendAmount, lang),
+                    usd: parseFloat(activeRequest.amount).toFixed(2),
+                  })}
+                </div>
+              )}
+              {activePayCurrency === 'SYP' && activeSypRate && (
+                <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                  {formatMessage(t.rechargeSypRateNote, { rate: formatSypAmount(activeSypRate, lang) })}
+                </p>
+              )}
               <div className="text-xs text-[var(--text-sec)] mt-1">{activeMethodLabel}</div>
+              {activePayCurrency === 'SYP' && (
+                <p className="text-[10px] text-[var(--text-muted)] mt-2 max-w-md mx-auto">{t.rechargeSypPartialCreditNote}</p>
+              )}
             </div>
 
             {activeIsApiWallet ? (
@@ -519,7 +619,6 @@ export default function RechargeView({
                 <SamInvoicePaymentPanel
                   t={t}
                   lang={lang}
-                  total={activeRequest.amount}
                   methodLabel={activeMethodLabel}
                   invoice={activeInvoice}
                   onPaid={handleInvoicePaid}

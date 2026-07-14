@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ExternalLink, Loader2, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import { verifyOrderInvoice, getSamInvoiceStatus } from '../lib/samApi';
+import { formatInvoicePayLabel } from '../lib/rechargeCurrency';
 import { formatMessage } from '../lib/i18n';
 import { closeSamPaymentWindow, openSamPaymentWindow } from '../lib/samPaymentPopup';
 
@@ -32,7 +33,13 @@ export default function SamInvoicePaymentPanel({
 
   const samInvoiceId = invoice?.samInvoiceId;
   const paymentUrl = invoice?.paymentUrl;
-  const displayTotal = total != null ? parseFloat(total).toFixed(2) : invoice?.amount;
+  const payCurrency = invoice?.currency || 'USD';
+  const payAmount = invoice?.amount ?? total;
+  const displayPayAmount = formatInvoicePayLabel({
+    currency: payCurrency,
+    amount: payAmount,
+    lang,
+  });
 
   const handlePaid = useCallback((completion) => {
     closeSamPaymentWindow(paymentPopupRef.current);
@@ -162,7 +169,7 @@ export default function SamInvoicePaymentPanel({
         <p className="text-sm text-[var(--text-sec)] mb-4 leading-relaxed">
           {autoOpenPaymentPopup
             ? t.samPaymentPopupOpened
-            : formatMessage(t.samInvoicePayDesc, { method: methodLabel, amount: `$${displayTotal}` })}
+            : formatMessage(t.samInvoicePayDesc, { method: methodLabel, amount: displayPayAmount })}
         </p>
 
         {paymentUrl ? (

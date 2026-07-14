@@ -43,7 +43,7 @@ export async function getMyActiveRechargeRequest() {
   return data || null;
 }
 
-export async function createRechargeRequest(amount, paymentMethod = 'ShamCash') {
+export async function createRechargeRequest(amount, paymentMethod = 'ShamCash', payCurrency = 'USD') {
   const { valid, value } = validateRechargeAmount(amount);
   if (!valid) {
     throw new Error(`Amount must be between $${RECHARGE_MIN} and $${RECHARGE_MAX}`);
@@ -52,6 +52,7 @@ export async function createRechargeRequest(amount, paymentMethod = 'ShamCash') 
   const { data, error } = await supabase.rpc('create_recharge_request', {
     p_amount: value,
     p_payment_method: paymentMethod,
+    p_pay_currency: payCurrency,
   });
   return assertRpcData(data, error);
 }

@@ -144,6 +144,22 @@ function buildWebhookUrl(supabaseUrl: string, token: string) {
   return `${base}?token=${encodeURIComponent(token)}`;
 }
 
+function sypForUsd(usd: number, rate: number): number {
+  if (!Number.isFinite(usd) || !Number.isFinite(rate) || rate <= 0) return 0;
+  return Math.round(usd * rate);
+}
+
+function parsePaidAmount(payload: Json, fallback: unknown): number | null {
+  const raw = payload.paidAmount ?? payload.amount ?? fallback;
+  const num = typeof raw === 'number' ? raw : parseFloat(String(raw ?? ''));
+  return Number.isFinite(num) && num > 0 ? Math.round(num * 100) / 100 : null;
+}
+
+function invoiceAmountString(amount: number, currency: string): string {
+  if (currency === 'SYP') return String(Math.round(amount));
+  return Number(amount).toFixed(2);
+}
+
 const ADMIN_ACTIONS = new Set([
   'getSettings',
   'saveSettings',
@@ -381,13 +397,9 @@ Deno.serve(async (req) => {
     }
 
     const event = String(body.event || '');
-    const amount = String(body.amount ?? '');
     const currency = String(body.currency ?? '');
     const method = String(body.method ?? '');
 
-    if (amount && String(row.amount) !== amount) {
-      return jsonResponse({ success: false, message: 'Amount mismatch' }, 400);
-    }
     if (currency && row.currency !== currency) {
       return jsonResponse({ success: false, message: 'Currency mismatch' }, 400);
     }
@@ -400,10 +412,13 @@ Deno.serve(async (req) => {
         return jsonResponse({ success: true, skipped: true });
       }
 
+      const paidAmount = parsePaidAmount(body as Json, row.amount);
+
       await serviceClient
         .from('sam_invoices')
         .update({
           status: 'paid',
+          paid_amount: paidAmount,
           transaction_ref: typeof body.transactionRef === 'string' ? body.transactionRef : row.transaction_ref,
           paid_at: typeof body.paidAt === 'string' ? body.paidAt : new Date().toISOString(),
           webhook_received_at: new Date().toISOString(),
@@ -474,7 +489,10 @@ Deno.serve(async (req) => {
         return jsonResponse({ success: false, message: 'Invalid payment method' }, 400);
       }
 
-      let invoiceAmount: number | string = 0;
+      let invoiceAmount = 0;
+      let requestedUsdAmount: number | null = null;
+      let sypPerUsdSnapshot: number | null = null;
+      let payCurrency = 'USD';
 
       if (entityType === 'order') {
         const { data: order } = await serviceClient
@@ -505,7 +523,7 @@ Deno.serve(async (req) => {
 
         const { data: recharge } = await serviceClient
           .from('recharge_requests')
-          .select('id, user_id, amount, status, payment_method')
+          .select('id, user_id, amount, status, payment_method, pay_currency, syp_per_usd_snapshot')
           .eq('id', entityId)
           .maybeSingle();
 
@@ -520,6 +538,11 @@ Deno.serve(async (req) => {
         }
 
         invoiceAmount = recharge.amount;
+        payCurrency = String(recharge.pay_currency || 'USD').toUpperCase();
+        requestedUsdAmount = Number(recharge.amount);
+        if (payCurrency === 'SYP') {
+          sypPerUsdSnapshot = Number(recharge.syp_per_usd_snapshot) || null;
+        }
       }
 
       const { data: existing } = await serviceClient
@@ -542,6 +565,7 @@ Deno.serve(async (req) => {
             amount: existing.amount,
             currency: existing.currency,
             status: existing.status,
+            requestedUsdAmount: existing.requested_usd_amount ?? null,
           },
         });
       }
@@ -549,7 +573,7 @@ Deno.serve(async (req) => {
       const { data: settings } = await serviceClient
         .from('store_settings')
         .select(
-          'sam_wallet_mode, sam_api_enabled, sam_invoice_currency, sam_shamcash_wallet_identifier, sam_syriatel_wallet_identifier, sam_webhook_secret',
+          'sam_wallet_mode, sam_api_enabled, sam_invoice_currency, sam_syp_per_usd, sam_shamcash_wallet_identifier, sam_syriatel_wallet_identifier, sam_webhook_secret',
         )
         .eq('id', 1)
         .maybeSingle();
@@ -562,7 +586,24 @@ Deno.serve(async (req) => {
       const storedIdentifier = samMethod === 'syriatel'
         ? String(settings.sam_syriatel_wallet_identifier || '').trim()
         : String(settings.sam_shamcash_wallet_identifier || '').trim();
-      const currency = String(settings.sam_invoice_currency || 'USD');
+      let currency = String(settings.sam_invoice_currency || 'USD');
+      const storeSypRate = Number(settings.sam_syp_per_usd) || 135;
+
+      if (entityType === 'recharge') {
+        if (payCurrency === 'SYP') {
+          const rate = sypPerUsdSnapshot && sypPerUsdSnapshot > 0 ? sypPerUsdSnapshot : storeSypRate;
+          sypPerUsdSnapshot = rate;
+          currency = 'SYP';
+          invoiceAmount = sypForUsd(requestedUsdAmount || invoiceAmount, rate);
+          if (invoiceAmount <= 0) {
+            return jsonResponse({ success: false, message: 'Invalid SYP invoice amount' }, 400);
+          }
+        } else {
+          currency = 'USD';
+          requestedUsdAmount = requestedUsdAmount ?? invoiceAmount;
+        }
+      }
+
       const webhookSecret = await resolveWebhookSecret(serviceClient);
 
       if (!storedIdentifier || !webhookSecret) {
@@ -580,7 +621,7 @@ Deno.serve(async (req) => {
       }
 
       const identifier = resolved.identifier;
-      const amountStr = Number(invoiceAmount).toFixed(2);
+      const amountStr = invoiceAmountString(invoiceAmount, currency);
       const webhookUrl = buildWebhookUrl(supabaseUrl, webhookSecret);
 
       const { res, data } = await samFetch(apiKey, '/v1/invoices', {
@@ -612,7 +653,7 @@ Deno.serve(async (req) => {
         return jsonResponse({ success: false, message: 'Invalid invoice response from Sam API' }, 502);
       }
 
-      const { error: insertError } = await serviceClient.from('sam_invoices').insert({
+      const insertRow: Record<string, unknown> = {
         user_id: userId,
         entity_type: entityType,
         entity_id: entityId,
@@ -623,7 +664,16 @@ Deno.serve(async (req) => {
         method: samMethod,
         status: 'pending',
         expires_at: expiresAt,
-      });
+      };
+
+      if (entityType === 'recharge') {
+        insertRow.requested_usd_amount = requestedUsdAmount ?? invoiceAmount;
+        if (currency === 'SYP' && sypPerUsdSnapshot) {
+          insertRow.syp_per_usd_snapshot = sypPerUsdSnapshot;
+        }
+      }
+
+      const { error: insertError } = await serviceClient.from('sam_invoices').insert(insertRow);
 
       if (insertError) {
         return jsonResponse({ success: false, message: insertError.message }, 400);
@@ -638,6 +688,7 @@ Deno.serve(async (req) => {
           amount: invoiceAmount,
           currency,
           status: 'pending',
+          requestedUsdAmount: entityType === 'recharge' ? (requestedUsdAmount ?? invoiceAmount) : null,
         },
       });
     }
@@ -696,10 +747,19 @@ Deno.serve(async (req) => {
         });
       }
 
+      let paidAmount = parsePaidAmount(data as Json, row.amount);
+      if (paidAmount == null) {
+        const { res: payRes, data: payData } = await samFetch(apiKey, `/pay/${encodeURIComponent(samInvoiceId)}`);
+        if (payRes.ok) {
+          paidAmount = parsePaidAmount(payData as Json, row.amount);
+        }
+      }
+
       await serviceClient
         .from('sam_invoices')
         .update({
           status: 'paid',
+          paid_amount: paidAmount,
           transaction_ref: transactionRef,
           paid_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -709,6 +769,8 @@ Deno.serve(async (req) => {
       const completion = await completeEntityAfterPaid(serviceClient, {
         ...row,
         transaction_ref: transactionRef,
+        paid_amount: paidAmount,
+        status: 'paid',
       } as Record<string, unknown>);
 
       return jsonResponse({ success: true, verified: true, status: 'paid', completion });
@@ -733,10 +795,13 @@ Deno.serve(async (req) => {
       if (row.status === 'pending') {
         const { res, data } = await samFetch(apiKey, `/pay/${encodeURIComponent(samInvoiceId)}`);
         if (res.ok && data.status === 'paid') {
+          const paidAmount = parsePaidAmount(data as Json, row.amount);
+
           await serviceClient
             .from('sam_invoices')
             .update({
               status: 'paid',
+              paid_amount: paidAmount,
               paid_at: typeof data.paidAt === 'string' ? data.paidAt : new Date().toISOString(),
               updated_at: new Date().toISOString(),
             })
@@ -745,6 +810,7 @@ Deno.serve(async (req) => {
           const completion = await completeEntityAfterPaid(serviceClient, {
             ...row,
             status: 'paid',
+            paid_amount: paidAmount,
           } as Record<string, unknown>);
 
           return jsonResponse({ success: true, status: 'paid', completion });
@@ -831,6 +897,11 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'saveSettings') {
+    const sypRaw = body.sypPerUsd;
+    const sypPerUsd = sypRaw !== undefined && sypRaw !== null && sypRaw !== ''
+      ? Number(sypRaw)
+      : null;
+
     const { data, error } = await userClient.rpc('save_sam_api_settings', {
       p_enabled: body.enabled ?? false,
       p_wallet_mode: body.walletMode ?? 'manual',
@@ -840,6 +911,7 @@ Deno.serve(async (req) => {
       p_api_key: body.apiKey !== undefined ? body.apiKey : null,
       p_regenerate_webhook_secret: !!body.regenerateWebhookSecret,
       p_clear_api_key: !!body.clearApiKey,
+      p_syp_per_usd: Number.isFinite(sypPerUsd) && sypPerUsd > 0 ? sypPerUsd : null,
     });
 
     if (error) {
