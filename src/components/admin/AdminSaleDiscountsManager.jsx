@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react';
-import { Loader2, Percent, Plus, Trash2, Save, Pencil } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Loader2, Percent, Plus, Trash2, Save, Pencil, AlertTriangle } from 'lucide-react';
+import ConfirmDialog from '../ui/ConfirmDialog';
 import { getDisplayGameForOffer } from '../../lib/gameRegions';
 import { getOfferDisplayName } from '../../lib/offerDisplay';
+import { getSalePriceLossInfo } from '../../lib/offerCost';
 import {
   buildRemoveSalePayload,
   buildSaleDiscountPayload,
@@ -26,11 +28,14 @@ export default function AdminSaleDiscountsManager({
   offers = [],
   updateProduct,
   onNotify,
+  presetEditOfferId = null,
+  onPresetEditConsumed,
 }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingOfferId, setEditingOfferId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [removingId, setRemovingId] = useState(null);
+  const [lossConfirmOpen, setLossConfirmOpen] = useState(false);
 
   const activeOffers = useMemo(
     () => offers.filter((offer) => offer.active !== false),
@@ -48,11 +53,21 @@ export default function AdminSaleDiscountsManager({
       ));
   }, [activeOffers, editingOfferId, games, lang, offers]);
 
+  const selectedOffer = useMemo(
+    () => activeOffers.find((row) => row.id === form.offerId) || null,
+    [activeOffers, form.offerId],
+  );
+
   const previewDiscount = useMemo(() => {
     const result = validateSaleDiscountInputs(form.salePrice, form.originalPrice);
     if (!result.valid) return null;
     return Math.round((1 - result.sale / result.original) * 100);
   }, [form.originalPrice, form.salePrice]);
+
+  const lossInfo = useMemo(
+    () => getSalePriceLossInfo(selectedOffer, form.salePrice),
+    [selectedOffer, form.salePrice],
+  );
 
   const resetForm = () => {
     setForm(EMPTY_FORM);
@@ -91,8 +106,18 @@ export default function AdminSaleDiscountsManager({
     });
   };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  useEffect(() => {
+    if (!presetEditOfferId) return;
+    const offer = offers.find((row) => row.id === presetEditOfferId && row.is_sale);
+    if (!offer) {
+      onPresetEditConsumed?.();
+      return;
+    }
+    startEdit(offer);
+    onPresetEditConsumed?.();
+  }, [presetEditOfferId, offers, onPresetEditConsumed]);
+
+  const executeSave = async () => {
     const offer = activeOffers.find((row) => row.id === form.offerId);
     if (!offer) {
       onNotify?.(t.adminSaleDiscountPickOffer, 'error');
@@ -118,7 +143,29 @@ export default function AdminSaleDiscountsManager({
       onNotify?.(err.message || t.adminSaleDiscountSaveFailed, 'error');
     } finally {
       setSaving(false);
+      setLossConfirmOpen(false);
     }
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (!selectedOffer) {
+      onNotify?.(t.adminSaleDiscountPickOffer, 'error');
+      return;
+    }
+
+    const validation = validateSaleDiscountInputs(form.salePrice, form.originalPrice);
+    if (!validation.valid) {
+      onNotify?.(t[validation.errorKey] || t.adminSaleDiscountInvalidSalePrice, 'error');
+      return;
+    }
+
+    if (lossInfo.isLoss) {
+      setLossConfirmOpen(true);
+      return;
+    }
+
+    await executeSave();
   };
 
   const handleRemove = async (offer) => {
@@ -204,12 +251,23 @@ export default function AdminSaleDiscountsManager({
           </div>
         </div>
 
-        {previewDiscount != null && previewDiscount > 0 && (
-          <div className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-1.5 text-xs font-bold text-[var(--accent)]">
-            <Percent className="w-3.5 h-3.5" />
-            {formatMessage(t.adminSaleDiscountPreview, { percent: previewDiscount })}
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {previewDiscount != null && previewDiscount > 0 && (
+            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-1.5 text-xs font-bold text-[var(--accent)]">
+              <Percent className="w-3.5 h-3.5" />
+              {formatMessage(t.adminSaleDiscountPreview, { percent: previewDiscount })}
+            </div>
+          )}
+          {lossInfo.isLoss && lossInfo.cost != null && (
+            <div className="inline-flex items-start gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 max-w-xl">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              {formatMessage(t.adminSaleDiscountLossInline, {
+                sale: `$${lossInfo.sale.toFixed(2)}`,
+                cost: `$${lossInfo.cost.toFixed(2)}`,
+              })}
+            </div>
+          )}
+        </div>
 
         <div className="flex flex-wrap gap-2">
           <button
@@ -298,6 +356,21 @@ export default function AdminSaleDiscountsManager({
         <Plus className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
         {t.adminSaleDiscountStorefrontNote}
       </p>
+
+      <ConfirmDialog
+        open={lossConfirmOpen}
+        title={t.adminSaleDiscountLossConfirmTitle}
+        message={lossInfo.isLoss && lossInfo.cost != null ? formatMessage(t.adminSaleDiscountLossConfirmBody, {
+          sale: `$${lossInfo.sale.toFixed(2)}`,
+          cost: `$${lossInfo.cost.toFixed(2)}`,
+        }) : ''}
+        confirmLabel={t.adminSaleDiscountLossConfirmAction}
+        cancelLabel={t.cancel}
+        variant="danger"
+        loading={saving}
+        onConfirm={executeSave}
+        onCancel={() => setLossConfirmOpen(false)}
+      />
     </div>
   );
 }

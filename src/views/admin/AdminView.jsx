@@ -3,9 +3,9 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { getAdminDashboardPath, getAdminOrdersPath, isValidAdminTabSegment, resolveAdminTabFromPath } from '../../lib/adminRoutes';
 import { getOrderCustomerLabel } from '../../lib/adminOrderFilters';
 import { formatOrderDisplayId } from '../../lib/orderReceipt';
-import { Trash2, Plus, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Zap, PanelLeftClose, PanelLeftOpen, Users, ScrollText } from 'lucide-react';
+import { Trash2, Plus, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Percent, Zap, PanelLeftClose, PanelLeftOpen, Users, ScrollText } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { uploadImage } from '../../lib/uploadImage';
+
 import { centerActiveMobileTab, resetPageHorizontalScroll } from '../../lib/adminMobileNav';
 import { getCatalogOfferStats } from '../../lib/catalogUtils';
 import AdminSupplierWalletsCard from '../../components/ui/AdminSupplierWalletsCard';
@@ -64,7 +64,6 @@ export default function AdminView({
   offers = [],
   orders = [], 
   loadingOrders = false,
-  createProduct, 
   updateProduct,
   deleteProduct,
   deleteGame: deleteGameProp,
@@ -151,28 +150,9 @@ export default function AdminView({
     return () => window.cancelAnimationFrame(frame);
   }, [activeTab, location.pathname, location.state?.focusSaleDiscounts, navigate]);
 
-  const [newProduct, setNewProduct] = useState({
-    game_id: '',
-    name_en: '',
-    name_ar: '',
-    price: '',
-    image_url: '',
-    description_en: '',
-    description_ar: '',
-    sale_image_url: '',
-    is_sale: false,
-    original_price: ''
-  });
-  const [uploading, setUploading] = useState(false);
-  const [saleCoverFile, setSaleCoverFile] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
-
-  // Editing state
-  const [editingId, setEditingId] = useState(null);
-
-  const [productFormError, setProductFormError] = useState('');
-  const [productFormSuccess, setProductFormSuccess] = useState('');
+  const [saleDiscountEditId, setSaleDiscountEditId] = useState(null);
 
   const [gameModal, setGameModal] = useState(null);
 
@@ -208,21 +188,15 @@ export default function AdminView({
       }
       notifySuccess(t.gameUpdatedSuccess);
     } else if (saveGame) {
-      const created = await saveGame(payload);
-      if (created?.id) {
-        setNewProduct((prev) => ({ ...prev, game_id: created.id }));
-      }
+      await saveGame(payload);
       notifySuccess(t.gameAddedSelectOffer);
     } else {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('games')
         .insert(payload)
         .select()
         .single();
       if (error) throw error;
-      if (data?.id) {
-        setNewProduct((prev) => ({ ...prev, game_id: data.id }));
-      }
       notifySuccess(t.gameAddedSelectOffer);
     }
     if (refreshProducts) await refreshProducts();
@@ -281,101 +255,11 @@ export default function AdminView({
 
 
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setProductFormError('');
-    if (!newProduct.name_en || !newProduct.price || !newProduct.game_id) {
-      setProductFormError(t.gameNameEnglishAndPriceRequired);
-      return;
-    }
-    if (newProduct.is_sale && !newProduct.original_price) {
-      setProductFormError(t.originalPriceRequiredForSale);
-      return;
-    }
-
-    const desc = (newProduct.description_en || '').trim();
-
-    try {
-      // Handle sale photo upload
-      let finalSaleImage = newProduct.sale_image_url;
-      if (saleCoverFile) {
-        setUploading(true);
-        try {
-          const uploaded = await uploadImage(saleCoverFile, 'sale');
-          if (uploaded) finalSaleImage = uploaded;
-        } catch (uploadErr) {
-          throw new Error(t.imageUploadFailed, { cause: uploadErr });
-        } finally {
-          setUploading(false);
-        }
-      }
-
-      // Offers do not use main image or amount. One description used for both languages.
-      // Optional sale_image_url for dedicated sale offer cards.
-      const productData = {
-        game_id: newProduct.game_id,
-        name_en: newProduct.name_en.trim(),
-        name_ar: (newProduct.name_ar || newProduct.name_en).trim(),
-        price: newProduct.price,
-        amount: null,
-        image_url: null,
-        description_en: desc,
-        description_ar: desc,
-        sale_image_url: finalSaleImage || null,
-        is_sale: !!newProduct.is_sale,
-        original_price: newProduct.is_sale ? (parseFloat(newProduct.original_price) || null) : null
-      };
-
-      if (editingId) {
-        await updateProduct({ ...productData, id: editingId });
-      } else {
-        await createProduct(productData);
-      }
-
-      // reset form + files + editing
-      resetForm();
-      if (refreshProducts) await refreshProducts();
-
-      setProductFormSuccess(editingId ? t.offerUpdatedSuccess : t.offerAddedSuccess);
-      setTimeout(() => setProductFormSuccess(''), 2500);
-    } catch (err) {
-      console.error('Product save error:', err);
-      setProductFormError(err.message || t.failedToSaveOffer);
-    }
-  };
-
-  const resetForm = () => {
-    setNewProduct({
-      game_id: '',
-      name_en: '', name_ar: '', price: '',
-      image_url: '', description_en: '', description_ar: '',
-      sale_image_url: '',
-      is_sale: false,
-      original_price: ''
+  const scrollToSaleDiscounts = (offerId = null) => {
+    if (offerId) setSaleDiscountEditId(offerId);
+    requestAnimationFrame(() => {
+      document.getElementById('admin-sale-discounts')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
-    setSaleCoverFile(null);
-    setEditingId(null);
-    setProductFormError('');
-    setProductFormSuccess('');
-  };
-
-  const startEdit = (product) => {
-    setEditingId(product.id);
-    setNewProduct({
-      game_id: product.game_id || '',
-      name_en: product.name_en || '',
-      name_ar: product.name_ar || '',
-      price: product.price || '',
-      image_url: product.image_url || '',
-      description_en: product.description_en || product.description_ar || '',
-      description_ar: product.description_ar || product.description_en || '',
-      sale_image_url: product.sale_image_url || '',
-      is_sale: !!product.is_sale,
-      original_price: product.original_price || ''
-    });
-    setSaleCoverFile(null);
-    // Scroll to form or switch tab if needed
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const {
@@ -648,6 +532,8 @@ export default function AdminView({
             offers={offers}
             updateProduct={updateProduct}
             onNotify={onNotify}
+            presetEditOfferId={saleDiscountEditId}
+            onPresetEditConsumed={() => setSaleDiscountEditId(null)}
           />
 
           <div className="admin-products-divider" role="separator">
@@ -693,136 +579,19 @@ export default function AdminView({
             <span className="admin-products-divider__line" aria-hidden="true" />
           </div>
 
-          {/* OFFERS / PRODUCTS SECTION */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Add / Upload Offer Form */}
-            <div className="lg:col-span-1 card p-4 sm:p-6 h-fit">
-              <div className="flex items-center gap-2 mb-5">
-                <Plus className="w-5 h-5 text-[var(--accent)]" />
-                <h3 className="text-lg sm:text-xl font-bold">{editingId ? t.editOffer : t.addNewOffer}</h3>
-              </div>
-              <p className="text-xs text-[var(--text-muted)] -mt-2 mb-3">{t.addGamesAbove}</p>
+          <div className="card p-4 sm:p-6">
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]/50 p-4 mb-5 space-y-3">
+              <p className="text-sm text-[var(--text-sec)] leading-relaxed">{t.adminOffersCatalogHelp}</p>
+              <button
+                type="button"
+                onClick={() => scrollToSaleDiscounts()}
+                className="action-chip gap-2 text-sm"
+              >
+                <Percent className="w-4 h-4" />
+                {t.adminOffersGoToDiscounts}
+              </button>
+            </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input required placeholder={t.nameEnglish} value={newProduct.name_en} onChange={e => setNewProduct({ ...newProduct, name_en: e.target.value })} className="input" />
-                <input placeholder={t.nameArabicOptional} value={newProduct.name_ar} onChange={e => setNewProduct({ ...newProduct, name_ar: e.target.value })} className="input" />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 block">{t.selectGame}</label>
-                <select 
-                  required
-                  value={newProduct.game_id || ''} 
-                  onChange={e => setNewProduct({ ...newProduct, game_id: e.target.value })} 
-                  className="input w-full"
-                >
-                  <option value="">{t.selectGame}</option>
-                  {games.map(g => (
-                    <option key={g.id} value={g.id}>
-                      {lang === 'ar' ? g.name_ar : g.name_en}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <input required type="number" step="0.01" placeholder={t.price} value={newProduct.price} onChange={e => setNewProduct({ ...newProduct, price: e.target.value })} className="input" />
-
-              <div className="flex items-center gap-2">
-                <input 
-                  type="checkbox" 
-                  checked={!!newProduct.is_sale} 
-                  onChange={e => setNewProduct({ ...newProduct, is_sale: e.target.checked, original_price: e.target.checked ? newProduct.original_price : '' })} 
-                  className="accent-[var(--accent)]" 
-                />
-                <label className="text-xs font-semibold text-[var(--text-sec)]">{t.thisIsSaleOffer}</label>
-              </div>
-
-              {newProduct.is_sale && (
-                <div>
-                  <input 
-                    required 
-                    type="number" 
-                    step="0.01" 
-                    placeholder={t.originalPriceBeforeDiscount} 
-                    value={newProduct.original_price || ''} 
-                    onChange={e => setNewProduct({ ...newProduct, original_price: e.target.value })} 
-                    className="input" 
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="text-xs font-semibold text-[var(--text-sec)] mb-1.5 block">{t.descriptionOneEnough}</label>
-                <textarea 
-                  placeholder={t.descriptionOneEnough} 
-                  value={newProduct.description_en} 
-                  onChange={e => setNewProduct({ ...newProduct, description_en: e.target.value })} 
-                  className="input w-full h-20 text-sm resize-y" 
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-[var(--text-sec)] mb-0.5 block">{t.salePhotoOptional}</label>
-                <p className="text-[10px] text-[var(--text-muted)] -mt-1 mb-1.5">{t.salePhotoHelp}</p>
-                <div className="flex flex-col gap-2">
-                  <input 
-                    type="file" 
-                    accept="image/*" 
-                    onChange={e => setSaleCoverFile(e.target.files?.[0] || null)} 
-                    className="input flex-1 text-sm file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-[var(--accent)] file:text-[#040812]" 
-                  />
-                  <input 
-                    placeholder={t.orPasteSalePhotoURL} 
-                    value={newProduct.sale_image_url || ''} 
-                    onChange={e => setNewProduct({ ...newProduct, sale_image_url: e.target.value })} 
-                    className="input flex-1 text-sm" 
-                  />
-                </div>
-                {saleCoverFile && <div className="text-xs text-emerald-400 mt-1">{t.willUploadSalePhoto}: {saleCoverFile.name}</div>}
-                {newProduct.sale_image_url && !saleCoverFile && (
-                  <img src={newProduct.sale_image_url} alt={t.preview} className="mt-2 h-16 w-auto object-cover rounded border" />
-                )}
-              </div>
-
-              {productFormError && (
-                <div className="bg-red-500/10 border border-red-500/60 text-red-400 p-2 rounded text-xs">
-                  {productFormError}
-                </div>
-              )}
-              {productFormSuccess && (
-                <div className="bg-emerald-500/10 border border-emerald-500/60 text-emerald-400 p-2 rounded text-xs">
-                  {productFormSuccess}
-                </div>
-              )}
-
-              <div className="flex gap-2">
-                <button 
-                  type="submit" 
-                  disabled={uploading} 
-                  className="btn btn-primary flex-1 py-3.5 disabled:opacity-60"
-                >
-                  {uploading ? t.uploading : (editingId ? t.updateOffer : t.addOffer)}
-                </button>
-                {editingId && (
-                  <button 
-                    type="button" 
-                    onClick={resetForm} 
-                    className="btn btn-secondary px-6"
-                  >
-                    {t.cancel}
-                  </button>
-                )}
-              </div>
-            </form>
-
-            <p className="text-xs text-[var(--text-muted)] mt-4">
-              {t.offersNeedOnly}
-            </p>
-          </div>
-
-          {/* Offers List */}
-          <div className="lg:col-span-2 card p-4 sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
               <div className="min-w-0">
                 <span className="font-bold">{filteredOffersForList.length} {t.offersCount}</span>
@@ -876,13 +645,16 @@ export default function AdminView({
                       </div>
 
                       <div className="flex items-center gap-1 self-end sm:self-auto opacity-100 sm:opacity-60 sm:group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={() => startEdit(offer)} 
-                          className="p-2 text-[var(--accent)] hover:bg-[var(--accent)]/10 rounded-xl"
-                          title="Edit"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
+                        {offer.is_sale && (
+                          <button
+                            type="button"
+                            onClick={() => scrollToSaleDiscounts(offer.id)}
+                            className="p-2 text-[var(--accent)] hover:bg-[var(--accent)]/10 rounded-xl"
+                            title={t.adminOffersEditDiscount}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                        )}
                         <button 
                           onClick={() => requestDeleteOffer(offer.id)}
                           className="p-2 text-red-400 hover:bg-red-500/10 rounded-xl"
@@ -900,7 +672,6 @@ export default function AdminView({
             </div>
           </div>
         </div>
-      </div>
       )}
 
       {activeTab === 'orders' && (
