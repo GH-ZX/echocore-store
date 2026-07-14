@@ -26,7 +26,11 @@ import { syncCartWithOffers, pickCartSnapshot, cartsAreEquivalent, getCartLineKe
 import ScrollToTop from './components/routing/ScrollToTop';
 import AppRoutes from './components/routing/AppRoutes';
 import LangSwitchOverlay from './components/routing/LangSwitchOverlay';
-import { getAdminGiftPath } from './lib/adminRoutes';
+import {
+  ADMIN_SALE_DISCOUNTS_FOCUS_STATE,
+  getAdminGiftPath,
+  getAdminSaleDiscountsPath,
+} from './lib/adminRoutes';
 import { getOfferOrderNameSnapshot } from './lib/offerDisplay';
 import { getGameOfferBuyPath, getGameOfferPath } from './lib/offerRoutes';
 import { resolveStorefrontGame } from './lib/gameRegions';
@@ -139,7 +143,12 @@ export default function App() {
   const isAdmin = user?.role === 'admin';
   const [homePreviewAsUser, setHomePreviewAsUser] = useState(false);
   const homeShowsAdminChrome = isAdmin && !homePreviewAsUser;
-  const hasSaleOffers = offers.some((offer) => offer.is_sale);
+  const hasSaleOffers = offers.some((offer) => {
+    if (!offer?.is_sale || offer.active === false) return false;
+    const original = Number.parseFloat(offer.original_price);
+    const price = Number.parseFloat(offer.price);
+    return Number.isFinite(original) && Number.isFinite(price) && original > price;
+  });
 
   const showToast = useCallback((message, type = 'success') => {
     if (!message) return;
@@ -309,6 +318,10 @@ export default function App() {
 
   const handlePreviewHomepage = useCallback(() => {
     navigate('/?preview=user');
+  }, [navigate]);
+
+  const handleNavigateToSaleDiscounts = useCallback(() => {
+    navigate(getAdminSaleDiscountsPath(), { state: ADMIN_SALE_DISCOUNTS_FOCUS_STATE });
   }, [navigate]);
 
   const openGame = (game) => {
@@ -1700,6 +1713,7 @@ export default function App() {
           handlePreviewHomepage={handlePreviewHomepage}
           handleAdminGiftOrder={handleAdminGiftOrder}
           setAdminEditOffer={setAdminEditOffer}
+          onNavigateToSaleDiscounts={handleNavigateToSaleDiscounts}
           setAdminEditGame={setAdminEditGame}
           setAdminCarouselOpen={setAdminCarouselOpen}
           setAdminCarouselPickerOpen={setAdminCarouselPickerOpen}

@@ -63,6 +63,12 @@ export function getAdminDashboardPath(tabId = 'overview') {
   return `/dashboard/${segment}`;
 }
 
+export function getAdminSaleDiscountsPath() {
+  return getAdminDashboardPath('products');
+}
+
+export const ADMIN_SALE_DISCOUNTS_FOCUS_STATE = { focusSaleDiscounts: true };
+
 export function getAdminOrdersPath({ username = '', orderId = '' } = {}) {
   const base = getAdminDashboardPath('orders');
   const params = new URLSearchParams();

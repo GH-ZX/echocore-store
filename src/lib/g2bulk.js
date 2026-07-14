@@ -71,11 +71,6 @@ async function invokeG2bulk(body, { sanitizeForUser = false, retries = 2 } = {})
   throw new Error(await parseInvokeError(lastError, { sanitizeForUser }));
 }
 
-/** Admin: re-apply markup + .99 charm pricing to synced offers from stored cost. */
-export async function applyG2bulkCharmPricing() {
-  return invokeG2bulk({ action: 'applyCharmPricing', forceCharm: true });
-}
-
 /** Admin: verify API key + read G2Bulk wallet balance */
 export async function g2bulkGetMe() {
   return invokeG2bulk({ action: 'getMe' });
@@ -91,7 +86,6 @@ export async function fetchG2bulkSettings() {
 export async function saveG2bulkSettings({
   enabled,
   markupPercent,
-  charmPricingEnabled,
   apiKey,
   catalogOnly,
   catalogMode,
@@ -104,7 +98,6 @@ export async function saveG2bulkSettings({
     action: 'saveSettings',
     enabled: enabled !== undefined ? !!enabled : undefined,
     markupPercent: markupPercent !== undefined ? Number(markupPercent) : undefined,
-    charmPricingEnabled: charmPricingEnabled !== undefined ? !!charmPricingEnabled : undefined,
     apiKey: apiKey !== undefined ? (apiKey?.trim() || '') : undefined,
     catalogOnly: catalogOnly !== undefined ? !!catalogOnly : undefined,
     catalogMode: catalogMode !== undefined ? (catalogMode?.trim() || 'sync') : undefined,

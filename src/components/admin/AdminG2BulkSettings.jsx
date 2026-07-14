@@ -12,11 +12,9 @@ import {
   saveG2bulkSettings,
   syncG2bulkCatalog,
   clearG2bulkSyncedCatalog,
-  applyG2bulkCharmPricing,
 } from '../../lib/g2bulk';
 import { refreshSupplierWallets } from '../../lib/adminSupplierWalletsStore';
 import { useAdminG2bulkWallet } from '../../hooks/useAdminG2bulkWallet';
-import { applyCharmPricing } from '../../lib/charmPricing';
 import { countPullSelection, normalizeCatalogMode, normalizePullSelection } from '../../lib/pullCatalogUtils';
 import { formatMessage } from '../../lib/i18n';
 
@@ -118,12 +116,9 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
   const [testResult, setTestResult] = useState(null);
   const [syncResult, setSyncResult] = useState(null);
   const [pullSelection, setPullSelection] = useState(normalizePullSelection());
-  const [applyingCharm, setApplyingCharm] = useState(false);
-
   const [form, setForm] = useState({
     g2bulk_enabled: false,
     g2bulk_markup_percent: 15,
-    g2bulk_charm_pricing_enabled: false,
     g2bulk_catalog_only: true,
     g2bulk_catalog_mode: 'sync',
     g2bulk_auto_sync_enabled: true,
@@ -154,7 +149,6 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
       setForm({
         g2bulk_enabled: data.g2bulk_enabled ?? false,
         g2bulk_markup_percent: data.g2bulk_markup_percent ?? 15,
-        g2bulk_charm_pricing_enabled: data.g2bulk_charm_pricing_enabled ?? false,
         g2bulk_catalog_only: data.g2bulk_catalog_only ?? true,
         g2bulk_catalog_mode: normalizeCatalogMode(data.g2bulk_catalog_mode),
         g2bulk_auto_sync_enabled: data.g2bulk_auto_sync_enabled ?? true,
@@ -181,30 +175,6 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     load();
   }, [load]);
 
-  const charmPreview = useMemo(() => {
-    const markedSamples = [0.43, 0.85, 1.25, 1.68];
-    return markedSamples.map((plain) => ({
-      plain,
-      charm: applyCharmPricing(plain),
-    }));
-  }, []);
-
-  const handleApplyCharmPricing = async () => {
-    setApplyingCharm(true);
-    setError('');
-    setSuccess('');
-    try {
-      const result = await applyG2bulkCharmPricing();
-      setSuccess(formatMessage(t.g2bulkCharmPricingApplied, { count: result.updated ?? 0 }));
-      await onCatalogSynced?.(form.g2bulk_catalog_only);
-      setTimeout(() => setSuccess(''), 4000);
-    } catch (err) {
-      setError(err.message || t.g2bulkCharmPricingFailed);
-    } finally {
-      setApplyingCharm(false);
-    }
-  };
-
   const scheduleLabel = useMemo(() => {
     const hour = HOUR_OPTIONS.find((h) => h.value === Number(form.g2bulk_auto_sync_hour))?.label
       || `${form.g2bulk_auto_sync_hour}:00`;
@@ -218,7 +188,6 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     const saved = await saveG2bulkSettings({
       enabled: payload.g2bulk_enabled,
       markupPercent: parseFloat(payload.g2bulk_markup_percent) || 15,
-      charmPricingEnabled: !!payload.g2bulk_charm_pricing_enabled,
       catalogOnly: payload.g2bulk_catalog_only,
       catalogMode: payload.g2bulk_catalog_mode,
       autoSyncEnabled: payload.g2bulk_auto_sync_enabled,
@@ -233,7 +202,6 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         ...prev,
         g2bulk_enabled: saved.g2bulk_enabled ?? prev.g2bulk_enabled,
         g2bulk_markup_percent: saved.g2bulk_markup_percent ?? prev.g2bulk_markup_percent,
-        g2bulk_charm_pricing_enabled: saved.g2bulk_charm_pricing_enabled ?? prev.g2bulk_charm_pricing_enabled,
         g2bulk_catalog_only: saved.g2bulk_catalog_only ?? prev.g2bulk_catalog_only,
         g2bulk_catalog_mode: saved.g2bulk_catalog_mode || prev.g2bulk_catalog_mode,
         g2bulk_auto_sync_enabled: saved.g2bulk_auto_sync_enabled ?? prev.g2bulk_auto_sync_enabled,
@@ -752,36 +720,6 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
               onChange={(e) => setForm((p) => ({ ...p, g2bulk_markup_percent: e.target.value }))}
               className="input w-full max-w-[120px]"
             />
-          </div>
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]/30 px-4 py-3 space-y-3 max-w-xl">
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={!!form.g2bulk_charm_pricing_enabled}
-                onChange={(e) => setForm((p) => ({ ...p, g2bulk_charm_pricing_enabled: e.target.checked }))}
-                className="rounded border-[var(--border)] mt-0.5"
-              />
-              <span className="text-sm leading-relaxed">
-                <span className="font-medium text-[var(--text-primary)] block">{t.g2bulkCharmPricing}</span>
-                <span className="text-[var(--text-muted)]">{t.g2bulkCharmPricingHelp}</span>
-              </span>
-            </label>
-            <div className="text-xs text-[var(--text-sec)] space-y-1 font-mono">
-              {charmPreview.map((row) => (
-                <div key={row.plain}>
-                  ${row.plain.toFixed(2)} → ${row.charm.toFixed(2)}
-                </div>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={handleApplyCharmPricing}
-              disabled={applyingCharm || saving}
-              className="btn btn-secondary text-sm inline-flex items-center gap-2"
-            >
-              {applyingCharm ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-              {t.g2bulkApplyCharmPricing}
-            </button>
           </div>
           <label className="flex items-center gap-3 cursor-pointer">
             <input

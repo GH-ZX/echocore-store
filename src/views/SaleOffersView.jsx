@@ -1,6 +1,7 @@
 import React from 'react';
 import SaleOfferCard from '../components/ui/SaleOfferCard';
 import { getDisplayGameForOffer } from '../lib/gameRegions';
+import { getSaleOffers } from '../lib/saleOffers';
 
 export default function SaleOffersView({
   games = [],
@@ -14,9 +15,7 @@ export default function SaleOffersView({
 }) {
   const isAr = lang === 'ar';
 
-  const saleOffers = offers
-    .filter(o => o.is_sale)
-    .sort((a, b) => parseFloat(a.price) - parseFloat(b.price));
+  const saleOffers = getSaleOffers(offers);
 
   return (
     <div className="max-w-7xl mx-auto">

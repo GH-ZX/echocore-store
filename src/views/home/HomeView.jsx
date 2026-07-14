@@ -22,6 +22,7 @@ import { pickStableOffers } from '../../lib/customerReviews';
 import { brandUserText } from '../../lib/branding';
 import { getGameMarketingDescription } from '../../lib/gameDescriptions';
 import { DEFAULT_HOME_LAYOUT, getSectionLabel, normalizeHomeLayout } from '../../lib/homeLayout';
+import { getSaleOffers } from '../../lib/saleOffers';
 import {
   HOME_GRID_DENSE,
   HOME_GRID_VOUCHER,
@@ -59,10 +60,7 @@ function buildOfferPoolKey(offers = []) {
 
 function pickSaleOffers(offers, limit = 8) {
   const cap = Math.max(1, Math.min(10, Number(limit) || 8));
-  return [...offers]
-    .filter((offer) => offer.is_sale)
-    .sort((a, b) => parseFloat(a.price) - parseFloat(b.price))
-    .slice(0, cap);
+  return getSaleOffers(offers).slice(0, cap);
 }
 
 function denseGridSkeleton() {

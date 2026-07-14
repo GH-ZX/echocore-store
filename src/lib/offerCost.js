@@ -1,4 +1,4 @@
-/** Raw G2Bulk supplier cost (USD) — unchanged by markup or charm pricing. */
+/** Raw G2Bulk supplier cost (USD) — unchanged by markup. */
 
 export function getOfferWholesaleCost(offer) {
   const raw = offer?.g2bulk_cost_usd;

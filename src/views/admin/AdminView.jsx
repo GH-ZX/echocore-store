@@ -11,6 +11,7 @@ import { getCatalogOfferStats } from '../../lib/catalogUtils';
 import AdminSupplierWalletsCard from '../../components/ui/AdminSupplierWalletsCard';
 import { useAdminSupplierWallets } from '../../hooks/useAdminSupplierWallets';
 import AdminExistingGamesList from '../../components/admin/AdminExistingGamesList';
+import AdminSaleDiscountsManager from '../../components/admin/AdminSaleDiscountsManager';
 import AdminGameEditModal from '../../components/admin/AdminGameEditModal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 const AdminPaymentsSettings = lazy(() => import('../../components/admin/AdminPaymentsSettings'));
@@ -137,6 +138,18 @@ export default function AdminView({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'products' || !location.state?.focusSaleDiscounts) return undefined;
+
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('admin-sale-discounts')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    navigate(location.pathname, { replace: true, state: null });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTab, location.pathname, location.state?.focusSaleDiscounts, navigate]);
 
   const [newProduct, setNewProduct] = useState({
     game_id: '',
@@ -627,6 +640,15 @@ export default function AdminView({
               onCatalogSynced={onCatalogSynced}
             />
           </Suspense>
+
+          <AdminSaleDiscountsManager
+            t={t}
+            lang={lang}
+            games={games}
+            offers={offers}
+            updateProduct={updateProduct}
+            onNotify={onNotify}
+          />
 
           <div className="admin-products-divider" role="separator">
             <span className="admin-products-divider__line" aria-hidden="true" />

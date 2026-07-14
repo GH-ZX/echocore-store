@@ -102,6 +102,7 @@ export default function AppRoutes({
   handlePreviewHomepage,
   handleAdminGiftOrder,
   setAdminEditOffer,
+  onNavigateToSaleDiscounts,
   setAdminEditGame,
   setAdminCarouselOpen,
   setAdminCarouselPickerOpen,
@@ -128,7 +129,13 @@ export default function AppRoutes({
               onEditOffer={homeShowsAdminChrome ? setAdminEditOffer : undefined}
               onEditGame={homeShowsAdminChrome ? setAdminEditGame : undefined}
               onAddGame={homeShowsAdminChrome ? (options = {}) => setAdminEditGame({ id: null, show_in_carousel: !!options.showInCarousel }) : undefined}
-              onAddOffer={homeShowsAdminChrome ? (options = {}) => setAdminEditOffer({ id: null, is_sale: !!options.isSale }) : undefined}
+              onAddOffer={homeShowsAdminChrome ? (options = {}) => {
+                if (options.isSale) {
+                  onNavigateToSaleDiscounts?.();
+                  return;
+                }
+                setAdminEditOffer({ id: null, is_sale: false });
+              } : undefined}
               onManageCarousel={homeShowsAdminChrome ? () => setAdminCarouselOpen(true) : undefined}
               onPickCarouselGame={homeShowsAdminChrome ? () => setAdminCarouselPickerOpen(true) : undefined}
               onMoveCarouselGame={homeShowsAdminChrome ? moveCarouselGame : undefined}

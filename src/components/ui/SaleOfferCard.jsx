@@ -3,6 +3,7 @@ import AdminEditButton from '../admin/AdminEditButton';
 import AdminOfferCostBadge from '../admin/AdminOfferCostBadge';
 import BorderGlow from './BorderGlow';
 import { getOfferDisplayName } from '../../lib/offerDisplay';
+import { getOfferDiscount } from '../../lib/saleOffers';
 import { getFulfillmentGameForOffer } from '../../lib/gameRegions';
 import OfferPackLabel from './OfferPackLabel';
 import { presetImageUrl } from '../../lib/imageUtils';
@@ -29,10 +30,8 @@ export default function SaleOfferCard({
   const offerName = getOfferDisplayName(offer, lang, { game: fulfillmentGame, games, relatedOffers: offers });
   const price = parseFloat(offer.price).toFixed(2);
   const originalPrice = offer.original_price ? parseFloat(offer.original_price).toFixed(2) : null;
-  const discount =
-    offer.original_price && parseFloat(offer.original_price) > parseFloat(offer.price)
-      ? Math.round((1 - parseFloat(offer.price) / parseFloat(offer.original_price)) * 100)
-      : null;
+  const discount = getOfferDiscount(offer);
+  const showSale = offer.is_sale && discount != null && discount > 0;
 
   const gameCardImage = getGameCardImageUrl(game);
   const saleCardImage = offer.sale_image_url || gameCardImage;
@@ -67,12 +66,12 @@ export default function SaleOfferCard({
 
         <div className="absolute top-2 left-2 right-2 flex items-start justify-between gap-1.5">
           <div className="flex items-center gap-1.5">
-          {offer.is_sale && (
+          {showSale && (
             <span className="sale-offer-badge px-2 py-0.5 text-[10px] font-bold rounded-md shadow-sm">
               {t.sale || 'SALE'}
             </span>
           )}
-          {offer.is_sale && discount != null && discount > 0 && (
+          {showSale && (
             <span className="sale-offer-discount px-2 py-0.5 bg-black/50 backdrop-blur-sm text-[10px] font-bold rounded-md border">
               -{discount}%
             </span>
@@ -103,7 +102,7 @@ export default function SaleOfferCard({
 
         <div className="mt-auto pt-1 space-y-1">
           <div className="flex items-baseline gap-2 flex-wrap">
-            {offer.is_sale && originalPrice && (
+            {showSale && originalPrice && (
               <span className="text-xs sm:text-sm line-through text-[var(--text-muted)]">
                 ${originalPrice}
               </span>

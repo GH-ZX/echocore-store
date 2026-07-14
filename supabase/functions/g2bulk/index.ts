@@ -43,6 +43,27 @@ function jsonResponse(body: Json, status = 200) {
   });
 }
 
+/** Keep admin sale prices when G2Bulk sync recalculates catalog pricing. */
+async function updateOfferPreservingSale(
+  serviceClient: ReturnType<typeof createClient>,
+  offerId: string,
+  offerRow: Record<string, unknown>,
+) {
+  const { data: existing } = await serviceClient
+    .from('offers')
+    .select('is_sale')
+    .eq('id', offerId)
+    .maybeSingle();
+
+  const row = { ...offerRow };
+  if (existing?.is_sale) {
+    delete row.price;
+  }
+
+  const { error } = await serviceClient.from('offers').update(row).eq('id', offerId);
+  return error;
+}
+
 async function readJson(req: Request) {
   try {
     return await req.json();
@@ -107,7 +128,7 @@ async function resolveApiKeyRaw(serviceClient: ReturnType<typeof createClient>) 
 async function loadStoreSettingsRow(serviceClient: ReturnType<typeof createClient>) {
   const { data, error } = await serviceClient
     .from('store_settings')
-    .select('g2bulk_enabled, g2bulk_markup_percent, g2bulk_charm_pricing_enabled, g2bulk_catalog_only, g2bulk_catalog_mode, g2bulk_last_sync_at, g2bulk_last_check_at, g2bulk_check_summary, g2bulk_auto_sync_enabled, g2bulk_auto_sync_hour, g2bulk_auto_sync_timezone, g2bulk_auto_approve, g2bulk_pull_selection, g2bulk_api_key')
+    .select('g2bulk_enabled, g2bulk_markup_percent, g2bulk_catalog_only, g2bulk_catalog_mode, g2bulk_last_sync_at, g2bulk_last_check_at, g2bulk_check_summary, g2bulk_auto_sync_enabled, g2bulk_auto_sync_hour, g2bulk_auto_sync_timezone, g2bulk_auto_approve, g2bulk_pull_selection, g2bulk_api_key')
     .eq('id', 1)
     .maybeSingle();
 
@@ -126,7 +147,7 @@ function buildSettingsEnvelope(row: Json | null | undefined, envKey: string | nu
   return {
     g2bulk_enabled: settingsRow.g2bulk_enabled === true,
     g2bulk_markup_percent: Number(settingsRow.g2bulk_markup_percent ?? 15),
-    g2bulk_charm_pricing_enabled: settingsRow.g2bulk_charm_pricing_enabled === true,
+
     g2bulk_catalog_only: settingsRow.g2bulk_catalog_only !== false,
     g2bulk_catalog_mode: String(settingsRow.g2bulk_catalog_mode || 'sync'),
     g2bulk_last_sync_at: settingsRow.g2bulk_last_sync_at || null,
@@ -169,29 +190,18 @@ function absImageUrl(url: string | null | undefined) {
 }
 
 async function loadStorePricingSettings(serviceClient: ReturnType<typeof createClient>) {
-  let { data: settings, error } = await serviceClient
+  const { data: settings, error } = await serviceClient
     .from('store_settings')
-    .select('g2bulk_markup_percent, g2bulk_charm_pricing_enabled')
+    .select('g2bulk_markup_percent')
     .eq('id', 1)
     .maybeSingle();
 
   if (error) {
-    const fallback = await serviceClient
-      .from('store_settings')
-      .select('g2bulk_markup_percent')
-      .eq('id', 1)
-      .maybeSingle();
-    settings = fallback.data;
-    error = fallback.error;
-  }
-
-  if (error) {
-    return { markup: 15, charmPricing: false };
+    return { markup: 15 };
   }
 
   return {
     markup: Number(settings?.g2bulk_markup_percent ?? 15),
-    charmPricing: settings?.g2bulk_charm_pricing_enabled === true,
   };
 }
 
@@ -972,59 +982,6 @@ Deno.serve(async (req) => {
     });
   }
 
-  if (action === 'applyCharmPricing') {
-    if (!(await isAdmin(userClient, userId!))) {
-      return jsonResponse({ success: false, message: 'Admin only' }, 403);
-    }
-
-    try {
-      const { markup, charmPricing } = await loadStorePricingSettings(serviceClient);
-      const useCharm = body.forceCharm !== false;
-
-      const { data: offers, error: offersError } = await serviceClient
-        .from('offers')
-        .select('id, price, g2bulk_cost_usd')
-        .not('g2bulk_cost_usd', 'is', null)
-        .eq('catalog_source', 'g2bulk');
-
-      if (offersError) {
-        return jsonResponse({ success: false, message: offersError.message }, 500);
-      }
-
-      let updated = 0;
-
-      for (const offer of offers || []) {
-        const cost = Number(offer.g2bulk_cost_usd);
-        if (!Number.isFinite(cost) || cost <= 0) continue;
-
-        const nextPrice = priceFromCost(cost, markup, useCharm || charmPricing);
-        const prevPrice = Number(offer.price);
-        if (!Number.isFinite(prevPrice) || Math.abs(prevPrice - nextPrice) < 0.001) continue;
-
-        const { error: updateError } = await serviceClient
-          .from('offers')
-          .update({ price: nextPrice })
-          .eq('id', offer.id);
-        if (updateError) {
-          return jsonResponse({ success: false, message: updateError.message }, 500);
-        }
-        updated += 1;
-      }
-
-      return jsonResponse({
-        success: true,
-        updated,
-        markup,
-        charmPricing: useCharm || charmPricing,
-      });
-    } catch (err) {
-      return jsonResponse({
-        success: false,
-        message: formatSyncError(err),
-      }, 500);
-    }
-  }
-
   if (action === 'saveSettings') {
     if (!(await isAdmin(userClient, userId!))) {
       return jsonResponse({ success: false, message: 'Admin only' }, 403);
@@ -1038,9 +995,6 @@ Deno.serve(async (req) => {
     }
     if (payload.markupPercent !== undefined) {
       updates.g2bulk_markup_percent = Number(payload.markupPercent ?? 15);
-    }
-    if (payload.charmPricingEnabled !== undefined) {
-      updates.g2bulk_charm_pricing_enabled = !!payload.charmPricingEnabled;
     }
     if (payload.apiKey !== undefined) {
       updates.g2bulk_api_key = String(payload.apiKey || '').trim() || null;
@@ -1313,7 +1267,7 @@ Deno.serve(async (req) => {
     const hideManual = body.hideManual !== false;
     const now = new Date().toISOString();
 
-    const { markup, charmPricing } = await loadStorePricingSettings(serviceClient);
+    const { markup } = await loadStorePricingSettings(serviceClient);
 
     async function syncTopupGame(
       g: Json,
@@ -1439,7 +1393,7 @@ Deno.serve(async (req) => {
           game_id: gameId,
           name_en: displayName,
           name_ar: displayName,
-          price: priceFromCost(cost, markup, charmPricing),
+          price: priceFromCost(cost, markup),
           region: offerRegion,
           g2bulk_type: 'topup',
           g2bulk_catalogue_name: catalogueName,
@@ -1460,7 +1414,7 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (existingOffer?.id) {
-          const { error } = await serviceClient.from('offers').update(offerRow).eq('id', existingOffer.id);
+          const error = await updateOfferPreservingSale(serviceClient, existingOffer.id, offerRow);
           if (error) throw error;
         } else {
           const { error } = await serviceClient.from('offers').insert(offerRow);
@@ -1617,7 +1571,7 @@ Deno.serve(async (req) => {
               game_id: gameId,
               name_en: offerTitle,
               name_ar: offerTitle,
-              price: priceFromCost(cost, markup, charmPricing),
+              price: priceFromCost(cost, markup),
               region: offerRegionMeta.regionLabel !== 'Global' ? offerRegionMeta.regionLabel : null,
               g2bulk_type: 'voucher',
               g2bulk_product_id: productId,
@@ -1636,7 +1590,7 @@ Deno.serve(async (req) => {
               .maybeSingle();
 
             if (existingOffer?.id) {
-              const { error } = await serviceClient.from('offers').update(offerRow).eq('id', existingOffer.id);
+              const error = await updateOfferPreservingSale(serviceClient, existingOffer.id, offerRow);
               if (error) throw error;
             } else {
               const { error } = await serviceClient.from('offers').insert(offerRow);
@@ -2253,7 +2207,7 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'browseCatalog') {
-    const { markup, charmPricing } = await loadStorePricingSettings(serviceClient);
+    const { markup } = await loadStorePricingSettings(serviceClient);
     const subAction = String(body.subAction || 'listGames');
 
     async function fetchG2GamesPublic() {
@@ -2370,7 +2324,7 @@ Deno.serve(async (req) => {
             game_id: gameRow.id,
             name_en: formatCatalogueOfferName(catalogueName, code, meta.baseName, meta.baseKey),
             name_ar: formatCatalogueOfferName(catalogueName, code, meta.baseName, meta.baseKey),
-            price: priceFromCost(cost, markup, charmPricing),
+            price: priceFromCost(cost, markup),
             region: meta.regionLabel,
             g2bulk_type: 'topup',
             g2bulk_game_code: code,
@@ -2457,7 +2411,7 @@ Deno.serve(async (req) => {
             game_id: gameId,
             name_en: String(product.title || `Product ${productId}`),
             name_ar: String(product.title || `Product ${productId}`),
-            price: priceFromCost(cost, markup, charmPricing),
+            price: priceFromCost(cost, markup),
             g2bulk_type: 'voucher',
             g2bulk_product_id: productId,
             g2bulk_cost_usd: cost,
@@ -2479,7 +2433,7 @@ Deno.serve(async (req) => {
     const items = Array.isArray(body.items) ? body.items : [];
     const now = new Date().toISOString();
 
-    const { markup, charmPricing } = await loadStorePricingSettings(serviceClient);
+    const { markup } = await loadStorePricingSettings(serviceClient);
 
     const resolved: { liveId: string; offerId: string }[] = [];
 
@@ -2543,7 +2497,7 @@ Deno.serve(async (req) => {
           name_en: offerDisplayName,
           name_ar: offerDisplayName,
           price: Number.isFinite(cost) && cost > 0
-            ? priceFromCost(cost, markup, charmPricing)
+            ? priceFromCost(cost, markup)
             : Number(raw.price) || 0.01,
           g2bulk_type: 'topup',
           g2bulk_catalogue_name: catalogueName,
@@ -2563,7 +2517,8 @@ Deno.serve(async (req) => {
 
         let offerId = existingOffer?.id as string | undefined;
         if (offerId) {
-          await serviceClient.from('offers').update(offerRow).eq('id', offerId);
+          const error = await updateOfferPreservingSale(serviceClient, offerId, offerRow);
+          if (error) throw error;
         } else {
           const { data: insertedOffer, error: offerError } = await serviceClient
             .from('offers')
@@ -2634,7 +2589,7 @@ Deno.serve(async (req) => {
               game_id: gameId,
               name_en: String(product.title || `Product ${productId}`),
               name_ar: String(product.title || `Product ${productId}`),
-              price: priceFromCost(cost, markup, charmPricing),
+              price: priceFromCost(cost, markup),
               g2bulk_type: 'voucher',
               g2bulk_product_id: productId,
               g2bulk_cost_usd: cost,

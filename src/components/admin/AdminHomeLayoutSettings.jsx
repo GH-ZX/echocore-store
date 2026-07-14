@@ -32,6 +32,7 @@ import {
   getVisibleTopupGames,
 } from '../../lib/catalogUtils';
 import { offerBelongsToStorefront } from '../../lib/gameRegions';
+import { isValidSaleOffer } from '../../lib/saleOffers';
 import { isDisplayableReview } from '../../lib/customerReviews';
 import { formatMessage } from '../../lib/i18n';
 import {
@@ -426,7 +427,7 @@ export default function AdminHomeLayoutSettings({
       .length,
     giftCardCount: 0,
     gamingAccountCount: 0,
-    saleOfferCount: storefrontOffers.filter((offer) => offer.is_sale).length,
+    saleOfferCount: storefrontOffers.filter(isValidSaleOffer).length,
     offerCount: storefrontOffers.length,
     approvedReviewCount: reviews.filter(isDisplayableReview).length,
     games,
