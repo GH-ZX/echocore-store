@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { adminGetUserProfile } from './adminModeration';
 import { buildOrderInvoice, buildRechargeInvoice } from './invoiceBuilder';
+import { extractDeliveryCodes } from './orderReceipt';
 
 async function resolveInvoiceProfile(userId, viewer = null) {
   if (!userId) return null;
@@ -117,16 +118,66 @@ export function canViewRechargeInvoice(recharge, user) {
   return recharge.user_id === user.id;
 }
 
-export function isInvoiceReadyForOrder(order, { isAdmin = false } = {}) {
+/**
+ * Official store invoice only after a successful sale outcome.
+ * Redeem/gift products require delivery codes on the order items.
+ * Top-ups require successful fulfillment (no code).
+ *
+ * Pass `items` when available so gift invoices wait for codes.
+ */
+export function isInvoiceReadyForOrder(order, { isAdmin: _isAdmin = false, items = null } = {}) {
   if (!order) return false;
-  if (order.status === 'completed') return true;
-  if (isAdmin && order.status === 'payment_sent') return true;
+  if (order.status !== 'completed') return false;
+
+  const fs = order.fulfillment_status == null || order.fulfillment_status === ''
+    ? null
+    : String(order.fulfillment_status).trim();
+
+  if (fs === 'failed') return false;
+  if (fs === 'fulfilling') return false;
+
+  const itemRows = Array.isArray(items) ? items : null;
+  const codes = itemRows
+    ? extractDeliveryCodes(itemRows, order.g2bulk_metadata)
+    : [];
+  const hasUid = itemRows
+    ? itemRows.some((row) => String(row?.player_uid || '').trim())
+    : false;
+
+  // Redeem / gift code packs: invoice only when codes exist
+  if (itemRows && !hasUid) {
+    return codes.length > 0;
+  }
+
+  if (fs === 'fulfilled' || fs === 'skipped') return true;
+
+  // Top-up with UID: allow after delivery window if still pending
+  if (hasUid && (fs === 'pending' || fs == null)) {
+    const created = order.created_at ? new Date(order.created_at).getTime() : 0;
+    return created > 0 && Date.now() - created >= 15 * 60 * 1000;
+  }
+
+  // Without items (list views): only clear success statuses
+  if (!itemRows) {
+    if (fs === 'fulfilled' || fs === 'skipped') return true;
+    if (order.payment_method === 'admin_gift') {
+      // Gift list entry without items — only if already marked fulfilled/skipped
+      return false;
+    }
+    const created = order.created_at ? new Date(order.created_at).getTime() : 0;
+    if ((fs === 'pending' || fs == null) && created > 0) {
+      return Date.now() - created >= 15 * 60 * 1000;
+    }
+  }
+
+  // Codes present even if status lagging
+  if (codes.length > 0) return true;
+
   return false;
 }
 
-export function isInvoiceReadyForRecharge(recharge, { isAdmin = false } = {}) {
+/** Wallet recharge invoice only after credit succeeded. */
+export function isInvoiceReadyForRecharge(recharge, { isAdmin: _isAdmin = false } = {}) {
   if (!recharge) return false;
-  if (recharge.status === 'approved') return true;
-  if (isAdmin && (recharge.status === 'payment_sent' || recharge.status === 'pending')) return true;
-  return false;
+  return recharge.status === 'approved';
 }

@@ -145,6 +145,20 @@ export default function InvoiceDocument({
         </div>
       )}
 
+      {/* Gift / redeem codes — always prominent when present */}
+      {!isRecharge && invoice.hasCodes && Array.isArray(invoice.allCodes) && invoice.allCodes.length > 0 && (
+        <section className="invoice-section invoice-codes-hero">
+          <h3 className="invoice-section-title">{t.invoiceRedeemCodesLabel}</h3>
+          <div className="invoice-section-content space-y-2">
+            {invoice.allCodes.map((code) => (
+              <div key={code} className="invoice-code-value invoice-code-value--hero font-mono">
+                {code}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {!isRecharge && productLines.length > 0 && (
         <>
           <table className="invoice-table">
@@ -162,6 +176,11 @@ export default function InvoiceDocument({
                   <td>
                     <div className="invoice-table-item">{line.name}</div>
                     {line.gameName && <div className="invoice-table-sub">{line.gameName}</div>}
+                    {line.hasCodes && line.codes?.length > 0 && (
+                      <div className="invoice-table-sub font-mono mt-1">
+                        {t.invoiceRedeemCodesLabel}: {line.codes.join(' · ')}
+                      </div>
+                    )}
                   </td>
                   <td>{line.quantity || 1}</td>
                   <td className="font-mono">{line.price}</td>

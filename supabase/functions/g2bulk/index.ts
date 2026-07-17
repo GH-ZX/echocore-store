@@ -26,10 +26,18 @@ function isServiceRoleAuthorized(req: Request, supabaseUrl: string) {
   const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
   if (!token) return false;
 
+  // Prefer exact match against the function's service role secret (most reliable).
+  const envServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim();
+  if (envServiceKey && token === envServiceKey) return true;
+
   try {
     const parts = token.split('.');
     if (parts.length !== 3) return false;
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    // JWT payloads are base64url; pad for atob.
+    let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const pad = b64.length % 4;
+    if (pad) b64 += '='.repeat(4 - pad);
+    const payload = JSON.parse(atob(b64));
     const projectRef = String(supabaseUrl).replace(/^https?:\/\//, '').split('.')[0];
     return payload.role === 'service_role' && payload.ref === projectRef;
   } catch {
@@ -1112,6 +1120,55 @@ async function evaluateFulfillmentAvailability(
   }
 }
 
+/** Flatten G2Bulk delivery payloads into plain code strings for order_items.delivery_items */
+function normalizeDeliveryItems(raw: unknown): string[] {
+  const out: string[] = [];
+  const push = (value: unknown) => {
+    if (value == null) return;
+    const text = String(value).trim();
+    if (!text || text === '[object Object]') return;
+    out.push(text);
+  };
+  const walk = (node: unknown, depth = 0) => {
+    if (node == null || depth > 5) return;
+    if (typeof node === 'string' || typeof node === 'number') {
+      const text = String(node).trim();
+      if (
+        (text.startsWith('[') && text.endsWith(']'))
+        || (text.startsWith('{') && text.endsWith('}'))
+      ) {
+        try {
+          walk(JSON.parse(text), depth + 1);
+          return;
+        } catch {
+          push(text);
+          return;
+        }
+      }
+      push(text);
+      return;
+    }
+    if (Array.isArray(node)) {
+      node.forEach((entry) => walk(entry, depth + 1));
+      return;
+    }
+    if (typeof node === 'object') {
+      const row = node as Record<string, unknown>;
+      for (const key of [
+        'code', 'pin', 'serial', 'redeem_code', 'redeemCode', 'voucher',
+        'value', 'key', 'card_number', 'cardNumber', 'coupon',
+      ]) {
+        if (row[key] != null) push(row[key]);
+      }
+      for (const key of ['codes', 'delivery_items', 'deliveryItems', 'items', 'data']) {
+        if (row[key] != null) walk(row[key], depth + 1);
+      }
+    }
+  };
+  walk(raw);
+  return [...new Set(out)];
+}
+
 async function fulfillG2bulkOrderItem(
   apiKey: string,
   orderId: string,
@@ -1146,19 +1203,21 @@ async function fulfillG2bulkOrderItem(
       return { ok: false, error: (data.message as string) || 'Voucher purchase failed' };
     }
 
-    let deliveryItems = Array.isArray(data.delivery_items) ? data.delivery_items as string[] : null;
+    let deliveryItems = normalizeDeliveryItems(
+      data.delivery_items ?? data.codes ?? data.items ?? null,
+    );
     const g2bulkOrderId = data.order_id;
 
-    if (!deliveryItems && data.status === 'PENDING' && g2bulkOrderId) {
+    if (deliveryItems.length === 0 && data.status === 'PENDING' && g2bulkOrderId) {
       const polled = await pollVoucherDelivery(apiKey, Number(g2bulkOrderId));
       if (!polled.ok) return { ok: false, error: polled.error };
-      deliveryItems = polled.items;
+      deliveryItems = normalizeDeliveryItems(polled.items);
     }
 
     return {
       ok: true,
       g2bulkOrderId: String(g2bulkOrderId ?? ''),
-      deliveryItems: deliveryItems || undefined,
+      deliveryItems: deliveryItems.length ? deliveryItems : undefined,
       metadata: { type: 'voucher', g2bulk: data },
     };
   }

@@ -41,32 +41,93 @@ export function isOrderCancelled(order) {
   return order?.status === 'cancelled';
 }
 
-export function extractDeliveryCodes(orderItems = []) {
+/**
+ * Collect redeem / voucher codes from order_items.delivery_items and optional extras
+ * (e.g. order.g2bulk_metadata). Handles strings, objects, nested arrays, JSON text.
+ */
+export function extractDeliveryCodes(orderItems = [], extras = null) {
   const codes = [];
 
-  for (const item of orderItems) {
-    const raw = item?.delivery_items;
-    if (!raw) continue;
+  const push = (value) => {
+    if (value == null) return;
+    const text = String(value).trim();
+    if (!text) return;
+    // Skip obvious non-code blobs
+    if (text === '[object Object]') return;
+    codes.push(text);
+  };
 
-    const list = Array.isArray(raw) ? raw : [raw];
-    for (const entry of list) {
-      if (typeof entry === 'string') {
-        const trimmed = entry.trim();
-        if (trimmed) codes.push(trimmed);
-        continue;
-      }
+  const walk = (raw, depth = 0) => {
+    if (raw == null || depth > 6) return;
 
-      if (entry && typeof entry === 'object') {
-        const candidate = entry.code
-          || entry.pin
-          || entry.serial
-          || entry.redeem_code
-          || entry.voucher
-          || entry.value;
-        if (candidate != null && String(candidate).trim()) {
-          codes.push(String(candidate).trim());
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      if (!trimmed) return;
+      if (
+        (trimmed.startsWith('[') && trimmed.endsWith(']'))
+        || (trimmed.startsWith('{') && trimmed.endsWith('}'))
+      ) {
+        try {
+          walk(JSON.parse(trimmed), depth + 1);
+          return;
+        } catch {
+          /* plain code string */
         }
       }
+      if (trimmed.includes('\n')) {
+        trimmed.split(/\r?\n+/).forEach((part) => push(part));
+        return;
+      }
+      // comma/semicolon separated multi-codes
+      if (/[;,]/.test(trimmed) && trimmed.length > 12) {
+        const parts = trimmed.split(/[;,]+/).map((p) => p.trim()).filter(Boolean);
+        if (parts.length > 1) {
+          parts.forEach((part) => push(part));
+          return;
+        }
+      }
+      push(trimmed);
+      return;
+    }
+
+    if (typeof raw === 'number' || typeof raw === 'boolean') {
+      push(raw);
+      return;
+    }
+
+    if (Array.isArray(raw)) {
+      raw.forEach((entry) => walk(entry, depth + 1));
+      return;
+    }
+
+    if (typeof raw === 'object') {
+      const keys = [
+        'code', 'pin', 'serial', 'redeem_code', 'redeemCode', 'voucher',
+        'value', 'key', 'card_number', 'cardNumber', 'card_code', 'cardCode',
+        'coupon', 'token', 'license', 'activation_code', 'activationCode',
+      ];
+      for (const key of keys) {
+        if (raw[key] != null && raw[key] !== '') push(raw[key]);
+      }
+      for (const nestKey of ['codes', 'delivery_items', 'deliveryItems', 'items', 'data', 'result']) {
+        if (raw[nestKey] != null) walk(raw[nestKey], depth + 1);
+      }
+    }
+  };
+
+  for (const item of orderItems || []) {
+    walk(item?.delivery_items);
+    // Some historic rows may stash codes under redemption_info
+    walk(item?.redemption_info);
+  }
+
+  if (extras != null) {
+    walk(extras);
+    if (typeof extras === 'object' && !Array.isArray(extras)) {
+      walk(extras.delivery_items);
+      walk(extras.deliveryItems);
+      walk(extras.codes);
+      walk(extras.items);
     }
   }
 

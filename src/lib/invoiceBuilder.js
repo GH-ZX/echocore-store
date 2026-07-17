@@ -34,9 +34,13 @@ function extractRedemptionInfo(item) {
     .map(([key, value]) => ({ key, value: String(value).trim() }));
 }
 
-function buildOrderLine(item, games, offers, t, lang) {
+function buildOrderLine(item, games, offers, t, lang, fallbackCodes = []) {
   const game = resolveGameForItem(item, games, offers);
-  const codes = extractDeliveryCodes([item]);
+  let codes = extractDeliveryCodes([item]);
+  // Single-line gift / voucher orders often only stash codes once (item or order meta).
+  if (codes.length === 0 && fallbackCodes.length > 0) {
+    codes = [...fallbackCodes];
+  }
   const hasUid = !!item?.player_uid?.trim();
   const redemptionExtras = extractRedemptionInfo(item);
 
@@ -72,16 +76,35 @@ export function buildOrderInvoice({
   t = {},
   lang = 'ar',
 }) {
-  const lines = items.map((item) => buildOrderLine(item, games, offers, t, lang));
-  const hasCodes = lines.some((line) => line.hasCodes);
+  const orderLevelCodes = extractDeliveryCodes(items, order?.g2bulk_metadata);
+  const lines = items.map((item) => buildOrderLine(item, games, offers, t, lang, orderLevelCodes));
+  // If still no per-line codes but order has codes (single pack gift), attach to first line
+  if (orderLevelCodes.length > 0 && lines.length > 0 && !lines.some((line) => line.hasCodes)) {
+    lines[0] = {
+      ...lines[0],
+      codes: orderLevelCodes,
+      hasCodes: true,
+      deliveryType: 'redeem',
+      redeemSteps: getRedeemInstructions(lines[0].gameSlug, lang),
+    };
+  }
+
+  const hasCodes = lines.some((line) => line.hasCodes) || orderLevelCodes.length > 0;
   const hasTopup = lines.some((line) => line.deliveryType === 'topup');
+  const isGift = order.payment_method === 'admin_gift';
 
   let invoiceSubtype = 'purchase';
-  if (hasCodes && hasTopup) invoiceSubtype = 'mixed';
+  if (isGift && hasCodes) invoiceSubtype = 'gift_redeem';
+  else if (isGift && hasTopup) invoiceSubtype = 'gift_topup';
+  else if (isGift) invoiceSubtype = 'gift';
+  else if (hasCodes && hasTopup) invoiceSubtype = 'mixed';
   else if (hasCodes) invoiceSubtype = 'redeem';
   else if (hasTopup) invoiceSubtype = 'topup';
 
   const customer = resolveInvoiceCustomer(profile);
+  const allCodes = hasCodes
+    ? [...new Set(lines.flatMap((line) => line.codes || []).concat(orderLevelCodes))]
+    : [];
 
   return {
     kind: INVOICE_KIND.ORDER,
@@ -98,10 +121,14 @@ export function buildOrderInvoice({
     total: formatMoney(order.total),
     totalRaw: parseFloat(order.total || 0),
     lines,
+    allCodes,
+    hasCodes,
+    isGift,
     giftMessage: order.gift_message || null,
-    notes: order.payment_method === 'admin_gift'
-      ? t.invoiceGiftNote
+    notes: isGift
+      ? (t.invoiceGiftNote || null)
       : null,
+    codesMissing: isGift && !hasCodes && !hasTopup,
   };
 }
 
@@ -144,22 +171,19 @@ export function getInvoiceRoute(invoice) {
   return null;
 }
 
+/** Notifications that mean the sale actually succeeded (invoice allowed). */
 const ORDER_INVOICE_NOTIFICATION_TYPES = new Set([
-  'purchase_completed',
-  'order_completed',
   'order_gifted',
   'delivery_ready',
   'topup_delivered',
   'order_fulfilled',
-  'fulfillment_failed',
-  'fulfillment_failed_refunded',
-  'admin_order_payment_sent',
+  'admin_delivery_ready',
+  'admin_topup_delivered',
+  'admin_order_fulfilled',
 ]);
 
 const RECHARGE_INVOICE_NOTIFICATION_TYPES = new Set([
   'recharge_approved',
-  'recharge_payment_sent',
-  'admin_recharge_payment_sent',
   'admin_recharge_completed',
 ]);
 

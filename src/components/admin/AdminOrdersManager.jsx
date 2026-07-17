@@ -14,6 +14,9 @@ import {
   ORDER_STATUS_FILTER_IDS,
   countOrdersForFilter,
   filterAdminOrders,
+  getAdminOrderOutcome,
+  getAdminOrderOutcomeLabel,
+  getAdminOrderOutcomeTone,
   getAdminOrdersEmptyMessageKey,
   getOrderStatusFilterOptions,
 } from '../../lib/adminOrderFilters';
@@ -27,10 +30,8 @@ import {
   formatOrderDisplayId,
   getOrderStatusColorClass,
   getOrderStatusLabel,
-  getOrderStatusTone,
 } from '../../lib/orderReceipt';
 import { isInvoiceReadyForOrder } from '../../lib/invoices';
-import { canManuallyApproveWalletOrder } from '../../lib/paymentMethods';
 import { INVOICE_KIND } from '../../lib/invoiceBuilder';
 import {
   formatProfileUsername,
@@ -49,13 +50,24 @@ function formatOrderDate(value, lang) {
   });
 }
 
-function OrderStatusBadge({ status, t }) {
-  const tone = getOrderStatusTone(status);
+function OrderOutcomeBadge({ order, t }) {
+  const outcome = getAdminOrderOutcome(order);
+  const tone = getAdminOrderOutcomeTone(outcome);
   return (
     <span className={`admin-order-status admin-order-status--${tone}`}>
-      {getOrderStatusLabel(status || 'completed', t)}
+      {getAdminOrderOutcomeLabel(outcome, t)}
     </span>
   );
+}
+
+function fulfillmentLabel(order, t) {
+  const fs = order?.fulfillment_status;
+  if (!fs || fs === 'pending') return t.fulfillmentPending || '—';
+  if (fs === 'fulfilling') return t.fulfillmentInProgress || fs;
+  if (fs === 'fulfilled') return t.fulfillmentDone || fs;
+  if (fs === 'failed') return t.fulfillmentFailed || fs;
+  if (fs === 'skipped') return t.fulfillmentSkipped || fs;
+  return fs;
 }
 
 function OrderCustomerBlock({ profile, t, compact = false }) {
@@ -85,15 +97,11 @@ export default function AdminOrdersManager({
   orders = [],
   loadingOrders = false,
   refreshOrders,
-  onApproveOrder,
-  onRejectOrder,
   onNotify,
-  paymentConfig = {},
 }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const notifyError = useCallback((message) => onNotify?.(message, 'error'), [onNotify]);
-  const notifySuccess = useCallback((message) => onNotify?.(message, 'success'), [onNotify]);
 
   const userFilterParam = searchParams.get('user') || '';
   const highlightOrderId = searchParams.get('order') || '';
@@ -102,7 +110,6 @@ export default function AdminOrdersManager({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(ORDER_STATUS_FILTER_IDS.ALL);
   const [expandedOrderId, setExpandedOrderId] = useState(highlightOrderId || null);
-  const [processingOrderId, setProcessingOrderId] = useState(null);
   const [resolvedUserId, setResolvedUserId] = useState('');
   const [userFilterProfile, setUserFilterProfile] = useState(null);
   const [userFilterLoading, setUserFilterLoading] = useState(false);
@@ -199,45 +206,6 @@ export default function AdminOrdersManager({
     || statusFilter !== ORDER_STATUS_FILTER_IDS.ALL
   );
 
-  const isAwaitingWalletPayment = (order) => (
-    (order.payment_method === 'ShamCash' || order.payment_method === 'SyriatelCash')
-    && (order.status === 'pending_payment' || order.status === 'payment_sent')
-  );
-
-  const canApproveOrder = (order) => (
-    canManuallyApproveWalletOrder(order, paymentConfig) && onApproveOrder
-  );
-
-  const canRejectOrder = (order) => (
-    isAwaitingWalletPayment(order) && onRejectOrder
-  );
-
-  const handleApproveOrder = async (orderId) => {
-    if (!onApproveOrder) return;
-    setProcessingOrderId(orderId);
-    try {
-      await onApproveOrder(orderId);
-      notifySuccess(t.orderApproved);
-    } catch (err) {
-      notifyError(err.message);
-    } finally {
-      setProcessingOrderId(null);
-    }
-  };
-
-  const handleRejectOrder = async (orderId) => {
-    if (!onRejectOrder) return;
-    setProcessingOrderId(orderId);
-    try {
-      await onRejectOrder(orderId);
-      notifySuccess(t.orderRejected);
-    } catch (err) {
-      notifyError(err.message);
-    } finally {
-      setProcessingOrderId(null);
-    }
-  };
-
   const handleSearchSubmit = (event) => {
     event.preventDefault();
     setSearch(searchInput.trim());
@@ -272,8 +240,18 @@ export default function AdminOrdersManager({
           </div>
           <div>
             <div className="admin-order-expanded-label">{t.orderStatusLabel}</div>
-            <div className={`admin-order-expanded-value ${getOrderStatusColorClass(order.status)}`}>
+            <div className={`admin-order-expanded-value ${getOrderStatusColorClass(
+              getAdminOrderOutcome(order) === 'success'
+                ? 'completed'
+                : getAdminOrderOutcome(order) === 'failed'
+                  ? 'cancelled'
+                  : 'pending_payment',
+            )}`}>
+              {getAdminOrderOutcomeLabel(getAdminOrderOutcome(order), t)}
+            </div>
+            <div className="text-[10px] text-[var(--text-muted)] mt-1">
               {getOrderStatusLabel(order.status || 'completed', t)}
+              {order.fulfillment_status ? ` · ${fulfillmentLabel(order, t)}` : ''}
             </div>
           </div>
           <div>
@@ -293,28 +271,9 @@ export default function AdminOrdersManager({
           </div>
         )}
 
-        {(canApproveOrder(order) || canRejectOrder(order)) && (
-          <div className="flex flex-wrap gap-2 mt-4">
-            {canApproveOrder(order) && (
-              <button
-                type="button"
-                onClick={() => handleApproveOrder(order.id)}
-                disabled={processingOrderId === order.id}
-                className="btn btn-primary text-xs py-2 px-3"
-              >
-                {processingOrderId === order.id ? t.sending : t.approveShort}
-              </button>
-            )}
-            {canRejectOrder(order) && (
-              <button
-                type="button"
-                onClick={() => handleRejectOrder(order.id)}
-                disabled={processingOrderId === order.id}
-                className="btn btn-secondary text-xs py-2 px-3"
-              >
-                {t.rejectShort}
-              </button>
-            )}
+        {order.g2bulk_metadata?.last_error && getAdminOrderOutcome(order) === 'failed' && (
+          <div className="mt-3 text-xs text-red-300/90 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2">
+            {String(order.g2bulk_metadata.last_error)}
           </div>
         )}
 
@@ -334,7 +293,10 @@ export default function AdminOrdersManager({
           )}
         </div>
 
-        {isInvoiceReadyForOrder(order, { isAdmin: true }) && (
+        {isInvoiceReadyForOrder(order, {
+          isAdmin: true,
+          items: order.order_items || [],
+        }) && (
           <div className="mt-4">
             <button
               type="button"
@@ -501,7 +463,7 @@ export default function AdminOrdersManager({
                 >
                   <div className="admin-order-row-leading">
                     <div className="admin-order-ref">{formatOrderDisplayId(order)}</div>
-                    <OrderStatusBadge status={order.status} t={t} />
+                    <OrderOutcomeBadge order={order} t={t} />
                   </div>
 
                   <div className="admin-order-row-body min-w-0">

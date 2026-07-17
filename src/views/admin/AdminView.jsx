@@ -84,9 +84,9 @@ export default function AdminView({
   onReviewsChanged,
   onNotify,
   onRechargeApproved,
-  onApproveOrder,
-  onRejectOrder,
-  onFulfillOrder,
+  onApproveOrder: _onApproveOrder,
+  onRejectOrder: _onRejectOrder,
+  onFulfillOrder: _onFulfillOrder,
   paymentConfig = {},
   onDevBalanceCredited: _onDevBalanceCredited,
   onPreviewHomepage,
@@ -591,11 +591,7 @@ export default function AdminView({
             orders={orders}
             loadingOrders={loadingOrders}
             refreshOrders={refreshOrders}
-            onApproveOrder={onApproveOrder}
-            onRejectOrder={onRejectOrder}
-            onFulfillOrder={onFulfillOrder}
             onNotify={onNotify}
-            paymentConfig={paymentConfig}
           />
         </Suspense>
       )}

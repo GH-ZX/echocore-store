@@ -31,7 +31,7 @@ export default function AdminInboxManager({
   onMarkAllRead,
 }) {
   const navigate = useNavigate();
-  const [activeFilter, setActiveFilter] = useState(INBOX_FILTER_IDS.ACTIVITY);
+  const [activeFilter, setActiveFilter] = useState(INBOX_FILTER_IDS.ALL);
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
 

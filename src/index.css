@@ -4894,9 +4894,11 @@ html, body {
 
 .admin-nav-badge--mobile {
   position: absolute;
-  top: 0.2rem;
-  inset-inline-end: 0.35rem;
+  top: 0.15rem;
+  inset-inline-end: 0.2rem;
   margin-inline-start: 0;
+  z-index: 1;
+  pointer-events: none;
 }
 
 .admin-main {
@@ -4948,6 +4950,7 @@ html, body {
 }
 
 .admin-mobile-tab {
+  position: relative; /* anchor inbox badge so it does not float over other tabs */
   display: inline-flex;
   flex-direction: column;
   align-items: center;
@@ -4968,6 +4971,7 @@ html, body {
   cursor: pointer;
   transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   touch-action: manipulation;
+  overflow: visible;
 }
 
 .admin-mobile-tab:hover {
@@ -6200,6 +6204,20 @@ button.profile-list-item {
 
 .invoice-code-value + .invoice-code-value {
   margin-top: 0.4rem;
+}
+
+.invoice-codes-hero {
+  margin: 1rem 0 1.25rem;
+  padding: 1rem 1.1rem;
+  border-radius: 0.85rem;
+  border: 1px solid #7dd3fc;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+}
+
+.invoice-code-value--hero {
+  font-size: 1.15rem;
+  letter-spacing: 0.02em;
+  text-align: center;
 }
 
 .invoice-detail-grid {

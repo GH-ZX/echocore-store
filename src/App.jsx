@@ -9,7 +9,12 @@ import {
 } from './lib/auth';
 import { supabase, resolveUserData } from './lib/supabase';
 import { fetchAdminProfileSummaries } from './lib/adminModeration';
-import { createOrderAtomic, confirmOrderPayment, rejectOrderPayment } from './lib/orders';
+import {
+  createOrderAtomic,
+  confirmOrderPayment,
+  rejectOrderPayment,
+  expireStalePendingOrders,
+} from './lib/orders';
 import { tryAcquirePurchaseLock, releasePurchaseLock } from './lib/purchaseLock';
 import { markOrderFulfillAllowed } from './lib/orderAccess';
 import { adminGiftOrder, pollOrderFulfillment } from './lib/adminGifts';
@@ -443,6 +448,13 @@ export default function App() {
 
     setLoadingOrders(true);
     try {
+      // Close abandoned checkouts / stuck fulfillments before listing.
+      try {
+        await expireStalePendingOrders(15);
+      } catch (expireErr) {
+        console.warn('expire_stale_pending_orders:', expireErr);
+      }
+
       // Fetch orders + items (without profile join to avoid RLS/relation issues)
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')

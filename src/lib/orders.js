@@ -70,6 +70,21 @@ export async function rejectOrderPayment(orderId, note = null) {
   return assertRpcData(data, error)
 }
 
+/** Admin: cancel unpaid / stuck orders older than maxAgeMinutes (default 15). */
+export async function expireStalePendingOrders(maxAgeMinutes = 15) {
+  const { data, error } = await supabase.rpc('expire_stale_pending_orders', {
+    p_max_age_minutes: maxAgeMinutes,
+  })
+  if (error) {
+    // Older DBs without migration — ignore so admin orders still load.
+    if (error.message?.includes('function') && error.message?.includes('does not exist')) {
+      return { cancelledPending: 0, failedStuckFulfillment: 0, skipped: true }
+    }
+    throw error
+  }
+  return data || { cancelledPending: 0, failedStuckFulfillment: 0 }
+}
+
 export async function creditUserBalance(userId, amount, paymentMethod, reference = null) {
   const { data, error } = await supabase.rpc('credit_user_balance', {
     p_user_id: userId,

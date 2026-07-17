@@ -82,11 +82,17 @@ export function isApiWalletMethod(methodId, paymentConfig = {}) {
   return isManualWalletMethod(methodId) && isApiWalletMode(paymentConfig);
 }
 
-/** Legacy manual flow: admin approves ShamCash/Syriatel orders after user marks payment sent. */
-export function canManuallyApproveWalletOrder(order, paymentConfig = {}) {
-  if (!order || isApiWalletMode(paymentConfig)) return false;
-  if (!isManualWalletMethod(order.payment_method)) return false;
-  return order.status === 'pending_payment' || order.status === 'payment_sent';
+/**
+ * Manual approve/reject is disabled store-wide.
+ * Fulfillment is automatic (balance + G2Bulk / Sam API). Abandoned checkouts
+ * are auto-cancelled after 15 minutes — no admin reject queue.
+ */
+export function canManuallyApproveWalletOrder(_order, _paymentConfig = {}) {
+  return false;
+}
+
+export function canManuallyRejectWalletOrder(_order, _paymentConfig = {}) {
+  return false;
 }
 
 export function isPaymentMethodReady(methodId, paymentConfig = {}) {

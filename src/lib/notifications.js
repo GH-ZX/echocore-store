@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { getAdminContactPath, getAdminDashboardPath, getAdminOrdersPath } from './adminRoutes';
+import { getAdminContactPath, getAdminDashboardPath } from './adminRoutes';
 import { getInvoiceRouteFromNotification } from './invoiceBuilder';
 
 const RPC_SETUP_MSG =
@@ -59,6 +59,51 @@ export function formatNotification(item, t = {}, lang = 'ar') {
       body: applyTemplate(t.notifAdminOrderBody, { amount, user: userName, reference }),
       adminTab: 'orders',
       tone: 'warning',
+    },
+    admin_purchase_completed: {
+      title: t.notifAdminPurchaseTitle || t.notifAdminOrderTitle,
+      body: applyTemplate(
+        t.notifAdminPurchaseBody || t.notifAdminOrderBody,
+        { amount, user: userName, reference: m.paymentMethod || reference },
+      ),
+      adminTab: 'orders',
+      tone: 'success',
+    },
+    admin_delivery_ready: {
+      title: t.notifAdminDeliveryTitle || t.notifDeliveryReadyTitle,
+      body: applyTemplate(
+        t.notifAdminDeliveryBody || t.notifDeliveryReadyBody,
+        { amount, user: userName },
+      ),
+      adminTab: 'orders',
+      tone: 'success',
+    },
+    admin_topup_delivered: {
+      title: t.notifAdminTopupTitle || t.notifTopupDeliveredTitle,
+      body: applyTemplate(
+        t.notifAdminTopupBody || t.notifTopupDeliveredBody,
+        { amount, user: userName },
+      ),
+      adminTab: 'orders',
+      tone: 'success',
+    },
+    admin_order_fulfilled: {
+      title: t.notifAdminFulfilledTitle || t.notifOrderFulfilledTitle,
+      body: applyTemplate(
+        t.notifAdminFulfilledBody || t.notifOrderFulfilledBody,
+        { amount, user: userName },
+      ),
+      adminTab: 'orders',
+      tone: 'success',
+    },
+    admin_fulfillment_failed: {
+      title: t.notifAdminFulfillFailedTitle || t.notifFulfillmentFailedTitle,
+      body: applyTemplate(
+        t.notifAdminFulfillFailedBody || t.notifFulfillmentFailedBody,
+        { amount, user: userName },
+      ),
+      adminTab: 'orders',
+      tone: 'danger',
     },
     admin_contact_message: {
       title: t.notifAdminContactTitle,
@@ -178,6 +223,11 @@ const ADMIN_RECHARGE_TYPES = new Set([
 
 const ADMIN_ORDER_TYPES = new Set([
   'admin_order_payment_sent',
+  'admin_purchase_completed',
+  'admin_delivery_ready',
+  'admin_topup_delivered',
+  'admin_order_fulfilled',
+  'admin_fulfillment_failed',
   'order_payment_sent',
   'order_completed',
   'purchase_completed',
@@ -196,6 +246,7 @@ export function getNotificationDestination(item, formatted, userRole) {
   const invoicePath = getInvoiceRouteFromNotification(item);
 
   if (userRole === 'admin') {
+    // Invoice only for successful delivery / approved recharge notification types
     if (invoicePath) {
       return { path: invoicePath };
     }
@@ -206,13 +257,32 @@ export function getNotificationDestination(item, formatted, userRole) {
       return { path: dest.pathname, state: dest.state };
     }
     if (ADMIN_RECHARGE_TYPES.has(item?.type)) {
+      // Only completed recharges open invoice; pending go to recharges tab
+      if (
+        requestId
+        && (item?.type === 'admin_recharge_completed' || item?.type === 'recharge_approved')
+      ) {
+        return { path: `/invoice/recharge/${requestId}` };
+      }
       return {
         path: getAdminDashboardPath('recharges'),
         state: requestId ? { highlightRechargeId: requestId } : undefined,
       };
     }
     if (ADMIN_ORDER_TYPES.has(item?.type) && orderId) {
-      return { path: getAdminOrdersPath({ orderId }) };
+      // Failures / bare purchase → orders list, not a fake invoice
+      if (
+        item?.type === 'admin_fulfillment_failed'
+        || item?.type === 'fulfillment_failed'
+        || item?.type === 'fulfillment_failed_refunded'
+        || item?.type === 'admin_purchase_completed'
+        || item?.type === 'purchase_completed'
+        || item?.type === 'admin_order_payment_sent'
+        || item?.type === 'order_payment_sent'
+      ) {
+        return { path: getAdminDashboardPath('orders'), state: { highlightOrderId: orderId } };
+      }
+      return { path: getAdminDashboardPath('orders'), state: { highlightOrderId: orderId } };
     }
     if (formatted.adminTab) {
       return { path: getAdminDashboardPath(formatted.adminTab) };
@@ -220,15 +290,28 @@ export function getNotificationDestination(item, formatted, userRole) {
     return { path: getAdminDashboardPath('inbox') };
   }
 
+  // Customers: invoice only when notification type is a success delivery
+  if (invoicePath) {
+    return { path: invoicePath };
+  }
   if (item?.type === 'recharge_payment_sent' || item?.type === 'recharge_rejected') {
     return { path: '/recharge' };
   }
-  if (invoicePath) {
-    return { path: invoicePath };
+  if (item?.type === 'recharge_approved' && requestId) {
+    return { path: `/invoice/recharge/${requestId}` };
+  }
+  if (orderId && (
+    item?.type === 'delivery_ready'
+    || item?.type === 'topup_delivered'
+    || item?.type === 'order_fulfilled'
+    || item?.type === 'order_gifted'
+  )) {
+    return { path: `/invoice/order/${orderId}` };
   }
   if (orderId && (
     item?.type === 'fulfillment_failed'
     || item?.type === 'fulfillment_failed_refunded'
+    || item?.type === 'purchase_completed'
   )) {
     return { path: `/success?orderId=${orderId}` };
   }

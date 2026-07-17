@@ -909,7 +909,9 @@ export default function ProfileView({
                 {userOrders.map((order) => {
                   const items = order.order_items || [];
                   const preview = items.map((i) => i.name_snapshot).join(', ') || '—';
-                  const invoiceReady = isInvoiceReadyForOrder(order);
+                  const invoiceReady = isInvoiceReadyForOrder(order, {
+                    items: order.order_items || [],
+                  });
                   const orderPath = invoiceReady
                     ? `/invoice/${INVOICE_KIND.ORDER}/${order.id}`
                     : `/success?orderId=${order.id}`;

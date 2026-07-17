@@ -40,7 +40,7 @@ export default function InvoiceView({
       if (kind === INVOICE_KIND.ORDER) {
         const { data: order } = await supabase
           .from('orders')
-          .select('id, user_id, status, fulfillment_status, payment_method')
+          .select('id, user_id, status, fulfillment_status, payment_method, g2bulk_metadata, created_at')
           .eq('id', id)
           .maybeSingle();
 
@@ -54,13 +54,28 @@ export default function InvoiceView({
           setInvoice(null);
           return;
         }
-        if (!isInvoiceReadyForOrder(order, { isAdmin: user?.role === 'admin' })) {
+
+        const { data: orderItems } = await supabase
+          .from('order_items')
+          .select('id, player_uid, delivery_items, redemption_info')
+          .eq('order_id', id);
+
+        if (!isInvoiceReadyForOrder(order, {
+          isAdmin: user?.role === 'admin',
+          items: orderItems || [],
+        })) {
           setErrorKey('invoiceNotReady');
           setInvoice(null);
           return;
         }
 
         const built = await fetchOrderInvoiceData(id, { games, offers, t, lang, viewer: user });
+        // Gift / redeem invoice must never open empty of codes when product is code-based
+        if (built?.codesMissing) {
+          setErrorKey('invoiceCodesMissing');
+          setInvoice(null);
+          return;
+        }
         setInvoice(built);
         return;
       }

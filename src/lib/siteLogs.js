@@ -127,14 +127,31 @@ export function formatSiteLog(item, t = {}, lang = 'ar') {
       tone: 'success',
     },
     completed: {
-      title: t.siteLogOrderCompletedTitle,
-      body: applyTemplate(t.siteLogOrderCompletedBody, { user, amount, reference }),
+      title: item.category === 'recharge'
+        ? (t.siteLogRechargeCompletedTitle || t.siteLogOrderCompletedTitle)
+        : t.siteLogOrderCompletedTitle,
+      body: item.category === 'recharge'
+        ? applyTemplate(t.siteLogRechargeCompletedBody || t.siteLogOrderCompletedBody, { user, amount, reference })
+        : applyTemplate(t.siteLogOrderCompletedBody, { user, amount, reference }),
       tone: 'success',
     },
     sam_paid: {
       title: t.siteLogOrderSamTitle,
       body: applyTemplate(t.siteLogOrderSamBody, { user, amount, method, reference }),
       tone: 'success',
+    },
+    fulfilled: {
+      title: t.siteLogOrderFulfilledTitle || t.siteLogOrderCompletedTitle,
+      body: applyTemplate(t.siteLogOrderFulfilledBody || t.siteLogOrderCompletedBody, { user, amount, reference }),
+      tone: 'success',
+    },
+    fulfillment_failed: {
+      title: t.siteLogOrderFulfillFailedTitle || t.notifFulfillmentFailedTitle,
+      body: applyTemplate(
+        t.siteLogOrderFulfillFailedBody || t.notifFulfillmentFailedBody,
+        { user, amount },
+      ),
+      tone: 'danger',
     },
     message_received: {
       title: t.siteLogContactTitle,

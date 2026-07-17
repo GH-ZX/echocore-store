@@ -207,7 +207,9 @@ export default function SuccessView({
     && (fulfillmentStatus === 'fulfilling' || fulfillmentStatus === 'pending');
   const showTopupDetails = isOrderPaid(orderDetails) && hasUid && fulfillmentStatus === 'fulfilled';
   const allCodesText = deliveryCodes.join('\n');
-  const showInvoiceLink = isInvoiceReadyForOrder(orderDetails);
+  const showInvoiceLink = isInvoiceReadyForOrder(orderDetails, {
+    items: orderItems,
+  });
 
   if (isAwaitingFulfillment) {
     return (
