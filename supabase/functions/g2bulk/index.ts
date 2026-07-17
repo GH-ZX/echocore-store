@@ -942,17 +942,26 @@ async function evaluateFulfillmentAvailability(
   }
 
   const settingsRow = await loadStoreSettingsRow(serviceClient);
-  if (!settingsRow?.g2bulk_enabled) {
-    push('g2bulk_enabled', false);
-    return { available: false, reason: 'supplier_disabled', steps, detail: 'Enable G2Bulk in Admin → G2Bulk' };
-  }
-  push('g2bulk_enabled', true);
-
+  // Operational enable = toggle ON, or API key present (toggle left off by mistake
+  // must not block every customer from buying when the store is already on G2Bulk).
   if (!apiKey) {
     push('api_key', false);
-    return { available: false, reason: 'supplier_not_configured', steps, detail: 'No G2Bulk API key' };
+    return {
+      available: false,
+      reason: 'supplier_not_configured',
+      steps,
+      detail: 'No G2Bulk API key — add key in Admin → G2Bulk',
+    };
   }
   push('api_key', true);
+
+  if (!settingsRow?.g2bulk_enabled) {
+    push('g2bulk_enabled', false, {
+      note: 'toggle off but API key present — allowing purchase / stock check',
+    });
+  } else {
+    push('g2bulk_enabled', true);
+  }
 
   const offerIds = items.map((row) => String(row.offer_id));
   const { data: offers, error: offersError } = await serviceClient
@@ -1315,7 +1324,15 @@ Deno.serve(async (req) => {
       updates.g2bulk_markup_percent = Number(payload.markupPercent ?? 15);
     }
     if (payload.apiKey !== undefined) {
-      updates.g2bulk_api_key = String(payload.apiKey || '').trim() || null;
+      const nextKey = String(payload.apiKey || '').trim() || null;
+      updates.g2bulk_api_key = nextKey;
+      // Saving a real key implies the store intends to use G2Bulk — turn fulfillment on.
+      if (nextKey && payload.enabled === undefined) {
+        updates.g2bulk_enabled = true;
+      }
+      if (nextKey && payload.enabled === true) {
+        updates.g2bulk_enabled = true;
+      }
     }
     if (payload.catalogOnly !== undefined) {
       updates.g2bulk_catalog_only = !!payload.catalogOnly;
@@ -1427,13 +1444,23 @@ Deno.serve(async (req) => {
     }
 
     const settingsRow = await loadStoreSettingsRow(serviceClient);
-    if (!settingsRow?.g2bulk_enabled) {
+    // Skip only when there is no API key. A disabled toggle alone used to skip
+    // fulfillment and also blocked checkout — leaving every order undelivered.
+    if (!apiKey) {
       await serviceClient.rpc('apply_g2bulk_fulfillment', {
         p_order_id: orderId,
         p_fulfillment_status: 'skipped',
-        p_metadata: { reason: 'g2bulk_disabled' },
+        p_metadata: { reason: 'g2bulk_no_api_key' },
       });
       return jsonResponse({ success: true, skipped: true, fulfillmentStatus: 'skipped' });
+    }
+
+    // Heal accidental off-toggle so admin UI matches runtime behavior.
+    if (!settingsRow?.g2bulk_enabled) {
+      await serviceClient
+        .from('store_settings')
+        .update({ g2bulk_enabled: true, updated_at: new Date().toISOString() })
+        .eq('id', 1);
     }
 
     const { data: items } = await serviceClient

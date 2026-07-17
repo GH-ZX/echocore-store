@@ -263,6 +263,14 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         await refreshSupplierWallets();
         return;
       }
+      // Successful connection → ensure fulfillment is enabled (unblocks customer balance buy).
+      if (!form.g2bulk_enabled) {
+        await persistSettings({
+          ...form,
+          g2bulk_enabled: true,
+        });
+        setForm((prev) => ({ ...prev, g2bulk_enabled: true }));
+      }
       setTestResult({
         ok: true,
         balance: wallet.balance,
@@ -782,6 +790,12 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
               {t.g2bulkEnabled}
             </span>
           </label>
+          {!form.g2bulk_enabled && (
+            <p className="text-xs text-amber-300/90 leading-relaxed border border-amber-500/25 bg-amber-500/10 rounded-xl px-3 py-2">
+              {t.g2bulkDisabledBlocksBuyHint
+                || 'When this is off, customers may be blocked from balance checkout. Keep it on if you sell via G2Bulk.'}
+            </p>
+          )}
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"
