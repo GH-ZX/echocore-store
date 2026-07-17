@@ -174,11 +174,16 @@ export default function BuyView({
   }, [isValidOffer, showUidForm, game]);
 
   const isUidCompleteForStock = !showUidForm || playerUid.trim().length > 2;
-  const [stockCheck, setStockCheck] = useState({ loading: false, available: true, message: '' });
+  const [stockCheck, setStockCheck] = useState({
+    loading: false,
+    available: true,
+    message: '',
+    reason: null,
+  });
 
   useEffect(() => {
     if (!isValidOffer || selectedMethod !== 'balance' || !offer?.id || !isUidCompleteForStock) {
-      setStockCheck({ loading: false, available: true, message: '' });
+      setStockCheck({ loading: false, available: true, message: '', reason: null });
       return undefined;
     }
 
@@ -195,14 +200,17 @@ export default function BuyView({
         setStockCheck({
           loading: false,
           available: !!result?.available,
+          reason: result?.reason || null,
           message: result?.available ? '' : getFulfillmentUnavailableMessage(result, t),
         });
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return;
+        console.warn('[fulfillment] check failed', err);
         setStockCheck({
           loading: false,
           available: false,
+          reason: 'supplier_unreachable',
           message: t.fulfillmentSupplierUnreachable,
         });
       });
@@ -725,7 +733,12 @@ export default function BuyView({
 
         {selectedMethod === 'balance' && !stockCheck.loading && !stockCheck.available && (
           <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-            {stockCheck.message || t.fulfillmentOutOfStock}
+            <p>{stockCheck.message || t.fulfillmentOutOfStock}</p>
+            {stockCheck.reason ? (
+              <p className="text-[11px] opacity-70 mt-1 font-mono" dir="ltr">
+                reason: {stockCheck.reason}
+              </p>
+            ) : null}
           </div>
         )}
 

@@ -779,24 +779,40 @@ function parseG2bulkWalletBalance(data: Json): number {
   return Number.NaN;
 }
 
-/** Live supplier cost + stock for one mapped offer. Prefer live G2Bulk data over stale DB cost. */
-async function resolveLiveSupplierQuote(
+type QuoteResult =
+  | {
+    ok: true;
+    unitCost: number;
+    source: 'db' | 'live_product' | 'live_catalogue';
+    stock?: number | null;
+  }
+  | {
+    ok: false;
+    reason: string;
+    offerName?: string;
+    detail?: string;
+  };
+
+/**
+ * Resolve supplier unit cost for availability.
+ * Priority: trusted DB cost first (sync), then live G2Bulk as optional upgrade.
+ * Live catalogue name mismatches must NOT block when DB still has a valid cost.
+ */
+async function resolveSupplierQuote(
   apiKey: string,
   offer: Json,
   game: Json,
   g2bulkType: string,
   qty: number,
-): Promise<
-  | { ok: true; unitCost: number }
-  | { ok: false; reason: string; offerName?: string }
-> {
+): Promise<QuoteResult> {
   const offerName = String(offer.name_en || '');
   const dbCost = Number(offer.g2bulk_cost_usd);
+  const hasDbCost = Number.isFinite(dbCost) && dbCost > 0;
 
   if (g2bulkType === 'voucher') {
     const productId = offer.g2bulk_product_id;
     if (productId == null || productId === '') {
-      return { ok: false, reason: 'not_mapped', offerName };
+      return { ok: false, reason: 'not_mapped', offerName, detail: 'missing g2bulk_product_id' };
     }
 
     try {
@@ -807,185 +823,260 @@ async function resolveLiveSupplierQuote(
         undefined,
         8000,
       );
-      if (!res.ok || data.success === false) {
-        // Fall back to DB cost only when product endpoint is unreachable.
-        if (Number.isFinite(dbCost) && dbCost > 0) {
-          return { ok: true, unitCost: dbCost };
+
+      if (res.ok && data.success !== false) {
+        let product: Json = {};
+        if (Array.isArray(data.products) && data.products[0] && typeof data.products[0] === 'object') {
+          product = data.products[0] as Json;
+        } else if (data.product && typeof data.product === 'object' && !Array.isArray(data.product)) {
+          product = data.product as Json;
+        } else if (data.unit_price != null || data.stock != null || data.id != null) {
+          product = data;
         }
-        return { ok: false, reason: 'supplier_unreachable' };
-      }
 
-      // Docs: GET /products/:id returns { success, products: [ { unit_price, stock, ... } ] }
-      let product: Json = {};
-      if (Array.isArray(data.products) && data.products[0] && typeof data.products[0] === 'object') {
-        product = data.products[0] as Json;
-      } else if (data.product && typeof data.product === 'object' && !Array.isArray(data.product)) {
-        product = data.product as Json;
-      } else if (data.unit_price != null || data.stock != null || data.id != null) {
-        product = data;
-      }
+        const stock = Number(product.stock);
+        // Only hard-fail when G2Bulk explicitly reports stock and it is below qty.
+        if (Number.isFinite(stock) && stock >= 0 && stock < qty) {
+          return {
+            ok: false,
+            reason: 'out_of_stock',
+            offerName,
+            detail: `live stock=${stock} qty=${qty}`,
+          };
+        }
 
-      const stock = Number(product.stock);
-      if (Number.isFinite(stock) && stock < qty) {
-        return { ok: false, reason: 'out_of_stock', offerName };
+        const liveCost = Number(product.unit_price ?? product.price ?? product.amount);
+        if (Number.isFinite(liveCost) && liveCost > 0) {
+          return {
+            ok: true,
+            unitCost: liveCost,
+            source: 'live_product',
+            stock: Number.isFinite(stock) ? stock : null,
+          };
+        }
       }
-
-      const liveCost = Number(product.unit_price ?? product.price ?? product.amount);
-      if (Number.isFinite(liveCost) && liveCost > 0) {
-        return { ok: true, unitCost: liveCost };
-      }
-      if (Number.isFinite(dbCost) && dbCost > 0) {
-        return { ok: true, unitCost: dbCost };
-      }
-      return { ok: false, reason: 'missing_supplier_cost', offerName };
     } catch {
-      if (Number.isFinite(dbCost) && dbCost > 0) {
-        return { ok: true, unitCost: dbCost };
-      }
-      return { ok: false, reason: 'supplier_unreachable' };
+      /* fall through to DB cost */
     }
+
+    if (hasDbCost) {
+      return { ok: true, unitCost: dbCost, source: 'db', stock: null };
+    }
+    return {
+      ok: false,
+      reason: 'missing_supplier_cost',
+      offerName,
+      detail: 'voucher: no live unit_price and no g2bulk_cost_usd',
+    };
   }
 
-  // Top-up: confirm catalogue row still exists and read live amount.
+  // Top-up packs: G2Bulk has no classic stock field. DB cost from last sync is enough
+  // for the pre-checkout wallet guard. Live catalogue is best-effort only.
   const gameCode = String(game.g2bulk_game_code || '').trim();
   const catalogueName = String(offer.g2bulk_catalogue_name || offer.name_en || '').trim();
-  const catalogueId = offer.g2bulk_catalogue_id != null && offer.g2bulk_catalogue_id !== ''
-    ? Number(offer.g2bulk_catalogue_id)
-    : null;
-  if (!gameCode || (!catalogueName && !Number.isFinite(catalogueId as number))) {
-    return { ok: false, reason: 'not_mapped', offerName };
+  if (!gameCode || !catalogueName) {
+    return {
+      ok: false,
+      reason: 'not_mapped',
+      offerName,
+      detail: `topup mapping gameCode=${gameCode || '∅'} catalogue=${catalogueName || '∅'}`,
+    };
   }
 
   try {
     const catRes = await fetch(
       `${G2BULK_BASE}/games/${encodeURIComponent(gameCode)}/catalogue`,
     );
-    const catPayload = await catRes.json().catch(() => ({})) as Json;
-    if (!catRes.ok) {
-      if (Number.isFinite(dbCost) && dbCost > 0) {
-        return { ok: true, unitCost: dbCost };
+    if (catRes.ok) {
+      const catPayload = await catRes.json().catch(() => ({})) as Json;
+      const catalogues = Array.isArray(catPayload.catalogues)
+        ? catPayload.catalogues as Json[]
+        : [];
+      const catalogueId = offer.g2bulk_catalogue_id != null && offer.g2bulk_catalogue_id !== ''
+        ? Number(offer.g2bulk_catalogue_id)
+        : null;
+      const match = catalogues.find((row) => {
+        if (Number.isFinite(catalogueId as number) && Number(row?.id) === catalogueId) return true;
+        const name = String(row?.name || '').trim();
+        return !!catalogueName && (
+          name === catalogueName || name.toLowerCase() === catalogueName.toLowerCase()
+        );
+      });
+      if (match) {
+        const liveCost = Number(match.amount ?? match.unit_price ?? match.price);
+        if (Number.isFinite(liveCost) && liveCost > 0) {
+          return { ok: true, unitCost: liveCost, source: 'live_catalogue', stock: null };
+        }
       }
-      return { ok: false, reason: 'supplier_unreachable' };
     }
-
-    const catalogues = Array.isArray(catPayload.catalogues)
-      ? catPayload.catalogues as Json[]
-      : [];
-    const match = catalogues.find((row) => {
-      if (Number.isFinite(catalogueId as number) && Number(row?.id) === catalogueId) return true;
-      const name = String(row?.name || '').trim();
-      if (!catalogueName) return false;
-      return name === catalogueName || name.toLowerCase() === catalogueName.toLowerCase();
-    });
-
-    if (!match) {
-      // Catalogue still loads but this pack is gone — fall back to DB cost if present
-      // so a display-name mismatch does not hard-block purchases.
-      if (Number.isFinite(dbCost) && dbCost > 0) {
-        return { ok: true, unitCost: dbCost };
-      }
-      return { ok: false, reason: 'out_of_stock', offerName };
-    }
-
-    const liveCost = Number(match.amount ?? match.unit_price ?? match.price);
-    if (Number.isFinite(liveCost) && liveCost > 0) {
-      return { ok: true, unitCost: liveCost };
-    }
-    if (Number.isFinite(dbCost) && dbCost > 0) {
-      return { ok: true, unitCost: dbCost };
-    }
-    return { ok: false, reason: 'missing_supplier_cost', offerName };
   } catch {
-    if (Number.isFinite(dbCost) && dbCost > 0) {
-      return { ok: true, unitCost: dbCost };
-    }
-    return { ok: false, reason: 'supplier_unreachable' };
+    /* fall through to DB cost */
   }
+
+  if (hasDbCost) {
+    return { ok: true, unitCost: dbCost, source: 'db', stock: null };
+  }
+
+  return {
+    ok: false,
+    reason: 'missing_supplier_cost',
+    offerName,
+    detail: 'topup: no live amount and no g2bulk_cost_usd — re-sync catalog',
+  };
 }
 
 async function evaluateFulfillmentAvailability(
   serviceClient: ReturnType<typeof createClient>,
   apiKey: string | null,
   rawItems: AvailabilityItem[],
+  { diagnose = false }: { diagnose?: boolean } = {},
 ) {
+  const steps: Json[] = [];
+  const push = (step: string, ok: boolean, extra: Json = {}) => {
+    if (diagnose || !ok) steps.push({ step, ok, ...extra });
+  };
+
   const items = Array.isArray(rawItems) ? rawItems.filter((row) => row?.offer_id) : [];
   if (!items.length) {
-    return { available: false, reason: 'items_required' };
+    return { available: false, reason: 'items_required', steps };
   }
 
   const settingsRow = await loadStoreSettingsRow(serviceClient);
   if (!settingsRow?.g2bulk_enabled) {
-    return { available: false, reason: 'supplier_disabled' };
+    push('g2bulk_enabled', false);
+    return { available: false, reason: 'supplier_disabled', steps, detail: 'Enable G2Bulk in Admin → G2Bulk' };
   }
+  push('g2bulk_enabled', true);
 
   if (!apiKey) {
-    return { available: false, reason: 'supplier_not_configured' };
+    push('api_key', false);
+    return { available: false, reason: 'supplier_not_configured', steps, detail: 'No G2Bulk API key' };
   }
+  push('api_key', true);
 
   const offerIds = items.map((row) => String(row.offer_id));
   const { data: offers, error: offersError } = await serviceClient
     .from('offers')
-    .select('id, name_en, g2bulk_cost_usd, g2bulk_type, g2bulk_product_id, g2bulk_catalogue_name, g2bulk_catalogue_id, games(g2bulk_game_code, redemption_method)')
+    .select('id, name_en, g2bulk_cost_usd, g2bulk_type, g2bulk_product_id, g2bulk_catalogue_name, g2bulk_catalogue_id, game_id, games(g2bulk_game_code, redemption_method)')
     .in('id', offerIds);
 
   if (offersError) {
-    return { available: false, reason: 'supplier_unreachable', message: offersError.message };
+    push('load_offers', false, { message: offersError.message });
+    return {
+      available: false,
+      reason: 'supplier_unreachable',
+      steps,
+      detail: offersError.message,
+    };
   }
+  push('load_offers', true, { count: (offers || []).length });
 
   let totalSupplierCost = 0;
+  const itemQuotes: Json[] = [];
 
   for (const item of items) {
     const offer = (offers || []).find((row) => String(row.id) === String(item.offer_id)) as Json | undefined;
     if (!offer) {
-      return { available: false, reason: 'offer_not_found' };
+      return {
+        available: false,
+        reason: 'offer_not_found',
+        steps,
+        detail: `offer_id=${item.offer_id} not found`,
+      };
     }
 
     const qty = Math.max(1, Number(item.quantity) || 1);
     const game = resolveEmbeddedGame(offer.games);
-    const g2bulkType = String(offer.g2bulk_type || '')
+    const g2bulkType = String(offer.g2bulk_type || '').trim()
       || (game.redemption_method === 'redeem_code' ? 'voucher' : 'topup');
     const hasMapping = g2bulkType === 'voucher'
       ? !!offer.g2bulk_product_id
       : !!(game.g2bulk_game_code && (offer.g2bulk_catalogue_name || offer.name_en));
 
     if (!hasMapping) {
-      return { available: false, reason: 'not_mapped', offerName: offer.name_en };
+      return {
+        available: false,
+        reason: 'not_mapped',
+        offerName: offer.name_en,
+        steps,
+        detail: `type=${g2bulkType} game_code=${game.g2bulk_game_code || '∅'} product_id=${offer.g2bulk_product_id ?? '∅'}`,
+      };
     }
 
     if (g2bulkType === 'topup' && !String(item.player_uid || '').trim()) {
-      return { available: false, reason: 'player_id_required' };
+      return {
+        available: false,
+        reason: 'player_id_required',
+        steps,
+        detail: 'UID required for top-up stock check',
+      };
     }
 
-    const quote = await resolveLiveSupplierQuote(apiKey, offer, game, g2bulkType, qty);
+    const quote = await resolveSupplierQuote(apiKey, offer, game, g2bulkType, qty);
     if (!quote.ok) {
+      push('quote', false, {
+        offerId: offer.id,
+        reason: quote.reason,
+        detail: quote.detail,
+      });
       return {
         available: false,
         reason: quote.reason,
         offerName: quote.offerName || offer.name_en,
+        steps,
+        detail: quote.detail,
       };
     }
 
     totalSupplierCost += quote.unitCost * qty;
+    itemQuotes.push({
+      offerId: offer.id,
+      offerName: offer.name_en,
+      type: g2bulkType,
+      unitCost: quote.unitCost,
+      source: quote.source,
+      stock: quote.stock ?? null,
+      qty,
+    });
   }
+  push('quotes', true, { items: itemQuotes, totalSupplierCost });
 
   try {
     const { res, data } = await g2bulkFetch(apiKey, '/getMe', {}, undefined, 8000);
     if (!res.ok || data.success === false) {
-      return { available: false, reason: 'supplier_unreachable' };
+      push('getMe', false, { status: res.status, body: data });
+      return {
+        available: false,
+        reason: 'supplier_unreachable',
+        steps,
+        detail: `getMe HTTP ${res.status}`,
+        requiredCost: totalSupplierCost,
+      };
     }
 
     const walletBalance = parseG2bulkWalletBalance(data);
     if (!Number.isFinite(walletBalance)) {
-      return { available: false, reason: 'supplier_unreachable' };
+      push('getMe', false, { detail: 'balance not parseable', body: data });
+      return {
+        available: false,
+        reason: 'supplier_unreachable',
+        steps,
+        detail: 'getMe balance missing/unparseable',
+        requiredCost: totalSupplierCost,
+      };
     }
+    push('getMe', true, { walletBalance });
 
-    // Store's G2Bulk wallet cannot cover supplier cost — not the same as product stock.
+    // Store G2Bulk wallet must cover supplier cost — not customer product "stock".
     if (walletBalance + 0.001 < totalSupplierCost) {
       return {
         available: false,
         reason: 'insufficient_supplier_balance',
         walletBalance,
         requiredCost: totalSupplierCost,
+        steps,
+        detail: `wallet ${walletBalance} < required ${totalSupplierCost}`,
+        items: itemQuotes,
       };
     }
 
@@ -993,9 +1084,19 @@ async function evaluateFulfillmentAvailability(
       available: true,
       walletBalance,
       requiredCost: totalSupplierCost,
+      items: itemQuotes,
+      steps: diagnose ? steps : undefined,
     };
-  } catch {
-    return { available: false, reason: 'supplier_unreachable' };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'getMe failed';
+    push('getMe', false, { detail: message });
+    return {
+      available: false,
+      reason: 'supplier_unreachable',
+      steps,
+      detail: message,
+      requiredCost: totalSupplierCost,
+    };
   }
 }
 
@@ -1135,13 +1236,18 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, message: 'G2Bulk API key not configured' }, 400);
   }
 
-  if (action === 'checkFulfillmentAvailability') {
+  if (action === 'checkFulfillmentAvailability' || action === 'diagnoseFulfillment') {
     if (!userId) {
       return jsonResponse({ success: false, message: 'Not authenticated' }, 401);
     }
 
+    const diagnose = action === 'diagnoseFulfillment' || body.diagnose === true;
+    if (diagnose && !(await isAdmin(userClient, userId!))) {
+      return jsonResponse({ success: false, message: 'Admin only' }, 403);
+    }
+
     const rawItems = Array.isArray(body.items) ? body.items as AvailabilityItem[] : [];
-    const result = await evaluateFulfillmentAvailability(serviceClient, apiKey, rawItems);
+    const result = await evaluateFulfillmentAvailability(serviceClient, apiKey, rawItems, { diagnose });
     return jsonResponse({ success: true, ...result });
   }
 

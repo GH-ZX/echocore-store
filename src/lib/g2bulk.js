@@ -423,3 +423,8 @@ export async function fulfillOrderG2bulk(orderId) {
 export async function checkFulfillmentAvailability({ items = [] } = {}) {
   return invokeG2bulk({ action: 'checkFulfillmentAvailability', items }, { sanitizeForUser: true });
 }
+
+/** Admin-only: full step-by-step fulfillment diagnosis for one cart/items payload */
+export async function diagnoseFulfillmentAvailability({ items = [] } = {}) {
+  return invokeG2bulk({ action: 'diagnoseFulfillment', items, diagnose: true });
+}
