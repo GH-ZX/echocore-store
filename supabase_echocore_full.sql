@@ -2051,6 +2051,22 @@ ALTER TABLE public.offers
   ADD COLUMN IF NOT EXISTS g2bulk_product_id integer,
   ADD COLUMN IF NOT EXISTS g2bulk_cost_usd numeric(10,4);
 
+-- Per-offer pricing policy (sync respects fixed / custom margin)
+ALTER TABLE public.offers
+  ADD COLUMN IF NOT EXISTS pricing_mode text NOT NULL DEFAULT 'auto';
+ALTER TABLE public.offers
+  ADD COLUMN IF NOT EXISTS pricing_margin_percent numeric(8,2);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'offers_pricing_mode_check'
+  ) THEN
+    ALTER TABLE public.offers
+      ADD CONSTRAINT offers_pricing_mode_check
+      CHECK (pricing_mode IN ('auto', 'margin', 'fixed'));
+  END IF;
+END $$;
+
 -- ---------------------------------------------------------------------------
 -- 4. ORDERS â€” fulfillment tracking
 -- ---------------------------------------------------------------------------

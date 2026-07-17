@@ -60,7 +60,7 @@ X-Idempotency-Key: <36-char UUID>
 
 - `unit_price` (products) and `amount` (catalogue) = **supplier cost in USD**
 - Prices move with exchange rates — **re-read immediately before** charging customer or placing order
-- EchoCore: `g2bulk_cost_usd` = supplier; `offers.price` = customer (markup/charm local only)
+- EchoCore: `g2bulk_cost_usd` = supplier; `offers.price` = customer (store markup / per-offer margin|fixed; no charm)
 
 ---
 

@@ -856,11 +856,16 @@ export default function App() {
   // ADMIN — Real DB product management
   // ============================================
   const createProduct = async (productData) => {
+    const pricingMode = productData.pricing_mode || (productData.is_sale ? 'fixed' : 'auto');
     const payload = {
       game_id: productData.game_id,
       name_en: productData.name_en,
       name_ar: productData.name_ar || productData.name_en,
       price: parseFloat(productData.price),
+      pricing_mode: pricingMode,
+      pricing_margin_percent: pricingMode === 'margin'
+        ? (parseFloat(productData.pricing_margin_percent) || null)
+        : null,
       region: productData.region || null,
       description_en: productData.description_en || '',
       description_ar: productData.description_ar || '',
@@ -881,10 +886,15 @@ export default function App() {
 
     if (error) {
       console.error('Create offer error:', error);
-      throw new Error(`Failed to add offer: ${error.message || JSON.stringify(error)}. Make sure your profile has role='admin' and RLS policies allow inserts for admins on 'offers' table.`);
+      const msg = error.message || JSON.stringify(error);
+      if (/pricing_mode|pricing_margin|column .* does not exist|schema cache/i.test(msg)) {
+        throw new Error(t.pricingDbMigrationRequired
+          || 'Database missing pricing columns. Run scripts/offer-pricing-modes-migration.sql in Supabase, then retry.');
+      }
+      throw new Error(`Failed to add offer: ${msg}. Make sure your profile has role='admin' and RLS policies allow inserts for admins on 'offers' table.`);
     }
 
-    setOffers(prev => [data, ...prev]);
+    setOffers((prev) => [data, ...prev]);
     showNotification(t.offerAddedSuccess || 'Offer added successfully');
     return data;
   };
@@ -903,35 +913,104 @@ export default function App() {
 
   const updateProduct = async (productData) => {
     const { id, ...payload } = productData;
+    if (!id) {
+      return createProduct(productData);
+    }
+    const pricingMode = payload.pricing_mode || (payload.is_sale ? 'fixed' : 'auto');
+    const marginRaw = payload.pricing_margin_percent;
+    const margin = pricingMode === 'margin'
+      ? (marginRaw === '' || marginRaw == null ? null : parseFloat(marginRaw))
+      : null;
+
+    if (pricingMode === 'margin' && (!Number.isFinite(margin) || margin < 0)) {
+      throw new Error(t.pricingMarginRequired || 'Enter a margin percent for this pack.');
+    }
+
+    const updateRow = {
+      name_en: payload.name_en,
+      name_ar: payload.name_ar || payload.name_en,
+      price: parseFloat(payload.price),
+      pricing_mode: pricingMode,
+      pricing_margin_percent: margin,
+      region: payload.region || null,
+      description_en: payload.description_en || '',
+      description_ar: payload.description_ar || '',
+      sale_image_url: payload.sale_image_url || null,
+      is_sale: !!payload.is_sale,
+      original_price: payload.is_sale ? (parseFloat(payload.original_price) || null) : null,
+      g2bulk_type: payload.g2bulk_type || null,
+      g2bulk_catalogue_name: payload.g2bulk_catalogue_name?.trim() || null,
+      g2bulk_product_id: payload.g2bulk_product_id ? parseInt(payload.g2bulk_product_id, 10) : null,
+      g2bulk_cost_usd: payload.g2bulk_cost_usd ? parseFloat(payload.g2bulk_cost_usd) : null,
+    };
 
     const { data, error } = await supabase
       .from('offers')
-      .update({
-        name_en: payload.name_en,
-        name_ar: payload.name_ar || payload.name_en,
-        price: parseFloat(payload.price),
-        region: payload.region || null,
-        description_en: payload.description_en || '',
-        description_ar: payload.description_ar || '',
-        sale_image_url: payload.sale_image_url || null,
-        is_sale: !!payload.is_sale,
-        original_price: payload.is_sale ? (parseFloat(payload.original_price) || null) : null,
-        g2bulk_type: payload.g2bulk_type || null,
-        g2bulk_catalogue_name: payload.g2bulk_catalogue_name?.trim() || null,
-        g2bulk_product_id: payload.g2bulk_product_id ? parseInt(payload.g2bulk_product_id, 10) : null,
-        g2bulk_cost_usd: payload.g2bulk_cost_usd ? parseFloat(payload.g2bulk_cost_usd) : null,
-      })
+      .update(updateRow)
       .eq('id', id)
       .select()
       .single();
 
     if (error) {
       console.error('Update offer error:', error);
-      throw new Error('Failed to update offer. Check if you are admin and RLS policies are set correctly.');
+      const msg = error.message || '';
+      if (/pricing_mode|pricing_margin|column .* does not exist|schema cache/i.test(msg)) {
+        throw new Error(t.pricingDbMigrationRequired
+          || 'Database missing pricing columns. Run scripts/offer-pricing-modes-migration.sql in Supabase, then retry.');
+      }
+      throw new Error(msg || t.failedToSaveOffer || 'Failed to update offer. Check admin RLS policies.');
     }
 
-    setOffers(prev => prev.map(p => p.id === id ? data : p));
+    if (!data) {
+      throw new Error(t.failedToSaveOffer || 'Update returned no row — check admin permissions.');
+    }
+
+    // Merge so pricing fields are never dropped if select is partial
+    setOffers((prev) => prev.map((p) => (
+      p.id === id
+        ? {
+          ...p,
+          ...data,
+          pricing_mode: data.pricing_mode ?? updateRow.pricing_mode,
+          pricing_margin_percent: data.pricing_margin_percent ?? updateRow.pricing_margin_percent,
+          price: data.price ?? updateRow.price,
+        }
+        : p
+    )));
+    return data;
   };
+
+  /** Merge a DB-saved offer row into local catalog state (pricing fields included). */
+  const mergeOfferFromDb = useCallback((saved) => {
+    if (!saved?.id) return;
+    setOffers((prev) => prev.map((p) => (
+      p.id === saved.id
+        ? {
+          ...p,
+          ...saved,
+          pricing_mode: saved.pricing_mode ?? p.pricing_mode,
+          pricing_margin_percent: saved.pricing_margin_percent ?? p.pricing_margin_percent,
+          price: saved.price ?? p.price,
+        }
+        : p
+    )));
+  }, []);
+
+  const mergeOffersFromDb = useCallback((rows = []) => {
+    if (!rows.length) return;
+    const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
+    setOffers((prev) => prev.map((p) => {
+      const saved = byId[p.id];
+      if (!saved) return p;
+      return {
+        ...p,
+        ...saved,
+        pricing_mode: saved.pricing_mode ?? p.pricing_mode,
+        pricing_margin_percent: saved.pricing_margin_percent ?? p.pricing_margin_percent,
+        price: saved.price ?? p.price,
+      };
+    }));
+  }, []);
 
   const createGame = async (gameData) => {
     const { id: _omitId, show_in_carousel, ...payload } = gameData;
@@ -975,6 +1054,7 @@ export default function App() {
   };
 
   const saveProduct = async (productData) => {
+    // Always return the DB row so callers can merge pricing fields
     if (!productData?.id) return createProduct(productData);
     return updateProduct(productData);
   };
@@ -1699,6 +1779,8 @@ export default function App() {
           handleLoginSuccess={handleLoginSuccess}
           resolveUserAfterAuth={resolveUserAfterAuth}
           updateProduct={updateProduct}
+          mergeOfferFromDb={mergeOfferFromDb}
+          mergeOffersFromDb={mergeOffersFromDb}
           updateGame={updateGame}
           deleteGame={deleteGame}
           handleLiveCatalogUpdate={handleLiveCatalogUpdate}
@@ -1791,6 +1873,7 @@ export default function App() {
           t={t}
           onClose={() => setAdminEditOffer(null)}
           onSave={saveProduct}
+          onPricingSaved={mergeOfferFromDb}
         />
       )}
 
@@ -1804,6 +1887,13 @@ export default function App() {
           onClose={() => setAdminEditGame(null)}
           onSave={saveGame}
           onDelete={deleteGame}
+          onOffersPricingApplied={async (result) => {
+            if (result?.offers?.length) {
+              mergeOffersFromDb(result.offers);
+            } else {
+              await fetchOffers({ catalogOnly: paymentConfig.g2bulkCatalogOnly });
+            }
+          }}
         />
       )}
 

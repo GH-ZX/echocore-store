@@ -69,7 +69,7 @@ Do not require API key on public catalog/player-validation endpoints listed in `
 | Concern | Path |
 |---------|------|
 | Edge function (only trusted caller) | `supabase/functions/g2bulk/index.ts` |
-| Charm + markup | `supabase/functions/g2bulk/charmPricing.ts` |
+| Markup + per-offer pricing modes | `supabase/functions/g2bulk/markupPricing.ts` · `src/lib/offerPricing.js` |
 | Client invoke wrapper | `src/lib/g2bulk.js` |
 | Admin sync/settings | `src/components/admin/AdminG2BulkSettings.jsx` |
 | Player validation at checkout | `src/views/BuyView.jsx` via edge proxy |

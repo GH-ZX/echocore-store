@@ -76,6 +76,8 @@ export default function AppRoutes({
   handleLoginSuccess,
   resolveUserAfterAuth,
   updateProduct,
+  mergeOfferFromDb,
+  mergeOffersFromDb,
   updateGame,
   deleteGame,
   handleLiveCatalogUpdate,
@@ -295,6 +297,8 @@ export default function AppRoutes({
               addToCart={addToCart}
               user={user}
               updateProduct={updateProduct}
+              onPricingSaved={mergeOfferFromDb}
+              onOffersPricingApplied={mergeOffersFromDb}
               updateGame={updateGame}
               deleteGame={deleteGame}
               loadingCatalog={loadingGames}
@@ -315,6 +319,8 @@ export default function AppRoutes({
               addToCart={addToCart}
               user={user}
               updateProduct={updateProduct}
+              onPricingSaved={mergeOfferFromDb}
+              onOffersPricingApplied={mergeOffersFromDb}
               updateGame={updateGame}
               deleteGame={deleteGame}
               loadingGames={loadingGames}

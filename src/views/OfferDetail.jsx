@@ -34,6 +34,8 @@ export default function OfferDetail({
   addToCart,
   user,
   updateProduct,
+  onPricingSaved,
+  onOffersPricingApplied,
   updateGame,
   deleteGame,
   loadingCatalog = false,
@@ -212,6 +214,7 @@ export default function OfferDetail({
           t={t}
           onClose={() => setEditingOffer(false)}
           onSave={updateProduct}
+          onPricingSaved={onPricingSaved}
         />
       )}
       {isAdmin && editingGame && game && (
@@ -227,6 +230,9 @@ export default function OfferDetail({
             await deleteGame(gameId);
             navigate('/');
           } : undefined}
+          onOffersPricingApplied={(result) => {
+            if (result?.offers?.length) onOffersPricingApplied?.(result.offers);
+          }}
         />
       )}
     </CatalogPageShell>

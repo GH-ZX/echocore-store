@@ -1,5 +1,6 @@
 import { formatMessage } from '../../lib/i18n';
 import { formatOfferWholesaleCost, hasOfferWholesaleCost } from '../../lib/offerCost';
+import { normalizePricingMode, pricingModeLabel } from '../../lib/offerPricing';
 
 export default function AdminOfferCostBadge({
   offer,
@@ -7,9 +8,21 @@ export default function AdminOfferCostBadge({
   className = '',
   size = 'sm',
 }) {
-  if (!offer || !hasOfferWholesaleCost(offer)) return null;
+  if (!offer) return null;
 
-  const cost = formatOfferWholesaleCost(offer);
+  const hasCost = hasOfferWholesaleCost(offer);
+  const mode = normalizePricingMode(offer.pricing_mode);
+  const showMode = mode === 'fixed' || mode === 'margin' || offer.is_sale;
+  if (!hasCost && !showMode) return null;
+
+  const cost = hasCost ? formatOfferWholesaleCost(offer) : null;
+  const modeText = offer.is_sale
+    ? (t.sale || 'Sale')
+    : mode === 'fixed'
+      ? (t.pricingModeFixed || 'Fixed')
+      : mode === 'margin'
+        ? `${pricingModeLabel(mode, t)}${offer.pricing_margin_percent != null ? ` ${offer.pricing_margin_percent}%` : ''}`
+        : null;
 
   return (
     <span
@@ -17,7 +30,9 @@ export default function AdminOfferCostBadge({
       dir="ltr"
       title={t.adminOfferCostHint}
     >
-      {formatMessage(t.adminOfferCost, { cost: `$${cost}` })}
+      {cost != null && formatMessage(t.adminOfferCost, { cost: `$${cost}` })}
+      {cost != null && modeText && ' · '}
+      {modeText}
     </span>
   );
 }

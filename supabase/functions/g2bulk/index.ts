@@ -4,7 +4,7 @@ import {
   formatCatalogueOfferName,
   resolvePointsName,
 } from './gameCurrency.ts';
-import { priceFromCost } from './charmPricing.ts';
+import { priceFromCost, resolveSyncedPrice } from './markupPricing.ts';
 
 const G2BULK_BASE = 'https://api.g2bulk.com/v1';
 /** G2Bulk docs: poll every 2–5w s; MLBB top-ups can exceed 45 s. */
@@ -46,25 +46,52 @@ function jsonResponse(body: Json, status = 200) {
   });
 }
 
-/** Keep admin sale prices when G2Bulk sync recalculates catalog pricing. */
-async function updateOfferPreservingSale(
+/**
+ * Update offer on sync: always refresh cost/metadata; reprice only when
+ * pricing_mode is auto/margin (or missing). fixed + is_sale keep customer price.
+ */
+async function updateOfferPreservingPricing(
   serviceClient: ReturnType<typeof createClient>,
   offerId: string,
   offerRow: Record<string, unknown>,
+  storeMarkupPercent: number,
 ) {
   const { data: existing } = await serviceClient
     .from('offers')
-    .select('is_sale')
+    .select('is_sale, pricing_mode, pricing_margin_percent, price')
     .eq('id', offerId)
     .maybeSingle();
 
   const row = { ...offerRow };
-  if (existing?.is_sale) {
+  // Never overwrite admin pricing policy from catalog sync.
+  delete row.pricing_mode;
+  delete row.pricing_margin_percent;
+
+  const cost = Number(offerRow.g2bulk_cost_usd);
+  const resolved = resolveSyncedPrice(
+    existing,
+    Number.isFinite(cost) ? cost : 0,
+    storeMarkupPercent,
+  );
+
+  if (resolved.preservePrice) {
     delete row.price;
+  } else {
+    row.price = resolved.price;
   }
 
   const { error } = await serviceClient.from('offers').update(row).eq('id', offerId);
   return error;
+}
+
+/** @deprecated name kept for call-site searchability during deploy */
+async function updateOfferPreservingSale(
+  serviceClient: ReturnType<typeof createClient>,
+  offerId: string,
+  offerRow: Record<string, unknown>,
+  storeMarkupPercent = 15,
+) {
+  return updateOfferPreservingPricing(serviceClient, offerId, offerRow, storeMarkupPercent);
 }
 
 async function readJson(req: Request) {
@@ -1419,10 +1446,13 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (existingOffer?.id) {
-          const error = await updateOfferPreservingSale(serviceClient, existingOffer.id, offerRow);
+          const error = await updateOfferPreservingSale(serviceClient, existingOffer.id, offerRow, markup);
           if (error) throw error;
         } else {
-          const { error } = await serviceClient.from('offers').insert(offerRow);
+          const { error } = await serviceClient.from('offers').insert({
+            ...offerRow,
+            pricing_mode: 'auto',
+          });
           if (error) throw error;
         }
         offersSynced += 1;
@@ -1595,10 +1625,13 @@ Deno.serve(async (req) => {
               .maybeSingle();
 
             if (existingOffer?.id) {
-              const error = await updateOfferPreservingSale(serviceClient, existingOffer.id, offerRow);
+              const error = await updateOfferPreservingSale(serviceClient, existingOffer.id, offerRow, markup);
               if (error) throw error;
             } else {
-              const { error } = await serviceClient.from('offers').insert(offerRow);
+              const { error } = await serviceClient.from('offers').insert({
+                ...offerRow,
+                pricing_mode: 'auto',
+              });
               if (error) throw error;
             }
             offersSynced += 1;
@@ -2522,12 +2555,12 @@ Deno.serve(async (req) => {
 
         let offerId = existingOffer?.id as string | undefined;
         if (offerId) {
-          const error = await updateOfferPreservingSale(serviceClient, offerId, offerRow);
+          const error = await updateOfferPreservingSale(serviceClient, offerId, offerRow, markup);
           if (error) throw error;
         } else {
           const { data: insertedOffer, error: offerError } = await serviceClient
             .from('offers')
-            .insert(offerRow)
+            .insert({ ...offerRow, pricing_mode: 'auto' })
             .select('id')
             .single();
           if (offerError) throw offerError;

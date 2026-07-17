@@ -1,5 +1,5 @@
-import { useEffect, useState, useMemo } from 'react';
-import { X } from 'lucide-react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { X, Percent, Lock, RefreshCw, Loader2 } from 'lucide-react';
 import { uploadImage } from '../../lib/uploadImage';
 // import ConfirmDialog from '../ui/ConfirmDialog';
 import Modal from '../ui/Modal';
@@ -7,6 +7,12 @@ import ImageFocusPicker from './ImageFocusPicker';
 import GameImageSearch from './GameImageSearch';
 import SiteImagePicker from './SiteImagePicker';
 import { dedupeGameLogoAgainstCover } from '../../lib/gameImages';
+import {
+  applyGameOffersPricing,
+  fetchStoreMarkupPercent,
+} from '../../lib/adminOfferPricing';
+import PricingEditableValue from './PricingEditableValue';
+import { formatMessage } from '../../lib/i18n';
 
 export default function AdminGameEditModal({
   game,
@@ -17,6 +23,7 @@ export default function AdminGameEditModal({
   onClose,
   onSave,
   onDelete: _onDelete,
+  onOffersPricingApplied,
 }) {
   const [form, setForm] = useState({
     name_en: '',
@@ -40,8 +47,28 @@ export default function AdminGameEditModal({
   const [_showDeleteConfirm, _setShowDeleteConfirm] = useState(false);
   */
   const [error, setError] = useState('');
+  const [bulkMargin, setBulkMargin] = useState('');
+  const [storeMarkup, setStoreMarkup] = useState(15);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkMsg, setBulkMsg] = useState('');
 
   const isNew = !game?.id;
+
+  const gameOffersCount = useMemo(
+    () => (game?.id ? offers.filter((o) => String(o.game_id) === String(game.id)).length : 0),
+    [game, offers],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchStoreMarkupPercent().then((m) => {
+      if (!cancelled) {
+        setStoreMarkup(m);
+        setBulkMargin((prev) => (prev === '' ? String(m) : prev));
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!game) return;
@@ -79,7 +106,30 @@ export default function AdminGameEditModal({
     setLogoFile(null);
     setCoverFile(null);
     setError('');
+    setBulkMsg('');
   }, [game, isNew]);
+
+  const runBulkPricing = useCallback(async (action) => {
+    if (!game?.id) return;
+    setBulkBusy(true);
+    setBulkMsg('');
+    setError('');
+    try {
+      const result = await applyGameOffersPricing(game.id, action, {
+        marginPercent: action === 'margin' ? parseFloat(bulkMargin) : null,
+        storeMarkupPercent: storeMarkup,
+      });
+      setBulkMsg(formatMessage(t.gamePricingApplied || 'Updated pricing on {count} packs.', {
+        count: result.updated,
+      }));
+      // Push DB rows into app state (or parent re-fetches)
+      await onOffersPricingApplied?.(result);
+    } catch (err) {
+      setError(err.message || t.gamePricingFailed || 'Could not update pack pricing.');
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [game, bulkMargin, storeMarkup, t, onOffersPricingApplied]);
 
   useEffect(() => {
     if (coverFile) {
@@ -321,6 +371,79 @@ export default function AdminGameEditModal({
               t={t}
               lang={lang}
             />
+          )}
+
+          {!isNew && gameOffersCount > 0 && (
+            <div className="rounded-xl border border-[var(--border)] p-3 space-y-3 bg-[var(--bg-primary)]/40">
+              <div className="text-xs font-bold text-[var(--accent)] uppercase tracking-wide">
+                {t.gamePricingTitle || 'All packs pricing'}
+              </div>
+              <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                {formatMessage(
+                  t.gamePricingHelp || 'Apply pricing to all {count} packs under this game (top-up & redeem). Sale packs are skipped.',
+                  { count: gameOffersCount },
+                )}
+              </p>
+
+              <div className="rounded-xl border border-[var(--accent)]/25 bg-[var(--accent)]/5 px-3 py-3 space-y-3">
+                <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-sec)]">
+                  {t.pricingCurrentSelection || 'Current selection'}
+                </div>
+                <div className="text-sm text-[var(--text-sec)]">
+                  {formatMessage(t.gamePricingStoreDefault || 'Store default markup: {markup}%', {
+                    markup: storeMarkup,
+                  })}
+                </div>
+                <PricingEditableValue
+                  label={t.pricingCustomMargin || 'Margin %'}
+                  value={bulkMargin}
+                  displayValue={
+                    bulkMargin === '' || bulkMargin == null ? '— %' : `${bulkMargin}%`
+                  }
+                  suffix="%"
+                  min={0}
+                  max={500}
+                  step={0.5}
+                  t={t}
+                  onCommit={(v) => setBulkMargin(v)}
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => runBulkPricing('margin')}
+                  className="btn btn-secondary text-sm inline-flex items-center gap-1.5"
+                >
+                  {bulkBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Percent className="w-3.5 h-3.5" />}
+                  {t.gamePricingApplyMargin || 'Apply margin to all'}
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => runBulkPricing('fixed_current')}
+                  className="btn btn-secondary text-sm inline-flex items-center gap-1.5"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  {t.gamePricingLockAll || 'Lock current prices'}
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => runBulkPricing('auto')}
+                  className="btn btn-secondary text-sm inline-flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  {formatMessage(t.gamePricingResetAuto || 'Reset to store {markup}%', {
+                    markup: storeMarkup,
+                  })}
+                </button>
+              </div>
+              {bulkMsg && (
+                <p className="text-xs text-green-400">{bulkMsg}</p>
+              )}
+            </div>
           )}
 
           {error && (

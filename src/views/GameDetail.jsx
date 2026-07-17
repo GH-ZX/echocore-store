@@ -32,6 +32,8 @@ export default function GameDetail({
   navigate,
   user,
   updateProduct,
+  onPricingSaved,
+  onOffersPricingApplied,
   updateGame,
   deleteGame,
   loadingGames = false,
@@ -260,6 +262,9 @@ export default function GameDetail({
             await deleteGame(gameId);
             navigate('/');
           } : undefined}
+          onOffersPricingApplied={(result) => {
+            if (result?.offers?.length) onOffersPricingApplied?.(result.offers);
+          }}
         />
       )}
       {isAdmin && editingOffer && (
@@ -271,6 +276,7 @@ export default function GameDetail({
           t={t}
           onClose={() => setEditingOffer(null)}
           onSave={updateProduct}
+          onPricingSaved={onPricingSaved}
         />
       )}
     </CatalogPageShell>

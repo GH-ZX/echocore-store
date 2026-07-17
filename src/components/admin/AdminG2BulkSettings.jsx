@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import G2bulkWalletCard from '../ui/G2bulkWalletCard';
 import G2bulkPullPanel from './G2bulkPullPanel';
+import PricingEditableValue from './PricingEditableValue';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import {
   fetchG2bulkSettings,
@@ -399,9 +400,8 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     syncAbortRef.current = controller;
 
     try {
-      if (apiKeyInput.trim()) {
-        await persistSettings();
-      }
+      // Persist markup + settings so this sync uses the form values (not stale DB).
+      await persistSettings();
 
       const result = await syncG2bulkCatalog({
         hideManual: true,
@@ -471,6 +471,13 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     }));
   };
 
+  const markupPreviewCost = 1;
+  const markupPreviewPrice = (() => {
+    const m = parseFloat(form.g2bulk_markup_percent);
+    const pct = Number.isFinite(m) ? m : 15;
+    return Math.ceil(markupPreviewCost * (1 + pct / 100) * 100) / 100;
+  })();
+
   const catalogHealthSection = (
     <SectionCard
       icon={Package}
@@ -488,6 +495,46 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         <p className="text-xs text-[var(--text-muted)]">
           {catalogMode === 'live' ? t.g2bulkCatalogModeLiveHelp : t.g2bulkCatalogModeSyncHelp}
         </p>
+      </div>
+
+      {/* Default markup — visible always; edit only via pencil */}
+      <div className="rounded-xl border border-[var(--accent)]/25 bg-[var(--accent)]/5 px-4 py-4 space-y-3">
+        <div className="min-w-0">
+          <label className="block text-sm font-semibold text-[var(--text-primary)]">
+            {t.g2bulkMarkup}
+          </label>
+          <p className="text-xs text-[var(--text-muted)] mt-1 leading-relaxed max-w-xl">
+            {t.g2bulkMarkupSyncHelp
+              || 'Default profit margin applied on each catalog sync for packs set to “store default”. Fixed / custom-margin packs keep their own rules.'}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-[var(--accent)]/30 bg-[var(--bg-primary)]/40 px-3 py-2.5">
+          <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-sec)] mb-2">
+            {t.pricingCurrentSelection || 'Current selection'}
+          </div>
+          <PricingEditableValue
+            value={form.g2bulk_markup_percent}
+            displayValue={`${form.g2bulk_markup_percent ?? '—'}%`}
+            suffix="%"
+            min={0}
+            max={500}
+            step={0.5}
+            t={t}
+            onCommit={(v) => setForm((p) => ({ ...p, g2bulk_markup_percent: v }))}
+          />
+        </div>
+
+        <div className="text-xs text-[var(--text-sec)] rounded-lg border border-[var(--border)] bg-[var(--bg-primary)]/40 px-3 py-2">
+          {formatMessage(
+            t.g2bulkMarkupExample || 'Example: supplier cost {cost} → customer {price} at {markup}%',
+            {
+              cost: markupPreviewCost.toFixed(2),
+              price: markupPreviewPrice.toFixed(2),
+              markup: form.g2bulk_markup_percent || 15,
+            },
+          )}
+        </div>
       </div>
 
       <div className={`rounded-2xl border px-4 py-4 ${
@@ -577,6 +624,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
             <li>{t.g2bulkSyncStep3}</li>
             <li>{t.g2bulkSyncStep4}</li>
             <li>{t.g2bulkSyncStep5}</li>
+            <li>{t.g2bulkSyncStepPricing || t.g2bulkMarkupSyncHelp}</li>
           </ul>
         </div>
       )}
@@ -713,23 +761,20 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
 
         <SectionCard
           icon={Store}
-          title={t.g2bulkStorefront}
-          description={t.g2bulkStorefrontDesc}
+          title={t.g2bulkFulfillmentSection || t.g2bulkStorefront}
+          description={t.g2bulkFulfillmentSectionDesc || t.g2bulkStorefrontDesc}
         >
-          <div>
-            <label className="block text-sm font-medium mb-1.5">
-              {t.g2bulkMarkup}
-            </label>
+          <label className="flex items-center gap-3 cursor-pointer">
             <input
-              type="number"
-              min="0"
-              max="200"
-              step="0.5"
-              value={form.g2bulk_markup_percent}
-              onChange={(e) => setForm((p) => ({ ...p, g2bulk_markup_percent: e.target.value }))}
-              className="input w-full max-w-[120px]"
+              type="checkbox"
+              checked={form.g2bulk_enabled}
+              onChange={(e) => setForm((p) => ({ ...p, g2bulk_enabled: e.target.checked }))}
+              className="rounded border-[var(--border)]"
             />
-          </div>
+            <span className="text-sm">
+              {t.g2bulkEnabled}
+            </span>
+          </label>
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"
@@ -742,17 +787,10 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
               {t.g2bulkCatalogOnly}
             </span>
           </label>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={form.g2bulk_enabled}
-              onChange={(e) => setForm((p) => ({ ...p, g2bulk_enabled: e.target.checked }))}
-              className="rounded border-[var(--border)]"
-            />
-            <span className="text-sm">
-              {t.g2bulkEnabled}
-            </span>
-          </label>
+          <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+            {t.g2bulkMarkupMovedHint
+              || 'Default markup % lives in the Catalog & sync section above — it applies when you sync.'}
+          </p>
         </SectionCard>
       </div>
 
@@ -892,26 +930,23 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         </div>
       )}
 
+      {/* Catalog + markup + sync first; connection/schedule secondary */}
+      {catalogHealthSection}
+
       {embedded ? (
-        <>
-          {catalogHealthSection}
-          <details className="g2bulk-embedded-advanced rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)]/40 overflow-hidden group">
-            <summary className="cursor-pointer list-none px-4 py-3 sm:px-5 sm:py-4 flex items-center justify-between gap-3 touch-manipulation">
-              <span className="font-semibold text-sm text-[var(--text-primary)]">
-                {t.g2bulkApiConnection} · {t.g2bulkScheduledSync}
-              </span>
-              <span className="text-xs text-[var(--text-muted)] group-open:hidden">{t.saveSettings}</span>
-            </summary>
-            <div className="px-4 pb-5 sm:px-5 space-y-6 border-t border-[var(--border)] pt-4">
-              {connectionSections}
-            </div>
-          </details>
-        </>
+        <details className="g2bulk-embedded-advanced rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)]/40 overflow-hidden group">
+          <summary className="cursor-pointer list-none px-4 py-3 sm:px-5 sm:py-4 flex items-center justify-between gap-3 touch-manipulation">
+            <span className="font-semibold text-sm text-[var(--text-primary)]">
+              {t.g2bulkApiConnection} · {t.g2bulkScheduledSync}
+            </span>
+            <span className="text-xs text-[var(--text-muted)] group-open:hidden">{t.saveSettings}</span>
+          </summary>
+          <div className="px-4 pb-5 sm:px-5 space-y-6 border-t border-[var(--border)] pt-4">
+            {connectionSections}
+          </div>
+        </details>
       ) : (
-        <>
-          {connectionSections}
-          {catalogHealthSection}
-        </>
+        connectionSections
       )}
 
       <div className="flex flex-wrap gap-3 pt-2 border-t border-[var(--border)]">
