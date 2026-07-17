@@ -3,7 +3,7 @@ import { SUPPLIER_BRAND } from '../../lib/branding';
 import { formatG2bulkAmount } from '../../lib/g2bulkWalletFormat';
 
 export default function G2bulkWalletCard({
-  balance = 0,
+  balance = null,
   username = '',
   loading = false,
   error = null,
@@ -16,10 +16,11 @@ export default function G2bulkWalletCard({
   manageLabel,
 }) {
   const isAr = lang === 'ar';
-  const lowBalance = !loading && !error && Number(balance) < 5;
+  const hasBalance = balance != null && Number.isFinite(Number(balance));
+  const lowBalance = !loading && !error && hasBalance && Number(balance) < 5;
 
   if (compact) {
-    if (loading) {
+    if (loading && !hasBalance) {
       return (
         <span className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
           <Loader2 className="w-3 h-3 animate-spin" />
@@ -27,9 +28,16 @@ export default function G2bulkWalletCard({
         </span>
       );
     }
-    if (error) {
+    if (error && !hasBalance) {
       return (
         <span className="text-xs text-amber-400" title={error}>
+          {SUPPLIER_BRAND} —
+        </span>
+      );
+    }
+    if (!hasBalance) {
+      return (
+        <span className="text-xs text-[var(--text-muted)]" title={isAr ? `رصيد ${SUPPLIER_BRAND}` : `${SUPPLIER_BRAND} wallet`}>
           {SUPPLIER_BRAND} —
         </span>
       );
@@ -70,19 +78,19 @@ export default function G2bulkWalletCard({
         )}
       </div>
 
-      {loading ? (
+      {loading && !hasBalance ? (
         <div className="flex items-center gap-3 py-6 text-[var(--text-sec)]">
           <Loader2 className="w-6 h-6 animate-spin text-[var(--accent)]" />
           <span className="text-sm">{isAr ? 'جاري تحميل الرصيد…' : 'Loading wallet…'}</span>
         </div>
-      ) : idle ? (
+      ) : idle && !hasBalance ? (
         <div className="py-6 text-center">
           <p className="text-3xl sm:text-4xl font-black font-mono text-[var(--text-muted)]">—</p>
           {idleHint ? (
             <p className="text-xs text-[var(--text-muted)] mt-3">{idleHint}</p>
           ) : null}
         </div>
-      ) : error ? (
+      ) : error && !hasBalance ? (
         <div className="flex items-start gap-2 text-sm text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-3">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <div>
@@ -90,10 +98,17 @@ export default function G2bulkWalletCard({
             <p className="text-xs opacity-90 mt-0.5">{error}</p>
           </div>
         </div>
+      ) : !hasBalance ? (
+        <div className="py-6 text-center">
+          <p className="text-3xl sm:text-4xl font-black font-mono text-[var(--text-muted)]">—</p>
+        </div>
       ) : (
         <>
           <p className="g2bulk-wallet-amount text-4xl sm:text-5xl font-black font-mono tracking-tight text-white">
             {formatG2bulkAmount(balance)}
+            {loading ? (
+              <Loader2 className="inline-block w-5 h-5 ml-2 animate-spin opacity-60 align-middle" />
+            ) : null}
           </p>
           {username && (
             <p className="text-sm text-[var(--text-sec)] mt-2 truncate">

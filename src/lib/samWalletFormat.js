@@ -99,9 +99,19 @@ export function sumBalancesAcrossWallets(wallets, currency) {
 
 export const SUPPLIER_SAM_CURRENCIES = ['USD', 'SYP'];
 
+/**
+ * Aggregate Sam balances for the admin card.
+ * Returns [] when no wallet has real balance data — avoids fake $0 lines.
+ */
 export function getSamSupplierBalanceLines(wallets, currencies = SUPPLIER_SAM_CURRENCIES) {
+  const list = Array.isArray(wallets) ? wallets : [];
+  const hasAnyBalance = list.some((wallet) => (
+    Array.isArray(wallet?.balances) && wallet.balances.length > 0
+  ));
+  if (!hasAnyBalance) return [];
+
   return currencies.map((currency) => ({
     currency,
-    amount: sumBalancesAcrossWallets(wallets, currency),
+    amount: sumBalancesAcrossWallets(list, currency),
   }));
 }

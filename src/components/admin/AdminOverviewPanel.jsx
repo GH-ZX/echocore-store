@@ -58,7 +58,7 @@ export default function AdminOverviewPanel({
       <AdminSupplierWalletsCard
         t={t}
         variant="card"
-        g2bulkBalance={g2bulkWallet?.balance ?? 0}
+        g2bulkBalance={g2bulkWallet != null ? g2bulkWallet.balance : null}
         g2bulkUsername={g2bulkWallet?.username}
         g2bulkError={g2bulkError}
         g2bulkFetched={g2bulkFetched}

@@ -7,20 +7,47 @@ import {
   writeSamWalletsCache,
 } from '../lib/adminWalletCache';
 
-const DEFAULT_STALE_MS = 3 * 60 * 1000;
-const DEFAULT_POLL_MS = 3 * 60 * 1000;
+const DEFAULT_STALE_MS = 45 * 1000;
+const DEFAULT_POLL_MS = 60 * 1000;
 
 function normalizeWalletRows(wallets) {
   if (!Array.isArray(wallets)) return [];
-  return wallets.map((wallet) => ({
-    id: wallet.id,
-    provider: wallet.provider,
-    providerDisplayName: wallet.providerDisplayName || wallet.provider,
-    label: wallet.label || '',
-    identifier: wallet.identifier || '',
-    balances: normalizeSamBalances(wallet.balances),
-    error: wallet.error || null,
-  }));
+  return wallets.map((wallet) => {
+    const rawBalances = Array.isArray(wallet.balances) ? wallet.balances : [];
+    const hasBalancePayload = rawBalances.length > 0;
+    return {
+      id: wallet.id,
+      provider: wallet.provider,
+      providerDisplayName: wallet.providerDisplayName || wallet.provider,
+      label: wallet.label || '',
+      identifier: wallet.identifier || '',
+      balances: hasBalancePayload ? normalizeSamBalances(rawBalances) : [],
+      error: wallet.error || null,
+      balanceOk: hasBalancePayload && !wallet.error,
+    };
+  });
+}
+
+function mergeWalletRows(previous = [], next = []) {
+  if (!next.length) return previous.length ? previous : next;
+  if (!previous.length) return next;
+  const prevByKey = new Map();
+  previous.forEach((row) => {
+    prevByKey.set(String(row.id || row.identifier || `${row.provider}:${row.label}`), row);
+  });
+  return next.map((row) => {
+    const key = String(row.id || row.identifier || `${row.provider}:${row.label}`);
+    const prev = prevByKey.get(key);
+    if (prev && (!row.balanceOk || !row.balances?.length) && prev.balances?.length) {
+      return {
+        ...row,
+        balances: prev.balances,
+        balanceOk: true,
+        error: row.error || prev.error || null,
+      };
+    }
+    return row;
+  });
 }
 
 export function useAdminSamWallets(enabled, {
@@ -35,6 +62,7 @@ export function useAdminSamWallets(enabled, {
   const [notConfigured, setNotConfigured] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
   const refreshInFlight = useRef(false);
+  const lastGoodWallets = useRef([]);
 
   const refresh = useCallback(async ({ silent = false } = {}) => {
     if (!enabled) {
@@ -42,20 +70,22 @@ export function useAdminSamWallets(enabled, {
       setError(null);
       setNotConfigured(false);
       setHasFetched(false);
+      lastGoodWallets.current = [];
       return [];
     }
-    if (refreshInFlight.current) return [];
+    if (refreshInFlight.current) return lastGoodWallets.current;
 
     refreshInFlight.current = true;
     if (!silent) {
       setLoading(true);
-      setError(null);
-      setNotConfigured(false);
     }
 
     try {
       const data = await fetchAllSamWalletBalances();
-      const rows = normalizeWalletRows(data.wallets);
+      const rows = mergeWalletRows(lastGoodWallets.current, normalizeWalletRows(data.wallets));
+      if (rows.some((w) => w.balanceOk || w.balances?.length)) {
+        lastGoodWallets.current = rows;
+      }
       setWallets(rows);
       setError(null);
       setNotConfigured(false);
@@ -69,25 +99,30 @@ export function useAdminSamWallets(enabled, {
       if (/not configured|api key/i.test(message)) {
         setNotConfigured(true);
         if (!silent) {
-          setWallets([]);
           setError(null);
+          if (!lastGoodWallets.current.length) setWallets([]);
         }
         setHasFetched(true);
         if (cacheKey) {
           writeSamWalletsCache(cacheKey, { wallets: [], notConfigured: true, error: null });
         }
-        return [];
+        return lastGoodWallets.current;
       }
-      if (!silent) {
-        setError(message);
+      if (!silent) setError(message);
+      if (lastGoodWallets.current.length) {
+        setWallets(lastGoodWallets.current);
+      } else if (!silent) {
         setWallets([]);
-        setNotConfigured(false);
       }
       setHasFetched(true);
       if (cacheKey && !silent) {
-        writeSamWalletsCache(cacheKey, { wallets: [], notConfigured: false, error: message });
+        writeSamWalletsCache(cacheKey, {
+          wallets: lastGoodWallets.current,
+          notConfigured: false,
+          error: message,
+        });
       }
-      return [];
+      return lastGoodWallets.current;
     } finally {
       refreshInFlight.current = false;
       if (!silent) setLoading(false);
@@ -101,28 +136,30 @@ export function useAdminSamWallets(enabled, {
       setNotConfigured(false);
       setHasFetched(false);
       setLoading(false);
+      lastGoodWallets.current = [];
       return undefined;
     }
 
-    let hydrated = false;
     if (cacheKey) {
       const cached = readSamWalletsCache(cacheKey);
       if (cached) {
-        setWallets(cached.wallets);
+        if (cached.wallets?.length) {
+          lastGoodWallets.current = cached.wallets;
+          setWallets(cached.wallets);
+        }
         setError(cached.error);
         setNotConfigured(cached.notConfigured);
         setHasFetched(true);
-        hydrated = true;
       }
     }
 
     if (autoFetch) {
-      refresh();
-      return undefined;
-    }
-
-    if (hydrated && cacheKey && isWalletCacheStale(readSamWalletsCache(cacheKey)?.fetchedAt, staleAfterMs)) {
-      refresh({ silent: true });
+      refresh({ silent: lastGoodWallets.current.length > 0 });
+    } else if (cacheKey) {
+      const cached = readSamWalletsCache(cacheKey);
+      if (cached && isWalletCacheStale(cached.fetchedAt, staleAfterMs)) {
+        refresh({ silent: true });
+      }
     }
 
     if (!pollIntervalMs || pollIntervalMs <= 0) return undefined;

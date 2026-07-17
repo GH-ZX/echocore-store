@@ -125,7 +125,6 @@ export default function ProfileView({
     refresh: refreshSupplierWallets,
   } = useAdminSupplierWallets(isAdmin, {
     fetchOnMount: true,
-    pollIntervalMs: 3 * 60 * 1000,
   });
 
   const syncFormFromProfile = (profile, currentUser) => {
@@ -523,7 +522,7 @@ export default function ProfileView({
               <AdminSupplierWalletsCard
                 t={t}
                 variant="card"
-                g2bulkBalance={g2bulkWallet?.balance ?? 0}
+                g2bulkBalance={g2bulkWallet != null ? g2bulkWallet.balance : null}
                 g2bulkUsername={g2bulkWallet?.username}
                 g2bulkError={g2bulkError}
                 g2bulkFetched={g2bulkFetched}

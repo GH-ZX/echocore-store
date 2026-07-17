@@ -12,17 +12,26 @@ function isPanelVariant(variant) {
   return variant === 'dropdown' || variant === 'compact';
 }
 
-function BalanceStack({ loading, idle, lines = [], variant = 'card' }) {
+function BalanceStack({ loading, idle, lines = [], variant = 'card', keepVisibleWhileLoading = false }) {
   const panel = isPanelVariant(variant);
+  const hasLines = Array.isArray(lines) && lines.length > 0;
 
-  if (loading) {
+  // Prefer last amounts while refreshing; only full-replace with spinner when nothing to show.
+  if (loading && !(keepVisibleWhileLoading && hasLines)) {
     return (
       <span className={`supplier-wallets-value supplier-wallets-value--loading${panel ? ' supplier-wallets-value--panel' : ''}`}>
         <Loader2 className={`${panel ? 'w-4 h-4' : 'w-3.5 h-3.5'} animate-spin`} />
       </span>
     );
   }
-  if (idle) {
+  if (idle && !hasLines) {
+    return (
+      <span className={`supplier-wallets-value supplier-wallets-value--empty${panel ? ' supplier-wallets-value--panel' : ''}`}>
+        —
+      </span>
+    );
+  }
+  if (!hasLines) {
     return (
       <span className={`supplier-wallets-value supplier-wallets-value--empty${panel ? ' supplier-wallets-value--panel' : ''}`}>
         —
@@ -40,6 +49,9 @@ function BalanceStack({ loading, idle, lines = [], variant = 'card' }) {
           {formatSamCurrencyAmount(line.currency, line.amount)}
         </span>
       ))}
+      {loading ? (
+        <Loader2 className={`${panel ? 'w-3.5 h-3.5' : 'w-3 h-3'} animate-spin opacity-60 shrink-0`} />
+      ) : null}
     </span>
   );
 }
@@ -53,6 +65,7 @@ function WalletRow({
   lines,
   variant = 'card',
   onClick,
+  keepVisibleWhileLoading = false,
 }) {
   const Tag = onClick ? 'button' : 'div';
   const rowMod = variant === 'dropdown'
@@ -78,6 +91,7 @@ function WalletRow({
         idle={idle}
         lines={lines}
         variant={variant}
+        keepVisibleWhileLoading={keepVisibleWhileLoading}
       />
     </Tag>
   );
@@ -86,7 +100,8 @@ function WalletRow({
 export default function AdminSupplierWalletsCard({
   t = {},
   variant = 'card',
-  g2bulkBalance = 0,
+  /** null = unknown (do not invent $0); 0 is a valid balance */
+  g2bulkBalance = null,
   g2bulkUsername = '',
   g2bulkError = null,
   g2bulkFetched = false,
@@ -109,7 +124,9 @@ export default function AdminSupplierWalletsCard({
   const samLabel = isPanelVariant(variant)
     ? (t.samWalletShort || 'Sam API')
     : getSamAccountLabel(samWallets, t.samWalletTitle);
-  const g2bulkLines = getG2bulkBalanceLines({ balance: g2bulkBalance });
+  const g2bulkLines = g2bulkBalance == null
+    ? []
+    : getG2bulkBalanceLines({ balance: g2bulkBalance });
   const samLines = getSamSupplierBalanceLines(samWallets);
   const showActions = variant === 'card' && (onOpenDashboard || onOpenPayments);
   const showHeader = variant !== 'dropdown';
@@ -153,6 +170,7 @@ export default function AdminSupplierWalletsCard({
           lines={g2bulkLines}
           variant={variant}
           onClick={rowNav ? onOpenDashboard : undefined}
+          keepVisibleWhileLoading
         />
         <WalletRow
           icon={Smartphone}
@@ -163,6 +181,7 @@ export default function AdminSupplierWalletsCard({
           lines={samLines}
           variant={variant}
           onClick={rowNav ? onOpenPayments : undefined}
+          keepVisibleWhileLoading
         />
       </div>
 

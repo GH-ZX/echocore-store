@@ -13,7 +13,9 @@ import {
   saveG2bulkSettings,
   syncG2bulkCatalog,
   clearG2bulkSyncedCatalog,
+  g2bulkGetMe,
 } from '../../lib/g2bulk';
+import { normalizeG2bulkWallet } from '../../lib/g2bulkWalletFormat';
 import { refreshSupplierWallets } from '../../lib/adminSupplierWalletsStore';
 import { useAdminG2bulkWallet } from '../../hooks/useAdminG2bulkWallet';
 import { countPullSelection, normalizeCatalogMode, normalizePullSelection } from '../../lib/pullCatalogUtils';
@@ -252,9 +254,13 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
       if (apiKeyInput.trim()) {
         await persistSettings();
       }
-      const wallet = await refreshG2bulkWallet();
+      // Direct getMe for test result (hook may keep last-good on flaky refresh).
+      const me = await g2bulkGetMe();
+      const wallet = normalizeG2bulkWallet(me);
       if (!wallet) {
-        setTestResult({ ok: false, message: 'Failed to load G2Bulk wallet' });
+        setTestResult({ ok: false, message: 'G2Bulk returned no usable balance' });
+        await refreshG2bulkWallet();
+        await refreshSupplierWallets();
         return;
       }
       setTestResult({
@@ -262,6 +268,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         balance: wallet.balance,
         username: wallet.username,
       });
+      await refreshG2bulkWallet();
       await refreshSupplierWallets();
     } catch (err) {
       setTestResult({ ok: false, message: err.message });

@@ -42,7 +42,10 @@ import { fetchPaymentMethods } from './lib/storeSettings';
 import { fetchSiteStatus, isLoginBlockedDuringMaintenance } from './lib/siteStatus';
 import MaintenanceBanner from './components/layout/MaintenanceBanner';
 import { isUserBanned } from './lib/userBan';
-import { resetSupplierWalletsStore } from './lib/adminSupplierWalletsStore';
+import {
+  refreshSupplierWallets,
+  resetSupplierWalletsStore,
+} from './lib/adminSupplierWalletsStore';
 import { logAuthEvent } from './lib/siteLogs';
 import {
   filterGamesByPullSelection,
@@ -491,7 +494,11 @@ export default function App() {
 
   const refreshDataAfterAuth = (role) => {
     // Catalog is public — already loaded on mount; refetching on login caused loading flashes and auth deadlocks.
-    if (role === 'admin') fetchOrders();
+    if (role === 'admin') {
+      fetchOrders();
+      // Force supplier wallet balances on every admin login (G2Bulk + Sam, independent).
+      refreshSupplierWallets({ silent: false }).catch(() => {});
+    }
   };
 
   // ============================================
@@ -1203,7 +1210,10 @@ export default function App() {
           if (!userData) return;
           lastSyncedUserIdRef.current = userData.id;
           setUser(userData);
-          if (userData.role === 'admin') fetchOrders();
+          if (userData.role === 'admin') {
+            fetchOrders();
+            refreshSupplierWallets({ silent: true }).catch(() => {});
+          }
         } catch (err) {
           console.error('Failed to sync user session:', err);
         }
@@ -1266,7 +1276,10 @@ export default function App() {
         if (userData) {
           lastSyncedUserIdRef.current = userData.id;
           setUser(userData);
-          if (userData.role === 'admin') fetchOrders();
+          if (userData.role === 'admin') {
+            fetchOrders();
+            refreshSupplierWallets({ silent: true }).catch(() => {});
+          }
         }
       }
       setLoadingAuth(false);

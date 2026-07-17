@@ -94,7 +94,7 @@ export default function Header({
     samFetched,
     loading: supplierWalletsLoading,
     idle: supplierWalletsIdle,
-  } = useAdminSupplierWallets(isAdmin, { fetchOnMount: true, pollIntervalMs: 0 });
+  } = useAdminSupplierWallets(isAdmin, { fetchOnMount: true });
   const profileUsername = getProfileUsername(user);
   const profileUsernameLabel = profileUsername ? formatProfileUsername(profileUsername) : '';
   const sypPerUsd = getSypPerUsd(paymentConfig);
@@ -365,7 +365,7 @@ export default function Header({
                 <AdminSupplierWalletsCard
                   t={t}
                   variant="dropdown"
-                  g2bulkBalance={g2bulkWallet?.balance ?? 0}
+                  g2bulkBalance={g2bulkWallet != null ? g2bulkWallet.balance : null}
                   g2bulkError={g2bulkError}
                   g2bulkFetched={g2bulkFetched}
                   samWallets={samWallets}
@@ -647,7 +647,7 @@ export default function Header({
                           <AdminSupplierWalletsCard
                             t={t}
                             variant="compact"
-                            g2bulkBalance={g2bulkWallet?.balance ?? 0}
+                            g2bulkBalance={g2bulkWallet != null ? g2bulkWallet.balance : null}
                             g2bulkError={g2bulkError}
                             g2bulkFetched={g2bulkFetched}
                             samWallets={samWallets}
