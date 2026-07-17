@@ -755,6 +755,154 @@ type AvailabilityItem = {
   player_uid?: string | null;
 };
 
+function resolveEmbeddedGame(raw: unknown): Json {
+  if (Array.isArray(raw)) {
+    const first = raw[0];
+    return first && typeof first === 'object' ? first as Json : {};
+  }
+  if (raw && typeof raw === 'object') return raw as Json;
+  return {};
+}
+
+function parseG2bulkWalletBalance(data: Json): number {
+  const candidates = [
+    data.balance,
+    data.wallet_balance,
+    (data.user as Json | undefined)?.balance,
+    (data.data as Json | undefined)?.balance,
+  ];
+  for (const value of candidates) {
+    if (value == null || value === '') continue;
+    const n = Number(String(value).replace(/[^0-9.\-]/g, ''));
+    if (Number.isFinite(n)) return n;
+  }
+  return Number.NaN;
+}
+
+/** Live supplier cost + stock for one mapped offer. Prefer live G2Bulk data over stale DB cost. */
+async function resolveLiveSupplierQuote(
+  apiKey: string,
+  offer: Json,
+  game: Json,
+  g2bulkType: string,
+  qty: number,
+): Promise<
+  | { ok: true; unitCost: number }
+  | { ok: false; reason: string; offerName?: string }
+> {
+  const offerName = String(offer.name_en || '');
+  const dbCost = Number(offer.g2bulk_cost_usd);
+
+  if (g2bulkType === 'voucher') {
+    const productId = offer.g2bulk_product_id;
+    if (productId == null || productId === '') {
+      return { ok: false, reason: 'not_mapped', offerName };
+    }
+
+    try {
+      const { res, data } = await g2bulkFetch(
+        apiKey,
+        `/products/${encodeURIComponent(String(productId))}`,
+        {},
+        undefined,
+        8000,
+      );
+      if (!res.ok || data.success === false) {
+        // Fall back to DB cost only when product endpoint is unreachable.
+        if (Number.isFinite(dbCost) && dbCost > 0) {
+          return { ok: true, unitCost: dbCost };
+        }
+        return { ok: false, reason: 'supplier_unreachable' };
+      }
+
+      // Docs: GET /products/:id returns { success, products: [ { unit_price, stock, ... } ] }
+      let product: Json = {};
+      if (Array.isArray(data.products) && data.products[0] && typeof data.products[0] === 'object') {
+        product = data.products[0] as Json;
+      } else if (data.product && typeof data.product === 'object' && !Array.isArray(data.product)) {
+        product = data.product as Json;
+      } else if (data.unit_price != null || data.stock != null || data.id != null) {
+        product = data;
+      }
+
+      const stock = Number(product.stock);
+      if (Number.isFinite(stock) && stock < qty) {
+        return { ok: false, reason: 'out_of_stock', offerName };
+      }
+
+      const liveCost = Number(product.unit_price ?? product.price ?? product.amount);
+      if (Number.isFinite(liveCost) && liveCost > 0) {
+        return { ok: true, unitCost: liveCost };
+      }
+      if (Number.isFinite(dbCost) && dbCost > 0) {
+        return { ok: true, unitCost: dbCost };
+      }
+      return { ok: false, reason: 'missing_supplier_cost', offerName };
+    } catch {
+      if (Number.isFinite(dbCost) && dbCost > 0) {
+        return { ok: true, unitCost: dbCost };
+      }
+      return { ok: false, reason: 'supplier_unreachable' };
+    }
+  }
+
+  // Top-up: confirm catalogue row still exists and read live amount.
+  const gameCode = String(game.g2bulk_game_code || '').trim();
+  const catalogueName = String(offer.g2bulk_catalogue_name || offer.name_en || '').trim();
+  const catalogueId = offer.g2bulk_catalogue_id != null && offer.g2bulk_catalogue_id !== ''
+    ? Number(offer.g2bulk_catalogue_id)
+    : null;
+  if (!gameCode || (!catalogueName && !Number.isFinite(catalogueId as number))) {
+    return { ok: false, reason: 'not_mapped', offerName };
+  }
+
+  try {
+    const catRes = await fetch(
+      `${G2BULK_BASE}/games/${encodeURIComponent(gameCode)}/catalogue`,
+    );
+    const catPayload = await catRes.json().catch(() => ({})) as Json;
+    if (!catRes.ok) {
+      if (Number.isFinite(dbCost) && dbCost > 0) {
+        return { ok: true, unitCost: dbCost };
+      }
+      return { ok: false, reason: 'supplier_unreachable' };
+    }
+
+    const catalogues = Array.isArray(catPayload.catalogues)
+      ? catPayload.catalogues as Json[]
+      : [];
+    const match = catalogues.find((row) => {
+      if (Number.isFinite(catalogueId as number) && Number(row?.id) === catalogueId) return true;
+      const name = String(row?.name || '').trim();
+      if (!catalogueName) return false;
+      return name === catalogueName || name.toLowerCase() === catalogueName.toLowerCase();
+    });
+
+    if (!match) {
+      // Catalogue still loads but this pack is gone — fall back to DB cost if present
+      // so a display-name mismatch does not hard-block purchases.
+      if (Number.isFinite(dbCost) && dbCost > 0) {
+        return { ok: true, unitCost: dbCost };
+      }
+      return { ok: false, reason: 'out_of_stock', offerName };
+    }
+
+    const liveCost = Number(match.amount ?? match.unit_price ?? match.price);
+    if (Number.isFinite(liveCost) && liveCost > 0) {
+      return { ok: true, unitCost: liveCost };
+    }
+    if (Number.isFinite(dbCost) && dbCost > 0) {
+      return { ok: true, unitCost: dbCost };
+    }
+    return { ok: false, reason: 'missing_supplier_cost', offerName };
+  } catch {
+    if (Number.isFinite(dbCost) && dbCost > 0) {
+      return { ok: true, unitCost: dbCost };
+    }
+    return { ok: false, reason: 'supplier_unreachable' };
+  }
+}
+
 async function evaluateFulfillmentAvailability(
   serviceClient: ReturnType<typeof createClient>,
   apiKey: string | null,
@@ -777,7 +925,7 @@ async function evaluateFulfillmentAvailability(
   const offerIds = items.map((row) => String(row.offer_id));
   const { data: offers, error: offersError } = await serviceClient
     .from('offers')
-    .select('id, name_en, g2bulk_cost_usd, g2bulk_type, g2bulk_product_id, g2bulk_catalogue_name, games(g2bulk_game_code, redemption_method)')
+    .select('id, name_en, g2bulk_cost_usd, g2bulk_type, g2bulk_product_id, g2bulk_catalogue_name, g2bulk_catalogue_id, games(g2bulk_game_code, redemption_method)')
     .in('id', offerIds);
 
   if (offersError) {
@@ -787,14 +935,14 @@ async function evaluateFulfillmentAvailability(
   let totalSupplierCost = 0;
 
   for (const item of items) {
-    const offer = (offers || []).find((row) => String(row.id) === String(item.offer_id));
+    const offer = (offers || []).find((row) => String(row.id) === String(item.offer_id)) as Json | undefined;
     if (!offer) {
       return { available: false, reason: 'offer_not_found' };
     }
 
     const qty = Math.max(1, Number(item.quantity) || 1);
-    const game = (offer.games || {}) as Json;
-    const g2bulkType = (offer.g2bulk_type as string)
+    const game = resolveEmbeddedGame(offer.games);
+    const g2bulkType = String(offer.g2bulk_type || '')
       || (game.redemption_method === 'redeem_code' ? 'voucher' : 'topup');
     const hasMapping = g2bulkType === 'voucher'
       ? !!offer.g2bulk_product_id
@@ -808,12 +956,16 @@ async function evaluateFulfillmentAvailability(
       return { available: false, reason: 'player_id_required' };
     }
 
-    const cost = Number(offer.g2bulk_cost_usd);
-    if (!Number.isFinite(cost) || cost <= 0) {
-      return { available: false, reason: 'missing_supplier_cost', offerName: offer.name_en };
+    const quote = await resolveLiveSupplierQuote(apiKey, offer, game, g2bulkType, qty);
+    if (!quote.ok) {
+      return {
+        available: false,
+        reason: quote.reason,
+        offerName: quote.offerName || offer.name_en,
+      };
     }
 
-    totalSupplierCost += cost * qty;
+    totalSupplierCost += quote.unitCost * qty;
   }
 
   try {
@@ -822,15 +974,16 @@ async function evaluateFulfillmentAvailability(
       return { available: false, reason: 'supplier_unreachable' };
     }
 
-    const walletBalance = Number(data.balance);
+    const walletBalance = parseG2bulkWalletBalance(data);
     if (!Number.isFinite(walletBalance)) {
       return { available: false, reason: 'supplier_unreachable' };
     }
 
+    // Store's G2Bulk wallet cannot cover supplier cost — not the same as product stock.
     if (walletBalance + 0.001 < totalSupplierCost) {
       return {
         available: false,
-        reason: 'out_of_stock',
+        reason: 'insufficient_supplier_balance',
         walletBalance,
         requiredCost: totalSupplierCost,
       };

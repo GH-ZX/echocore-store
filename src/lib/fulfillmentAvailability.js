@@ -4,16 +4,22 @@ export function getFulfillmentUnavailableMessage(result = {}, t = {}) {
   const reason = result?.reason || 'unknown';
   const messages = {
     out_of_stock: t.fulfillmentOutOfStock,
+    // Store G2Bulk wallet cannot cover cost — was wrongly labeled "out of stock".
+    insufficient_supplier_balance: t.fulfillmentSupplierBalanceLow
+      || t.fulfillmentTemporarilyUnavailable,
     supplier_unreachable: t.fulfillmentSupplierUnreachable,
-    supplier_disabled: t.fulfillmentOutOfStock,
-    supplier_not_configured: t.fulfillmentOutOfStock,
-    not_mapped: t.fulfillmentOutOfStock,
-    missing_supplier_cost: t.fulfillmentOutOfStock,
+    supplier_disabled: t.fulfillmentTemporarilyUnavailable || t.fulfillmentOutOfStock,
+    supplier_not_configured: t.fulfillmentTemporarilyUnavailable || t.fulfillmentOutOfStock,
+    not_mapped: t.fulfillmentOfferMisconfigured || t.fulfillmentTemporarilyUnavailable,
+    missing_supplier_cost: t.fulfillmentOfferMisconfigured || t.fulfillmentTemporarilyUnavailable,
     offer_not_found: t.cartItemsRemoved,
     player_id_required: t.validUidRequired,
-    items_required: t.fulfillmentOutOfStock,
+    items_required: t.fulfillmentTemporarilyUnavailable || t.fulfillmentOutOfStock,
   };
-  return messages[reason] || t.fulfillmentOutOfStock || 'This product is temporarily unavailable.';
+  return messages[reason]
+    || t.fulfillmentTemporarilyUnavailable
+    || t.fulfillmentOutOfStock
+    || 'This product is temporarily unavailable.';
 }
 
 export async function inspectFulfillmentAvailability(items = []) {
