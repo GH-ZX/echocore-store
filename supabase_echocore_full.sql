@@ -1435,9 +1435,10 @@ BEGIN
     jsonb_build_object(
       'messageId', NEW.id,
       'name', NEW.name,
-      'email', NEW.email
+      'email', NEW.email,
+      'message', left(coalesce(NEW.message, ''), 200)
     ),
-    '/dashboard'
+    '/dashboard/contact'
   );
   RETURN NEW;
 END;

@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { getAdminDashboardPath, getAdminOrdersPath } from './adminRoutes';
+import { getAdminContactPath, getAdminDashboardPath, getAdminOrdersPath } from './adminRoutes';
 import { getInvoiceRouteFromNotification } from './invoiceBuilder';
 
 const RPC_SETUP_MSG =
@@ -62,8 +62,14 @@ export function formatNotification(item, t = {}, lang = 'ar') {
     },
     admin_contact_message: {
       title: t.notifAdminContactTitle,
-      body: applyTemplate(t.notifAdminContactBody, { name: m.name || userName, email: m.email || '' }),
-      adminTab: 'overview',
+      body: m.message
+        ? applyTemplate(t.notifAdminContactBodyWithMessage || t.notifAdminContactBody, {
+          name: m.name || userName,
+          email: m.email || '',
+          message: String(m.message).slice(0, 160),
+        })
+        : applyTemplate(t.notifAdminContactBody, { name: m.name || userName, email: m.email || '' }),
+      adminTab: 'contact',
       tone: 'info',
     },
     recharge_approved: {
@@ -192,6 +198,12 @@ export function getNotificationDestination(item, formatted, userRole) {
   if (userRole === 'admin') {
     if (invoicePath) {
       return { path: invoicePath };
+    }
+    if (item?.type === 'admin_contact_message') {
+      const messageId = metadata.messageId || metadata.message_id || '';
+      const dest = getAdminContactPath({ messageId });
+      if (typeof dest === 'string') return { path: dest };
+      return { path: dest.pathname, state: dest.state };
     }
     if (ADMIN_RECHARGE_TYPES.has(item?.type)) {
       return {

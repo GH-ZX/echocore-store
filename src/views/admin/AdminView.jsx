@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getAdminDashboardPath, isValidAdminTabSegment, resolveAdminTabFromPath } from '../../lib/adminRoutes';
-import { Trash2, Plus, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Percent, PanelLeftClose, PanelLeftOpen, Users, ScrollText, Bell } from 'lucide-react';
+import { Trash2, Plus, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Percent, PanelLeftClose, PanelLeftOpen, Users, ScrollText, Bell, Mail } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 import { centerActiveMobileTab, resetPageHorizontalScroll } from '../../lib/adminMobileNav';
@@ -22,6 +22,7 @@ const AdminRechargeManager = lazy(() => import('../../components/admin/AdminRech
 const AdminG2BulkSettings = lazy(() => import('../../components/admin/AdminG2BulkSettings'));
 const AdminUsersManager = lazy(() => import('../../components/admin/AdminUsersManager'));
 const AdminInboxManager = lazy(() => import('../../components/admin/AdminInboxManager'));
+const AdminContactMessages = lazy(() => import('../../components/admin/AdminContactMessages'));
 const AdminOrdersManager = lazy(() => import('../../components/admin/AdminOrdersManager'));
 const AdminSiteLogs = lazy(() => import('../../components/admin/AdminSiteLogs'));
 
@@ -51,6 +52,7 @@ function buildAdminNavItems(t) {
     { id: 'orders', label: t.ordersTab, shortLabel: t.tabOrdersShort, icon: ShoppingCart },
     { id: 'recharges', label: t.rechargesTab, shortLabel: t.tabRechargesShort, icon: CircleDollarSign },
     { id: 'inbox', label: t.adminInboxTab, shortLabel: t.tabInboxShort, icon: Bell },
+    { id: 'contact', label: t.adminContactTab, shortLabel: t.tabContactShort, icon: Mail },
     { id: 'payments', label: t.paymentsTab, shortLabel: t.tabPaymentsShort, icon: Wallet },
     { id: 'theme', label: t.themeTab, shortLabel: t.tabThemeShort, icon: Palette },
     { id: 'reviews', label: t.reviewsTab, shortLabel: t.tabReviewsShort, icon: MessageSquare },
@@ -675,6 +677,16 @@ export default function AdminView({
             onRefresh={onRefreshInbox}
             onMarkRead={onNotificationMarkRead}
             onMarkAllRead={onNotificationsMarkAllRead}
+          />
+        </Suspense>
+      )}
+
+      {activeTab === 'contact' && (
+        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+          <AdminContactMessages
+            t={t}
+            lang={lang}
+            onNotify={onNotify}
           />
         </Suspense>
       )}

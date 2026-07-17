@@ -12,6 +12,7 @@ export const ADMIN_TAB_SEGMENTS = {
   reviews: 'reviews',
   users: 'users',
   inbox: 'inbox',
+  contact: 'contact',
   logs: 'logs',
 };
 
@@ -85,6 +86,16 @@ export function getAdminOrdersPath({ username = '', orderId = '' } = {}) {
   if (orderId) params.set('order', orderId);
   const query = params.toString();
   return query ? `${base}?${query}` : base;
+}
+
+export function getAdminContactPath({ messageId = '' } = {}) {
+  const base = getAdminDashboardPath('contact');
+  const id = String(messageId || '').trim();
+  if (!id) return base;
+  return {
+    pathname: base,
+    state: { highlightContactMessageId: id },
+  };
 }
 
 export function isAdminDashboardPath(pathname = '') {
