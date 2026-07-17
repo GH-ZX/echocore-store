@@ -60,11 +60,16 @@ export default function NotificationBell({
   const handleOpenItem = async (item) => {
     const formatted = formatNotification(item, t, lang);
     const dest = getNotificationDestination(item, formatted, user?.role);
-    if (!item.read_at) {
-      await onMarkRead(item.id);
-    }
+    // Navigate first so a mark-read failure never blocks opening the target page
     onClose();
     onNavigate(dest);
+    if (!item.read_at) {
+      try {
+        await onMarkRead(item.id);
+      } catch {
+        /* non-blocking */
+      }
+    }
   };
 
   const handleClearAll = (event) => {

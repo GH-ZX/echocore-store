@@ -88,14 +88,107 @@ export function getAdminOrdersPath({ username = '', orderId = '' } = {}) {
   return query ? `${base}?${query}` : base;
 }
 
+/**
+ * Admin contact messages tab.
+ * Always uses query `?message=` so deep-links work when React Router state is dropped
+ * (notification bell, refresh, mobile, GH Pages).
+ *
+ * Returns a navigate-ready object: { pathname, search, state?, path }.
+ * Prefer `path` (full string) for maximum RR compatibility.
+ */
 export function getAdminContactPath({ messageId = '' } = {}) {
   const base = getAdminDashboardPath('contact');
   const id = String(messageId || '').trim();
-  if (!id) return base;
+  if (!id) {
+    return {
+      path: base,
+      pathname: base,
+      search: '',
+      state: undefined,
+    };
+  }
+  const search = `?message=${encodeURIComponent(id)}`;
   return {
+    path: `${base}${search}`,
     pathname: base,
+    search,
     state: { highlightContactMessageId: id },
   };
+}
+
+/**
+ * Normalize any destination shape into a React Router navigate target.
+ * Accepts: string path, { path }, { pathname, search, state }.
+ */
+export function toNavigateTarget(dest) {
+  if (!dest) return { pathname: '/' };
+
+  if (typeof dest === 'string') {
+    const q = dest.indexOf('?');
+    if (q === -1) return { pathname: dest || '/' };
+    return {
+      pathname: dest.slice(0, q) || '/',
+      search: dest.slice(q),
+    };
+  }
+
+  // Prefer explicit pathname+search; fall back to path (may include query)
+  let pathname = dest.pathname || '';
+  let search = dest.search || '';
+  const rawPath = dest.path || '';
+
+  if (!pathname && rawPath) {
+    const q = rawPath.indexOf('?');
+    if (q === -1) {
+      pathname = rawPath;
+    } else {
+      pathname = rawPath.slice(0, q);
+      if (!search) search = rawPath.slice(q);
+    }
+  }
+
+  if (pathname.includes('?')) {
+    const q = pathname.indexOf('?');
+    if (!search) search = pathname.slice(q);
+    pathname = pathname.slice(0, q);
+  }
+
+  if (search && !search.startsWith('?')) search = `?${search}`;
+
+  const target = { pathname: pathname || '/' };
+  if (search) target.search = search;
+  if (dest.state != null) target.state = dest.state;
+  return target;
+}
+
+/** Call react-router navigate() with any destination shape. */
+export function navigateTo(navigate, dest) {
+  if (typeof navigate !== 'function') return;
+  if (!dest) {
+    navigate('/');
+    return;
+  }
+  if (typeof dest === 'string') {
+    navigate(dest);
+    return;
+  }
+  // Prefer pre-built full path string when present (most reliable)
+  if (typeof dest.path === 'string' && dest.path.startsWith('/')) {
+    if (dest.state != null) {
+      navigate(dest.path, { state: dest.state });
+    } else {
+      navigate(dest.path);
+    }
+    return;
+  }
+  const target = toNavigateTarget(dest);
+  const { state, ...to } = target;
+  const full = `${to.pathname || '/'}${to.search || ''}`;
+  if (state != null) {
+    navigate(full, { state });
+    return;
+  }
+  navigate(full);
 }
 
 export function isAdminDashboardPath(pathname = '') {

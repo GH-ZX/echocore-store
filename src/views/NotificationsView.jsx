@@ -71,10 +71,15 @@ export default function NotificationsView({
   const handleOpenItem = useCallback(async (item) => {
     const formatted = formatNotification(item, t, lang);
     const dest = getNotificationDestination(item, formatted, user?.role);
-    if (!item.read_at) {
-      await onMarkRead?.(item.id);
-    }
+    // Navigate first so mark-read never blocks opening Contact / order pages
     onNavigate?.(dest);
+    if (!item.read_at) {
+      try {
+        await onMarkRead?.(item.id);
+      } catch {
+        /* non-blocking */
+      }
+    }
   }, [lang, onMarkRead, onNavigate, t, user?.role]);
 
   const emptyMessageKey = getInboxEmptyMessageKey(activeFilter);

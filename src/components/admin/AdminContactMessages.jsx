@@ -36,9 +36,11 @@ export default function AdminContactMessages({
   const [filter, setFilter] = useState('all');
   const [selectedId, setSelectedId] = useState(null);
 
-  const highlightId = location.state?.highlightContactMessageId
-    || new URLSearchParams(location.search).get('message')
-    || null;
+  const highlightId = useMemo(() => {
+    const fromQuery = new URLSearchParams(location.search).get('message');
+    const fromState = location.state?.highlightContactMessageId;
+    return String(fromQuery || fromState || '').trim() || null;
+  }, [location.search, location.state]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,15 +60,30 @@ export default function AdminContactMessages({
     load();
   }, [load]);
 
-  // Open message from notification deep-link
+  // Open message from notification deep-link (?message= or location.state)
   useEffect(() => {
-    if (!highlightId || !messages.length) return;
+    if (!highlightId) return;
+    if (loading) return;
+    if (!messages.length) {
+      setError((prev) => prev || (t.adminContactNotFound || ''));
+      return;
+    }
     const exists = messages.some((row) => String(row.id) === String(highlightId));
     if (exists) {
       setSelectedId(String(highlightId));
       setFilter('all');
+      setError('');
+      // Bring detail into view on mobile after deep-link
+      window.requestAnimationFrame(() => {
+        document.getElementById('admin-contact-detail')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      });
+    } else {
+      setError((prev) => prev || (t.adminContactNotFound || ''));
     }
-  }, [highlightId, messages]);
+  }, [highlightId, messages, loading, t.adminContactNotFound]);
 
   // Auto-mark new as read when opened
   useEffect(() => {
@@ -212,10 +229,14 @@ export default function AdminContactMessages({
                   type="button"
                   onClick={() => {
                     setSelectedId(row.id);
-                    // Clear one-shot highlight from history so re-open still works later
-                    if (highlightId) {
-                      navigate(getAdminDashboardPath('contact'), { replace: true, state: {} });
-                    }
+                    // Keep URL in sync so refresh / share still opens this message
+                    navigate(
+                      {
+                        pathname: getAdminDashboardPath('contact'),
+                        search: `?message=${encodeURIComponent(row.id)}`,
+                      },
+                      { replace: true, state: { highlightContactMessageId: row.id } },
+                    );
                   }}
                   className={`w-full text-start card p-3.5 border transition-colors ${
                     active
@@ -249,7 +270,7 @@ export default function AdminContactMessages({
             })}
           </div>
 
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-3" id="admin-contact-detail">
             {!selected ? (
               <div className="card p-10 text-center text-[var(--text-sec)] h-full min-h-[240px] flex flex-col items-center justify-center">
                 <Mail className="w-9 h-9 mb-3 opacity-35" />
@@ -339,7 +360,11 @@ export default function AdminContactMessages({
                     </button>
                   )}
                   <a
-                    href={`mailto:${selected.email}?subject=${encodeURIComponent(t.adminContactReplySubject || 'ECHOCORE')}`}
+                    href={`mailto:${String(selected.email || '').trim()}?subject=${encodeURIComponent(
+                      t.adminContactReplySubject || 'ECHOCORE',
+                    )}&body=${encodeURIComponent(
+                      `${selected.name ? `${selected.name}\n` : ''}${selected.email}\n\n---\n${selected.message || ''}\n---\n\n`,
+                    )}`}
                     className="btn btn-primary text-xs py-2 px-3 gap-1.5"
                   >
                     <Mail className="w-3.5 h-3.5" />

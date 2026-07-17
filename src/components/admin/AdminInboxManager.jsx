@@ -18,7 +18,7 @@ import {
 import { getInvoiceRouteFromNotification } from '../../lib/invoiceBuilder';
 import { paginateInboxItems, searchInboxNotifications } from '../../lib/inboxList';
 import { formatMessage } from '../../lib/i18n';
-import { getAdminDashboardPath } from '../../lib/adminRoutes';
+import { getAdminDashboardPath, navigateTo } from '../../lib/adminRoutes';
 
 export default function AdminInboxManager({
   t = {},
@@ -71,14 +71,15 @@ export default function AdminInboxManager({
   const handleOpenItem = useCallback(async (item) => {
     const formatted = formatNotification(item, t, lang);
     const dest = getNotificationDestination(item, formatted, 'admin');
+    // Navigate first so mark-read failures never block opening Contact messages
+    navigateTo(navigate, dest || getAdminDashboardPath('inbox'));
     if (!item.read_at) {
-      await onMarkRead?.(item.id);
+      try {
+        await onMarkRead?.(item.id);
+      } catch {
+        /* non-blocking */
+      }
     }
-    if (dest?.state) {
-      navigate(dest.path, { state: dest.state });
-      return;
-    }
-    navigate(dest?.path || getAdminDashboardPath('inbox'));
   }, [lang, navigate, onMarkRead, t]);
 
   const handleOpenInvoice = useCallback(async (item, event) => {
@@ -195,11 +196,14 @@ export default function AdminInboxManager({
               const formatted = formatNotification(item, t, lang);
               const invoicePath = getInvoiceRouteFromNotification(item);
               const dest = getNotificationDestination(item, formatted, 'admin');
-              const queueLabel = dest?.path?.includes('/orders')
+              const destPath = String(dest?.path || dest?.pathname || '');
+              const queueLabel = destPath.includes('/orders')
                 ? t.ordersTab
-                : dest?.path?.includes('/recharges')
+                : destPath.includes('/recharges')
                   ? t.rechargesTab
-                  : null;
+                  : destPath.includes('/contact') || item.type === 'admin_contact_message'
+                    ? (t.adminContactTab || t.tabContactShort)
+                    : null;
 
               const footerActions = (invoicePath || queueLabel) ? (
                 <>

@@ -239,22 +239,37 @@ const ADMIN_ORDER_TYPES = new Set([
   'fulfillment_failed_refunded',
 ]);
 
+function resolveContactMessageId(item, metadata = {}) {
+  const fromMeta = metadata.messageId
+    || metadata.message_id
+    || metadata.contactMessageId
+    || '';
+  if (fromMeta) return String(fromMeta).trim();
+  try {
+    const link = String(item?.link || '');
+    if (!link.includes('message=')) return '';
+    const q = link.includes('?') ? link.slice(link.indexOf('?')) : '';
+    return String(new URLSearchParams(q).get('message') || '').trim();
+  } catch {
+    return '';
+  }
+}
+
 export function getNotificationDestination(item, formatted, userRole) {
   const metadata = item?.metadata || {};
   const orderId = metadata.orderId;
   const requestId = metadata.requestId;
   const invoicePath = getInvoiceRouteFromNotification(item);
 
+  // Contact form → always open admin Contact messages (ignore stale item.link)
+  if (item?.type === 'admin_contact_message') {
+    return getAdminContactPath({ messageId: resolveContactMessageId(item, metadata) });
+  }
+
   if (userRole === 'admin') {
     // Invoice only for successful delivery / approved recharge notification types
     if (invoicePath) {
       return { path: invoicePath };
-    }
-    if (item?.type === 'admin_contact_message') {
-      const messageId = metadata.messageId || metadata.message_id || '';
-      const dest = getAdminContactPath({ messageId });
-      if (typeof dest === 'string') return { path: dest };
-      return { path: dest.pathname, state: dest.state };
     }
     if (ADMIN_RECHARGE_TYPES.has(item?.type)) {
       // Only completed recharges open invoice; pending go to recharges tab

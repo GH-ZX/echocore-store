@@ -37,6 +37,7 @@ import {
   ADMIN_SALE_DISCOUNTS_FOCUS_STATE,
   getAdminGiftPath,
   getAdminSaleDiscountsPath,
+  navigateTo,
 } from './lib/adminRoutes';
 import { getOfferOrderNameSnapshot } from './lib/offerDisplay';
 import { getGameOfferBuyPath, getGameOfferPath } from './lib/offerRoutes';
@@ -270,11 +271,12 @@ export default function App() {
   }, [lang, notifications, showToast]);
 
   const handleNotificationNavigate = useCallback((dest) => {
-    if (dest?.state) {
-      navigate(dest.path, { state: dest.state });
+    // Support string | { path } | { pathname, search, state } (see navigateTo)
+    if (!dest) {
+      navigate('/profile');
       return;
     }
-    navigate(dest?.path || '/profile');
+    navigateTo(navigate, dest);
   }, [navigate]);
 
   const handleNotificationsClose = useCallback(() => {
