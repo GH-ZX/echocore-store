@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
-import { Mail, Lock, User, KeyRound, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, User, KeyRound, ArrowLeft, Loader2 } from 'lucide-react';
 import EchoLogo from '../../components/ui/EchoLogo';
 import { supabase } from '../../lib/supabase';
 import {
@@ -31,6 +31,9 @@ function GoogleIcon() {
 
 export default function LoginView({
   t,
+  user = null,
+  loadingAuth = false,
+  navigate,
   siteStatus,
   handleAuthLogin,
   handleAuthSignup,
@@ -40,7 +43,9 @@ export default function LoginView({
   const maintenanceOn = !!siteStatus?.maintenanceEnabled;
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const redirectTo = typeof location.state?.from === 'string' ? location.state.from : '/';
+  const redirectTo = typeof location.state?.from === 'string' && location.state.from.startsWith('/')
+    ? location.state.from
+    : '/';
 
   const [mode, setMode] = useState(() => (
     isPasswordRecoveryUrl() || isPasswordRecoveryPending() ? 'recovery' : 'login'
@@ -56,6 +61,23 @@ export default function LoginView({
   const [successMsg, setSuccessMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const otpInputRef = useRef(null);
+
+  const isRecoveryFlow = mode === 'recovery'
+    || searchParams.get('recovery') === '1'
+    || isPasswordRecoveryUrl()
+    || isPasswordRecoveryPending();
+
+  // Already signed in (customer or admin): show redirect screen, skip login form.
+  // Password recovery is allowed while a session exists.
+  useEffect(() => {
+    if (loadingAuth || !user?.id || isRecoveryFlow) return undefined;
+    const timer = window.setTimeout(() => {
+      if (typeof navigate === 'function') {
+        navigate(redirectTo === '/login' ? '/' : redirectTo, { replace: true });
+      }
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [loadingAuth, user?.id, isRecoveryFlow, navigate, redirectTo]);
 
   useEffect(() => {
     if (
@@ -213,6 +235,37 @@ export default function LoginView({
 
   const showGoogle = mode === 'login' || mode === 'signup';
   const showMethodTabs = mode === 'login';
+
+  if (loadingAuth) {
+    return (
+      <div className="max-w-md mx-auto mt-8 sm:mt-16 animate-fade-in px-2">
+        <div className="card p-8 sm:p-10 text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-[var(--accent)] mx-auto mb-4" />
+          <p className="text-sm text-[var(--text-sec)]">{t.loading || '…'}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (user?.id && !isRecoveryFlow) {
+    return (
+      <div className="max-w-md mx-auto mt-8 sm:mt-16 animate-fade-in px-2">
+        <div className="card p-8 sm:p-10 text-center">
+          <EchoLogo className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-4 sm:mb-5" />
+          <h2 className="text-2xl sm:text-3xl font-black mb-2">
+            {t.alreadyLoggedInTitle}
+          </h2>
+          <p className="text-[var(--text-sec)] text-sm mb-6 leading-relaxed">
+            {t.alreadyLoggedInRedirect}
+          </p>
+          <div className="flex items-center justify-center gap-2 text-[var(--accent)] text-sm font-semibold">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            {t.alreadyLoggedInRedirecting}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-md mx-auto mt-8 sm:mt-16 animate-fade-in px-2">

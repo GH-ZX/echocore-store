@@ -352,6 +352,9 @@ export default function AppRoutes({
             <LoginView
               t={t}
               lang={lang}
+              user={user}
+              loadingAuth={loadingAuth}
+              navigate={navigate}
               siteStatus={siteStatus}
               handleAuthLogin={handleAuthLogin}
               handleAuthSignup={handleAuthSignup}

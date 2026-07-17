@@ -54,8 +54,22 @@ export default function PricingEditableValue({
   };
 
   const commit = () => {
-    onChange?.(draft);
-    onCommit?.(draft);
+    let next = draft;
+    if (type === 'number') {
+      const n = parseFloat(String(draft).replace(',', '.'));
+      if (!Number.isFinite(n)) {
+        cancel();
+        return;
+      }
+      const lo = min != null && min !== '' ? Number(min) : null;
+      const hi = max != null && max !== '' ? Number(max) : null;
+      let clamped = n;
+      if (Number.isFinite(lo) && clamped < lo) clamped = lo;
+      if (Number.isFinite(hi) && clamped > hi) clamped = hi;
+      next = clamped;
+    }
+    onChange?.(next);
+    onCommit?.(next);
     setEditing(false);
   };
 

@@ -17,7 +17,9 @@ export async function fetchStoreMarkupPercent() {
   try {
     const settings = await fetchG2bulkSettings();
     const n = Number(settings?.g2bulk_markup_percent);
-    return Number.isFinite(n) ? n : 15;
+    // Prefer real store value; 0 is valid; only default when missing/invalid
+    if (Number.isFinite(n) && n >= 0) return n;
+    return 15;
   } catch {
     return 15;
   }

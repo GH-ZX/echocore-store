@@ -122,7 +122,8 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
   const [pullSelection, setPullSelection] = useState(normalizePullSelection());
   const [form, setForm] = useState({
     g2bulk_enabled: false,
-    g2bulk_markup_percent: 15,
+    // null until settings load — never flash a fake 15% over the real saved value
+    g2bulk_markup_percent: null,
     g2bulk_catalog_only: true,
     g2bulk_catalog_mode: 'sync',
     g2bulk_auto_sync_enabled: true,
@@ -135,8 +136,15 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     g2bulk_api_key_masked: '',
     g2bulk_api_key_source: 'none',
   });
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [markupSaving, setMarkupSaving] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const walletEnabled = !loading && (form.g2bulk_api_key_set || apiKeyInput.trim().length > 0);
+
+  const parseMarkupPercent = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
   const {
     wallet: g2bulkWallet,
     loading: walletLoading,
@@ -150,9 +158,11 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     setError('');
     try {
       const data = await fetchG2bulkSettings();
+      const markup = parseMarkupPercent(data?.g2bulk_markup_percent);
       setForm({
         g2bulk_enabled: data.g2bulk_enabled ?? false,
-        g2bulk_markup_percent: data.g2bulk_markup_percent ?? 15,
+        // Only fall back to 15 when the server truly has no value
+        g2bulk_markup_percent: markup != null ? markup : 15,
         g2bulk_catalog_only: data.g2bulk_catalog_only ?? true,
         g2bulk_catalog_mode: normalizeCatalogMode(data.g2bulk_catalog_mode),
         g2bulk_auto_sync_enabled: data.g2bulk_auto_sync_enabled ?? true,
@@ -168,8 +178,10 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
       });
       setApiKeyInput('');
       setPullSelection(normalizePullSelection(data.g2bulk_pull_selection || {}));
+      setSettingsLoaded(true);
     } catch (err) {
       setError(err.message || t.g2bulkLoadFailed);
+      setSettingsLoaded(false);
     } finally {
       setLoading(false);
     }
@@ -189,9 +201,11 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
 
   const persistSettings = async (overrides = {}) => {
     const payload = { ...form, ...overrides };
+    const markup = parseMarkupPercent(payload.g2bulk_markup_percent);
+    // Never force 15 when markup is unknown — that was overwriting the real saved margin.
     const saved = await saveG2bulkSettings({
       enabled: payload.g2bulk_enabled,
-      markupPercent: parseFloat(payload.g2bulk_markup_percent) || 15,
+      markupPercent: markup != null ? markup : undefined,
       catalogOnly: payload.g2bulk_catalog_only,
       catalogMode: payload.g2bulk_catalog_mode,
       autoSyncEnabled: payload.g2bulk_auto_sync_enabled,
@@ -201,10 +215,11 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     });
     if (apiKeyInput.trim()) setApiKeyInput('');
     if (saved) {
+      const savedMarkup = parseMarkupPercent(saved.g2bulk_markup_percent);
       setForm((prev) => ({
         ...prev,
         g2bulk_enabled: saved.g2bulk_enabled ?? prev.g2bulk_enabled,
-        g2bulk_markup_percent: saved.g2bulk_markup_percent ?? prev.g2bulk_markup_percent,
+        g2bulk_markup_percent: savedMarkup != null ? savedMarkup : prev.g2bulk_markup_percent,
         g2bulk_catalog_only: saved.g2bulk_catalog_only ?? prev.g2bulk_catalog_only,
         g2bulk_catalog_mode: saved.g2bulk_catalog_mode || prev.g2bulk_catalog_mode,
         g2bulk_auto_sync_enabled: saved.g2bulk_auto_sync_enabled ?? prev.g2bulk_auto_sync_enabled,
@@ -488,10 +503,33 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
 
   const markupPreviewCost = 1;
   const markupPreviewPrice = (() => {
-    const m = parseFloat(form.g2bulk_markup_percent);
-    const pct = Number.isFinite(m) ? m : 15;
+    const m = parseMarkupPercent(form.g2bulk_markup_percent);
+    const pct = m != null ? m : 15;
     return Math.ceil(markupPreviewCost * (1 + pct / 100) * 100) / 100;
   })();
+
+  const handleMarkupCommit = async (raw) => {
+    const n = parseMarkupPercent(raw);
+    if (n == null || n < 0) return;
+    setForm((p) => ({ ...p, g2bulk_markup_percent: n }));
+    setMarkupSaving(true);
+    setError('');
+    try {
+      const saved = await saveG2bulkSettings({ markupPercent: n });
+      const savedMarkup = parseMarkupPercent(saved?.g2bulk_markup_percent);
+      if (savedMarkup != null) {
+        setForm((p) => ({ ...p, g2bulk_markup_percent: savedMarkup }));
+      }
+      setSuccess(t.g2bulkMarkupSaved || t.g2bulkSettingsSaved);
+      setTimeout(() => setSuccess(''), 2500);
+    } catch (err) {
+      setError(err.message || t.g2bulkSaveFailed);
+      // Reload so UI shows the real DB value after a failed save
+      await load();
+    } finally {
+      setMarkupSaving(false);
+    }
+  };
 
   const catalogHealthSection = (
     <SectionCard
@@ -528,28 +566,44 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
           <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-sec)] mb-2">
             {t.pricingCurrentSelection || 'Current selection'}
           </div>
-          <PricingEditableValue
-            value={form.g2bulk_markup_percent}
-            displayValue={`${form.g2bulk_markup_percent ?? '—'}%`}
-            suffix="%"
-            min={0}
-            max={500}
-            step={0.5}
-            t={t}
-            onCommit={(v) => setForm((p) => ({ ...p, g2bulk_markup_percent: v }))}
-          />
-        </div>
-
-        <div className="text-xs text-[var(--text-sec)] rounded-lg border border-[var(--border)] bg-[var(--bg-primary)]/40 px-3 py-2">
-          {formatMessage(
-            t.g2bulkMarkupExample || 'Example: supplier cost {cost} → customer {price} at {markup}%',
-            {
-              cost: markupPreviewCost.toFixed(2),
-              price: markupPreviewPrice.toFixed(2),
-              markup: form.g2bulk_markup_percent || 15,
-            },
+          {loading || !settingsLoaded || form.g2bulk_markup_percent == null ? (
+            <div className="flex items-center gap-2 min-h-[44px] text-sm text-[var(--text-muted)]">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              {t.loading || '…'}
+            </div>
+          ) : (
+            <PricingEditableValue
+              value={form.g2bulk_markup_percent}
+              displayValue={`${form.g2bulk_markup_percent}%`}
+              suffix="%"
+              min={0}
+              max={500}
+              step={0.5}
+              t={t}
+              disabled={markupSaving}
+              onCommit={handleMarkupCommit}
+            />
+          )}
+          {markupSaving && (
+            <p className="text-[10px] text-[var(--text-muted)] mt-1.5 flex items-center gap-1">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              {t.saving || 'Saving…'}
+            </p>
           )}
         </div>
+
+        {form.g2bulk_markup_percent != null && (
+          <div className="text-xs text-[var(--text-sec)] rounded-lg border border-[var(--border)] bg-[var(--bg-primary)]/40 px-3 py-2">
+            {formatMessage(
+              t.g2bulkMarkupExample || 'Example: supplier cost {cost} → customer {price} at {markup}%',
+              {
+                cost: markupPreviewCost.toFixed(2),
+                price: markupPreviewPrice.toFixed(2),
+                markup: form.g2bulk_markup_percent,
+              },
+            )}
+          </div>
+        )}
       </div>
 
       <div className={`rounded-2xl border px-4 py-4 ${

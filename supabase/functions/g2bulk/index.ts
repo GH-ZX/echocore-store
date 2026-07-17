@@ -176,7 +176,10 @@ function buildSettingsEnvelope(row: Json | null | undefined, envKey: string | nu
 
   return {
     g2bulk_enabled: settingsRow.g2bulk_enabled === true,
-    g2bulk_markup_percent: Number(settingsRow.g2bulk_markup_percent ?? 15),
+    g2bulk_markup_percent: (() => {
+      const n = Number(settingsRow.g2bulk_markup_percent);
+      return Number.isFinite(n) ? n : 15;
+    })(),
 
     g2bulk_catalog_only: settingsRow.g2bulk_catalog_only !== false,
     g2bulk_catalog_mode: String(settingsRow.g2bulk_catalog_mode || 'sync'),
@@ -1320,8 +1323,12 @@ Deno.serve(async (req) => {
     if (payload.enabled !== undefined) {
       updates.g2bulk_enabled = !!payload.enabled;
     }
-    if (payload.markupPercent !== undefined) {
-      updates.g2bulk_markup_percent = Number(payload.markupPercent ?? 15);
+    if (payload.markupPercent !== undefined && payload.markupPercent !== null && payload.markupPercent !== '') {
+      const markup = Number(payload.markupPercent);
+      // Accept 0; only reject NaN. Do not silently force 15.
+      if (Number.isFinite(markup) && markup >= 0) {
+        updates.g2bulk_markup_percent = markup;
+      }
     }
     if (payload.apiKey !== undefined) {
       const nextKey = String(payload.apiKey || '').trim() || null;
