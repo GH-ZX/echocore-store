@@ -6,6 +6,7 @@ import {
   getGameServerOptions,
   getServerFieldPlaceholder,
 } from '../../lib/gameServers';
+import { getEffectiveTopupNotes } from '../../lib/gameTopupFields';
 
 export default function ServerIdField({
   game,
@@ -26,6 +27,7 @@ export default function ServerIdField({
   const effectiveValue = String(value ?? '').trim() || defaultServerId;
   const placeholder = getServerFieldPlaceholder(game, t, topupMeta);
   const fieldClassName = inputClassName || selectClassName || 'input w-full';
+  const notes = getEffectiveTopupNotes(game, topupMeta);
 
   return (
     <div>
@@ -61,8 +63,8 @@ export default function ServerIdField({
       {showHint && !useDropdown && (
         <p className="text-[10px] text-[var(--text-muted)] mt-1.5">{t.serverDefaultHint}</p>
       )}
-      {showHint && useDropdown && topupMeta?.notes && (
-        <p className="text-[10px] text-[var(--text-muted)] mt-1.5">{topupMeta.notes}</p>
+      {showHint && useDropdown && notes && (
+        <p className="text-[10px] text-[var(--text-muted)] mt-1.5">{notes}</p>
       )}
       {required && !effectiveValue && (
         <div className="text-xs text-amber-400 mt-1">{t.serverRequired}</div>

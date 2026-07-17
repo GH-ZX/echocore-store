@@ -18,6 +18,8 @@ import CharnameField from '../catalog/CharnameField';
 import ServerIdField from '../catalog/ServerIdField';
 import { g2bulkGetTopupMeta } from '../../lib/g2bulk';
 import {
+  buildTopupMetaFlags,
+  buildTopupMetaFromGame,
   gameShowsCharnameField,
   isCharnameComplete,
 } from '../../lib/gameTopupFields';
@@ -73,14 +75,7 @@ export default function AdminGiftForm({
   const [playerUid, setPlayerUid] = useState('');
   const [playerServer, setPlayerServer] = useState('');
   const [playerCharname, setPlayerCharname] = useState('');
-  const [topupMeta, setTopupMeta] = useState({
-    loading: false,
-    fields: [],
-    servers: [],
-    notes: '',
-    requiresServer: false,
-    requiresCharname: false,
-  });
+  const [topupMeta, setTopupMeta] = useState(() => buildTopupMetaFromGame(null));
   const [giftMessage, setGiftMessage] = useState(t.adminGiftDefaultMessage || '');
   const [adminNote, setAdminNote] = useState('');
   const [searching, setSearching] = useState(false);
@@ -156,48 +151,47 @@ export default function AdminGiftForm({
   useEffect(() => {
     const code = game?.g2bulk_game_code;
     if (!needsUid || !code) {
-      setTopupMeta({
-        loading: false,
-        fields: [],
-        servers: [],
-        notes: '',
-        requiresServer: false,
-        requiresCharname: false,
-      });
+      setTopupMeta(buildTopupMetaFromGame(needsUid ? game : null));
       return undefined;
     }
 
+    const seeded = buildTopupMetaFromGame(game);
     let cancelled = false;
-    setTopupMeta((prev) => ({ ...prev, loading: true }));
+    setTopupMeta({ ...seeded, loading: true });
 
     g2bulkGetTopupMeta(code)
       .then((payload) => {
         if (cancelled) return;
+        const fields = Array.isArray(payload?.fields) ? payload.fields : [];
+        const servers = Array.isArray(payload?.servers) ? payload.servers : [];
+        const notes = payload?.notes || seeded.notes || '';
+        const effectiveFields = fields.length > 0 ? fields : seeded.fields;
+        const effectiveServers = fields.length > 0
+          ? servers
+          : (servers.length > 0 ? servers : seeded.servers);
+        const flags = effectiveFields.length > 0
+          ? buildTopupMetaFlags(effectiveFields)
+          : {
+            requiresServer: payload?.requiresServer ?? seeded.requiresServer,
+            requiresCharname: payload?.requiresCharname ?? seeded.requiresCharname,
+          };
         setTopupMeta({
           loading: false,
-          fields: Array.isArray(payload?.fields) ? payload.fields : [],
-          servers: Array.isArray(payload?.servers) ? payload.servers : [],
-          notes: payload?.notes || '',
-          requiresServer: !!payload?.requiresServer,
-          requiresCharname: !!payload?.requiresCharname,
+          fields: effectiveFields,
+          servers: effectiveServers,
+          notes,
+          ...flags,
         });
       })
       .catch(() => {
         if (cancelled) return;
-        setTopupMeta({
-          loading: false,
-          fields: [],
-          servers: [],
-          notes: '',
-          requiresServer: false,
-          requiresCharname: false,
-        });
+        setTopupMeta({ ...seeded, loading: false });
       });
 
     return () => {
       cancelled = true;
     };
-  }, [needsUid, game?.g2bulk_game_code]);
+  }, [needsUid, game]);
 
   useEffect(() => {
     if (!recipient?.id || !needsUid || !game) return undefined;
@@ -252,7 +246,7 @@ export default function AdminGiftForm({
       notifyError(t.serverRequired);
       return;
     }
-    if (!isCharnameComplete(topupMeta, playerCharname)) {
+    if (!isCharnameComplete(topupMeta, playerCharname, game)) {
       notifyError(t.charnameRequired);
       return;
     }

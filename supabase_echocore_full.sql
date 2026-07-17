@@ -81,6 +81,8 @@ CREATE TABLE IF NOT EXISTS public.games (
   carousel_order integer,                   -- Sort order in home carousel
   show_in_carousel boolean DEFAULT true,    -- Toggle carousel visibility
   servers jsonb DEFAULT '[]'::jsonb,        -- Selectable servers/regions (e.g. ["Global", "Europe"])
+  topup_fields jsonb DEFAULT '[]'::jsonb,   -- G2Bulk /games/fields tokens (e.g. ["userid","serverid"])
+  topup_notes text,                         -- G2Bulk /games/fields notes for checkout hints
   created_at timestamptz DEFAULT now()
 );
 
@@ -2608,6 +2610,16 @@ CREATE INDEX IF NOT EXISTS games_storefront_idx
 
 COMMENT ON COLUMN public.games.parent_game_id IS 'Storefront parent; NULL = visible game card. Children hold g2bulk_game_code.';
 COMMENT ON COLUMN public.games.region_label IS 'G2Bulk catalog region for child variants (e.g. SEA, Global, Turkey).';
+
+ALTER TABLE public.games
+  ADD COLUMN IF NOT EXISTS topup_fields jsonb DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS topup_notes text;
+
+COMMENT ON COLUMN public.games.topup_fields IS
+  'G2Bulk required input fields from POST /games/fields (e.g. ["userid"] or ["userid","serverid"]).';
+
+COMMENT ON COLUMN public.games.topup_notes IS
+  'G2Bulk notes from POST /games/fields (shown as checkout hints when relevant).';
 
 -- =============================================================================
 -- Â§15  Catalog segments

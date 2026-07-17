@@ -29,6 +29,8 @@ import {
 } from '../lib/fulfillmentAvailability';
 import { markOrderFulfillAllowed } from '../lib/orderAccess';
 import {
+  buildTopupMetaFlags,
+  buildTopupMetaFromGame,
   gameShowsCharnameField,
   isCharnameComplete,
 } from '../lib/gameTopupFields';
@@ -63,14 +65,7 @@ export default function BuyView({
   const [playerUid, setPlayerUid] = useState('');
   const [playerServer, setPlayerServer] = useState('');
   const [playerCharname, setPlayerCharname] = useState('');
-  const [topupMeta, setTopupMeta] = useState({
-    loading: false,
-    fields: [],
-    servers: [],
-    notes: '',
-    requiresServer: false,
-    requiresCharname: false,
-  });
+  const [topupMeta, setTopupMeta] = useState(() => buildTopupMetaFromGame(null));
   const [isProcessing, setIsProcessing] = useState(false);
   const [step, setStep] = useState('details');
   const [activeOrder, setActiveOrder] = useState(null);
@@ -133,48 +128,50 @@ export default function BuyView({
   useEffect(() => {
     const code = game?.g2bulk_game_code;
     if (!isValidOffer || !showUidForm || !code) {
-      setTopupMeta({
-        loading: false,
-        fields: [],
-        servers: [],
-        notes: '',
-        requiresServer: false,
-        requiresCharname: false,
-      });
+      setTopupMeta(buildTopupMetaFromGame(showUidForm ? game : null));
       return undefined;
     }
 
+    // Seed from synced DB requirements immediately (works offline / before live fetch).
+    const seeded = buildTopupMetaFromGame(game);
     let cancelled = false;
-    setTopupMeta((prev) => ({ ...prev, loading: true }));
+    setTopupMeta({ ...seeded, loading: true });
 
     g2bulkGetTopupMeta(code)
       .then((payload) => {
         if (cancelled) return;
+        const fields = Array.isArray(payload?.fields) ? payload.fields : [];
+        const servers = Array.isArray(payload?.servers) ? payload.servers : [];
+        const notes = payload?.notes || seeded.notes || '';
+        // Prefer live fields when known; otherwise keep synced seed.
+        const effectiveFields = fields.length > 0 ? fields : seeded.fields;
+        const effectiveServers = fields.length > 0
+          ? servers
+          : (servers.length > 0 ? servers : seeded.servers);
+        const flags = effectiveFields.length > 0
+          ? buildTopupMetaFlags(effectiveFields)
+          : {
+            requiresServer: payload?.requiresServer ?? seeded.requiresServer,
+            requiresCharname: payload?.requiresCharname ?? seeded.requiresCharname,
+          };
         setTopupMeta({
           loading: false,
-          fields: Array.isArray(payload?.fields) ? payload.fields : [],
-          servers: Array.isArray(payload?.servers) ? payload.servers : [],
-          notes: payload?.notes || '',
-          requiresServer: !!payload?.requiresServer,
-          requiresCharname: !!payload?.requiresCharname,
+          fields: effectiveFields,
+          servers: effectiveServers,
+          notes,
+          ...flags,
         });
       })
       .catch(() => {
         if (cancelled) return;
-        setTopupMeta({
-          loading: false,
-          fields: [],
-          servers: [],
-          notes: '',
-          requiresServer: false,
-          requiresCharname: false,
-        });
+        // Keep DB-synced requirements on live failure — do not wipe to empty.
+        setTopupMeta({ ...seeded, loading: false });
       });
 
     return () => {
       cancelled = true;
     };
-  }, [isValidOffer, showUidForm, game?.g2bulk_game_code]);
+  }, [isValidOffer, showUidForm, game]);
 
   const isUidCompleteForStock = !showUidForm || playerUid.trim().length > 2;
   const [stockCheck, setStockCheck] = useState({ loading: false, available: true, message: '' });
@@ -286,7 +283,7 @@ export default function BuyView({
 
   const isUidComplete = !showUidForm || playerUid.trim().length > 2;
   const isServerComplete = !needsServerField || !!resolvedPlayerServer;
-  const isCharnameFieldComplete = isCharnameComplete(topupMeta, playerCharname);
+  const isCharnameFieldComplete = isCharnameComplete(topupMeta, playerCharname, game);
   const canProceed = isUidComplete && isServerComplete && isCharnameFieldComplete && !!currentMethod;
   const isManualWallet = isManualWalletMethod(selectedMethod);
   const isApiWallet = isApiWalletMethod(selectedMethod, paymentConfig);

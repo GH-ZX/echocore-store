@@ -1,5 +1,5 @@
 import { UserCircle } from 'lucide-react';
-import { gameShowsCharnameField } from '../../lib/gameTopupFields';
+import { gameShowsCharnameField, getEffectiveTopupNotes } from '../../lib/gameTopupFields';
 
 export default function CharnameField({
   game,
@@ -11,6 +11,8 @@ export default function CharnameField({
   inputClassName = '',
 }) {
   if (!gameShowsCharnameField(game, topupMeta)) return null;
+
+  const notes = getEffectiveTopupNotes(game, topupMeta);
 
   return (
     <div>
@@ -26,8 +28,8 @@ export default function CharnameField({
         placeholder={t.charnamePlaceholder}
         className={inputClassName}
       />
-      {topupMeta?.notes && (
-        <p className="text-[10px] text-[var(--text-muted)] mt-1.5">{topupMeta.notes}</p>
+      {notes && (
+        <p className="text-[10px] text-[var(--text-muted)] mt-1.5">{notes}</p>
       )}
       {required && !String(value ?? '').trim() && (
         <div className="text-xs text-amber-400 mt-1">{t.charnameRequired}</div>

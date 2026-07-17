@@ -1,4 +1,7 @@
-import { parseTopupFieldRequirements } from './gameTopupFields';
+import {
+  getEffectiveTopupFields,
+  parseTopupFieldRequirements,
+} from './gameTopupFields';
 
 /** Normalize game.servers from DB (strings or { id, label } objects). */
 export function normalizeGameServers(raw) {
@@ -18,7 +21,17 @@ export function normalizeGameServers(raw) {
   }).filter(Boolean);
 }
 
+/**
+ * Server options for the checkout UI.
+ * When G2Bulk fields are known and do not include server, return [] even if
+ * stale servers were left on the game row.
+ */
 export function getGameServerOptions(game, topupMeta = null) {
+  const fields = getEffectiveTopupFields(game, topupMeta);
+  if (fields.length > 0 && !parseTopupFieldRequirements(fields).needsServer) {
+    return [];
+  }
+
   const runtimeServers = normalizeGameServers(topupMeta?.servers);
   if (runtimeServers.length > 0) return runtimeServers;
   return normalizeGameServers(game?.servers);
@@ -26,13 +39,16 @@ export function getGameServerOptions(game, topupMeta = null) {
 
 /** Default server_id when the customer leaves the field empty — region from synced catalog. */
 export function getDefaultGameServerId(game, topupMeta = null) {
+  if (!gameShowsServerField(game, topupMeta)) return '';
+
   const region = String(game?.region_label || '').trim();
   const options = getGameServerOptions(game, topupMeta);
 
   if (region && region !== 'Global') {
     const regionMatch = options.find((row) => row.id === region || row.label === region);
     if (regionMatch) return regionMatch.id;
-    return region;
+    // Only use free-text region when server is required but no option list exists
+    if (options.length === 0) return region;
   }
 
   if (options.length === 1) return options[0].id;
@@ -48,20 +64,35 @@ export function getServerFieldPlaceholder(game, t = {}, topupMeta = null) {
   return match?.label || defaultId;
 }
 
+/**
+ * Show server input only when the game actually requires it.
+ *
+ * Source of truth (in order):
+ * 1. G2Bulk /games/fields (live topupMeta.fields or synced game.topup_fields)
+ * 2. Explicit requiresServer from live meta after a successful fetch
+ * 3. Non-empty server list (dropdown/text needed)
+ *
+ * Never force server for every G2Bulk UID game — PUBG only needs userid.
+ */
 export function gameShowsServerField(game, topupMeta = null) {
   if (!game) return false;
 
-  const options = getGameServerOptions(game, topupMeta);
-  if (options.length > 0) return true;
+  const fields = getEffectiveTopupFields(game, topupMeta);
+  if (fields.length > 0) {
+    return parseTopupFieldRequirements(fields).needsServer;
+  }
 
-  if (parseTopupFieldRequirements(topupMeta?.fields).needsServer) return true;
+  // Live meta loaded with empty fields → trust requiresServer flag from API
+  if (topupMeta && topupMeta.loading === false && Array.isArray(topupMeta.fields)) {
+    if (topupMeta.requiresServer === true) return true;
+    if (topupMeta.requiresServer === false) {
+      // Still allow server list if G2Bulk returned servers (fields call may have failed)
+      return getGameServerOptions(game, topupMeta).length > 0;
+    }
+  }
 
-  const region = String(game.region_label || '').trim();
-  if (region && region !== 'Global') return true;
-
-  const needsUid = game.redemption_method === 'uid' || game.redemption_method === 'both';
-  return needsUid && (game.catalog_source === 'g2bulk' || !!topupMeta?.requiresServer
-    || parseTopupFieldRequirements(topupMeta?.fields).needsServer);
+  // Unknown requirements: only show when we have something to select/enter
+  return getGameServerOptions(game, topupMeta).length > 0;
 }
 
 export function gameUsesServerDropdown(game, topupMeta = null) {
@@ -69,6 +100,7 @@ export function gameUsesServerDropdown(game, topupMeta = null) {
 }
 
 export function resolvePlayerServerForOrder(game, input = '', topupMeta = null) {
+  if (!gameShowsServerField(game, topupMeta)) return null;
   const trimmed = String(input ?? '').trim();
   if (trimmed) return trimmed;
   const fallback = getDefaultGameServerId(game, topupMeta);

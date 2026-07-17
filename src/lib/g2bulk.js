@@ -343,7 +343,14 @@ export async function g2bulkCheckPlayer({ game, userId, serverId, charname }) {
 export async function g2bulkGetTopupMeta(gameCode) {
   const code = String(gameCode || '').trim();
   if (!code) {
-    return { fields: [], servers: [], notes: '', requiresServer: false };
+    return {
+      fields: [],
+      servers: [],
+      notes: '',
+      requiresServer: false,
+      requiresCharname: false,
+      fieldsKnown: false,
+    };
   }
   return invokeG2bulk({ action: 'getTopupMeta', game: code });
 }

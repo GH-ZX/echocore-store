@@ -274,7 +274,7 @@ function pushCheckSample(list: Json[], item: Json, max = 8) {
 
 const CATALOG_BATCH_MAX = 8;
 
-async function fetchGameFieldsInfo(code: string): Promise<{ fields: string[]; notes: string }> {
+async function fetchGameFieldsInfo(code: string): Promise<{ fields: string[]; notes: string; ok: boolean }> {
   try {
     const res = await fetch(`${G2BULK_BASE}/games/fields`, {
       method: 'POST',
@@ -287,15 +287,40 @@ async function fetchGameFieldsInfo(code: string): Promise<{ fields: string[]; no
       ? (info.fields as unknown[]).map((value) => String(value).trim()).filter(Boolean)
       : [];
     const notes = String(info?.notes || payload?.notes || '').trim();
-    return { fields, notes };
+    // Treat HTTP success or any non-empty fields as usable requirements.
+    const ok = res.ok || fields.length > 0;
+    return { fields, notes, ok };
   } catch {
-    return { fields: [], notes: '' };
+    return { fields: [], notes: '', ok: false };
   }
 }
 
-async function fetchGameFieldNotes(code: string) {
-  const { notes } = await fetchGameFieldsInfo(code);
-  return notes;
+/** Build servers + topup_fields payload for a game row from G2Bulk public APIs. */
+async function fetchTopupRequirements(code: string): Promise<{
+  fields: string[];
+  notes: string;
+  servers: Array<{ id: string; label: string }>;
+  fieldsKnown: boolean;
+}> {
+  const [fieldInfo, serverOptions] = await Promise.all([
+    fetchGameFieldsInfo(code),
+    fetchGameServersList(code),
+  ]);
+
+  const fields = fieldInfo.fields;
+  const notes = fieldInfo.notes;
+  const fieldsKnown = fieldInfo.ok && fields.length > 0;
+  const needsServer = fieldsKnown
+    ? fields.some((field) => /server/i.test(field))
+    : serverOptions.length > 0;
+
+  return {
+    fields: fieldsKnown ? fields : [],
+    notes,
+    // When fields are known and server is not required, clear stale server lists (e.g. PUBG).
+    servers: needsServer ? serverOptions : [],
+    fieldsKnown,
+  };
 }
 
 async function fetchGameServersList(code: string): Promise<Array<{ id: string; label: string }>> {
@@ -995,11 +1020,8 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, message: 'game code required' }, 400);
     }
 
-    const [{ fields, notes }, servers] = await Promise.all([
-      fetchGameFieldsInfo(code),
-      fetchGameServersList(code),
-    ]);
-
+    const topupReqs = await fetchTopupRequirements(code);
+    const fields = topupReqs.fields;
     const requiresServer = fields.some((field) => /server/i.test(field));
     const requiresCharname = fields.some((field) => /charname|character|char_name/i.test(field));
 
@@ -1007,10 +1029,11 @@ Deno.serve(async (req) => {
       success: true,
       game: code,
       fields,
-      servers,
-      notes,
+      servers: topupReqs.servers,
+      notes: topupReqs.notes,
       requiresServer,
       requiresCharname,
+      fieldsKnown: topupReqs.fieldsKnown,
     });
   }
 
@@ -1318,15 +1341,14 @@ Deno.serve(async (req) => {
       const slug = slugify(code);
       const imageUrl = absImageUrl(g.image_url as string | undefined);
 
-      const [catRes, fieldNotes, serverOptions] = await Promise.all([
+      const [catRes, topupReqs] = await Promise.all([
         fetch(`${G2BULK_BASE}/games/${encodeURIComponent(code)}/catalogue`),
-        fetchGameFieldNotes(code),
-        fetchGameServersList(code),
+        fetchTopupRequirements(code),
       ]);
       const catPayload = await catRes.json().catch(() => ({}));
       const catalogues = Array.isArray(catPayload.catalogues) ? catPayload.catalogues : [];
 
-      const description = buildTopupDescription(meta, fieldNotes);
+      const description = buildTopupDescription(meta, topupReqs.notes);
       const displayName = meta.regionLabel !== 'Global'
         ? `${meta.baseName} (${meta.regionLabel})`
         : meta.baseName;
@@ -1344,7 +1366,7 @@ Deno.serve(async (req) => {
         meta.baseKey,
       );
 
-      const gameRow = {
+      const gameRow: Record<string, unknown> = {
         name_en: displayName,
         name_ar: displayName,
         slug,
@@ -1362,8 +1384,12 @@ Deno.serve(async (req) => {
         g2bulk_synced_at: syncNow,
         parent_game_id: null,
         region_label: meta.regionLabel,
-        servers: serverOptions,
+        servers: topupReqs.servers,
+        topup_notes: topupReqs.notes || null,
       };
+      if (topupReqs.fieldsKnown) {
+        gameRow.topup_fields = topupReqs.fields;
+      }
 
       let gameId = existing?.id as string | undefined;
       if (gameId) {
