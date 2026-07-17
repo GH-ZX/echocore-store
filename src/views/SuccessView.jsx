@@ -298,7 +298,7 @@ export default function SuccessView({
           </div>
           <div className="rounded-xl border border-[var(--border)] p-3 sm:col-span-2">
             <div className="text-[var(--text-muted)] text-xs mb-1">{t.date}</div>
-            <div>{new Date(orderDetails.created_at).toLocaleString(lang === 'ar' ? 'ar-SY' : 'en-US')}</div>
+            <div>{new Date(orderDetails.created_at).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US')}</div>
           </div>
         </div>
       </div>
@@ -398,7 +398,7 @@ export default function SuccessView({
             </div>
             <div className="rounded-xl border border-[var(--border)] p-4 text-sm">
               <div className="text-[var(--text-muted)] text-xs mb-1">{t.date}</div>
-              <div>{new Date(orderDetails.created_at).toLocaleString(lang === 'ar' ? 'ar-SY' : 'en-US')}</div>
+              <div>{new Date(orderDetails.created_at).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US')}</div>
             </div>
           </div>
           <p className="text-xs text-[var(--text-muted)] mt-3">{t.topUpArrivesSoon}</p>

@@ -1,4 +1,5 @@
 import { checkFulfillmentAvailability, diagnoseFulfillmentAvailability } from './g2bulk';
+import { supabase } from './supabase';
 
 export function getFulfillmentUnavailableMessage(result = {}, t = {}) {
   const reason = result?.reason || 'unknown';
@@ -65,6 +66,38 @@ export async function inspectFulfillmentAvailability(items = []) {
   }
 
   return result;
+}
+
+/**
+ * Prevent double top-up while a paid order for the same offer+player is still
+ * pending/fulfilling (common when poll timeout made the user think it failed).
+ */
+export async function assertNoOpenDuplicateTopup(userId, items = [], t = {}) {
+  if (!userId) return;
+  for (const item of items || []) {
+    const offerId = item?.offer_id;
+    const playerUid = String(item?.player_uid || '').trim();
+    if (!offerId || !playerUid) continue;
+
+    const { data, error } = await supabase.rpc('has_open_duplicate_topup', {
+      p_user_id: userId,
+      p_offer_id: offerId,
+      p_player_uid: playerUid,
+      p_within_minutes: 20,
+    });
+    if (error) {
+      // Missing RPC must not block purchases; log only
+      console.warn('has_open_duplicate_topup:', error.message);
+      return;
+    }
+    if (data === true) {
+      throw new Error(
+        t.purchaseAlreadyProcessing
+        || t.purchaseInProgress
+        || 'A top-up for this player is already processing. Wait a few minutes before buying again.',
+      );
+    }
+  }
 }
 
 export async function assertBalanceFulfillmentAvailable(items = [], t = {}) {

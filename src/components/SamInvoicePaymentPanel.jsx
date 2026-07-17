@@ -197,7 +197,7 @@ export default function SamInvoicePaymentPanel({
           <p className="text-[10px] text-[var(--text-muted)] mt-3 flex items-center justify-center gap-1">
             <Clock className="w-3 h-3" />
             {formatMessage(t.samInvoiceExpiresAt, {
-              time: new Date(invoice.expiresAt).toLocaleTimeString(lang === 'ar' ? 'ar-SY' : 'en-US', {
+              time: new Date(invoice.expiresAt).toLocaleTimeString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US', {
                 hour: '2-digit',
                 minute: '2-digit',
               }),

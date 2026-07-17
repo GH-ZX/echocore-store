@@ -15,6 +15,7 @@ import {
   Loader2,
   Sparkles,
   Inbox,
+  MessageSquare,
   Camera,
   UserRound,
   Save,
@@ -57,7 +58,7 @@ import { changeUsername, getUsernameErrorMessage } from '../../lib/usernameChang
 
 function formatDate(dateStr, lang) {
   if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString(lang === 'ar' ? 'ar' : 'en-US', {
+  return new Date(dateStr).toLocaleDateString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -66,7 +67,7 @@ function formatDate(dateStr, lang) {
 
 function formatDateTime(dateStr, lang) {
   if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleString(lang === 'ar' ? 'ar' : 'en-US', {
+  return new Date(dateStr).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -866,6 +867,7 @@ export default function ProfileView({
           { icon: ShoppingCart, label: t.cart, path: '/cart' },
         ] : [
           { icon: Inbox, label: t.siteInboxTitle, path: '/notifications' },
+          { icon: MessageSquare, label: t.supportMenuLabel, path: '/support' },
           { icon: ShoppingCart, label: t.cart, path: '/cart' },
           { icon: Wallet, label: t.recharge, action: onRecharge },
         ]).map((action) => (

@@ -150,3 +150,19 @@ export function isUserRowBanned(row) {
   if (!row.ban_expires_at) return true;
   return new Date(row.ban_expires_at).getTime() > Date.now();
 }
+
+/** Admin: update customer profile fields (name, contact, bio, UIDs). */
+export async function adminUpdateUserProfile(userId, fields = {}) {
+  const { data, error } = await supabase.rpc('admin_update_user_profile', {
+    p_user_id: userId,
+    p_name: fields.name ?? null,
+    p_phone: fields.phone ?? null,
+    p_country: fields.country ?? null,
+    p_bio: fields.bio ?? null,
+    p_discord_username: fields.discord_username ?? null,
+    p_favorite_game: fields.favorite_game ?? null,
+    p_default_player_uid: fields.default_player_uid ?? null,
+  });
+  if (error) wrapRpcError(error);
+  return data;
+}

@@ -14,3 +14,45 @@ export function formatMessage(template = '', vars = {}) {
 export function followUsOnLabel(lang, platform) {
   return formatMessage(getT(lang).followUsOn, { platform });
 }
+
+/**
+ * BCP 47 locale for dates/numbers.
+ * Arabic UI keeps Arabic month/day names when possible, but ALWAYS Latin digits (0–9)
+ * via Unicode extension `nu-latn` so prices, counts, and dates match English numerals.
+ */
+export function getLocale(lang = 'ar') {
+  return lang === 'ar' || lang === 'ar-SY' || lang === 'ar-EG'
+    ? 'ar-SY-u-nu-latn'
+    : 'en-US';
+}
+
+/** Locale that always forces Western digits (for pure number formatting). */
+export const LATIN_DIGITS_LOCALE = 'en-US';
+
+export function formatDateTime(value, lang = 'ar', options = {}) {
+  if (value == null || value === '') return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  return date.toLocaleString(getLocale(lang), options);
+}
+
+export function formatDate(value, lang = 'ar', options = {}) {
+  if (value == null || value === '') return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  return date.toLocaleDateString(getLocale(lang), options);
+}
+
+export function formatTime(value, lang = 'ar', options = {}) {
+  if (value == null || value === '') return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  return date.toLocaleTimeString(getLocale(lang), options);
+}
+
+export function formatNumber(value, lang = 'ar', options = {}) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return String(value ?? '');
+  // Always Latin digits for counts/prices even when UI language is Arabic
+  return new Intl.NumberFormat(getLocale(lang), options).format(num);
+}

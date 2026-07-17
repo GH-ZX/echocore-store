@@ -7,6 +7,7 @@ import AdminOfferEditModal from '../components/admin/AdminOfferEditModal';
 import CatalogHero from '../components/catalog/CatalogHero';
 import CatalogPageShell from '../components/catalog/CatalogPageShell';
 import AdminOfferCostBadge from '../components/admin/AdminOfferCostBadge';
+import AdminInlinePriceEdit from '../components/admin/AdminInlinePriceEdit';
 import OfferPurchasePanel from '../components/catalog/OfferPurchasePanel';
 import {
   getGameDisplayName,
@@ -40,6 +41,7 @@ export default function OfferDetail({
   deleteGame,
   loadingCatalog = false,
   onBuyNow,
+  onNotify,
 }) {
   const { gameSlug, offerSlug } = useParams();
   const { offer, game, storefrontGame } = resolveOfferRoute(offers, games, { gameSlug, offerSlug });
@@ -118,6 +120,8 @@ export default function OfferDetail({
           isAdmin={isAdmin}
           onBuyNow={onBuyNow}
           onAddToCart={addToCart}
+          onPricingSaved={onPricingSaved}
+          onNotify={onNotify}
           className="order-1 lg:order-2 lg:sticky lg:top-24"
         />
 
@@ -191,7 +195,20 @@ export default function OfferDetail({
           <div className="catalog-mobile-buybar__inner">
             <div className="min-w-0 flex-1">
               <div className="catalog-mobile-buybar__title truncate">{offerName}</div>
-              <div className="catalog-mobile-buybar__price">${Number.parseFloat(offer.price).toFixed(2)}</div>
+              {isAdmin ? (
+                <AdminInlinePriceEdit
+                  offer={offer}
+                  t={t}
+                  size="sm"
+                  className="catalog-mobile-buybar__price"
+                  onSaved={onPricingSaved}
+                  onNotify={onNotify}
+                />
+              ) : (
+                <div className="catalog-mobile-buybar__price tabular-nums" dir="ltr">
+                  ${Number.parseFloat(offer.price).toFixed(2)}
+                </div>
+              )}
               {isAdmin && <AdminOfferCostBadge offer={offer} t={t} className="mt-0.5" />}
             </div>
             <button

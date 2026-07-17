@@ -7,9 +7,10 @@ import {
 import { priceFromCost, resolveSyncedPrice } from './markupPricing.ts';
 
 const G2BULK_BASE = 'https://api.g2bulk.com/v1';
-/** G2Bulk docs: poll every 2–5w s; MLBB top-ups can exceed 45 s. */
-const G2BULK_POLL_INTERVAL_MS = 2_500;
-const G2BULK_POLL_TIMEOUT_MS = 50_000;
+/** G2Bulk docs: poll every 2–5 s. Median top-up time can be ~3 min — do not hard-fail on short waits. */
+const G2BULK_POLL_INTERVAL_MS = 3_000;
+/** Stay under typical edge wall-clock; if still pending, leave order as fulfilling for a later retry. */
+const G2BULK_POLL_TIMEOUT_MS = 40_000;
 const SKIP_GAME_CODES = new Set(['test', 'demo', 'sandbox']);
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -726,11 +727,16 @@ async function pollVoucherDelivery(apiKey: string, g2bulkOrderId: number) {
       return { ok: true as const, items: data.delivery_items as string[], data };
     }
     if (res.status === 410) {
-      return { ok: false as const, error: (data.message as string) || 'Order refunded' };
+      return { ok: false as const, error: (data.message as string) || 'Order refunded', terminal: true as const };
     }
     await sleep(G2BULK_POLL_INTERVAL_MS);
   }
-  return { ok: false as const, error: 'Delivery polling timed out' };
+  // Soft timeout — supplier may still complete; keep fulfilling and retry later
+  return {
+    ok: false as const,
+    pending: true as const,
+    error: 'Delivery still processing at supplier',
+  };
 }
 
 async function pollGameOrderStatus(apiKey: string, g2bulkOrderId: number) {
@@ -741,15 +747,23 @@ async function pollGameOrderStatus(apiKey: string, g2bulkOrderId: number) {
       body: JSON.stringify({ order_id: g2bulkOrderId }),
     });
     const status = String(data.status || data.order?.status || '').toUpperCase();
-    if (res.ok && status === 'COMPLETED') {
+    if (res.ok && (status === 'COMPLETED' || status === 'SUCCESS' || status === 'DELIVERED')) {
       return { ok: true as const, data };
     }
-    if (status === 'FAILED' || status === 'REFUNDED') {
-      return { ok: false as const, error: (data.message as string) || 'Top-up failed' };
+    if (status === 'FAILED' || status === 'REFUNDED' || status === 'CANCELLED') {
+      return {
+        ok: false as const,
+        terminal: true as const,
+        error: (data.message as string) || `Top-up ${status.toLowerCase()}`,
+      };
     }
     await sleep(G2BULK_POLL_INTERVAL_MS);
   }
-  return { ok: false as const, error: 'Top-up status polling timed out' };
+  return {
+    ok: false as const,
+    pending: true as const,
+    error: 'Top-up still processing at supplier',
+  };
 }
 
 function buildG2bulkCallbackUrl(supabaseUrl: string) {
@@ -758,7 +772,15 @@ function buildG2bulkCallbackUrl(supabaseUrl: string) {
 
 type FulfillItemResult =
   | { ok: true; skipped?: boolean; g2bulkOrderId?: string; deliveryItems?: string[]; metadata?: Json }
-  | { ok: false; error: string };
+  | {
+    ok: false;
+    error: string;
+    /** Supplier still working — do not mark order failed */
+    pending?: boolean;
+    /** Hard supplier failure (refunded / failed) */
+    terminal?: boolean;
+    g2bulkOrderId?: string;
+  };
 
 type AvailabilityItem = {
   offer_id?: string;
@@ -1174,6 +1196,7 @@ async function fulfillG2bulkOrderItem(
   orderId: string,
   item: Json,
   callbackUrl?: string | null,
+  serviceClient?: ReturnType<typeof createClient>,
 ): Promise<FulfillItemResult> {
   const offer = (item.offers || {}) as Json;
   const game = (offer.games || {}) as Json;
@@ -1210,7 +1233,15 @@ async function fulfillG2bulkOrderItem(
 
     if (deliveryItems.length === 0 && data.status === 'PENDING' && g2bulkOrderId) {
       const polled = await pollVoucherDelivery(apiKey, Number(g2bulkOrderId));
-      if (!polled.ok) return { ok: false, error: polled.error };
+      if (!polled.ok) {
+        return {
+          ok: false,
+          error: polled.error,
+          pending: !!(polled as { pending?: boolean }).pending,
+          terminal: !!(polled as { terminal?: boolean }).terminal,
+          g2bulkOrderId: String(g2bulkOrderId),
+        };
+      }
       deliveryItems = normalizeDeliveryItems(polled.items);
     }
 
@@ -1252,9 +1283,42 @@ async function fulfillG2bulkOrderItem(
   const g2bulkOrderId = data.order?.order_id ?? data.order_id;
   let finalStatus = String(data.order?.status || data.status || 'PENDING').toUpperCase();
 
-  if (finalStatus !== 'COMPLETED' && g2bulkOrderId) {
+  // Persist supplier order id BEFORE polling so timeouts never lose the link
+  // (avoids free multi-topups when poll fails but G2Bulk still completes).
+  if (g2bulkOrderId && serviceClient) {
+    try {
+      await serviceClient.rpc('apply_g2bulk_fulfillment', {
+        p_order_id: orderId,
+        p_fulfillment_status: 'fulfilling',
+        p_g2bulk_order_id: String(g2bulkOrderId),
+        p_metadata: {
+          placed_at: new Date().toISOString(),
+          catalogue: catalogueName,
+          player_id: playerId,
+          g2bulk_game: gameCode,
+        },
+      });
+    } catch {
+      /* continue; parent will still try to save id from result */
+    }
+  }
+
+  if (
+    finalStatus !== 'COMPLETED'
+    && finalStatus !== 'SUCCESS'
+    && finalStatus !== 'DELIVERED'
+    && g2bulkOrderId
+  ) {
     const polled = await pollGameOrderStatus(apiKey, Number(g2bulkOrderId));
-    if (!polled.ok) return { ok: false, error: polled.error };
+    if (!polled.ok) {
+      return {
+        ok: false,
+        error: polled.error,
+        pending: !!(polled as { pending?: boolean }).pending,
+        terminal: !!(polled as { terminal?: boolean }).terminal,
+        g2bulkOrderId: String(g2bulkOrderId),
+      };
+    }
     finalStatus = 'COMPLETED';
   }
 
@@ -1505,9 +1569,8 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: true, skipped: true, fulfillmentStatus: 'fulfilled' });
     }
 
-    if (order.fulfillment_status === 'fulfilling') {
-      return jsonResponse({ success: true, inProgress: true, fulfillmentStatus: 'fulfilling' });
-    }
+    // Note: do NOT early-return on `fulfilling` — G2Bulk top-ups often need
+    // multi-minute polls; a second call continues / re-polls supplier status.
 
     const settingsRow = await loadStoreSettingsRow(serviceClient);
     // Skip only when there is no API key. A disabled toggle alone used to skip
@@ -1566,12 +1629,114 @@ Deno.serve(async (req) => {
     const itemResults: Json[] = [];
     let fulfilledCount = 0;
     let failedCount = 0;
+    let pendingCount = 0;
     let skippedCount = 0;
     const errors: string[] = [];
-    let primaryG2bulkOrderId: string | null = null;
+    let primaryG2bulkOrderId: string | null = order.g2bulk_order_id
+      ? String(order.g2bulk_order_id)
+      : null;
     const allDeliveryItems: string[] = [];
 
     try {
+      // Resume path: if supplier order id already known, poll status before re-ordering
+      if (
+        primaryG2bulkOrderId
+        && (order.fulfillment_status === 'fulfilling' || order.fulfillment_status === 'failed')
+      ) {
+        const g2Id = Number(primaryG2bulkOrderId);
+        let resumeOk = false;
+        let resumeTerminal = false;
+        let resumeError = '';
+        let resumeCodes: string[] = [];
+
+        const gamePoll = await pollGameOrderStatus(apiKey!, g2Id);
+        if (gamePoll.ok) {
+          resumeOk = true;
+        } else if ((gamePoll as { terminal?: boolean }).terminal) {
+          resumeTerminal = true;
+          resumeError = gamePoll.error;
+        } else {
+          // Maybe voucher — try delivery endpoint
+          const voucherPoll = await pollVoucherDelivery(apiKey!, g2Id);
+          if (voucherPoll.ok) {
+            resumeOk = true;
+            resumeCodes = normalizeDeliveryItems(voucherPoll.items);
+          } else if ((voucherPoll as { terminal?: boolean }).terminal) {
+            resumeTerminal = true;
+            resumeError = voucherPoll.error;
+          } else {
+            resumeError = gamePoll.error || voucherPoll.error || 'Still processing';
+          }
+        }
+
+        if (resumeOk) {
+          for (const row of items) {
+            if (row.fulfillment_status === 'fulfilled') {
+              fulfilledCount += 1;
+              continue;
+            }
+            fulfilledCount += 1;
+            await serviceClient
+              .from('order_items')
+              .update({
+                fulfillment_status: 'fulfilled',
+                delivery_items: resumeCodes.length ? resumeCodes : null,
+              })
+              .eq('id', row.id);
+            itemResults.push({
+              itemId: row.id,
+              status: 'fulfilled',
+              g2bulkOrderId: primaryG2bulkOrderId,
+              resumed: true,
+            });
+          }
+          if (resumeCodes.length) allDeliveryItems.push(...resumeCodes);
+          await serviceClient.rpc('apply_g2bulk_fulfillment', {
+            p_order_id: orderId,
+            p_fulfillment_status: 'fulfilled',
+            p_g2bulk_order_id: primaryG2bulkOrderId,
+            p_delivery_items: allDeliveryItems.length ? allDeliveryItems : null,
+            p_metadata: { resumed: true, items: itemResults },
+          });
+          return jsonResponse({
+            success: true,
+            fulfillmentStatus: 'fulfilled',
+            g2bulkOrderId: primaryG2bulkOrderId,
+            resumed: true,
+            deliveryItems: allDeliveryItems.length ? allDeliveryItems : undefined,
+            itemResults,
+          });
+        }
+        if (resumeTerminal) {
+          await serviceClient.rpc('apply_g2bulk_fulfillment', {
+            p_order_id: orderId,
+            p_fulfillment_status: 'failed',
+            p_g2bulk_order_id: primaryG2bulkOrderId,
+            p_error: resumeError,
+            p_metadata: { resumed: true, terminal: true },
+          });
+          return jsonResponse({
+            success: false,
+            message: resumeError,
+            fulfillmentStatus: 'failed',
+          }, 500);
+        }
+        // Still pending at supplier — stay fulfilling, do not re-purchase
+        await serviceClient.rpc('apply_g2bulk_fulfillment', {
+          p_order_id: orderId,
+          p_fulfillment_status: 'fulfilling',
+          p_g2bulk_order_id: primaryG2bulkOrderId,
+          p_metadata: { resumed: true, stillPending: true },
+        });
+        return jsonResponse({
+          success: true,
+          pending: true,
+          fulfillmentStatus: 'fulfilling',
+          g2bulkOrderId: primaryG2bulkOrderId,
+          message: resumeError,
+        });
+      }
+
       for (const row of items) {
         if (row.fulfillment_status === 'fulfilled') {
           fulfilledCount += 1;
@@ -1579,7 +1744,7 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        const result = await fulfillG2bulkOrderItem(apiKey!, orderId, row, callbackUrl);
+        const result = await fulfillG2bulkOrderItem(apiKey!, orderId, row, callbackUrl, serviceClient);
 
         if (result.ok && result.skipped) {
           skippedCount += 1;
@@ -1588,6 +1753,19 @@ Deno.serve(async (req) => {
             .update({ fulfillment_status: 'fulfilled' })
             .eq('id', row.id);
           itemResults.push({ itemId: row.id, status: 'skipped' });
+          continue;
+        }
+
+        if (!result.ok && result.pending) {
+          // Supplier accepted the order but delivery is still in progress
+          pendingCount += 1;
+          if (result.g2bulkOrderId) primaryG2bulkOrderId = result.g2bulkOrderId;
+          itemResults.push({
+            itemId: row.id,
+            status: 'pending',
+            g2bulkOrderId: result.g2bulkOrderId,
+            error: result.error,
+          });
           continue;
         }
 
@@ -1625,17 +1803,36 @@ Deno.serve(async (req) => {
         });
       }
 
-      const finalStatus = failedCount > 0
-        ? 'failed'
-        : (fulfilledCount > 0 ? 'fulfilled' : 'skipped');
+      // Prefer pending over hard-fail when supplier is still working
+      let finalStatus: 'failed' | 'fulfilled' | 'skipped' | 'fulfilling';
+      if (pendingCount > 0 && failedCount === 0) {
+        finalStatus = 'fulfilling';
+      } else if (failedCount > 0 && fulfilledCount === 0 && pendingCount === 0) {
+        finalStatus = 'failed';
+      } else if (fulfilledCount > 0 && failedCount === 0 && pendingCount === 0) {
+        finalStatus = 'fulfilled';
+      } else if (pendingCount > 0) {
+        finalStatus = 'fulfilling';
+      } else if (fulfilledCount > 0) {
+        // Partial success without pending → still failed if any item failed hard
+        finalStatus = failedCount > 0 ? 'failed' : 'fulfilled';
+      } else {
+        finalStatus = 'skipped';
+      }
 
       await serviceClient.rpc('apply_g2bulk_fulfillment', {
         p_order_id: orderId,
         p_fulfillment_status: finalStatus,
         p_g2bulk_order_id: primaryG2bulkOrderId || undefined,
         p_delivery_items: allDeliveryItems.length ? allDeliveryItems : null,
-        p_metadata: { items: itemResults, fulfilledCount, failedCount, skippedCount },
-        p_error: errors[0] || null,
+        p_metadata: {
+          items: itemResults,
+          fulfilledCount,
+          failedCount,
+          pendingCount,
+          skippedCount,
+        },
+        p_error: finalStatus === 'failed' ? (errors[0] || null) : null,
       });
 
       if (finalStatus === 'failed') {
@@ -1650,18 +1847,28 @@ Deno.serve(async (req) => {
       return jsonResponse({
         success: true,
         fulfillmentStatus: finalStatus,
+        pending: finalStatus === 'fulfilling',
         deliveryItems: allDeliveryItems.length ? allDeliveryItems : undefined,
         g2bulkOrderId: primaryG2bulkOrderId,
         itemResults,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Fulfillment failed';
+      // Keep order fulfilling on abort/timeouts so a retry can finish delivery
+      const soft = /abort|timed? ?out|deadline|network/i.test(message);
       await serviceClient.rpc('apply_g2bulk_fulfillment', {
         p_order_id: orderId,
-        p_fulfillment_status: 'failed',
+        p_fulfillment_status: soft ? 'fulfilling' : 'failed',
+        p_g2bulk_order_id: primaryG2bulkOrderId || undefined,
         p_error: message,
+        p_metadata: { softError: soft, items: itemResults },
       });
-      return jsonResponse({ success: false, message }, 500);
+      return jsonResponse({
+        success: soft,
+        pending: soft,
+        message,
+        fulfillmentStatus: soft ? 'fulfilling' : 'failed',
+      }, soft ? 200 : 500);
     }
   }
 

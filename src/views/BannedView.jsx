@@ -10,7 +10,7 @@ export default function BannedView({
 }) {
   const permanent = isBanPermanent(user);
   const expiresLabel = user?.banExpiresAt
-    ? new Date(user.banExpiresAt).toLocaleString(lang === 'ar' ? 'ar-SY' : 'en-US', {
+    ? new Date(user.banExpiresAt).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US', {
       dateStyle: 'medium',
       timeStyle: 'short',
     })

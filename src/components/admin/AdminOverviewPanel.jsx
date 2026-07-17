@@ -167,7 +167,7 @@ export default function AdminOverviewPanel({
                     <span className="admin-dash-order__customer">{customer}</span>
                   </div>
                   <div className="admin-dash-order__meta">
-                    <span>{new Date(order.created_at).toLocaleDateString(lang === 'ar' ? 'ar-SY' : 'en-US')}</span>
+                    <span>{new Date(order.created_at).toLocaleDateString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US')}</span>
                     <span className="admin-dash-order__dot" aria-hidden="true">·</span>
                     <span className="admin-dash-order__badge">{paymentLabel}</span>
                     <span className="admin-dash-order__dot" aria-hidden="true">·</span>

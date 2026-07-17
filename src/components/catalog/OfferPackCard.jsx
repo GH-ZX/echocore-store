@@ -1,6 +1,7 @@
 import { Gift } from 'lucide-react';
 import AdminEditButton from '../admin/AdminEditButton';
 import AdminOfferCostBadge from '../admin/AdminOfferCostBadge';
+import AdminInlinePriceEdit from '../admin/AdminInlinePriceEdit';
 import OfferPackLabel from '../ui/OfferPackLabel';
 import {
   formatPrice,
@@ -22,6 +23,8 @@ export default function OfferPackCard({
   onBuyNow,
   onGift,
   onEdit,
+  onPricingSaved,
+  onNotify,
 }) {
   const showGift = isAdmin && onGift;
   const offerName = getOfferDisplayName(offer, lang, {
@@ -83,8 +86,18 @@ export default function OfferPackCard({
             {offer.is_sale && offer.original_price && (
               <div className="text-xs line-through text-[var(--text-muted)]">${formatPrice(offer.original_price)}</div>
             )}
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-2xl font-black text-[var(--accent)]">${price}</span>
+            <div className="flex items-center gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
+              {isAdmin ? (
+                <AdminInlinePriceEdit
+                  offer={offer}
+                  t={t}
+                  size="sm"
+                  onSaved={onPricingSaved}
+                  onNotify={onNotify}
+                />
+              ) : (
+                <span className="text-2xl font-black text-[var(--accent)] tabular-nums" dir="ltr">${price}</span>
+              )}
               {offer.is_sale && (
                 <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/25 font-bold">
                   {discount ? `-${discount}%` : (t.sale || 'SALE')}

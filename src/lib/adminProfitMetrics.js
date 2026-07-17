@@ -98,7 +98,8 @@ function buildDayBuckets(days) {
     const key = date.toISOString().slice(0, 10);
     buckets.push({
       key,
-      label: date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
+      // Always Latin digits so chart axes match product prices / English numerals
+      label: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
       revenue: 0,
       cost: 0,
       profit: 0,

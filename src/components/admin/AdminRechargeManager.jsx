@@ -40,7 +40,7 @@ const STATUS_LABEL_KEYS = {
 
 function formatRechargeDate(value, lang) {
   if (!value) return '—';
-  return new Date(value).toLocaleString(lang === 'ar' ? 'ar-SY' : 'en-US', {
+  return new Date(value).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US', {
     dateStyle: 'medium',
     timeStyle: 'short',
   });

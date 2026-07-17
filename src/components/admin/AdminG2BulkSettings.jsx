@@ -672,7 +672,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
                 {form.g2bulk_last_sync_at && (
                   <div>
                     {t.g2bulkLastSync}{' '}
-                    {new Date(form.g2bulk_last_sync_at).toLocaleString()}
+                    {new Date(form.g2bulk_last_sync_at).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US')}
                   </div>
                 )}
               </div>

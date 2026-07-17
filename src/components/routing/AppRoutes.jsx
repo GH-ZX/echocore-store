@@ -21,6 +21,7 @@ const SaleOffersView = lazy(() => import('../../views/SaleOffersView'));
 const FAQView = lazy(() => import('../../views/FAQView'));
 const HowItWorksView = lazy(() => import('../../views/HowItWorksView'));
 const ContactView = lazy(() => import('../../views/ContactView'));
+const SupportView = lazy(() => import('../../views/SupportView'));
 const LinksView = lazy(() => import('../../views/LinksView'));
 const DeveloperCreditsView = lazy(() => import('../../views/DeveloperCreditsView'));
 const RechargeView = lazy(() => import('../../views/RechargeView'));
@@ -264,6 +265,15 @@ export default function AppRoutes({
         <Route path="/contact" element={<ContactView t={t} lang={lang} user={user} />} />
 
         <Route
+          path="/support"
+          element={(
+            <Suspense fallback={<PageLoader t={t} />}>
+              <SupportView t={t} lang={lang} user={user} />
+            </Suspense>
+          )}
+        />
+
+        <Route
           path="/game/:gameSlug/:offerSlug/buy"
           element={(
             <ProtectedRoute user={user} loadingAuth={loadingAuth} lang={lang}>
@@ -303,6 +313,7 @@ export default function AppRoutes({
               deleteGame={deleteGame}
               loadingCatalog={loadingGames}
               onBuyNow={openBuyOffer}
+              onNotify={showToast}
             />
           )}
         />

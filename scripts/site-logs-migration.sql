@@ -69,6 +69,8 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.append_site_log(text, text, text, uuid, uuid, jsonb) FROM public;
 
 -- 3. Client auth logging (anon + authenticated)
+-- NOTE: Keep in sync with scripts/site-logs-auth-all-users.sql
+-- FK-safe: only set actor/subject when profiles row exists; enrich all users.
 CREATE OR REPLACE FUNCTION public.log_auth_event(
   p_event_type text,
   p_email text DEFAULT NULL,
@@ -86,6 +88,8 @@ DECLARE
   v_severity text := 'info';
   v_meta jsonb;
   v_email text;
+  v_name text;
+  v_meta_user_id uuid;
 BEGIN
   IF p_event_type IS NULL OR NOT (p_event_type = ANY(v_allowed)) THEN
     RETURN;
@@ -94,6 +98,63 @@ BEGIN
   v_email := lower(trim(COALESCE(p_email, '')));
   IF v_email = '' THEN
     v_email := NULL;
+  END IF;
+
+  v_meta := COALESCE(p_metadata, '{}'::jsonb);
+
+  IF v_user_id IS NULL AND v_meta ? 'userId' AND nullif(trim(v_meta->>'userId'), '') IS NOT NULL THEN
+    BEGIN
+      v_meta_user_id := (trim(v_meta->>'userId'))::uuid;
+      v_user_id := v_meta_user_id;
+    EXCEPTION WHEN OTHERS THEN
+      v_user_id := NULL;
+    END;
+  END IF;
+
+  IF v_user_id IS NULL AND v_email IS NOT NULL THEN
+    SELECT u.id INTO v_user_id
+    FROM auth.users u
+    WHERE lower(u.email) = v_email
+    ORDER BY u.created_at DESC
+    LIMIT 1;
+  END IF;
+
+  IF v_email IS NULL AND v_user_id IS NOT NULL THEN
+    SELECT lower(u.email) INTO v_email
+    FROM auth.users u
+    WHERE u.id = v_user_id;
+  END IF;
+
+  v_name := nullif(trim(COALESCE(v_meta->>'userName', v_meta->>'name', '')), '');
+  IF v_name IS NULL AND v_user_id IS NOT NULL THEN
+    SELECT nullif(trim(COALESCE(p.name, p.username, '')), '') INTO v_name
+    FROM public.profiles p
+    WHERE p.id = v_user_id;
+  END IF;
+  IF v_name IS NULL AND v_email IS NOT NULL THEN
+    v_name := split_part(v_email, '@', 1);
+  END IF;
+
+  -- Only set actor/subject when profiles row exists (FK on site_logs)
+  IF v_user_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.profiles p WHERE p.id = v_user_id
+  ) THEN
+    v_user_id := NULL;
+  END IF;
+
+  IF p_event_type = 'login_success' AND (v_user_id IS NOT NULL OR v_email IS NOT NULL) THEN
+    IF EXISTS (
+      SELECT 1
+      FROM public.site_logs
+      WHERE event_type = 'login_success'
+        AND created_at > now() - interval '30 seconds'
+        AND (
+          (v_user_id IS NOT NULL AND actor_user_id = v_user_id)
+          OR (v_email IS NOT NULL AND metadata->>'email' = v_email)
+        )
+    ) THEN
+      RETURN;
+    END IF;
   END IF;
 
   IF p_event_type = 'login_failed' AND v_email IS NOT NULL THEN
@@ -108,10 +169,31 @@ BEGIN
     END IF;
   END IF;
 
-  v_meta := COALESCE(p_metadata, '{}'::jsonb);
+  IF p_event_type = 'signup_success' AND (v_user_id IS NOT NULL OR v_email IS NOT NULL) THEN
+    IF EXISTS (
+      SELECT 1
+      FROM public.site_logs
+      WHERE event_type = 'signup_success'
+        AND created_at > now() - interval '5 minutes'
+        AND (
+          (v_user_id IS NOT NULL AND actor_user_id = v_user_id)
+          OR (v_email IS NOT NULL AND metadata->>'email' = v_email)
+        )
+    ) THEN
+      RETURN;
+    END IF;
+  END IF;
+
   IF v_email IS NOT NULL THEN
     v_meta := v_meta || jsonb_build_object('email', v_email);
   END IF;
+  IF v_name IS NOT NULL THEN
+    v_meta := v_meta || jsonb_build_object('userName', v_name);
+  END IF;
+  IF v_user_id IS NOT NULL THEN
+    v_meta := v_meta || jsonb_build_object('userId', v_user_id::text);
+  END IF;
+  v_meta := v_meta - 'name';
 
   CASE p_event_type
     WHEN 'login_failed', 'signup_failed' THEN v_severity := 'warning';
@@ -119,19 +201,73 @@ BEGIN
     ELSE v_severity := 'info';
   END CASE;
 
-  PERFORM public.append_site_log(
-    'auth',
-    p_event_type,
-    v_severity,
-    v_user_id,
-    v_user_id,
-    v_meta
-  );
+  BEGIN
+    PERFORM public.append_site_log(
+      'auth',
+      p_event_type,
+      v_severity,
+      v_user_id,
+      v_user_id,
+      v_meta
+    );
+  EXCEPTION
+    WHEN foreign_key_violation THEN
+      PERFORM public.append_site_log(
+        'auth',
+        p_event_type,
+        v_severity,
+        NULL,
+        NULL,
+        v_meta
+      );
+    WHEN OTHERS THEN
+      RAISE;
+  END;
 END;
 $$;
 
 REVOKE EXECUTE ON FUNCTION public.log_auth_event(text, text, jsonb) FROM public;
 GRANT EXECUTE ON FUNCTION public.log_auth_event(text, text, jsonb) TO anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.log_profile_signup_event()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_email text;
+  v_name text;
+BEGIN
+  SELECT lower(u.email) INTO v_email
+  FROM auth.users u
+  WHERE u.id = NEW.id;
+
+  v_name := nullif(trim(COALESCE(NEW.name, NEW.username, '')), '');
+  IF v_name IS NULL AND v_email IS NOT NULL THEN
+    v_name := split_part(v_email, '@', 1);
+  END IF;
+
+  PERFORM public.log_auth_event(
+    'signup_success',
+    v_email,
+    jsonb_build_object(
+      'userId', NEW.id::text,
+      'userName', COALESCE(v_name, ''),
+      'source', 'profile_insert'
+    )
+  );
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS profiles_log_signup ON public.profiles;
+CREATE TRIGGER profiles_log_signup
+  AFTER INSERT ON public.profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION public.log_profile_signup_event();
+
+REVOKE EXECUTE ON FUNCTION public.log_profile_signup_event() FROM public;
 
 -- 4. Admin fetch
 CREATE OR REPLACE FUNCTION public.get_admin_site_logs(

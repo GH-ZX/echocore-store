@@ -54,6 +54,7 @@ const ADMIN_TYPES = new Set([
   'admin_recharge_completed',
   'admin_order_payment_sent',
   'admin_contact_message',
+  'admin_contact_reply',
   'admin_purchase_completed',
   'admin_delivery_ready',
   'admin_topup_delivered',
@@ -67,6 +68,8 @@ const MESSAGE_TYPES = new Set([
   'admin_maintenance_notice',
   'account_banned',
   'admin_contact_message',
+  'admin_contact_reply',
+  'contact_reply',
 ]);
 
 /** Store activity: sales, recharges, contact, fulfillment — everything admin cares about. */

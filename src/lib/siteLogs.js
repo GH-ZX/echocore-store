@@ -206,15 +206,40 @@ export async function fetchAdminSiteLogs({ limit = 50, offset = 0, category = nu
   };
 }
 
-export async function logAuthEvent(eventType, { email = null, metadata = {} } = {}) {
+/**
+ * Write auth activity for ALL users (sign-in / sign-up / logout / failures).
+ * Always non-throwing — failures only console.warn so login UX is never blocked.
+ *
+ * @param {string} eventType login_success | login_failed | logout | signup_success | signup_failed
+ * @param {{ email?: string|null, userId?: string|null, userName?: string|null, metadata?: object }} opts
+ */
+export async function logAuthEvent(eventType, {
+  email = null,
+  userId = null,
+  userName = null,
+  metadata = {},
+} = {}) {
   try {
-    if (eventType === 'login_success' || eventType === 'logout' || eventType === 'signup_success') {
+    // Attach JWT when possible so auth.uid() resolves for actor linkage
+    if (
+      eventType === 'login_success'
+      || eventType === 'logout'
+      || eventType === 'signup_success'
+    ) {
       await supabase.auth.getSession();
     }
+
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const meta = {
+      ...(metadata && typeof metadata === 'object' ? metadata : {}),
+    };
+    if (userId) meta.userId = String(userId);
+    if (userName) meta.userName = String(userName);
+
     const { error } = await supabase.rpc('log_auth_event', {
       p_event_type: eventType,
-      p_email: email,
-      p_metadata: metadata,
+      p_email: normalizedEmail || email || null,
+      p_metadata: meta,
     });
     if (error && !isMissingRpc(error)) {
       console.warn('log_auth_event failed:', error.message);

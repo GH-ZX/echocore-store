@@ -15,6 +15,8 @@ import {
   Gift,
   ShoppingBag,
   UserRound,
+  Save,
+  Wallet,
 } from 'lucide-react';
 import { getAdminGiftPath, getAdminUserPath } from '../../lib/adminRoutes';
 import {
@@ -24,6 +26,7 @@ import {
   adminNotifyUser,
   adminUnbanUser,
   adminUnverifyUser,
+  adminUpdateUserProfile,
   adminVerifyUser,
   isUserRowBanned,
 } from '../../lib/adminModeration';
@@ -47,11 +50,12 @@ import {
 } from '../../lib/username';
 import { adminChangeUsername, getUsernameErrorMessage } from '../../lib/usernameChange';
 import BanDurationField from './BanDurationField';
+import AdminManualBalanceCredit from './AdminManualBalanceCredit';
 import Modal from '../ui/Modal';
 
 function formatAdminDate(value, lang) {
   if (!value) return '—';
-  return new Date(value).toLocaleString(lang === 'ar' ? 'ar-SY' : 'en-US', {
+  return new Date(value).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US', {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
@@ -97,7 +101,16 @@ export default function AdminUserDetail({
   const [recoveryLink, setRecoveryLink] = useState('');
   const [usernameDraft, setUsernameDraft] = useState('');
   const [usernameSaving, setUsernameSaving] = useState(false);
-
+  const [profileDraft, setProfileDraft] = useState({
+    name: '',
+    phone: '',
+    country: '',
+    bio: '',
+    discord_username: '',
+    favorite_game: '',
+    default_player_uid: '',
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
 
   const loadProfile = useCallback(async () => {
     if (!userRouteParam) return;
@@ -127,6 +140,15 @@ export default function AdminUserDetail({
       const data = await adminGetUserProfile(userId);
       setProfile(data);
       setUsernameDraft(getProfileUsername(data) || '');
+      setProfileDraft({
+        name: data?.name || '',
+        phone: data?.phone || '',
+        country: data?.country || '',
+        bio: data?.bio || '',
+        discord_username: data?.discord_username || '',
+        favorite_game: data?.favorite_game || '',
+        default_player_uid: data?.default_player_uid || '',
+      });
     } catch (err) {
       notifyError(err.message);
       setProfile(null);
@@ -308,6 +330,21 @@ export default function AdminUserDetail({
     }
   };
 
+  const handleSaveProfile = async (event) => {
+    event.preventDefault();
+    if (!profile?.id) return;
+    setProfileSaving(true);
+    try {
+      await adminUpdateUserProfile(profile.id, profileDraft);
+      notifySuccess(t.adminProfileSaved);
+      await loadProfile();
+    } catch (err) {
+      notifyError(err.message || t.adminProfileSaveFailed);
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="py-16 text-center">
@@ -419,6 +456,31 @@ export default function AdminUserDetail({
           </div>
         </div>
 
+        {/* Wallet adjust — add / deduct store balance */}
+        <div>
+          <h3 className="text-sm font-bold mb-3 flex items-center gap-2">
+            <Wallet className="w-4 h-4 text-amber-300" />
+            {t.adminUserSectionWallet}
+          </h3>
+          <AdminManualBalanceCredit
+            t={t}
+            lang={lang}
+            embedded
+            allowDebit
+            presetUser={{
+              id: profile.id,
+              name: profile.name,
+              email: profile.email,
+              username: profile.username,
+              balance: profile.balance,
+            }}
+            onNotify={onNotify}
+            onCredited={async () => {
+              await loadProfile();
+            }}
+          />
+        </div>
+
         <div>
           <h3 className="text-sm font-bold mb-3">{t.adminUserSectionAccount}</h3>
           <form onSubmit={handleChangeUsername} className="rounded-xl border border-[var(--border)] p-4 space-y-3 mb-4 max-w-md">
@@ -461,14 +523,84 @@ export default function AdminUserDetail({
 
         <div>
           <h3 className="text-sm font-bold mb-3">{t.adminUserSectionProfile}</h3>
-          <div className="admin-user-info-grid">
-            <InfoField label={t.adminUserPhoneLabel} value={profile.phone} />
-            <InfoField label={t.adminUserCountryLabel} value={profile.country} />
-            <InfoField label={t.adminUserDiscord} value={profile.discord_username} />
-            <InfoField label={t.adminUserPlayerUid} value={profile.default_player_uid} />
-            <InfoField label={t.adminUserFavoriteGame} value={profile.favorite_game} />
-            <InfoField label={t.adminUserBio} value={profile.bio} className="sm:col-span-2 lg:col-span-3" />
-          </div>
+          <form onSubmit={handleSaveProfile} className="rounded-xl border border-[var(--border)] p-4 space-y-3">
+            <p className="text-xs text-[var(--text-sec)]">{t.adminProfileEditHelp}</p>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-[var(--text-muted)] block mb-1">{t.adminUserDisplayName}</label>
+                <input
+                  type="text"
+                  className="input w-full"
+                  value={profileDraft.name}
+                  onChange={(e) => setProfileDraft((d) => ({ ...d, name: e.target.value }))}
+                  maxLength={80}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--text-muted)] block mb-1">{t.adminUserPhoneLabel}</label>
+                <input
+                  type="text"
+                  className="input w-full"
+                  value={profileDraft.phone}
+                  onChange={(e) => setProfileDraft((d) => ({ ...d, phone: e.target.value }))}
+                  maxLength={40}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--text-muted)] block mb-1">{t.adminUserCountryLabel}</label>
+                <input
+                  type="text"
+                  className="input w-full"
+                  value={profileDraft.country}
+                  onChange={(e) => setProfileDraft((d) => ({ ...d, country: e.target.value }))}
+                  maxLength={60}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--text-muted)] block mb-1">{t.adminUserDiscord}</label>
+                <input
+                  type="text"
+                  className="input w-full"
+                  value={profileDraft.discord_username}
+                  onChange={(e) => setProfileDraft((d) => ({ ...d, discord_username: e.target.value }))}
+                  maxLength={60}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--text-muted)] block mb-1">{t.adminUserPlayerUid}</label>
+                <input
+                  type="text"
+                  className="input w-full font-mono"
+                  value={profileDraft.default_player_uid}
+                  onChange={(e) => setProfileDraft((d) => ({ ...d, default_player_uid: e.target.value }))}
+                  maxLength={64}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--text-muted)] block mb-1">{t.adminUserFavoriteGame}</label>
+                <input
+                  type="text"
+                  className="input w-full"
+                  value={profileDraft.favorite_game}
+                  onChange={(e) => setProfileDraft((d) => ({ ...d, favorite_game: e.target.value }))}
+                  maxLength={80}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs text-[var(--text-muted)] block mb-1">{t.adminUserBio}</label>
+                <textarea
+                  className="input w-full min-h-[88px]"
+                  value={profileDraft.bio}
+                  onChange={(e) => setProfileDraft((d) => ({ ...d, bio: e.target.value }))}
+                  maxLength={500}
+                />
+              </div>
+            </div>
+            <button type="submit" disabled={profileSaving} className="btn btn-primary text-xs py-2 px-3 gap-1.5">
+              {profileSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              {profileSaving ? t.sending : t.adminProfileSave}
+            </button>
+          </form>
         </div>
 
         {banned && (

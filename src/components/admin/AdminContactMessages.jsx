@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Archive,
@@ -7,10 +7,14 @@ import {
   Mail,
   MessageSquare,
   RefreshCw,
+  Send,
   User,
 } from 'lucide-react';
 import {
+  buildContactTimeline,
   fetchContactMessages,
+  fetchContactThread,
+  sendContactReply,
   updateContactMessageStatus,
 } from '../../lib/contactMessages';
 import { getAdminDashboardPath } from '../../lib/adminRoutes';
@@ -29,12 +33,20 @@ export default function AdminContactMessages({
 }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const chatEndRef = useRef(null);
+  const replyInputRef = useRef(null);
+
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
   const [error, setError] = useState('');
   const [messages, setMessages] = useState([]);
   const [filter, setFilter] = useState('all');
   const [selectedId, setSelectedId] = useState(null);
+
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [replies, setReplies] = useState([]);
+  const [replyDraft, setReplyDraft] = useState('');
+  const [sending, setSending] = useState(false);
 
   const highlightId = useMemo(() => {
     const fromQuery = new URLSearchParams(location.search).get('message');
@@ -73,17 +85,48 @@ export default function AdminContactMessages({
       setSelectedId(String(highlightId));
       setFilter('all');
       setError('');
-      // Bring detail into view on mobile after deep-link
       window.requestAnimationFrame(() => {
         document.getElementById('admin-contact-detail')?.scrollIntoView({
           behavior: 'smooth',
           block: 'start',
         });
+        replyInputRef.current?.focus();
       });
     } else {
       setError((prev) => prev || (t.adminContactNotFound || ''));
     }
   }, [highlightId, messages, loading, t.adminContactNotFound]);
+
+  const loadThread = useCallback(async (messageId) => {
+    if (!messageId) {
+      setReplies([]);
+      return;
+    }
+    setThreadLoading(true);
+    try {
+      const { message, replies: rows } = await fetchContactThread(messageId);
+      setReplies(rows);
+      if (message) {
+        setMessages((prev) => prev.map((item) => (
+          item.id === message.id ? { ...item, ...message } : item
+        )));
+      }
+    } catch (err) {
+      setError(err.message || t.adminContactThreadFailed);
+      setReplies([]);
+    } finally {
+      setThreadLoading(false);
+    }
+  }, [t.adminContactThreadFailed]);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setReplies([]);
+      setReplyDraft('');
+      return;
+    }
+    loadThread(selectedId);
+  }, [selectedId, loadThread]);
 
   // Auto-mark new as read when opened
   useEffect(() => {
@@ -119,10 +162,35 @@ export default function AdminContactMessages({
     [messages, selectedId],
   );
 
+  const timeline = useMemo(
+    () => buildContactTimeline(selected, replies),
+    [selected, replies],
+  );
+
+  useEffect(() => {
+    if (!timeline.length) return;
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [timeline.length, selectedId]);
+
   const newCount = useMemo(
     () => messages.filter((row) => row.status === 'new').length,
     [messages],
   );
+
+  const selectMessage = (rowId) => {
+    setSelectedId(rowId);
+    setReplyDraft('');
+    navigate(
+      {
+        pathname: getAdminDashboardPath('contact'),
+        search: `?message=${encodeURIComponent(rowId)}`,
+      },
+      { replace: true, state: { highlightContactMessageId: rowId } },
+    );
+    window.requestAnimationFrame(() => {
+      replyInputRef.current?.focus();
+    });
+  };
 
   const setStatus = async (id, status) => {
     setSavingId(id);
@@ -144,6 +212,37 @@ export default function AdminContactMessages({
     }
   };
 
+  const handleSendReply = async (event) => {
+    event?.preventDefault?.();
+    if (!selected || sending) return;
+    const text = replyDraft.trim();
+    if (!text) return;
+
+    setSending(true);
+    setError('');
+    try {
+      const row = await sendContactReply(selected.id, text);
+      setReplies((prev) => [...prev, row]);
+      setReplyDraft('');
+      setMessages((prev) => prev.map((item) => (
+        item.id === selected.id && item.status === 'new'
+          ? { ...item, status: 'read' }
+          : item
+      )));
+      onNotify?.(t.adminContactReplySent, 'success');
+      window.requestAnimationFrame(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        replyInputRef.current?.focus();
+      });
+    } catch (err) {
+      const msg = err.message || t.adminContactReplyFailed;
+      setError(msg);
+      onNotify?.(msg, 'error');
+    } finally {
+      setSending(false);
+    }
+  };
+
   const statusLabel = (status) => {
     if (status === 'new') return t.adminContactStatusNew;
     if (status === 'archived') return t.adminContactStatusArchived;
@@ -151,6 +250,7 @@ export default function AdminContactMessages({
   };
 
   const textDir = lang === 'ar' ? 'rtl' : 'ltr';
+  const locale = lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US';
 
   return (
     <div className="space-y-4" dir={textDir}>
@@ -158,7 +258,7 @@ export default function AdminContactMessages({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3 min-w-0">
             <div className="w-10 h-10 rounded-xl bg-[var(--accent)]/15 flex items-center justify-center text-[var(--accent)] flex-shrink-0">
-              <Mail className="w-5 h-5" />
+              <MessageSquare className="w-5 h-5" />
             </div>
             <div className="min-w-0">
               <h2 className="text-lg font-black">{t.adminContactTitle}</h2>
@@ -167,8 +267,7 @@ export default function AdminContactMessages({
               </p>
               {newCount > 0 && (
                 <p className="text-xs text-sky-300 mt-2">
-                  {t.adminContactNewCount?.replace('{count}', String(newCount))
-                    || `${newCount} new`}
+                  {t.adminContactNewCount?.replace('{count}', String(newCount))}
                 </p>
               )}
             </div>
@@ -227,17 +326,7 @@ export default function AdminContactMessages({
                 <button
                   key={row.id}
                   type="button"
-                  onClick={() => {
-                    setSelectedId(row.id);
-                    // Keep URL in sync so refresh / share still opens this message
-                    navigate(
-                      {
-                        pathname: getAdminDashboardPath('contact'),
-                        search: `?message=${encodeURIComponent(row.id)}`,
-                      },
-                      { replace: true, state: { highlightContactMessageId: row.id } },
-                    );
-                  }}
+                  onClick={() => selectMessage(row.id)}
                   className={`w-full text-start card p-3.5 border transition-colors ${
                     active
                       ? 'border-[var(--accent)]/50 bg-[var(--accent)]/8'
@@ -277,100 +366,172 @@ export default function AdminContactMessages({
                 <p>{t.adminContactSelectHint}</p>
               </div>
             ) : (
-              <div className="card p-5 sm:p-6 space-y-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-lg font-black">
-                      {selected.name?.trim() || t.adminContactAnonymous}
-                    </h3>
+              <div className="card p-0 overflow-hidden flex flex-col min-h-[420px] max-h-[min(720px,75vh)]">
+                {/* Header */}
+                <div className="p-4 sm:p-5 border-b border-[var(--border)] space-y-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-black">
+                        {selected.name?.trim() || t.adminContactAnonymous}
+                      </h3>
+                      <p className="text-sm text-[var(--text-sec)] mt-0.5" dir="ltr">
+                        {selected.email}
+                      </p>
+                    </div>
+                    <span className={`text-xs px-2.5 py-1 rounded-full border ${statusTone(selected.status)}`}>
+                      {statusLabel(selected.status)}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-3 text-xs text-[var(--text-muted)]">
+                    <span className="inline-flex items-center gap-1">
+                      <User className="w-3.5 h-3.5" />
+                      {selected.user_id
+                        ? t.adminContactRegisteredUser
+                        : t.adminContactGuest}
+                    </span>
+                    <span>
+                      {selected.created_at
+                        ? new Date(selected.created_at).toLocaleString(locale)
+                        : ''}
+                    </span>
+                  </div>
+                  {!selected.user_id && (
+                    <p className="text-xs text-amber-300/90 leading-relaxed">
+                      {t.adminContactGuestReplyHint}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {selected.status === 'new' && (
+                      <button
+                        type="button"
+                        disabled={savingId === selected.id}
+                        onClick={() => setStatus(selected.id, 'read')}
+                        className="btn btn-secondary text-xs py-1.5 px-2.5 gap-1.5"
+                      >
+                        {savingId === selected.id
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <CheckCircle2 className="w-3.5 h-3.5" />}
+                        {t.adminContactMarkRead}
+                      </button>
+                    )}
+                    {selected.status !== 'archived' && (
+                      <button
+                        type="button"
+                        disabled={savingId === selected.id}
+                        onClick={() => setStatus(selected.id, 'archived')}
+                        className="btn btn-secondary text-xs py-1.5 px-2.5 gap-1.5"
+                      >
+                        <Archive className="w-3.5 h-3.5" />
+                        {t.adminContactArchive}
+                      </button>
+                    )}
+                    {selected.status === 'archived' && (
+                      <button
+                        type="button"
+                        disabled={savingId === selected.id}
+                        onClick={() => setStatus(selected.id, 'read')}
+                        className="btn btn-secondary text-xs py-1.5 px-2.5 gap-1.5"
+                      >
+                        {t.adminContactRestore}
+                      </button>
+                    )}
                     <a
-                      href={`mailto:${selected.email}`}
-                      className="text-sm text-[var(--accent)] hover:underline inline-flex items-center gap-1.5 mt-1"
-                      dir="ltr"
+                      href={`mailto:${String(selected.email || '').trim()}?subject=${encodeURIComponent(
+                        t.adminContactReplySubject || 'ECHOCORE',
+                      )}`}
+                      className="btn btn-secondary text-xs py-1.5 px-2.5 gap-1.5"
                     >
                       <Mail className="w-3.5 h-3.5" />
-                      {selected.email}
+                      {t.adminContactEmailInstead}
                     </a>
                   </div>
-                  <span className={`text-xs px-2.5 py-1 rounded-full border ${statusTone(selected.status)}`}>
-                    {statusLabel(selected.status)}
-                  </span>
                 </div>
 
-                <div className="flex flex-wrap gap-3 text-xs text-[var(--text-muted)]">
-                  <span className="inline-flex items-center gap-1">
-                    <User className="w-3.5 h-3.5" />
-                    {selected.user_id
-                      ? t.adminContactRegisteredUser
-                      : t.adminContactGuest}
-                  </span>
-                  <span>
-                    {selected.created_at
-                      ? new Date(selected.created_at).toLocaleString(
-                        lang === 'ar' ? 'ar-SY' : 'en-US',
-                      )
-                      : ''}
-                  </span>
+                {/* Chat timeline */}
+                <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3 bg-[var(--bg-surface)]/40">
+                  {threadLoading && replies.length === 0 ? (
+                    <div className="flex justify-center py-8">
+                      <Loader2 className="w-6 h-6 animate-spin text-[var(--accent)]" />
+                    </div>
+                  ) : (
+                    timeline.map((item) => {
+                      const fromAdmin = item.sender_role === 'admin';
+                      return (
+                        <div
+                          key={item.id}
+                          className={`flex ${fromAdmin ? 'justify-end' : 'justify-start'}`}
+                        >
+                          <div
+                            className={`max-w-[90%] sm:max-w-[80%] rounded-2xl px-3.5 py-2.5 border ${
+                              fromAdmin
+                                ? 'bg-[var(--accent)]/15 border-[var(--accent)]/30 rounded-ee-md'
+                                : 'bg-[var(--bg-elevated)] border-[var(--border)] rounded-es-md'
+                            }`}
+                          >
+                            <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] mb-1">
+                              {fromAdmin ? t.adminContactYou : (selected.name?.trim() || t.adminContactAnonymous)}
+                            </div>
+                            <p className="text-sm leading-relaxed whitespace-pre-wrap text-[var(--text-primary)]">
+                              {item.body}
+                            </p>
+                            <div className="text-[10px] text-[var(--text-muted)] mt-1.5">
+                              {item.created_at
+                                ? new Date(item.created_at).toLocaleString(locale)
+                                : ''}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  <div ref={chatEndRef} />
                 </div>
 
-                <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)] mb-2">
-                    {t.messageLabel}
+                {/* Composer */}
+                <form
+                  onSubmit={handleSendReply}
+                  className="p-3 sm:p-4 border-t border-[var(--border)] bg-[var(--bg-card)]"
+                >
+                  <label className="sr-only" htmlFor="admin-contact-reply">
+                    {t.adminContactReplyPlaceholder}
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <textarea
+                      id="admin-contact-reply"
+                      ref={replyInputRef}
+                      value={replyDraft}
+                      onChange={(e) => setReplyDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendReply(e);
+                        }
+                      }}
+                      rows={2}
+                      maxLength={4000}
+                      disabled={sending || selected.status === 'archived'}
+                      placeholder={
+                        selected.status === 'archived'
+                          ? t.adminContactArchivedComposer
+                          : t.adminContactReplyPlaceholder
+                      }
+                      className="flex-1 min-h-[72px] resize-y rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/40"
+                    />
+                    <button
+                      type="submit"
+                      disabled={sending || !replyDraft.trim() || selected.status === 'archived'}
+                      className="btn btn-primary text-sm py-2.5 px-4 gap-1.5 self-stretch sm:self-end shrink-0"
+                    >
+                      {sending
+                        ? <Loader2 className="w-4 h-4 animate-spin" />
+                        : <Send className="w-4 h-4" />}
+                      {t.adminContactSendReply}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-[var(--text-muted)] mt-2">
+                    {t.adminContactReplyHint}
                   </p>
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap text-[var(--text-primary)]">
-                    {selected.message}
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap gap-2 pt-1">
-                  {selected.status === 'new' && (
-                    <button
-                      type="button"
-                      disabled={savingId === selected.id}
-                      onClick={() => setStatus(selected.id, 'read')}
-                      className="btn btn-secondary text-xs py-2 px-3 gap-1.5"
-                    >
-                      {savingId === selected.id
-                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        : <CheckCircle2 className="w-3.5 h-3.5" />}
-                      {t.adminContactMarkRead}
-                    </button>
-                  )}
-                  {selected.status !== 'archived' && (
-                    <button
-                      type="button"
-                      disabled={savingId === selected.id}
-                      onClick={() => setStatus(selected.id, 'archived')}
-                      className="btn btn-secondary text-xs py-2 px-3 gap-1.5"
-                    >
-                      {savingId === selected.id
-                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        : <Archive className="w-3.5 h-3.5" />}
-                      {t.adminContactArchive}
-                    </button>
-                  )}
-                  {selected.status === 'archived' && (
-                    <button
-                      type="button"
-                      disabled={savingId === selected.id}
-                      onClick={() => setStatus(selected.id, 'read')}
-                      className="btn btn-secondary text-xs py-2 px-3 gap-1.5"
-                    >
-                      {t.adminContactRestore}
-                    </button>
-                  )}
-                  <a
-                    href={`mailto:${String(selected.email || '').trim()}?subject=${encodeURIComponent(
-                      t.adminContactReplySubject || 'ECHOCORE',
-                    )}&body=${encodeURIComponent(
-                      `${selected.name ? `${selected.name}\n` : ''}${selected.email}\n\n---\n${selected.message || ''}\n---\n\n`,
-                    )}`}
-                    className="btn btn-primary text-xs py-2 px-3 gap-1.5"
-                  >
-                    <Mail className="w-3.5 h-3.5" />
-                    {t.adminContactReply}
-                  </a>
-                </div>
+                </form>
               </div>
             )}
           </div>

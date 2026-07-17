@@ -9,9 +9,11 @@ import {
   ShoppingBag,
   UserRound,
   X,
+  RotateCcw,
 } from 'lucide-react';
 import {
   ORDER_STATUS_FILTER_IDS,
+  canRetryOrderFulfillment,
   countOrdersForFilter,
   filterAdminOrders,
   getAdminOrderOutcome,
@@ -19,13 +21,15 @@ import {
   getAdminOrderOutcomeTone,
   getAdminOrdersEmptyMessageKey,
   getOrderStatusFilterOptions,
+  isOrderBalanceRefunded,
+  isSoftFulfillmentTimeout,
 } from '../../lib/adminOrderFilters';
 import {
   adminGetUserByUsername,
   adminGetUserProfile,
 } from '../../lib/adminModeration';
 import { getAdminOrdersPath, getAdminUserPath } from '../../lib/adminRoutes';
-import { formatMessage } from '../../lib/i18n';
+import { formatDateTime, formatMessage } from '../../lib/i18n';
 import {
   formatOrderDisplayId,
   getOrderStatusColorClass,
@@ -44,7 +48,7 @@ import {
 
 function formatOrderDate(value, lang) {
   if (!value) return '—';
-  return new Date(value).toLocaleString(lang === 'ar' ? 'ar-SY' : 'en-US', {
+  return formatDateTime(value, lang, {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
@@ -98,10 +102,12 @@ export default function AdminOrdersManager({
   loadingOrders = false,
   refreshOrders,
   onNotify,
+  onFulfillOrder,
 }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const notifyError = useCallback((message) => onNotify?.(message, 'error'), [onNotify]);
+  const [fulfillingId, setFulfillingId] = useState(null);
 
   const userFilterParam = searchParams.get('user') || '';
   const highlightOrderId = searchParams.get('order') || '';
@@ -216,9 +222,27 @@ export default function AdminOrdersManager({
     if (username) navigate(getAdminOrdersPath({ username }));
   };
 
+  const handleRetryFulfill = async (order) => {
+    if (!onFulfillOrder || !order?.id || fulfillingId) return;
+    setFulfillingId(order.id);
+    try {
+      await onFulfillOrder(order.id);
+      onNotify?.(t.adminOrdersFulfillRetryStarted, 'success');
+      await refreshOrders?.();
+    } catch (err) {
+      onNotify?.(err?.message || t.adminOrdersFulfillRetryFailed, 'error');
+    } finally {
+      setFulfillingId(null);
+    }
+  };
+
   const renderExpandedDetails = (order) => {
     const items = order.order_items || [];
     const profile = order.profiles;
+    const outcome = getAdminOrderOutcome(order);
+    const softTimeout = isSoftFulfillmentTimeout(order);
+    const refunded = isOrderBalanceRefunded(order);
+    const canRetry = canRetryOrderFulfillment(order) && typeof onFulfillOrder === 'function';
 
     return (
       <div className="admin-order-expanded">
@@ -241,13 +265,13 @@ export default function AdminOrdersManager({
           <div>
             <div className="admin-order-expanded-label">{t.orderStatusLabel}</div>
             <div className={`admin-order-expanded-value ${getOrderStatusColorClass(
-              getAdminOrderOutcome(order) === 'success'
+              outcome === 'success'
                 ? 'completed'
-                : getAdminOrderOutcome(order) === 'failed'
+                : outcome === 'failed' || outcome === 'cancelled'
                   ? 'cancelled'
                   : 'pending_payment',
             )}`}>
-              {getAdminOrderOutcomeLabel(getAdminOrderOutcome(order), t)}
+              {getAdminOrderOutcomeLabel(outcome, t)}
             </div>
             <div className="text-[10px] text-[var(--text-muted)] mt-1">
               {getOrderStatusLabel(order.status || 'completed', t)}
@@ -271,9 +295,20 @@ export default function AdminOrdersManager({
           </div>
         )}
 
-        {order.g2bulk_metadata?.last_error && getAdminOrderOutcome(order) === 'failed' && (
-          <div className="mt-3 text-xs text-red-300/90 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2">
+        {order.g2bulk_metadata?.last_error && (outcome === 'failed' || softTimeout) && (
+          <div className={`mt-3 text-xs rounded-lg border px-3 py-2 ${
+            softTimeout && !refunded
+              ? 'text-amber-200/95 border-amber-500/30 bg-amber-500/10'
+              : 'text-red-300/90 border-red-500/25 bg-red-500/10'
+          }`}
+          >
             {String(order.g2bulk_metadata.last_error)}
+            {softTimeout && !refunded && (
+              <div className="mt-1 opacity-90">{t.adminOrdersSoftTimeoutHint}</div>
+            )}
+            {refunded && (
+              <div className="mt-1 opacity-90">{t.adminOrdersRefundedHint}</div>
+            )}
           </div>
         )}
 
@@ -293,11 +328,24 @@ export default function AdminOrdersManager({
           )}
         </div>
 
-        {isInvoiceReadyForOrder(order, {
-          isAdmin: true,
-          items: order.order_items || [],
-        }) && (
-          <div className="mt-4">
+        <div className="mt-4 flex flex-wrap gap-2">
+          {canRetry && (
+            <button
+              type="button"
+              disabled={fulfillingId === order.id}
+              onClick={() => handleRetryFulfill(order)}
+              className="btn btn-primary text-xs py-2 px-3 inline-flex items-center gap-1.5"
+            >
+              {fulfillingId === order.id
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <RotateCcw className="w-3.5 h-3.5" />}
+              {t.adminOrdersRetryFulfill}
+            </button>
+          )}
+          {isInvoiceReadyForOrder(order, {
+            isAdmin: true,
+            items: order.order_items || [],
+          }) && (
             <button
               type="button"
               onClick={() => navigate(`/invoice/${INVOICE_KIND.ORDER}/${order.id}`)}
@@ -306,8 +354,8 @@ export default function AdminOrdersManager({
               <ExternalLink className="w-3.5 h-3.5" />
               {t.viewInvoice}
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     );
   };

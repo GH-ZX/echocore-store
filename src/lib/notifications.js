@@ -61,13 +61,14 @@ export function formatNotification(item, t = {}, lang = 'ar') {
       tone: 'warning',
     },
     admin_purchase_completed: {
+      // Payment received only — delivery may still fail or be pending
       title: t.notifAdminPurchaseTitle || t.notifAdminOrderTitle,
       body: applyTemplate(
         t.notifAdminPurchaseBody || t.notifAdminOrderBody,
         { amount, user: userName, reference: m.paymentMethod || reference },
       ),
       adminTab: 'orders',
-      tone: 'success',
+      tone: 'info',
     },
     admin_delivery_ready: {
       title: t.notifAdminDeliveryTitle || t.notifDeliveryReadyTitle,
@@ -117,10 +118,43 @@ export function formatNotification(item, t = {}, lang = 'ar') {
       adminTab: 'contact',
       tone: 'info',
     },
+    admin_contact_reply: {
+      title: t.notifAdminContactReplyTitle,
+      body: m.preview
+        ? applyTemplate(t.notifAdminContactReplyBodyWithPreview || t.notifAdminContactReplyBody, {
+          name: m.name || userName,
+          email: m.email || '',
+          preview: String(m.preview).slice(0, 160),
+        })
+        : applyTemplate(t.notifAdminContactReplyBody, {
+          name: m.name || userName,
+          email: m.email || '',
+        }),
+      adminTab: 'contact',
+      tone: 'info',
+    },
+    contact_reply: {
+      title: t.notifContactReplyTitle,
+      body: m.preview
+        ? applyTemplate(t.notifContactReplyBodyWithPreview || t.notifContactReplyBody, {
+          name: m.name || 'ECHOCORE',
+          preview: String(m.preview).slice(0, 160),
+        })
+        : applyTemplate(t.notifContactReplyBody, { name: m.name || 'ECHOCORE' }),
+      tone: 'info',
+    },
     recharge_approved: {
       title: t.notifRechargeApprovedTitle,
       body: applyTemplate(t.notifRechargeApprovedBody, { amount, balance: newBalance }),
       tone: 'success',
+    },
+    admin_balance_debit: {
+      title: t.notifAdminBalanceDebitTitle || t.notifRechargeApprovedTitle,
+      body: applyTemplate(
+        t.notifAdminBalanceDebitBody || t.notifRechargeApprovedBody,
+        { amount, balance: newBalance },
+      ),
+      tone: 'warning',
     },
     recharge_rejected: {
       title: t.notifRechargeRejectedTitle,
@@ -261,9 +295,19 @@ export function getNotificationDestination(item, formatted, userRole) {
   const requestId = metadata.requestId;
   const invoicePath = getInvoiceRouteFromNotification(item);
 
-  // Contact form → always open admin Contact messages (ignore stale item.link)
-  if (item?.type === 'admin_contact_message') {
+  // Contact form / in-app chat → open conversation (admin or customer)
+  if (
+    item?.type === 'admin_contact_message'
+    || item?.type === 'admin_contact_reply'
+  ) {
     return getAdminContactPath({ messageId: resolveContactMessageId(item, metadata) });
+  }
+  if (item?.type === 'contact_reply') {
+    const messageId = resolveContactMessageId(item, metadata);
+    const path = messageId
+      ? `/support?message=${encodeURIComponent(messageId)}`
+      : '/support';
+    return { path };
   }
 
   if (userRole === 'admin') {

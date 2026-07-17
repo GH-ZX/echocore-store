@@ -364,7 +364,7 @@ export default function AdminUsersManager({
                     {banned && (
                       <div className="text-xs text-red-400 mt-1">
                         {row.ban_expires_at ? formatMessage(t.adminUserBannedUntil, {
-                          date: new Date(row.ban_expires_at).toLocaleString(lang === 'ar' ? 'ar-SY' : 'en-US'),
+                          date: new Date(row.ban_expires_at).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US'),
                         }) : t.adminUserBannedPermanent}
                         {row.ban_reason ? ` — ${row.ban_reason}` : ''}
                       </div>

@@ -39,6 +39,7 @@ export default function GameDetail({
   loadingGames = false,
   onSelectOffer,
   onBuyNow,
+  onNotify,
 }) {
   const { slug } = useParams();
   const matchedGame = games.find((g) => (g.slug || g.id) === slug) || games.find((g) => g.id === slug);
@@ -238,6 +239,8 @@ export default function GameDetail({
                   returnTo: `/game/${slug}`,
                 })) : undefined}
                   onEdit={setEditingOffer}
+                  onPricingSaved={onPricingSaved}
+                  onNotify={onNotify}
                 />
               ))}
             </div>

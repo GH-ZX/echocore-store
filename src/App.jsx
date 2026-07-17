@@ -20,7 +20,10 @@ import { markOrderFulfillAllowed } from './lib/orderAccess';
 import { adminGiftOrder, pollOrderFulfillment } from './lib/adminGifts';
 import { mergeGamePlayerUidIntoProfile } from './lib/gamePlayerUid';
 import { fulfillOrderG2bulk } from './lib/g2bulk';
-import { assertBalanceFulfillmentAvailable } from './lib/fulfillmentAvailability';
+import {
+  assertBalanceFulfillmentAvailable,
+  assertNoOpenDuplicateTopup,
+} from './lib/fulfillmentAvailability';
 import { createOrderInvoice } from './lib/samApi';
 import { isApiWalletMode, isManualWalletMethod } from './lib/paymentMethods';
 import {
@@ -526,7 +529,7 @@ export default function App() {
     return userData;
   }, [siteStatus, t.maintenanceLoginBlocked]);
 
-  const recordLoginSuccess = useCallback(async (email, userId = null) => {
+  const recordLoginSuccess = useCallback(async (email, userId = null, userName = null) => {
     const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
     const dedupeKey = userId || normalizedEmail;
     if (!dedupeKey) return;
@@ -542,6 +545,8 @@ export default function App() {
 
     await logAuthEvent('login_success', {
       email: normalizedEmail || email || null,
+      userId: userId || null,
+      userName: userName || null,
     });
   }, []);
 
@@ -604,13 +609,25 @@ export default function App() {
         if (!userData) {
           throw new Error(t.profileLoadFailed);
         }
-        await logAuthEvent('signup_success', { email });
+        // profile insert trigger also logs signup; client call is deduped in SQL
+        await logAuthEvent('signup_success', {
+          email,
+          userId: data.user.id,
+          userName: name || userData.name || null,
+        });
         await rejectMaintenanceLogin(userData);
         return { success: true, autoLogin: true, userData };
       }
+
+      await logAuthEvent('signup_success', {
+        email,
+        userId: data.user.id,
+        userName: name || email.split('@')[0],
+      });
+      return { success: true, message: 'Check your email to confirm your account (if required by your Supabase settings).' };
     }
 
-    await logAuthEvent('signup_success', { email });
+    await logAuthEvent('signup_success', { email, userName: name || null });
     return { success: true, message: 'Check your email to confirm your account (if required by your Supabase settings).' };
   };
 
@@ -666,6 +683,7 @@ export default function App() {
     }));
 
     if (paymentMethod === 'balance') {
+      await assertNoOpenDuplicateTopup(user.id, items, t);
       await assertBalanceFulfillmentAvailable(items, t);
     }
 
@@ -782,6 +800,7 @@ export default function App() {
     }];
 
     if (paymentMethod === 'balance') {
+      await assertNoOpenDuplicateTopup(user.id, items, t);
       await assertBalanceFulfillmentAvailable(items, t);
     }
 
@@ -838,7 +857,20 @@ export default function App() {
 
   const tryFulfillOrder = async (orderId) => {
     try {
-      await fulfillOrderG2bulk(orderId);
+      const first = await fulfillOrderG2bulk(orderId);
+      // Supplier often needs >40s; soft-pending → quiet retries (no false "failed")
+      if (first?.pending || first?.fulfillmentStatus === 'fulfilling') {
+        for (const delayMs of [8_000, 20_000, 45_000]) {
+          await new Promise((r) => setTimeout(r, delayMs));
+          try {
+            const next = await fulfillOrderG2bulk(orderId);
+            if (next?.fulfillmentStatus === 'fulfilled' || next?.skipped) return;
+            if (next?.fulfillmentStatus === 'failed') break;
+          } catch {
+            /* keep trying */
+          }
+        }
+      }
     } catch (e) {
       console.error('G2Bulk fulfillment:', e);
       if (user?.id) {
@@ -851,7 +883,11 @@ export default function App() {
           setUser((prev) => (prev ? { ...prev, balance: parseFloat(profile.balance) || 0 } : prev));
         }
       }
-      showToast(e.message || t.fulfillmentSupplierUnreachable, 'error');
+      // Only toast hard failures — pending supplier work is not a failure
+      const msg = e?.message || '';
+      if (!/still processing|pending|in progress/i.test(msg)) {
+        showToast(msg || t.fulfillmentSupplierUnreachable, 'error');
+      }
     }
   };
 
@@ -1277,7 +1313,7 @@ export default function App() {
         showNotification(translations[loginLang].loginSuccess || 'Welcome back!');
       }
 
-      void recordLoginSuccessRef.current(userData.email, userData.id);
+      void recordLoginSuccessRef.current(userData.email, userData.id, userData.name);
       refreshDataAfterAuth(userData.role);
     };
 
@@ -1311,10 +1347,12 @@ export default function App() {
         return;
       }
       if (event === 'SIGNED_IN' && session?.user) {
-        const { email, id } = session.user;
+        const { email, id, user_metadata: meta } = session.user;
+        const displayName = meta?.name || meta?.full_name || null;
+        // Brief delay so profiles row exists (handle_new_user / resolveUserData)
         setTimeout(() => {
-          void recordLoginSuccessRef.current(email, id);
-        }, 0);
+          void recordLoginSuccessRef.current(email, id, displayName);
+        }, 150);
       }
       if (event === 'PASSWORD_RECOVERY') {
         markPasswordRecoveryPending();
@@ -1664,7 +1702,7 @@ export default function App() {
       showToast(t.maintenanceLoginBlocked, 'error');
       return;
     }
-    void recordLoginSuccess(userData.email, userData.id);
+    void recordLoginSuccess(userData.email, userData.id, userData.name);
     lastSyncedUserIdRef.current = userData.id;
     setUser(userData);
     if (isUserBanned(userData)) {
@@ -1682,7 +1720,11 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    await logAuthEvent('logout', { email: user?.email || null });
+    await logAuthEvent('logout', {
+      email: user?.email || null,
+      userId: user?.id || null,
+      userName: user?.name || null,
+    });
     await supabase.auth.signOut();
     lastSyncedUserIdRef.current = null;
     resetSupplierWalletsStore();

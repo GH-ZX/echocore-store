@@ -1,5 +1,6 @@
 import { ShoppingCart, Zap, Globe, Package } from 'lucide-react';
 import AdminOfferCostBadge from '../admin/AdminOfferCostBadge';
+import AdminInlinePriceEdit from '../admin/AdminInlinePriceEdit';
 import { formatPrice, getOfferDiscount, getOfferDisplayName } from '../../lib/offerDisplay';
 
 export default function OfferPurchasePanel({
@@ -12,6 +13,8 @@ export default function OfferPurchasePanel({
   isAdmin = false,
   onBuyNow,
   onAddToCart,
+  onPricingSaved,
+  onNotify,
   className = '',
 }) {
   const discount = getOfferDiscount(offer);
@@ -29,8 +32,20 @@ export default function OfferPurchasePanel({
           {offer.is_sale && offer.original_price && (
             <div className="text-sm line-through text-[var(--text-muted)]">${formatPrice(offer.original_price)}</div>
           )}
-          <div className="flex items-baseline gap-2 flex-wrap">
-            <div className="text-4xl sm:text-5xl font-black text-[var(--accent)]">${formatPrice(offer.price)}</div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {isAdmin ? (
+              <AdminInlinePriceEdit
+                offer={offer}
+                t={t}
+                size="lg"
+                onSaved={onPricingSaved}
+                onNotify={onNotify}
+              />
+            ) : (
+              <div className="text-4xl sm:text-5xl font-black text-[var(--accent)] tabular-nums" dir="ltr">
+                ${formatPrice(offer.price)}
+              </div>
+            )}
             {offer.is_sale && (
               <span className="text-[10px] px-2 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/25 font-bold">
                 {discount ? `-${discount}%` : t.sale}

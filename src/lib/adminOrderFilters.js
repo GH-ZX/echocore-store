@@ -8,9 +8,12 @@ export const ORDER_STATUS_FILTER_IDS = {
   SUCCESS: 'success',
   FAILED: 'failed',
   PROCESSING: 'processing',
+  CANCELLED: 'cancelled',
 };
 
 const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+
+const SOFT_TIMEOUT_RE = /timed?\s*out|polling timed|still processing|signal has been aborted|abort|deadline|network/i;
 
 function orderAgeMs(order) {
   const ts = order?.created_at || order?.updated_at;
@@ -19,11 +22,24 @@ function orderAgeMs(order) {
   return Number.isFinite(ms) ? Date.now() - ms : Number.POSITIVE_INFINITY;
 }
 
+/** Soft G2Bulk poll/abort failures — not a real supplier reject. */
+export function isSoftFulfillmentTimeout(order) {
+  const err = String(order?.g2bulk_metadata?.last_error || '');
+  if (!err) return false;
+  return SOFT_TIMEOUT_RE.test(err);
+}
+
+export function isOrderBalanceRefunded(order) {
+  return order?.g2bulk_metadata?.balance_refunded === true
+    || order?.g2bulk_metadata?.balance_refunded === 'true';
+}
+
 /**
  * Map an order to a simple admin outcome for display/filtering.
  * - success: paid + delivered (or paid legacy without active failure)
- * - failed: cancelled or explicit fulfillment failure
- * - processing: unpaid, or actively fulfilling / very recent completed-pending
+ * - failed: real fulfillment failure / refunded failure
+ * - cancelled: unpaid checkout abandoned/cancelled
+ * - processing: unpaid in flight, fulfilling, or retryable soft timeout
  */
 export function getAdminOrderOutcome(order) {
   if (!order) return 'processing';
@@ -33,16 +49,23 @@ export function getAdminOrderOutcome(order) {
     ? null
     : String(order.fulfillment_status);
 
-  if (status === 'cancelled') return 'failed';
+  if (status === 'cancelled') return 'cancelled';
 
   if (status === 'pending_payment' || status === 'payment_sent') {
     return 'processing';
   }
 
   if (status === 'completed') {
-    if (fs === 'failed') return 'failed';
     if (fs === 'fulfilling') return 'processing';
     if (fs === 'fulfilled' || fs === 'skipped') return 'success';
+
+    if (fs === 'failed') {
+      // Soft poll timeout WITHOUT refund → still retryable (show processing)
+      if (isSoftFulfillmentTimeout(order) && !isOrderBalanceRefunded(order)) {
+        return 'processing';
+      }
+      return 'failed';
+    }
 
     // null / pending on completed:
     // - recent (<15m) → still may be auto-delivering
@@ -54,18 +77,23 @@ export function getAdminOrderOutcome(order) {
     return 'success';
   }
 
+  // status === 'failed' (payment failed) etc.
+  if (status === 'failed') return 'failed';
+
   return 'processing';
 }
 
 export function getAdminOrderOutcomeLabel(outcome, t = {}) {
   if (outcome === 'success') return t.adminOrdersOutcomeSuccess || t.orderStatusCompleted || 'Success';
   if (outcome === 'failed') return t.adminOrdersOutcomeFailed || t.orderStatusCancelled || 'Failed';
+  if (outcome === 'cancelled') return t.adminOrdersOutcomeCancelled || t.orderStatusCancelled || 'Cancelled';
   return t.adminOrdersOutcomeProcessing || t.orderStatusPendingPayment || 'Processing';
 }
 
 export function getAdminOrderOutcomeTone(outcome) {
   if (outcome === 'success') return 'success';
   if (outcome === 'failed') return 'danger';
+  if (outcome === 'cancelled') return 'neutral';
   return 'pending';
 }
 
@@ -73,9 +101,18 @@ export function getOrderStatusFilterOptions(t = {}) {
   return [
     { id: ORDER_STATUS_FILTER_IDS.ALL, label: t.adminOrdersFilterAll },
     { id: ORDER_STATUS_FILTER_IDS.SUCCESS, label: t.adminOrdersOutcomeSuccess },
-    { id: ORDER_STATUS_FILTER_IDS.FAILED, label: t.adminOrdersOutcomeFailed },
     { id: ORDER_STATUS_FILTER_IDS.PROCESSING, label: t.adminOrdersOutcomeProcessing },
+    { id: ORDER_STATUS_FILTER_IDS.FAILED, label: t.adminOrdersOutcomeFailed },
+    { id: ORDER_STATUS_FILTER_IDS.CANCELLED, label: t.adminOrdersOutcomeCancelled },
   ];
+}
+
+/** Admin can retry G2Bulk when paid + not delivered + not refunded. */
+export function canRetryOrderFulfillment(order) {
+  if (!order || order.status !== 'completed') return false;
+  if (isOrderBalanceRefunded(order)) return false;
+  const fs = String(order.fulfillment_status || 'pending');
+  return fs === 'failed' || fs === 'pending' || fs === 'fulfilling';
 }
 
 function normalizeSearch(value = '') {
