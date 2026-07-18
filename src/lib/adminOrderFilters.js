@@ -127,13 +127,22 @@ export function matchesOrderSearch(order, search = '') {
     order?.order_ref,
     order?.id,
     order?.payment_reference,
+    order?.g2bulk_order_id,
+    order?.g2bulk_metadata?.player_id,
+    order?.g2bulk_metadata?.player_nickname,
+    order?.g2bulk_metadata?.g2bulk_game,
+    order?.g2bulk_metadata?.catalogue,
     getProfileUsername(order?.profiles),
     order?.profiles?.name,
     order?.profiles?.email,
     order?.payment_method,
     order?.status,
     order?.fulfillment_status,
-    ...(order?.order_items || []).map((item) => item?.name_snapshot),
+    ...(order?.order_items || []).flatMap((item) => [
+      item?.name_snapshot,
+      item?.player_uid,
+      item?.player_charname,
+    ]),
   ]
     .filter(Boolean)
     .join(' ')

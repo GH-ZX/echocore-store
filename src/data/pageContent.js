@@ -219,12 +219,8 @@ const ar = {
     'أدخل الكود الظاهر في هذه الفاتورة بالضبط.',
     'احتفظ بهذه الفاتورة للرجوع إليها عند الحاجة.',
   ],
-  topupInvoiceSteps: [
-    'تم تسجيل بيانات الحساب أدناه للتسليم المباشر.',
-    'لا حاجة لنسخ كود — يُشحن الرصيد إلى UID أو السيرفر المذكور.',
-    'تحقق من مطابقة UID والسيرفر مع ما أدخلته عند الشراء.',
-    'احتفظ بهذه الفاتورة للمراجعة عند أي استفسار.',
-  ],
+  // Direct top-ups use invoiceTopupSentSuccess + invoiceKeepForSupport (translations.js), not steps.
+  topupInvoiceSteps: [],
 };
 
 const en = {
@@ -446,12 +442,8 @@ const en = {
     'Enter the code shown on this invoice exactly.',
     'Keep this invoice for your records.',
   ],
-  topupInvoiceSteps: [
-    'Account details below were submitted for direct top-up delivery.',
-    'No code needed — balance is sent to the UID or server listed.',
-    'Verify the UID and server match what you entered at checkout.',
-    'Keep this invoice for support if anything looks wrong.',
-  ],
+  // Direct top-ups use invoiceTopupSentSuccess + invoiceKeepForSupport (translations.js), not steps.
+  topupInvoiceSteps: [],
 };
 
 export const pageContent = { ar, en };

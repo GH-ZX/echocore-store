@@ -1,5 +1,5 @@
 import { extractDeliveryCodes, formatOrderDisplayId, shortOrderId } from './orderReceipt';
-import { getRedeemInstructions, getTopupSteps } from './redeemInstructions';
+import { getRedeemInstructions } from './redeemInstructions';
 import { formatProfileUsername, getProfileUsername } from './username';
 
 function resolveInvoiceCustomer(profile) {
@@ -44,9 +44,25 @@ function buildOrderLine(item, games, offers, t, lang, fallbackCodes = []) {
   const hasUid = !!item?.player_uid?.trim();
   const redemptionExtras = extractRedemptionInfo(item);
 
+  const gameName = game
+    ? (lang === 'ar' ? (game.name_ar || game.name_en) : (game.name_en || game.name_ar))
+    : null;
+  const packName = String(item.name_snapshot || '').trim();
+  // Prefer "Game — Pack" on invoice lines when snapshot is still a bare catalogue name
+  let lineName = packName;
+  if (gameName && packName) {
+    const alreadyPrefixed = packName.includes(gameName)
+      || packName.includes('—')
+      || packName.includes(' - ')
+      || packName.includes('–');
+    lineName = alreadyPrefixed ? packName : `${gameName} — ${packName}`;
+  } else if (gameName && !packName) {
+    lineName = gameName;
+  }
+
   return {
     id: item.id,
-    name: item.name_snapshot,
+    name: lineName || packName || '—',
     price: formatMoney(item.price),
     quantity: item.quantity || 1,
     lineTotal: formatMoney(parseFloat(item.price || 0) * (item.quantity || 1)),
@@ -56,13 +72,10 @@ function buildOrderLine(item, games, offers, t, lang, fallbackCodes = []) {
     playerServer: item.player_server?.trim() || null,
     playerCharname: item.player_charname?.trim() || null,
     redemptionExtras,
-    gameName: game ? (lang === 'ar' ? (game.name_ar || game.name_en) : (game.name_en || game.name_ar)) : null,
+    gameName,
     gameSlug: game?.slug || null,
-    redeemSteps: codes.length > 0
-      ? getRedeemInstructions(game?.slug, lang)
-      : hasUid
-        ? getTopupSteps(lang)
-        : [],
+    // Top-ups are already delivered to the UID — no "how to activate" steps.
+    redeemSteps: codes.length > 0 ? getRedeemInstructions(game?.slug, lang) : [],
     deliveryType: codes.length > 0 ? 'redeem' : hasUid ? 'topup' : 'other',
   };
 }
@@ -102,9 +115,26 @@ export function buildOrderInvoice({
   else if (hasTopup) invoiceSubtype = 'topup';
 
   const customer = resolveInvoiceCustomer(profile);
+  // Deduplicate codes across lines + order meta (same code must never appear twice)
   const allCodes = hasCodes
-    ? [...new Set(lines.flatMap((line) => line.codes || []).concat(orderLevelCodes))]
+    ? [...new Set(
+      lines
+        .flatMap((line) => line.codes || [])
+        .concat(orderLevelCodes)
+        .map((c) => String(c || '').trim())
+        .filter(Boolean),
+    )]
     : [];
+
+  // Ensure each line's codes list is unique (normalizeDelivery can double-push)
+  const linesDeduped = lines.map((line) => ({
+    ...line,
+    codes: [...new Set((line.codes || []).map((c) => String(c || '').trim()).filter(Boolean))],
+    hasCodes: (line.codes || []).some((c) => String(c || '').trim()),
+  })).map((line) => ({
+    ...line,
+    hasCodes: line.codes.length > 0,
+  }));
 
   return {
     kind: INVOICE_KIND.ORDER,
@@ -120,9 +150,9 @@ export function buildOrderInvoice({
     fulfillmentStatus: order.fulfillment_status || null,
     total: formatMoney(order.total),
     totalRaw: parseFloat(order.total || 0),
-    lines,
+    lines: linesDeduped,
     allCodes,
-    hasCodes,
+    hasCodes: allCodes.length > 0 || linesDeduped.some((l) => l.hasCodes),
     isGift,
     giftMessage: order.gift_message || null,
     notes: isGift

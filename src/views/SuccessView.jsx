@@ -20,9 +20,12 @@ import {
 } from '../lib/orderAccess';
 import {
   formatOrderDisplayId,
+  formatOrderItemDisplayName,
   extractDeliveryCodes,
+  getFulfillmentFailureMessage,
   getOrderReceiptPresentation,
   getOrderStatusLabel,
+  getOrderTopupDeliveryDetails,
   shouldTriggerFulfillment,
   isOrderPaid,
 } from '../lib/orderReceipt';
@@ -185,9 +188,10 @@ export default function SuccessView({
   }
 
   const firstItem = orderItems[0] || {};
-  const playerUid = firstItem.player_uid;
-  const playerServer = firstItem.player_server;
-  const playerCharname = firstItem.player_charname;
+  const topup = getOrderTopupDeliveryDetails(orderDetails, orderItems);
+  const playerUid = topup.playerUid || firstItem.player_uid;
+  const playerServer = topup.playerServer || firstItem.player_server;
+  const playerCharname = topup.playerCharname || firstItem.player_charname;
   const hasUid = !!playerUid;
   const deliveryCodes = extractDeliveryCodes(orderItems);
   const hasCodes = deliveryCodes.length > 0;
@@ -205,7 +209,9 @@ export default function SuccessView({
     && !hasCodes
     && !hasUid
     && (fulfillmentStatus === 'fulfilling' || fulfillmentStatus === 'pending');
-  const showTopupDetails = isOrderPaid(orderDetails) && hasUid && fulfillmentStatus === 'fulfilled';
+  const showTopupDetails = isOrderPaid(orderDetails)
+    && hasUid
+    && (fulfillmentStatus === 'fulfilled' || fulfillmentStatus === 'skipped');
   const allCodesText = deliveryCodes.join('\n');
   const showInvoiceLink = isInvoiceReadyForOrder(orderDetails, {
     items: orderItems,
@@ -310,10 +316,12 @@ export default function SuccessView({
             {orderItems.map((item) => (
               <div
                 key={item.id || `${item.name_snapshot}-${item.price}`}
-                className="flex justify-between text-sm py-2 border-b border-[var(--border)] last:border-0"
+                className="flex justify-between gap-3 text-sm py-2 border-b border-[var(--border)] last:border-0"
               >
-                <span>{item.name_snapshot}</span>
-                <span className="font-mono">
+                <span className="min-w-0 break-words font-medium">
+                  {formatOrderItemDisplayName(item, { lang, order: orderDetails })}
+                </span>
+                <span className="font-mono flex-shrink-0">
                   ${parseFloat(item.price).toFixed(2)} × {item.quantity || 1}
                 </span>
               </div>
@@ -376,20 +384,35 @@ export default function SuccessView({
           </h2>
           <p className="text-[var(--text-sec)] text-sm mb-4">{t.topUpSentDesc}</p>
           <div className="grid gap-3 sm:grid-cols-2">
+            {(topup.gameLabel || topup.product) && (
+              <div className="rounded-xl border border-[var(--border)] p-4 text-sm sm:col-span-2">
+                <div className="text-[var(--text-muted)] text-xs mb-1">{t.orderProductLabel || t.itemsPurchased}</div>
+                <div className="font-semibold break-words">
+                  {[topup.gameLabel, topup.product].filter(Boolean).join(' — ')
+                    || formatOrderItemDisplayName(firstItem, { lang, order: orderDetails })}
+                </div>
+              </div>
+            )}
             <div className="rounded-xl border border-[var(--border)] p-4 text-sm">
               <div className="text-[var(--text-muted)] text-xs mb-1">{t.playerUidLabel}</div>
-              <div className="font-mono text-[var(--accent)] text-lg break-all">{playerUid}</div>
+              <div className="font-mono text-[var(--accent)] text-lg break-all" dir="ltr">{playerUid}</div>
             </div>
+            {playerCharname && (
+              <div className="rounded-xl border border-[var(--border)] p-4 text-sm">
+                <div className="text-[var(--text-muted)] text-xs mb-1">{t.playerNicknameLabel || t.charnameLabel}</div>
+                <div className="font-semibold break-all">{playerCharname}</div>
+              </div>
+            )}
             {playerServer && (
               <div className="rounded-xl border border-[var(--border)] p-4 text-sm">
                 <div className="text-[var(--text-muted)] text-xs mb-1">{t.serverLabel}</div>
-                <div className="font-mono">{playerServer}</div>
+                <div className="font-mono" dir="ltr">{playerServer}</div>
               </div>
             )}
-            {playerCharname && (
+            {topup.g2bulkOrderId && (
               <div className="rounded-xl border border-[var(--border)] p-4 text-sm">
-                <div className="text-[var(--text-muted)] text-xs mb-1">{t.charnameLabel}</div>
-                <div className="font-mono">{playerCharname}</div>
+                <div className="text-[var(--text-muted)] text-xs mb-1">{t.supplierOrderIdLabel}</div>
+                <div className="font-mono" dir="ltr">#{topup.g2bulkOrderId}</div>
               </div>
             )}
             <div className="rounded-xl border border-[var(--border)] p-4 text-sm">
@@ -414,7 +437,7 @@ export default function SuccessView({
 
       {fulfillmentFailed && (
         <div className={`card p-6 mb-6 text-center border ${balanceRefunded ? 'border-amber-500/30 bg-amber-500/5 text-amber-200' : 'border-red-500/30 bg-red-500/5 text-red-300'}`}>
-          <p>{balanceRefunded ? t.orderFulfillmentRefundedSupport : t.orderFulfillmentFailedSupport}</p>
+          <p>{getFulfillmentFailureMessage(orderDetails, t)}</p>
         </div>
       )}
 

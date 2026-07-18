@@ -55,9 +55,60 @@ function jsonResponse(body: Json, status = 200) {
   });
 }
 
+/** True when URL looks like an admin upload (Supabase storage), not G2Bulk CDN. */
+function looksLikeCustomStoreImage(url: unknown): boolean {
+  const s = String(url || '').trim();
+  if (!s) return false;
+  if (/g2bulk/i.test(s)) return false;
+  return /\/storage\/v1\/object\//i.test(s)
+    || /product-images/i.test(s)
+    || /supabase\.co/i.test(s);
+}
+
+/**
+ * Update game on sync: always refresh catalog metadata; never overwrite
+ * admin-locked cover (image_url) or logo when image_custom / logo_custom.
+ */
+async function updateGamePreservingCustomImages(
+  serviceClient: ReturnType<typeof createClient>,
+  gameId: string,
+  gameRow: Record<string, unknown>,
+) {
+  const { data: existing } = await serviceClient
+    .from('games')
+    .select('image_url, logo_url, image_custom, logo_custom')
+    .eq('id', gameId)
+    .maybeSingle();
+
+  const row = { ...gameRow };
+  const imageLocked = !!(existing as { image_custom?: boolean } | null)?.image_custom
+    || looksLikeCustomStoreImage((existing as { image_url?: string } | null)?.image_url);
+  const logoLocked = !!(existing as { logo_custom?: boolean } | null)?.logo_custom
+    || looksLikeCustomStoreImage((existing as { logo_url?: string } | null)?.logo_url);
+
+  if (imageLocked) {
+    delete row.image_url;
+  }
+  if (logoLocked) {
+    delete row.logo_url;
+  }
+
+  // If columns exist and we detected custom URL without flag, heal the flag
+  if (imageLocked && !(existing as { image_custom?: boolean } | null)?.image_custom) {
+    row.image_custom = true;
+  }
+  if (logoLocked && !(existing as { logo_custom?: boolean } | null)?.logo_custom) {
+    row.logo_custom = true;
+  }
+
+  const { error } = await serviceClient.from('games').update(row).eq('id', gameId);
+  return error;
+}
+
 /**
  * Update offer on sync: always refresh cost/metadata; reprice only when
  * pricing_mode is auto/margin (or missing). fixed + is_sale keep customer price.
+ * Admin custom offer/sale images are never overwritten.
  */
 async function updateOfferPreservingPricing(
   serviceClient: ReturnType<typeof createClient>,
@@ -67,7 +118,7 @@ async function updateOfferPreservingPricing(
 ) {
   const { data: existing } = await serviceClient
     .from('offers')
-    .select('is_sale, pricing_mode, pricing_margin_percent, price')
+    .select('is_sale, pricing_mode, pricing_margin_percent, price, image_url, sale_image_url, image_custom, sale_image_custom')
     .eq('id', offerId)
     .maybeSingle();
 
@@ -88,6 +139,17 @@ async function updateOfferPreservingPricing(
   } else {
     row.price = resolved.price;
   }
+
+  // Preserve admin-set pack / sale images
+  const imageLocked = !!(existing as { image_custom?: boolean } | null)?.image_custom
+    || looksLikeCustomStoreImage((existing as { image_url?: string } | null)?.image_url);
+  const saleImageLocked = !!(existing as { sale_image_custom?: boolean } | null)?.sale_image_custom
+    || !!(existing as { sale_image_url?: string } | null)?.sale_image_url;
+
+  if (imageLocked) delete row.image_url;
+  if (saleImageLocked) delete row.sale_image_url;
+  // Never invent sale_image from sync
+  delete row.sale_image_url;
 
   const { error } = await serviceClient.from('offers').update(row).eq('id', offerId);
   return error;
@@ -719,19 +781,58 @@ async function isAdmin(userClient: ReturnType<typeof createClient>, userId: stri
   return data?.role === 'admin';
 }
 
+/**
+ * Poll voucher delivery per G2Bulk docs:
+ * GET /v1/orders/:id/delivery — 200 codes ready, 202 processing, 410 refunded.
+ * Also fall back to GET /v1/orders/:id when delivery body shape varies.
+ */
 async function pollVoucherDelivery(apiKey: string, g2bulkOrderId: number) {
   const deadline = Date.now() + G2BULK_POLL_TIMEOUT_MS;
   while (Date.now() < deadline) {
     const { res, data } = await g2bulkFetch(apiKey, `/orders/${g2bulkOrderId}/delivery`);
-    if (res.status === 200 && Array.isArray(data.delivery_items)) {
-      return { ok: true as const, items: data.delivery_items as string[], data };
-    }
+
     if (res.status === 410) {
-      return { ok: false as const, error: (data.message as string) || 'Order refunded', terminal: true as const };
+      return {
+        ok: false as const,
+        error: (data.message as string) || 'Order refunded',
+        terminal: true as const,
+      };
     }
+
+    if (res.status === 200) {
+      const items = normalizeDeliveryItems(
+        data.delivery_items ?? data.codes ?? data.items ?? data,
+      );
+      if (items.length > 0) {
+        return { ok: true as const, items, data };
+      }
+      // 200 but empty body — try order detail once
+      const detail = await g2bulkFetch(apiKey, `/orders/${g2bulkOrderId}`);
+      if (detail.res.ok) {
+        const fromDetail = normalizeDeliveryItems(
+          detail.data.delivery_items
+            ?? detail.data.codes
+            ?? detail.data.order?.delivery_items
+            ?? detail.data,
+        );
+        if (fromDetail.length > 0) {
+          return { ok: true as const, items: fromDetail, data: detail.data };
+        }
+        const st = String(detail.data.status || detail.data.order?.status || '').toUpperCase();
+        if (st === 'REFUNDED' || st === 'FAILED' || st === 'CANCELLED') {
+          return {
+            ok: false as const,
+            terminal: true as const,
+            error: (detail.data.message as string) || `Order ${st.toLowerCase()}`,
+          };
+        }
+      }
+    }
+
+    // 202 PROCESSING or empty 200 — keep polling
     await sleep(G2BULK_POLL_INTERVAL_MS);
   }
-  // Soft timeout — supplier may still complete; keep fulfilling and retry later
+  // Soft timeout — supplier often still completes; never hard-fail here
   return {
     ok: false as const,
     pending: true as const,
@@ -739,24 +840,144 @@ async function pollVoucherDelivery(apiKey: string, g2bulkOrderId: number) {
   };
 }
 
-async function pollGameOrderStatus(apiKey: string, g2bulkOrderId: number) {
-  const deadline = Date.now() + G2BULK_POLL_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const { res, data } = await g2bulkFetch(apiKey, '/games/order/status', {
-      method: 'POST',
-      body: JSON.stringify({ order_id: g2bulkOrderId }),
-    });
-    const status = String(data.status || data.order?.status || '').toUpperCase();
-    if (res.ok && (status === 'COMPLETED' || status === 'SUCCESS' || status === 'DELIVERED')) {
-      return { ok: true as const, data };
-    }
-    if (status === 'FAILED' || status === 'REFUNDED' || status === 'CANCELLED') {
+/** One-shot fetch of voucher codes (for resume / recovery after soft timeout). */
+async function fetchVoucherCodesOnce(apiKey: string, g2bulkOrderId: number) {
+  const { res, data } = await g2bulkFetch(apiKey, `/orders/${g2bulkOrderId}/delivery`);
+  if (res.status === 410) {
+    return {
+      ok: false as const,
+      terminal: true as const,
+      error: (data.message as string) || 'Order refunded',
+    };
+  }
+  if (res.status === 200) {
+    const items = normalizeDeliveryItems(data.delivery_items ?? data.codes ?? data.items ?? data);
+    if (items.length > 0) return { ok: true as const, items, data };
+  }
+  const detail = await g2bulkFetch(apiKey, `/orders/${g2bulkOrderId}`);
+  if (detail.res.ok) {
+    const items = normalizeDeliveryItems(
+      detail.data.delivery_items
+        ?? detail.data.codes
+        ?? detail.data.order?.delivery_items
+        ?? detail.data,
+    );
+    if (items.length > 0) return { ok: true as const, items, data: detail.data };
+    const st = String(detail.data.status || detail.data.order?.status || '').toUpperCase();
+    if (st === 'REFUNDED' || st === 'FAILED' || st === 'CANCELLED') {
       return {
         ok: false as const,
         terminal: true as const,
-        error: (data.message as string) || `Top-up ${status.toLowerCase()}`,
+        error: (detail.data.message as string) || `Order ${st.toLowerCase()}`,
       };
     }
+    if (st === 'COMPLETED' || st === 'SUCCESS') {
+      // Completed but codes not in expected shape — still pending parse
+      return {
+        ok: false as const,
+        pending: true as const,
+        error: 'Order completed at supplier but codes not yet readable',
+      };
+    }
+  }
+  return {
+    ok: false as const,
+    pending: true as const,
+    error: 'Delivery still processing at supplier',
+  };
+}
+
+function extractGameOrderStatus(data: Json): string {
+  const order = (data.order && typeof data.order === 'object') ? data.order as Json : {};
+  const nested = (data.data && typeof data.data === 'object') ? data.data as Json : {};
+  const candidates = [
+    data.status,
+    data.order_status,
+    order.status,
+    nested.status,
+    (nested.order as Json | undefined)?.status,
+  ];
+  for (const value of candidates) {
+    if (value == null || value === '') continue;
+    return String(value).trim().toUpperCase();
+  }
+  return '';
+}
+
+function pickGameOrderPayload(data: Json, g2bulkOrderId: number): Json {
+  const orders = Array.isArray(data.orders)
+    ? data.orders
+    : Array.isArray((data.data as Json | undefined)?.orders)
+      ? ((data.data as Json).orders as unknown[])
+      : null;
+  if (orders) {
+    const match = orders.find((row) => {
+      if (!row || typeof row !== 'object') return false;
+      const id = Number((row as Json).order_id ?? (row as Json).id);
+      return Number.isFinite(id) && id === g2bulkOrderId;
+    });
+    if (match && typeof match === 'object') return match as Json;
+  }
+  if (data.order && typeof data.order === 'object') return data.order as Json;
+  return data;
+}
+
+async function pollGameOrderStatus(apiKey: string, g2bulkOrderId: number) {
+  const deadline = Date.now() + G2BULK_POLL_TIMEOUT_MS;
+  const bodies = [
+    { order_id: g2bulkOrderId },
+    { orderId: g2bulkOrderId },
+    { id: g2bulkOrderId },
+  ];
+
+  while (Date.now() < deadline) {
+    let lastData: Json = {};
+    for (const body of bodies) {
+      const { res, data } = await g2bulkFetch(apiKey, '/games/order/status', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      lastData = data;
+      const status = extractGameOrderStatus(data);
+      if (res.ok && (status === 'COMPLETED' || status === 'SUCCESS' || status === 'DELIVERED')) {
+        return { ok: true as const, data: pickGameOrderPayload(data, g2bulkOrderId) };
+      }
+      if (status === 'FAILED' || status === 'REFUNDED' || status === 'CANCELLED') {
+        return {
+          ok: false as const,
+          terminal: true as const,
+          error: (data.message as string) || `Top-up ${status.toLowerCase()}`,
+          data,
+        };
+      }
+      // Stop trying alternate bodies if we got a clear non-terminal status
+      if (status === 'PENDING' || status === 'PROCESSING' || status === 'IN_PROGRESS') break;
+    }
+
+    // Fallback: list recent game orders and match by id (G2Bulk status body varies)
+    try {
+      const list = await g2bulkFetch(apiKey, '/games/orders?limit=30&page=1', {}, undefined, 10000);
+      if (list.res.ok) {
+        const row = pickGameOrderPayload(list.data, g2bulkOrderId);
+        const status = extractGameOrderStatus(row);
+        if (status === 'COMPLETED' || status === 'SUCCESS' || status === 'DELIVERED') {
+          return { ok: true as const, data: row };
+        }
+        if (status === 'FAILED' || status === 'REFUNDED' || status === 'CANCELLED') {
+          return {
+            ok: false as const,
+            terminal: true as const,
+            error: (row.message as string) || `Top-up ${status.toLowerCase()}`,
+            data: row,
+          };
+        }
+        lastData = row;
+      }
+    } catch {
+      /* ignore list fallback errors */
+    }
+
+    void lastData;
     await sleep(G2BULK_POLL_INTERVAL_MS);
   }
   return {
@@ -810,6 +1031,45 @@ function parseG2bulkWalletBalance(data: Json): number {
     if (Number.isFinite(n)) return n;
   }
   return Number.NaN;
+}
+
+/** Stable reason code stored in g2bulk_metadata for UI mapping. */
+const REASON_INSUFFICIENT_SUPPLIER_BALANCE = 'insufficient_supplier_balance';
+
+/** Machine + human last_error when G2Bulk wallet cannot cover supplier cost. */
+const ERR_INSUFFICIENT_SUPPLIER_BALANCE =
+  'insufficient_supplier_balance: Store supplier wallet is too low — admin must top up G2Bulk and re-fulfill';
+
+function isInsufficientBalanceMessage(msg: unknown): boolean {
+  const s = String(msg || '').toLowerCase();
+  if (!s) return false;
+  return /insufficient\s+balance|not\s+enough\s+balance|balance\s+too\s+low|insufficient\s+funds|insufficient_supplier_balance|wallet.*(low|insufficient)|not\s+enough\s+funds/.test(s);
+}
+
+function sumOrderItemsSupplierCost(items: Json[]): number {
+  let total = 0;
+  for (const row of items || []) {
+    const offer = (row.offers || {}) as Json;
+    const qty = Math.max(1, Number(row.quantity) || 1);
+    const cost = Number(offer.g2bulk_cost_usd);
+    if (Number.isFinite(cost) && cost > 0) total += cost * qty;
+  }
+  return total;
+}
+
+async function fetchSupplierWalletBalance(apiKey: string): Promise<number> {
+  try {
+    const { res, data } = await g2bulkFetch(apiKey, '/getMe', {}, undefined, 8000);
+    if (!res.ok || data.success === false) return Number.NaN;
+    return parseG2bulkWalletBalance(data);
+  } catch {
+    return Number.NaN;
+  }
+}
+
+function g2bulkErrorText(data: Json): string {
+  const parts = [data.message, data.error, data.detail, (data.data as Json | undefined)?.message];
+  return parts.filter((p) => p != null && String(p).trim()).map(String).join(' | ');
 }
 
 type QuoteResult =
@@ -1219,19 +1479,48 @@ async function fulfillG2bulkOrderItem(
       apiKey,
       `/products/${productId}/purchase`,
       { method: 'POST', body: JSON.stringify({ quantity: item.quantity || 1 }) },
-      idempotencyKey,
+      // G2Bulk requires a 36-char UUID for idempotency (docs)
+      idempotencyKey.length === 36 ? idempotencyKey : undefined,
     );
 
     if (!res.ok || data.success === false) {
-      return { ok: false, error: (data.message as string) || 'Voucher purchase failed' };
+      const errText = g2bulkErrorText(data) || 'Voucher purchase failed';
+      if (isInsufficientBalanceMessage(errText)) {
+        return {
+          ok: false,
+          error: ERR_INSUFFICIENT_SUPPLIER_BALANCE,
+          terminal: true,
+        };
+      }
+      return { ok: false, error: errText };
     }
 
     let deliveryItems = normalizeDeliveryItems(
       data.delivery_items ?? data.codes ?? data.items ?? null,
     );
-    const g2bulkOrderId = data.order_id;
+    const g2bulkOrderId = data.order_id ?? data.order?.order_id ?? data.id;
 
-    if (deliveryItems.length === 0 && data.status === 'PENDING' && g2bulkOrderId) {
+    // Persist supplier order id before polling so recovery can always fetch codes
+    if (g2bulkOrderId && serviceClient) {
+      try {
+        await serviceClient.rpc('apply_g2bulk_fulfillment', {
+          p_order_id: orderId,
+          p_fulfillment_status: 'fulfilling',
+          p_g2bulk_order_id: String(g2bulkOrderId),
+          p_metadata: {
+            type: 'voucher',
+            placed_at: new Date().toISOString(),
+            product_id: productId,
+          },
+        });
+      } catch {
+        /* parent still saves id from result */
+      }
+    }
+
+    // Always poll for codes when missing — even if status is COMPLETED
+    // (some responses return COMPLETED with empty delivery_items shape)
+    if (deliveryItems.length === 0 && g2bulkOrderId) {
       const polled = await pollVoucherDelivery(apiKey, Number(g2bulkOrderId));
       if (!polled.ok) {
         return {
@@ -1245,10 +1534,22 @@ async function fulfillG2bulkOrderItem(
       deliveryItems = normalizeDeliveryItems(polled.items);
     }
 
+    // Never report success without codes for vouchers
+    if (deliveryItems.length === 0) {
+      return {
+        ok: false,
+        error: g2bulkOrderId
+          ? 'Delivery still processing at supplier'
+          : 'Voucher purchase returned no codes',
+        pending: !!g2bulkOrderId,
+        g2bulkOrderId: g2bulkOrderId ? String(g2bulkOrderId) : undefined,
+      };
+    }
+
     return {
       ok: true,
       g2bulkOrderId: String(g2bulkOrderId ?? ''),
-      deliveryItems: deliveryItems.length ? deliveryItems : undefined,
+      deliveryItems,
       metadata: { type: 'voucher', g2bulk: data },
     };
   }
@@ -1277,7 +1578,15 @@ async function fulfillG2bulkOrderItem(
   );
 
   if (!res.ok || data.success === false) {
-    return { ok: false, error: (data.message as string) || 'Top-up order failed' };
+    const errText = g2bulkErrorText(data) || 'Top-up order failed';
+    if (isInsufficientBalanceMessage(errText)) {
+      return {
+        ok: false,
+        error: ERR_INSUFFICIENT_SUPPLIER_BALANCE,
+        terminal: true,
+      };
+    }
+    return { ok: false, error: errText };
   }
 
   const g2bulkOrderId = data.order?.order_id ?? data.order_id;
@@ -1572,6 +1881,56 @@ Deno.serve(async (req) => {
     // Note: do NOT early-return on `fulfilling` — G2Bulk top-ups often need
     // multi-minute polls; a second call continues / re-polls supplier status.
 
+    const orderMeta = (order.g2bulk_metadata && typeof order.g2bulk_metadata === 'object')
+      ? order.g2bulk_metadata as Json
+      : {};
+    const existingSupplierId = order.g2bulk_order_id
+      ? String(order.g2bulk_order_id)
+      : null;
+
+    // CRITICAL: never place a NEW G2Bulk purchase after the customer was refunded.
+    // Soft-timeout restore used to re-open refunded rows → free multi-topups.
+    const refundRef = `FULFILL-REFUND-${String(orderId).replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+    let balanceRefunded = orderMeta.balance_refunded === true
+      || orderMeta.balance_refunded === 'true';
+    if (!balanceRefunded) {
+      try {
+        const { data: refundRows } = await serviceClient
+          .from('transactions')
+          .select('id')
+          .eq('type', 'refund')
+          .eq('reference', refundRef)
+          .limit(1);
+        balanceRefunded = Array.isArray(refundRows) && refundRows.length > 0;
+        if (balanceRefunded) {
+          // Heal missing flag so admin UI also blocks retry
+          await serviceClient
+            .from('orders')
+            .update({
+              g2bulk_metadata: {
+                ...orderMeta,
+                balance_refunded: true,
+                refund_healed_at: new Date().toISOString(),
+                refund_reference: refundRef,
+              },
+            })
+            .eq('id', orderId);
+        }
+      } catch {
+        /* non-fatal — still honor metadata flag */
+      }
+    }
+
+    if (balanceRefunded && !existingSupplierId) {
+      return jsonResponse({
+        success: false,
+        message: 'Order balance was refunded — refusing new supplier purchase (would be free top-up). Charge the customer again or create a new order.',
+        fulfillmentStatus: order.fulfillment_status || 'failed',
+        reason: 'balance_refunded_block_new_purchase',
+        balanceRefunded: true,
+      }, 409);
+    }
+
     const settingsRow = await loadStoreSettingsRow(serviceClient);
     // Skip only when there is no API key. A disabled toggle alone used to skip
     // fulfillment and also blocked checkout — leaving every order undelivered.
@@ -1636,6 +1995,54 @@ Deno.serve(async (req) => {
       ? String(order.g2bulk_order_id)
       : null;
     const allDeliveryItems: string[] = [];
+    const requiredSupplierCost = sumOrderItemsSupplierCost(items as Json[]);
+
+    // Second line of defense before any NEW supplier charge
+    if (!primaryG2bulkOrderId && balanceRefunded) {
+      return jsonResponse({
+        success: false,
+        message: 'Order balance was refunded — refusing new supplier purchase (would be free top-up).',
+        fulfillmentStatus: 'failed',
+        reason: 'balance_refunded_block_new_purchase',
+        balanceRefunded: true,
+      }, 409);
+    }
+
+    // Pre-purchase wallet guard: never leave customers spinning on "pending"
+    // when G2Bulk cannot charge the supplier cost (e.g. wallet $8.91 < cost $8.99).
+    // Skip when a supplier order id already exists — funds may already be reserved/charged.
+    if (!primaryG2bulkOrderId && requiredSupplierCost > 0) {
+      const walletBalance = await fetchSupplierWalletBalance(apiKey!);
+      if (Number.isFinite(walletBalance) && walletBalance + 0.001 < requiredSupplierCost) {
+        const failMeta = {
+          reason: REASON_INSUFFICIENT_SUPPLIER_BALANCE,
+          failure_reason: REASON_INSUFFICIENT_SUPPLIER_BALANCE,
+          walletBalance,
+          requiredCost: requiredSupplierCost,
+          detail: `wallet ${walletBalance} < required ${requiredSupplierCost}`,
+        };
+        for (const row of items) {
+          await serviceClient
+            .from('order_items')
+            .update({ fulfillment_status: 'failed' })
+            .eq('id', row.id);
+        }
+        await serviceClient.rpc('apply_g2bulk_fulfillment', {
+          p_order_id: orderId,
+          p_fulfillment_status: 'failed',
+          p_error: ERR_INSUFFICIENT_SUPPLIER_BALANCE,
+          p_metadata: failMeta,
+        });
+        return jsonResponse({
+          success: false,
+          message: ERR_INSUFFICIENT_SUPPLIER_BALANCE,
+          fulfillmentStatus: 'failed',
+          reason: REASON_INSUFFICIENT_SUPPLIER_BALANCE,
+          walletBalance,
+          requiredCost: requiredSupplierCost,
+        }, 402);
+      }
+    }
 
     try {
       // Resume path: if supplier order id already known, poll status before re-ordering
@@ -1649,39 +2056,84 @@ Deno.serve(async (req) => {
         let resumeError = '';
         let resumeCodes: string[] = [];
 
-        const gamePoll = await pollGameOrderStatus(apiKey!, g2Id);
-        if (gamePoll.ok) {
+        // Voucher / redeem codes first (GET /orders/:id/delivery).
+        // Top-up status endpoint is for game orders only.
+        const voucherOnce = await fetchVoucherCodesOnce(apiKey!, g2Id);
+        if (voucherOnce.ok) {
           resumeOk = true;
-        } else if ((gamePoll as { terminal?: boolean }).terminal) {
+          resumeCodes = normalizeDeliveryItems(voucherOnce.items);
+        } else if ((voucherOnce as { terminal?: boolean }).terminal) {
           resumeTerminal = true;
-          resumeError = gamePoll.error;
+          resumeError = voucherOnce.error;
         } else {
-          // Maybe voucher — try delivery endpoint
-          const voucherPoll = await pollVoucherDelivery(apiKey!, g2Id);
-          if (voucherPoll.ok) {
+          const gamePoll = await pollGameOrderStatus(apiKey!, g2Id);
+          if (gamePoll.ok) {
             resumeOk = true;
-            resumeCodes = normalizeDeliveryItems(voucherPoll.items);
-          } else if ((voucherPoll as { terminal?: boolean }).terminal) {
+          } else if ((gamePoll as { terminal?: boolean }).terminal) {
             resumeTerminal = true;
-            resumeError = voucherPoll.error;
+            resumeError = gamePoll.error;
           } else {
-            resumeError = gamePoll.error || voucherPoll.error || 'Still processing';
+            const voucherPoll = await pollVoucherDelivery(apiKey!, g2Id);
+            if (voucherPoll.ok) {
+              resumeOk = true;
+              resumeCodes = normalizeDeliveryItems(voucherPoll.items);
+            } else if ((voucherPoll as { terminal?: boolean }).terminal) {
+              resumeTerminal = true;
+              resumeError = voucherPoll.error;
+            } else {
+              resumeError = voucherOnce.error || gamePoll.error || voucherPoll.error || 'Still processing';
+            }
           }
         }
 
         if (resumeOk) {
+          // Prefer the game-status payload (player_name, price, game_code) when available
+          let resumePayload: Json = {};
+          try {
+            const gameOnce = await g2bulkFetch(apiKey!, '/games/order/status', {
+              method: 'POST',
+              body: JSON.stringify({ order_id: g2Id }),
+            });
+            if (gameOnce.res.ok) {
+              resumePayload = pickGameOrderPayload(gameOnce.data, g2Id);
+            }
+          } catch {
+            /* optional enrichment */
+          }
+          if (!Object.keys(resumePayload).length) {
+            try {
+              const list = await g2bulkFetch(apiKey!, '/games/orders?limit=30&page=1', {}, undefined, 10000);
+              if (list.res.ok) resumePayload = pickGameOrderPayload(list.data, g2Id);
+            } catch {
+              /* optional */
+            }
+          }
+          const playerNickname = String(
+            resumePayload.player_name
+            || resumePayload.player_nickname
+            || resumePayload.nickname
+            || '',
+          ).trim();
+          const supplierAmount = Number(
+            resumePayload.price ?? resumePayload.amount ?? resumePayload.total_price,
+          );
+
           for (const row of items) {
             if (row.fulfillment_status === 'fulfilled') {
               fulfilledCount += 1;
               continue;
             }
             fulfilledCount += 1;
+            const itemPatch: Json = {
+              fulfillment_status: 'fulfilled',
+              delivery_items: resumeCodes.length ? resumeCodes : null,
+            };
+            if (playerNickname && !String(row.player_charname || '').trim()) {
+              itemPatch.player_charname = playerNickname;
+            }
             await serviceClient
               .from('order_items')
-              .update({
-                fulfillment_status: 'fulfilled',
-                delivery_items: resumeCodes.length ? resumeCodes : null,
-              })
+              .update(itemPatch)
               .eq('id', row.id);
             itemResults.push({
               itemId: row.id,
@@ -1696,7 +2148,17 @@ Deno.serve(async (req) => {
             p_fulfillment_status: 'fulfilled',
             p_g2bulk_order_id: primaryG2bulkOrderId,
             p_delivery_items: allDeliveryItems.length ? allDeliveryItems : null,
-            p_metadata: { resumed: true, items: itemResults },
+            p_metadata: {
+              resumed: true,
+              items: itemResults,
+              supplier_status: 'COMPLETED',
+              supplier_completed: true,
+              g2bulk_game: resumePayload.game_code || resumePayload.game || undefined,
+              catalogue: resumePayload.catalogue || resumePayload.denom_id || undefined,
+              player_id: resumePayload.player_id || undefined,
+              player_nickname: playerNickname || undefined,
+              supplier_amount_usd: Number.isFinite(supplierAmount) ? supplierAmount : undefined,
+            },
           });
           return jsonResponse({
             success: true,
@@ -1708,20 +2170,35 @@ Deno.serve(async (req) => {
           });
         }
         if (resumeTerminal) {
+          const resumeIsWallet = isInsufficientBalanceMessage(resumeError);
           await serviceClient.rpc('apply_g2bulk_fulfillment', {
             p_order_id: orderId,
             p_fulfillment_status: 'failed',
             p_g2bulk_order_id: primaryG2bulkOrderId,
-            p_error: resumeError,
-            p_metadata: { resumed: true, terminal: true },
+            p_error: resumeIsWallet ? ERR_INSUFFICIENT_SUPPLIER_BALANCE : resumeError,
+            p_metadata: {
+              resumed: true,
+              terminal: true,
+              ...(resumeIsWallet
+                ? {
+                  reason: REASON_INSUFFICIENT_SUPPLIER_BALANCE,
+                  failure_reason: REASON_INSUFFICIENT_SUPPLIER_BALANCE,
+                }
+                : {}),
+            },
           });
           return jsonResponse({
             success: false,
-            message: resumeError,
+            message: resumeIsWallet ? ERR_INSUFFICIENT_SUPPLIER_BALANCE : resumeError,
             fulfillmentStatus: 'failed',
-          }, 500);
+            reason: resumeIsWallet ? REASON_INSUFFICIENT_SUPPLIER_BALANCE : undefined,
+          }, resumeIsWallet ? 402 : 500);
         }
-        // Still pending at supplier — stay fulfilling, do not re-purchase
+        // Still pending at supplier — stay fulfilling, do not re-purchase.
+        // Do NOT fail here based on current wallet balance: G2Bulk may already have
+        // charged this order_id and delivery can still complete minutes later.
+        // Wallet shortfalls are hard-failed only pre-purchase (no supplier id yet)
+        // or when the purchase/status API returns insufficient balance.
         await serviceClient.rpc('apply_g2bulk_fulfillment', {
           p_order_id: orderId,
           p_fulfillment_status: 'fulfilling',
@@ -1820,6 +2297,8 @@ Deno.serve(async (req) => {
         finalStatus = 'skipped';
       }
 
+      const firstError = errors[0] || null;
+      const walletFail = finalStatus === 'failed' && isInsufficientBalanceMessage(firstError);
       await serviceClient.rpc('apply_g2bulk_fulfillment', {
         p_order_id: orderId,
         p_fulfillment_status: finalStatus,
@@ -1831,17 +2310,26 @@ Deno.serve(async (req) => {
           failedCount,
           pendingCount,
           skippedCount,
+          ...(walletFail
+            ? {
+              reason: REASON_INSUFFICIENT_SUPPLIER_BALANCE,
+              failure_reason: REASON_INSUFFICIENT_SUPPLIER_BALANCE,
+            }
+            : {}),
         },
-        p_error: finalStatus === 'failed' ? (errors[0] || null) : null,
+        p_error: finalStatus === 'failed'
+          ? (walletFail ? ERR_INSUFFICIENT_SUPPLIER_BALANCE : firstError)
+          : null,
       });
 
       if (finalStatus === 'failed') {
         return jsonResponse({
           success: false,
-          message: errors[0] || 'Fulfillment failed',
+          message: walletFail ? ERR_INSUFFICIENT_SUPPLIER_BALANCE : (firstError || 'Fulfillment failed'),
           fulfillmentStatus: 'failed',
+          reason: walletFail ? REASON_INSUFFICIENT_SUPPLIER_BALANCE : undefined,
           itemResults,
-        }, 500);
+        }, walletFail ? 402 : 500);
       }
 
       return jsonResponse({
@@ -1952,7 +2440,7 @@ Deno.serve(async (req) => {
 
       let gameId = existing?.id as string | undefined;
       if (gameId) {
-        const { error } = await serviceClient.from('games').update(gameRow).eq('id', gameId);
+        const error = await updateGamePreservingCustomImages(serviceClient, gameId, gameRow);
         if (error) throw error;
       } else {
         const { data: bySlug } = await serviceClient
@@ -1961,7 +2449,7 @@ Deno.serve(async (req) => {
           .eq('slug', slug)
           .maybeSingle();
         if (bySlug?.id) {
-          const { error } = await serviceClient.from('games').update(gameRow).eq('id', bySlug.id);
+          const error = await updateGamePreservingCustomImages(serviceClient, bySlug.id as string, gameRow);
           if (error) throw error;
           gameId = bySlug.id as string;
         } else {
@@ -2145,7 +2633,7 @@ Deno.serve(async (req) => {
 
           let gameId = existingGame?.id as string | undefined;
           if (gameId) {
-            const { error } = await serviceClient.from('games').update(gameRow).eq('id', gameId);
+            const error = await updateGamePreservingCustomImages(serviceClient, gameId, gameRow);
             if (error) throw error;
           } else {
             const { data: bySlug } = await serviceClient
@@ -2156,7 +2644,7 @@ Deno.serve(async (req) => {
             gameId = bySlug?.id as string | undefined;
 
             if (gameId) {
-              const { error } = await serviceClient.from('games').update(gameRow).eq('id', gameId);
+              const error = await updateGamePreservingCustomImages(serviceClient, gameId, gameRow);
               if (error) throw error;
             } else {
               const { data: inserted, error } = await serviceClient
@@ -3096,7 +3584,8 @@ Deno.serve(async (req) => {
 
         let gameId = existingGame?.id as string | undefined;
         if (gameId) {
-          await serviceClient.from('games').update(gameRow).eq('id', gameId);
+          const error = await updateGamePreservingCustomImages(serviceClient, gameId, gameRow);
+          if (error) throw error;
         } else {
           const { data: inserted, error: insertError } = await serviceClient
             .from('games')

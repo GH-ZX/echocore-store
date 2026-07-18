@@ -1,7 +1,59 @@
+import { formatG2bulkGameCodeLabel, formatOrderItemDisplayName } from './offerDisplay';
+
 export function shortOrderId(id) {
   if (!id) return '';
   return id.slice(0, 8).toUpperCase();
 }
+
+/**
+ * Top-up delivery facts for receipt / admin (player target + supplier refs).
+ * Merges order_items with g2bulk_metadata from the G2Bulk completion notice.
+ */
+export function getOrderTopupDeliveryDetails(order, items = []) {
+  const meta = order?.g2bulk_metadata && typeof order.g2bulk_metadata === 'object'
+    ? order.g2bulk_metadata
+    : {};
+  const first = Array.isArray(items) ? (items.find((row) => row?.player_uid) || items[0] || {}) : {};
+  const playerUid = String(first.player_uid || meta.player_id || meta.playerId || '').trim() || null;
+  const playerServer = String(first.player_server || meta.server_id || meta.serverId || '').trim() || null;
+  const playerCharname = String(
+    first.player_charname
+    || meta.player_nickname
+    || meta.player_name
+    || meta.nickname
+    || '',
+  ).trim() || null;
+  const gameCode = String(meta.g2bulk_game || meta.game_code || meta.game || '').trim() || null;
+  const gameLabel = gameCode ? formatG2bulkGameCodeLabel(gameCode) : null;
+  const product = String(meta.catalogue || meta.product || meta.product_title || first.name_snapshot || '').trim() || null;
+  const g2bulkOrderId = String(
+    order?.g2bulk_order_id
+    || meta.g2bulk_order_id
+    || meta.g2bulkOrderId
+    || '',
+  ).trim() || null;
+  const supplierAmount = meta.supplier_amount_usd != null
+    ? Number(meta.supplier_amount_usd)
+    : meta.price != null
+      ? Number(meta.price)
+      : null;
+  const supplierStatus = String(meta.supplier_status || meta.status || '').trim() || null;
+
+  return {
+    playerUid,
+    playerServer,
+    playerCharname,
+    gameCode,
+    gameLabel,
+    product,
+    g2bulkOrderId,
+    supplierAmount: Number.isFinite(supplierAmount) ? supplierAmount : null,
+    supplierStatus,
+    hasTopupTarget: !!(playerUid || playerCharname),
+  };
+}
+
+export { formatOrderItemDisplayName };
 
 export function formatOrderDisplayId(orderOrId) {
   if (!orderOrId) return '';
@@ -144,8 +196,33 @@ export function getOrderStatusLabel(status, t = {}) {
   return map[status] || status || '—';
 }
 
+/** True when fulfillment failed because the store's G2Bulk wallet cannot fund the item. */
+export function isInsufficientSupplierBalanceFailure(order) {
+  const meta = order?.g2bulk_metadata || {};
+  const reason = String(meta.failure_reason || meta.reason || '');
+  const lastError = String(meta.last_error || '');
+  return reason === 'insufficient_supplier_balance'
+    || /insufficient_supplier_balance|insufficient\s+balance|supplier wallet is too low/i.test(lastError);
+}
+
+/** Customer-facing fulfillment failure copy (never exposes raw G2Bulk wallet internals). */
+export function getFulfillmentFailureMessage(order, t = {}) {
+  if (order?.g2bulk_metadata?.balance_refunded === true) {
+    return t.orderFulfillmentRefundedSupport || t.orderFulfillmentFailedSupport;
+  }
+  if (isInsufficientSupplierBalanceFailure(order)) {
+    return t.orderFulfillmentNeedsAdminRestock
+      || t.fulfillmentSupplierBalanceLow
+      || t.orderFulfillmentFailedSupport;
+  }
+  return t.orderFulfillmentFailedSupport || 'Auto-fulfillment failed. Contact support with your order ID.';
+}
+
 export function getOrderReceiptPresentation(order, t = {}) {
   const status = order?.status;
+  const fs = order?.fulfillment_status == null || order?.fulfillment_status === ''
+    ? null
+    : String(order.fulfillment_status);
 
   if (status === 'cancelled') {
     return {
@@ -175,6 +252,17 @@ export function getOrderReceiptPresentation(order, t = {}) {
   }
 
   if (status === 'completed') {
+    if (fs === 'failed') {
+      return {
+        tone: 'danger',
+        title: t.orderReceiptTitleFulfillmentFailed || t.fulfillmentFailed || 'Delivery failed',
+        subtitle: getFulfillmentFailureMessage(order, t)
+          || t.orderReceiptSubtitleFulfillmentFailed
+          || t.orderFulfillmentFailedSupport,
+        showSuccess: false,
+      };
+    }
+
     if (order?.payment_method === 'admin_gift') {
       return {
         tone: 'success',

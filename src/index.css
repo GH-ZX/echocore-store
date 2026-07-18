@@ -6126,6 +6126,22 @@ button.profile-list-item {
   background: #fdf2f8;
 }
 
+.invoice-note--topup-success {
+  border-inline-start-color: #34d399;
+  background: #ecfdf5;
+  color: #065f46;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.invoice-item-details .invoice-note {
+  margin-bottom: 0.5rem;
+}
+
+.invoice-item-details .invoice-note:last-child {
+  margin-bottom: 0;
+}
+
 .invoice-table {
   width: 100%;
   border-collapse: collapse;

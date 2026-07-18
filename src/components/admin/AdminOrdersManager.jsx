@@ -32,8 +32,10 @@ import { getAdminOrdersPath, getAdminUserPath } from '../../lib/adminRoutes';
 import { formatDateTime, formatMessage } from '../../lib/i18n';
 import {
   formatOrderDisplayId,
+  formatOrderItemDisplayName,
   getOrderStatusColorClass,
   getOrderStatusLabel,
+  getOrderTopupDeliveryDetails,
 } from '../../lib/orderReceipt';
 import { isInvoiceReadyForOrder } from '../../lib/invoices';
 import { INVOICE_KIND } from '../../lib/invoiceBuilder';
@@ -224,6 +226,27 @@ export default function AdminOrdersManager({
 
   const handleRetryFulfill = async (order) => {
     if (!onFulfillOrder || !order?.id || fulfillingId) return;
+    if (isOrderBalanceRefunded(order)) {
+      onNotify?.(t.adminOrdersRetryBlockedRefunded || 'Blocked: customer was refunded — re-fulfill would be a free top-up.', 'error');
+      return;
+    }
+    const total = Number(order.total);
+    const totalLabel = Number.isFinite(total) ? `$${total.toFixed(2)}` : '—';
+    const ref = formatOrderDisplayId(order);
+    const hasSupplierId = !!order.g2bulk_order_id;
+    const confirmMsg = hasSupplierId
+      ? formatMessage(
+        t.adminOrdersRetryFulfillConfirmPoll
+          || 'Re-check supplier status for {ref}?\n\nOnly polls G2Bulk (no new purchase). Customer paid: {total}.',
+        { ref, total: totalLabel },
+      )
+      : formatMessage(
+        t.adminOrdersRetryFulfillConfirmPurchase
+          || 'Place a NEW supplier order for {ref}?\n\nThis charges YOUR G2Bulk wallet.\nCustomer paid: {total} (no second wallet charge).\nOnly continue if delivery never arrived.',
+        { ref, total: totalLabel },
+      );
+    if (typeof window !== 'undefined' && !window.confirm(confirmMsg)) return;
+
     setFulfillingId(order.id);
     try {
       await onFulfillOrder(order.id);
@@ -243,6 +266,7 @@ export default function AdminOrdersManager({
     const softTimeout = isSoftFulfillmentTimeout(order);
     const refunded = isOrderBalanceRefunded(order);
     const canRetry = canRetryOrderFulfillment(order) && typeof onFulfillOrder === 'function';
+    const topup = getOrderTopupDeliveryDetails(order, items);
 
     return (
       <div className="admin-order-expanded">
@@ -286,12 +310,61 @@ export default function AdminOrdersManager({
             <div className="admin-order-expanded-label">{t.orderId}</div>
             <div className="admin-order-expanded-value font-mono text-xs break-all">{formatOrderDisplayId(order)}</div>
           </div>
+          {topup.g2bulkOrderId && (
+            <div>
+              <div className="admin-order-expanded-label">{t.supplierOrderIdLabel}</div>
+              <div className="admin-order-expanded-value font-mono text-xs" dir="ltr">
+                #{topup.g2bulkOrderId}
+              </div>
+            </div>
+          )}
         </div>
 
         {order.payment_reference && (
           <div className="text-xs mt-3">
             <span className="text-[var(--text-muted)]">{t.paymentReference}:</span>{' '}
             <span className="font-mono break-all">{order.payment_reference}</span>
+          </div>
+        )}
+
+        {topup.hasTopupTarget && (
+          <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)]/40 px-3 py-2.5 text-xs space-y-1.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              {t.adminOrderTopupTarget || t.invoiceDeliveryDetailsLabel || 'Top-up target'}
+            </div>
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              {topup.gameLabel && (
+                <div>
+                  <span className="text-[var(--text-muted)]">{t.gameLabel || 'Game'}: </span>
+                  <span className="font-medium">{topup.gameLabel}</span>
+                  {topup.product ? <span className="text-[var(--text-sec)]"> — {topup.product}</span> : null}
+                </div>
+              )}
+              {topup.playerUid && (
+                <div>
+                  <span className="text-[var(--text-muted)]">{t.playerUidLabel || 'UID'}: </span>
+                  <span className="font-mono" dir="ltr">{topup.playerUid}</span>
+                </div>
+              )}
+              {topup.playerCharname && (
+                <div>
+                  <span className="text-[var(--text-muted)]">{t.playerNicknameLabel || t.charnameLabel}: </span>
+                  <span className="font-medium break-all">{topup.playerCharname}</span>
+                </div>
+              )}
+              {topup.playerServer && (
+                <div>
+                  <span className="text-[var(--text-muted)]">{t.serverLabel}: </span>
+                  <span className="font-mono" dir="ltr">{topup.playerServer}</span>
+                </div>
+              )}
+              {topup.supplierAmount != null && (
+                <div>
+                  <span className="text-[var(--text-muted)]">{t.adminSupplierCostLabel || 'Supplier cost'}: </span>
+                  <span className="font-mono">${Number(topup.supplierAmount).toFixed(3)}</span>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -317,8 +390,18 @@ export default function AdminOrdersManager({
         </div>
         <div className="space-y-2">
           {items.length > 0 ? items.map((item, idx) => (
-            <div key={idx} className="admin-order-item-row">
-              <span className="min-w-0 break-words">{item.name_snapshot}</span>
+            <div key={item.id || idx} className="admin-order-item-row">
+              <div className="min-w-0">
+                <div className="break-words font-medium">
+                  {formatOrderItemDisplayName(item, { lang, order })}
+                </div>
+                {item.player_uid && (
+                  <div className="text-[10px] text-[var(--text-muted)] mt-0.5 font-mono" dir="ltr">
+                    UID {item.player_uid}
+                    {item.player_charname ? ` · ${item.player_charname}` : ''}
+                  </div>
+                )}
+              </div>
               <span className="font-mono text-[var(--accent)] flex-shrink-0">
                 ${parseFloat(item.price).toFixed(2)} × {item.quantity || 1}
               </span>
@@ -496,7 +579,10 @@ export default function AdminOrdersManager({
           {filteredOrders.map((order) => {
             const isExpanded = expandedOrderId === order.id;
             const items = order.order_items || [];
-            const previewItem = items[0]?.name_snapshot;
+            const previewItem = items[0]
+              ? formatOrderItemDisplayName(items[0], { lang, order })
+              : '';
+            const previewUid = items[0]?.player_uid;
             const isFilteredUserOrder = resolvedUserId && order.user_id === resolvedUserId;
 
             return (
@@ -524,7 +610,7 @@ export default function AdminOrdersManager({
                     <div className="text-xs text-[var(--text-muted)] mt-0.5">
                       {formatOrderDate(order.created_at, lang)}
                       {!isFilteredUserOrder && previewItem ? ` · ${previewItem}` : ''}
-                      {isFilteredUserOrder && !previewItem ? '' : ''}
+                      {previewUid ? ` · UID ${previewUid}` : ''}
                     </div>
                   </div>
 

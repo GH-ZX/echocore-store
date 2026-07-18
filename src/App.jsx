@@ -460,11 +460,26 @@ export default function App() {
         console.warn('expire_stale_pending_orders:', expireErr);
       }
 
-      // Fetch orders + items (without profile join to avoid RLS/relation issues)
-      const { data: ordersData, error: ordersError } = await supabase
-        .from('orders')
-        .select('*, order_items(*)')
-        .order('created_at', { ascending: false });
+      // Fetch orders + items (+ offer/game when readable) for admin labels
+      let ordersData = null;
+      let ordersError = null;
+      {
+        const rich = await supabase
+          .from('orders')
+          .select('*, order_items(*, offers(id, name_en, name_ar, game_id, g2bulk_catalogue_name, games(id, name_en, name_ar, slug, g2bulk_game_code)))')
+          .order('created_at', { ascending: false });
+        if (rich.error) {
+          const plain = await supabase
+            .from('orders')
+            .select('*, order_items(*)')
+            .order('created_at', { ascending: false });
+          ordersData = plain.data;
+          ordersError = plain.error;
+        } else {
+          ordersData = rich.data;
+          ordersError = null;
+        }
+      }
 
       if (ordersError) {
         console.error('Failed to load orders:', ordersError);
@@ -993,6 +1008,7 @@ export default function App() {
       description_en: payload.description_en || '',
       description_ar: payload.description_ar || '',
       sale_image_url: payload.sale_image_url || null,
+      sale_image_custom: !!payload.sale_image_url,
       is_sale: !!payload.is_sale,
       original_price: payload.is_sale ? (parseFloat(payload.original_price) || null) : null,
       g2bulk_type: payload.g2bulk_type || null,
@@ -1081,6 +1097,8 @@ export default function App() {
         points_name: payload.points_name || 'Points',
         logo_url: payload.logo_url || null,
         image_url: payload.image_url || null,
+        image_custom: !!payload.image_url,
+        logo_custom: !!payload.logo_url,
         redemption_method: payload.redemption_method || 'both',
         servers: payload.servers || [],
         description_en: payload.description_en || '',
@@ -1119,23 +1137,32 @@ export default function App() {
   const updateGame = async (gameData) => {
     const { id, ...payload } = gameData;
 
+    // Admin-set cover/logo stay locked across G2Bulk catalog sync
+    const patch = {
+      name_en: payload.name_en,
+      name_ar: payload.name_ar || payload.name_en,
+      slug: payload.slug,
+      points_name: payload.points_name || 'Points',
+      logo_url: payload.logo_url || null,
+      image_url: payload.image_url || null,
+      redemption_method: payload.redemption_method || 'both',
+      servers: payload.servers || [],
+      description_en: payload.description_en || '',
+      description_ar: payload.description_ar || '',
+      carousel_focus_x: payload.carousel_focus_x ?? 50,
+      carousel_focus_y: payload.carousel_focus_y ?? 50,
+      g2bulk_game_code: payload.g2bulk_game_code?.trim() || null,
+    };
+    if (Object.prototype.hasOwnProperty.call(payload, 'image_url') || Object.prototype.hasOwnProperty.call(payload, 'image_custom')) {
+      patch.image_custom = payload.image_custom !== false && !!payload.image_url;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'logo_url') || Object.prototype.hasOwnProperty.call(payload, 'logo_custom')) {
+      patch.logo_custom = payload.logo_custom !== false && !!payload.logo_url;
+    }
+
     const { data, error } = await supabase
       .from('games')
-      .update({
-        name_en: payload.name_en,
-        name_ar: payload.name_ar || payload.name_en,
-        slug: payload.slug,
-        points_name: payload.points_name || 'Points',
-        logo_url: payload.logo_url || null,
-        image_url: payload.image_url || null,
-        redemption_method: payload.redemption_method || 'both',
-        servers: payload.servers || [],
-        description_en: payload.description_en || '',
-        description_ar: payload.description_ar || '',
-        carousel_focus_x: payload.carousel_focus_x ?? 50,
-        carousel_focus_y: payload.carousel_focus_y ?? 50,
-        g2bulk_game_code: payload.g2bulk_game_code?.trim() || null,
-      })
+      .update(patch)
       .eq('id', id)
       .select()
       .single();

@@ -23,19 +23,50 @@ function MetaItem({ label, value, mono = false, accent = false }) {
   );
 }
 
-function LineDeliveryDetails({ line, t }) {
-  const hasPlayer = line.playerUid || line.playerServer || line.playerCharname || line.redemptionExtras?.length > 0;
-  const hasCodes = line.hasCodes && line.codes?.length > 0;
-  const hasSteps = Array.isArray(line.redeemSteps) && line.redeemSteps.length > 0;
+/** Personalized title e.g. "Your Google Play Turkey redeem code" */
+function redeemCodeHeading(line, t) {
+  const product = String(line?.name || line?.gameName || '').trim();
+  if (product && t.invoiceYourRedeemCodeForProduct) {
+    return formatMessage(t.invoiceYourRedeemCodeForProduct, { product });
+  }
+  if (product && t.invoiceYourRedeemCodeLabel) {
+    return formatMessage(t.invoiceYourRedeemCodeLabel, { product });
+  }
+  return t.invoiceRedeemCodesLabel || 'Redeem code';
+}
 
-  if (!hasPlayer && !hasCodes && !hasSteps) return null;
+function uniqueCodes(list = []) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of list) {
+    const code = String(raw || '').trim();
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    out.push(code);
+  }
+  return out;
+}
+
+function LineDeliveryDetails({ line, t, hideCodes = false }) {
+  const isTopup = line.deliveryType === 'topup';
+  const hasPlayer = line.playerUid || line.playerServer || line.playerCharname || line.redemptionExtras?.length > 0;
+  const codes = uniqueCodes(line.codes);
+  const hasCodes = !hideCodes && line.hasCodes && codes.length > 0;
+  // Activation steps only for redeem-code products — not direct UID top-ups
+  const hasSteps = !isTopup && Array.isArray(line.redeemSteps) && line.redeemSteps.length > 0;
+  const topupSuccessNote = t.invoiceTopupSentSuccess
+    || 'The balance was sent to your game account successfully.';
+  const keepInvoiceNote = t.invoiceKeepForSupport
+    || 'Keep this invoice for support if you need anything.';
+
+  if (!hasPlayer && !hasCodes && !hasSteps && !isTopup) return null;
 
   return (
     <div className="invoice-item-details">
       {hasCodes && (
         <div className="invoice-detail-group">
-          <div className="invoice-detail-title">{t.invoiceRedeemCodesLabel}</div>
-          {line.codes.map((code) => (
+          <div className="invoice-detail-title">{redeemCodeHeading(line, t)}</div>
+          {codes.map((code) => (
             <div key={code} className="invoice-code-value">{code}</div>
           ))}
         </div>
@@ -52,7 +83,7 @@ function LineDeliveryDetails({ line, t }) {
               <div><span>{t.serverLabel}</span><strong className="font-mono">{line.playerServer}</strong></div>
             )}
             {line.playerCharname && (
-              <div><span>{t.charnameLabel}</span><strong>{line.playerCharname}</strong></div>
+              <div><span>{t.charnameLabel || t.playerNicknameLabel}</span><strong>{line.playerCharname}</strong></div>
             )}
             {line.redemptionExtras?.map((entry) => (
               <div key={`${entry.key}-${entry.value}`}>
@@ -61,6 +92,16 @@ function LineDeliveryDetails({ line, t }) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {isTopup && (
+        <div className="invoice-detail-group">
+          <div className="invoice-detail-title">
+            {t.invoiceTopupDeliveryLabel || t.topUpSentSuccess || 'Direct top-up'}
+          </div>
+          <p className="invoice-note invoice-note--topup-success">{topupSuccessNote}</p>
+          <p className="invoice-note">{keepInvoiceNote}</p>
         </div>
       )}
 
@@ -145,17 +186,23 @@ export default function InvoiceDocument({
         </div>
       )}
 
-      {/* Gift / redeem codes — always prominent when present */}
-      {!isRecharge && invoice.hasCodes && Array.isArray(invoice.allCodes) && invoice.allCodes.length > 0 && (
+      {/* Redeem codes — show ONCE per product line (no table + hero duplication) */}
+      {!isRecharge && productLines.some((line) => line.hasCodes && uniqueCodes(line.codes).length > 0) && (
         <section className="invoice-section invoice-codes-hero">
-          <h3 className="invoice-section-title">{t.invoiceRedeemCodesLabel}</h3>
-          <div className="invoice-section-content space-y-2">
-            {invoice.allCodes.map((code) => (
-              <div key={code} className="invoice-code-value invoice-code-value--hero font-mono">
-                {code}
+          {productLines.map((line) => {
+            const codes = uniqueCodes(line.codes);
+            if (!line.hasCodes || codes.length === 0) return null;
+            return (
+              <div key={`codes-${line.id || line.name}`} className="invoice-section-content space-y-2 mb-3 last:mb-0">
+                <h3 className="invoice-section-title">{redeemCodeHeading(line, t)}</h3>
+                {codes.map((code) => (
+                  <div key={code} className="invoice-code-value invoice-code-value--hero font-mono">
+                    {code}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            );
+          })}
         </section>
       )}
 
@@ -176,11 +223,6 @@ export default function InvoiceDocument({
                   <td>
                     <div className="invoice-table-item">{line.name}</div>
                     {line.gameName && <div className="invoice-table-sub">{line.gameName}</div>}
-                    {line.hasCodes && line.codes?.length > 0 && (
-                      <div className="invoice-table-sub font-mono mt-1">
-                        {t.invoiceRedeemCodesLabel}: {line.codes.join(' · ')}
-                      </div>
-                    )}
                   </td>
                   <td>{line.quantity || 1}</td>
                   <td className="font-mono">{line.price}</td>
@@ -191,7 +233,12 @@ export default function InvoiceDocument({
           </table>
 
           {productLines.map((line) => (
-            <LineDeliveryDetails key={`details-${line.id || line.name}`} line={line} t={t} />
+            <LineDeliveryDetails
+              key={`details-${line.id || line.name}`}
+              line={line}
+              t={t}
+              hideCodes
+            />
           ))}
         </>
       )}

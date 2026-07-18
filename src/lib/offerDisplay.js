@@ -84,12 +84,77 @@ export function getOfferDisplayName(offer, lang = 'ar', context = null) {
   return formatOfferPackLabel(offer, fulfillmentGame, lang, scopedOffers, games);
 }
 
+/**
+ * Snapshot stored on order_items at checkout — includes game so receipts
+ * never show a bare pack name like "Monthly Membership" without Free Fire.
+ */
 export function getOfferOrderNameSnapshot(offer, lang = 'ar', games = [], offers = []) {
-  return getOfferDisplayName(offer, lang, {
-    game: getFulfillmentGameForOffer(offer, games),
-    games,
-    relatedOffers: offers,
-  });
+  return getOfferCatalogOptionLabel(offer, games, lang, offers);
+}
+
+/** Humanize supplier game codes (freefire_eu → Free Fire Eu). */
+export function formatG2bulkGameCodeLabel(code) {
+  const raw = String(code || '').trim();
+  if (!raw) return '';
+  return raw
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
+/**
+ * Display label for an existing order line.
+ * Prefers live catalog (game + pack) when offer/games are available;
+ * otherwise uses name_snapshot / G2Bulk metadata.
+ */
+export function formatOrderItemDisplayName(item, {
+  games = [],
+  offers = [],
+  lang = 'ar',
+  order = null,
+} = {}) {
+  const nestedOffer = item?.offers && typeof item.offers === 'object' && !Array.isArray(item.offers)
+    ? item.offers
+    : Array.isArray(item?.offers)
+      ? item.offers[0]
+      : null;
+  const offer = nestedOffer
+    || offers.find((row) => row.id === item?.offer_id)
+    || null;
+
+  if (offer) {
+    let gameList = games;
+    const nestedGame = offer.games
+      ? (Array.isArray(offer.games) ? offer.games[0] : offer.games)
+      : null;
+    if ((!gameList || gameList.length === 0) && nestedGame) {
+      gameList = [nestedGame];
+    }
+    if (gameList?.length || nestedGame) {
+      const label = getOfferCatalogOptionLabel(
+        { ...offer, game_id: offer.game_id || nestedGame?.id },
+        gameList,
+        lang,
+        offers,
+      );
+      if (label) return label;
+    }
+  }
+
+  const snapshot = String(item?.name_snapshot || '').trim();
+  if (snapshot && (snapshot.includes('—') || snapshot.includes(' - ') || snapshot.includes('–'))) {
+    return snapshot;
+  }
+
+  const meta = order?.g2bulk_metadata || {};
+  const gameFromMeta = formatG2bulkGameCodeLabel(meta.g2bulk_game || meta.game_code || meta.game);
+  const catalogue = String(meta.catalogue || meta.product || meta.product_title || '').trim();
+  const pack = snapshot || catalogue;
+  if (gameFromMeta && pack) return `${gameFromMeta} — ${pack}`;
+  if (pack) return pack;
+  if (gameFromMeta) return gameFromMeta;
+  return '—';
 }
 
 export function getOfferCatalogOptionLabel(offer, games = [], lang = 'ar', relatedOffers = []) {

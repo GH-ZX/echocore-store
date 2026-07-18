@@ -160,6 +160,12 @@ export default function AdminGameEditModal({
       if (coverFile) finalImage = await uploadImage(coverFile, 'game-cover');
       finalLogo = dedupeGameLogoAgainstCover(finalLogo, finalImage);
 
+      // Lock custom cover/logo so catalog sync never overwrites admin media
+      const coverChanged = !!coverFile
+        || String(finalImage || '') !== String(game?.image_url || '');
+      const logoChanged = !!logoFile
+        || String(finalLogo || '') !== String(game?.logo_url || '');
+
       await onSave({
         id: game?.id || null,
         show_in_carousel: game?.show_in_carousel ?? false,
@@ -169,6 +175,9 @@ export default function AdminGameEditModal({
         points_name: form.points_name || 'Points',
         logo_url: finalLogo,
         image_url: finalImage,
+        // Keep existing lock if image unchanged; set lock when admin changes media
+        image_custom: coverChanged ? !!finalImage : (game?.image_custom || !!finalImage),
+        logo_custom: logoChanged ? !!finalLogo : (game?.logo_custom || !!finalLogo),
         redemption_method: form.redemption_method || 'both',
         description_en: form.description_en || '',
         description_ar: form.description_ar || form.description_en || '',
