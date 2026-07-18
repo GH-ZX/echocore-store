@@ -23,25 +23,11 @@ export const SOCIAL_LINKS = [
     accent: '#E4405F',
   },
   {
-    id: 'discord',
-    platform: 'Discord',
-    handle: 'echocore',
-    href: 'https://discord.gg/echocore412',
-    accent: '#5865F2',
-  },
-  {
     id: 'telegram',
     platform: 'Telegram',
     handle: '@kiritostore412',
     href: 'https://t.me/kiritostore412',
     accent: '#26A5E4',
-  },
-  {
-    id: 'facebook',
-    platform: 'Facebook',
-    handle: 'echocore',
-    href: 'https://facebook.com/echocore',
-    accent: '#1877F2',
   },
 ];
 

@@ -56,22 +56,37 @@ export function getAdminOrderOutcome(order) {
   }
 
   if (status === 'completed') {
-    if (fs === 'fulfilling') return 'processing';
     if (fs === 'fulfilled' || fs === 'skipped') return 'success';
 
+    const recent = orderAgeMs(order) < FIFTEEN_MIN_MS;
+
+    // Only RECENT in-flight work is "processing". Old stuck rows must not flood the queue.
+    if (fs === 'fulfilling') {
+      return recent ? 'processing' : 'failed';
+    }
+
     if (fs === 'failed') {
-      // Soft poll timeout WITHOUT refund → still retryable (show processing)
-      if (isSoftFulfillmentTimeout(order) && !isOrderBalanceRefunded(order)) {
+      // Soft timeout without refund: processing only while still fresh
+      if (recent && isSoftFulfillmentTimeout(order) && !isOrderBalanceRefunded(order)) {
         return 'processing';
       }
       return 'failed';
     }
 
-    // null / pending on completed:
-    // - recent (<15m) → still may be auto-delivering
-    // - older → treat as success (legacy paid orders without supplier status)
+    // null / pending on completed
     if (fs === 'pending' || fs == null) {
-      return orderAgeMs(order) < FIFTEEN_MIN_MS ? 'processing' : 'success';
+      if (recent) return 'processing';
+      // Old restored soft-timeouts / abandoned pending → failed (not endless processing)
+      if (
+        isSoftFulfillmentTimeout(order)
+        || order?.g2bulk_metadata?.restored_from_soft_timeout
+        || order?.g2bulk_metadata?.restored_for_code_recovery
+        || order?.g2bulk_metadata?.stale_closed
+      ) {
+        return 'failed';
+      }
+      // Legacy paid orders with no supplier trail → treat as success
+      return 'success';
     }
 
     return 'success';
@@ -107,12 +122,41 @@ export function getOrderStatusFilterOptions(t = {}) {
   ];
 }
 
-/** Admin can retry G2Bulk when paid + not delivered + not refunded. */
+/** Admin can retry G2Bulk when paid + not delivered + not refunded. Never on success. */
 export function canRetryOrderFulfillment(order) {
   if (!order || order.status !== 'completed') return false;
   if (isOrderBalanceRefunded(order)) return false;
-  const fs = String(order.fulfillment_status || 'pending');
-  return fs === 'failed' || fs === 'pending' || fs === 'fulfilling';
+  const meta = order?.g2bulk_metadata || {};
+  // Verified free-after-refund / audit lock — never re-ship
+  if (
+    meta.do_not_refulfill === true
+    || meta.free_after_refund === true
+    || meta.verified_from_g2bulk === true && meta.balance_refunded
+  ) {
+    return false;
+  }
+  const fs = order.fulfillment_status == null || order.fulfillment_status === ''
+    ? 'pending'
+    : String(order.fulfillment_status);
+  // Already delivered / intentionally skipped — no re-fulfill button
+  if (fs === 'fulfilled' || fs === 'skipped') return false;
+  // Outcome already success (legacy paid row) — do not re-ship
+  if (getAdminOrderOutcome(order) === 'success') return false;
+  // Recent in-flight only, or failed (manual recover). No re-fulfill on ancient pending noise.
+  if (fs === 'fulfilling' || fs === 'pending') {
+    return orderAgeMs(order) < FIFTEEN_MIN_MS;
+  }
+  return fs === 'failed';
+}
+
+/** Show red/amber error banner only when the order is not a success. */
+export function shouldShowAdminFulfillmentError(order) {
+  if (!order?.g2bulk_metadata?.last_error) return false;
+  const outcome = getAdminOrderOutcome(order);
+  if (outcome === 'success' || outcome === 'cancelled') return false;
+  const fs = String(order.fulfillment_status || '');
+  if (fs === 'fulfilled' || fs === 'skipped') return false;
+  return outcome === 'failed' || outcome === 'processing';
 }
 
 function normalizeSearch(value = '') {

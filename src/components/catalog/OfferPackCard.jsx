@@ -48,15 +48,10 @@ export default function OfferPackCard({
       role="button"
       tabIndex={0}
     >
-      <div className="catalog-offer-card__body p-4 sm:p-5 flex flex-col h-full relative">
-        {isAdmin && onEdit && (
-          <div className="absolute top-3 end-3 z-10" onClick={(e) => e.stopPropagation()}>
-            <AdminEditButton iconOnly label={t.edit || 'Edit'} onClick={() => onEdit(offer)} />
-          </div>
-        )}
-
+      <div className="catalog-offer-card__body p-4 sm:p-5 flex flex-col h-full">
+        {/* Name on start side, pencil/logo on end — opposite ends in AR + EN */}
         <div className="flex items-start justify-between gap-3 mb-3">
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 pe-1">
             <OfferPackLabel
               as="h3"
               className="font-bold text-base sm:text-lg leading-snug line-clamp-2 group-hover:text-[var(--accent)] transition-colors"
@@ -69,9 +64,16 @@ export default function OfferPackCard({
               </p>
             )}
           </div>
-          {game?.logo_url && (
-            <img src={game.logo_url} alt="" className="w-8 h-8 object-contain shrink-0 opacity-80" />
-          )}
+          <div className="flex items-start gap-2 shrink-0">
+            {game?.logo_url && (
+              <img src={game.logo_url} alt="" className="w-8 h-8 object-contain opacity-80" />
+            )}
+            {isAdmin && onEdit && (
+              <div onClick={(e) => e.stopPropagation()}>
+                <AdminEditButton iconOnly label={t.edit || 'Edit'} onClick={() => onEdit(offer)} />
+              </div>
+            )}
+          </div>
         </div>
 
         {(offer.amount || getOfferPackAmount(offer)) && (

@@ -53,7 +53,6 @@ export default function FAQView({ t = {} }) {
           <a href="/contact" className="btn btn-primary text-sm py-2.5 px-5">
             {t.contactSupport}
           </a>
-          <span className="text-[var(--text-muted)] self-center">{t.orDiscord}</span>
         </div>
       </div>
     </div>

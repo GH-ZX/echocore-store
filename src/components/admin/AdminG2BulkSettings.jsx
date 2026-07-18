@@ -21,6 +21,7 @@ import { useAdminG2bulkWallet } from '../../hooks/useAdminG2bulkWallet';
 import { countPullSelection, normalizeCatalogMode, normalizePullSelection } from '../../lib/pullCatalogUtils';
 import { formatMessage } from '../../lib/i18n';
 import { logDevEvent } from '../../lib/siteLogs';
+import { setCachedStoreMarkupPercent } from '../../lib/storeMarkupCache';
 
 const TIMEZONE_OPTIONS = [
   { value: 'Asia/Damascus', label: 'Syria (Asia/Damascus)' },
@@ -159,6 +160,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     try {
       const data = await fetchG2bulkSettings();
       const markup = parseMarkupPercent(data?.g2bulk_markup_percent);
+      if (markup != null) setCachedStoreMarkupPercent(markup);
       setForm({
         g2bulk_enabled: data.g2bulk_enabled ?? false,
         // Only fall back to 15 when the server truly has no value
@@ -517,6 +519,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     try {
       const saved = await saveG2bulkSettings({ markupPercent: n });
       const savedMarkup = parseMarkupPercent(saved?.g2bulk_markup_percent);
+      setCachedStoreMarkupPercent(savedMarkup != null ? savedMarkup : n);
       if (savedMarkup != null) {
         setForm((p) => ({ ...p, g2bulk_markup_percent: savedMarkup }));
       }

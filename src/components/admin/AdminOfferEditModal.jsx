@@ -12,7 +12,6 @@ import {
   persistOfferPricing,
 } from '../../lib/adminOfferPricing';
 import { formatMessage } from '../../lib/i18n';
-import { pricingModeLabel } from '../../lib/offerPricing';
 
 export default function AdminOfferEditModal({
   offer,
@@ -348,21 +347,26 @@ export default function AdminOfferEditModal({
                 {t.pricingCurrentSelection || 'Current selection'}
               </div>
               <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="inline-flex items-center px-2.5 py-1 rounded-full border border-[var(--accent)]/40 bg-[var(--accent)]/15 text-[var(--accent)] font-semibold text-xs">
-                  {pricingModeLabel(mode, t)}
-                </span>
                 <span className="font-mono font-semibold tabular-nums text-[var(--text-primary)]" dir="ltr">
-                  {mode === 'fixed'
-                    ? `$${Number(form.price || 0).toFixed(2)}`
-                    : mode === 'margin'
-                      ? `${form.pricing_margin_percent ?? '—'}%`
-                      : `${storeMarkup}%`}
+                  {(() => {
+                    const c = Number(form.g2bulk_cost_usd);
+                    const costTxt = Number.isFinite(c) && c > 0
+                      ? `$${Number(c.toFixed(4).replace(/\.?0+$/, '') || c)}`
+                      : null;
+                    if (mode === 'fixed') {
+                      return costTxt
+                        ? `${costTxt} · ${t.pricingModeFixed || 'Fixed price'}`
+                        : (t.pricingModeFixed || 'Fixed price');
+                    }
+                    const pct = mode === 'margin'
+                      ? form.pricing_margin_percent
+                      : storeMarkup;
+                    if (costTxt != null && pct !== '' && pct != null) {
+                      return `${costTxt} + ${pct}%`;
+                    }
+                    return costTxt || '—';
+                  })()}
                 </span>
-                {(mode === 'auto' || mode === 'margin') && form.price !== '' && form.price != null && (
-                  <span className="text-xs text-[var(--text-muted)] font-mono" dir="ltr">
-                    → ${Number(form.price).toFixed(2)}
-                  </span>
-                )}
               </div>
               {!pricingEditing && (
                 <p className="text-[11px] text-[var(--text-muted)]">

@@ -1671,13 +1671,57 @@ Deno.serve(async (req) => {
     userId = authData.user.id;
   } else if (cronAuth && action !== 'syncCatalog' && action !== 'checkCatalog') {
     return jsonResponse({ success: false, message: 'Cron auth only allowed for syncCatalog/checkCatalog' }, 403);
-  } else if (serviceAuth && !['syncCatalog', 'checkCatalog', 'fulfillOrder'].includes(action)) {
-    return jsonResponse({ success: false, message: 'Service auth only allowed for syncCatalog/checkCatalog/fulfillOrder' }, 403);
+  } else if (
+    serviceAuth
+    && !['syncCatalog', 'checkCatalog', 'fulfillOrder', 'lookupPlayerGameOrders'].includes(action)
+  ) {
+    return jsonResponse({ success: false, message: 'Service auth only allowed for syncCatalog/checkCatalog/fulfillOrder/lookupPlayerGameOrders' }, 403);
   }
 
   const apiKey = await resolveApiKeyRaw(serviceClient);
-  if (['getMe', 'fulfillOrder'].includes(action) && !apiKey) {
+  if (['getMe', 'fulfillOrder', 'lookupPlayerGameOrders'].includes(action) && !apiKey) {
     return jsonResponse({ success: false, message: 'G2Bulk API key not configured' }, 400);
+  }
+
+  // Read-only: list recent G2Bulk game top-ups for a player_id (never purchases).
+  if (action === 'lookupPlayerGameOrders') {
+    if (!serviceAuth && !(userId && await isAdmin(userClient, userId!))) {
+      return jsonResponse({ success: false, message: 'Admin only' }, 403);
+    }
+    const playerId = String(body.playerId || body.player_id || '').trim();
+    if (!playerId) {
+      return jsonResponse({ success: false, message: 'playerId required' }, 400);
+    }
+    const maxPages = Math.min(8, Math.max(1, Number(body.pages) || 4));
+    const matches: Json[] = [];
+    for (let page = 1; page <= maxPages; page += 1) {
+      const { res, data } = await g2bulkFetch(
+        apiKey!,
+        `/games/orders?limit=50&page=${page}`,
+        {},
+        undefined,
+        15000,
+      );
+      if (!res.ok) {
+        return jsonResponse({
+          success: false,
+          message: (data.message as string) || `G2Bulk list failed HTTP ${res.status}`,
+          page,
+        }, 502);
+      }
+      const orders = Array.isArray(data.orders) ? data.orders as Json[] : [];
+      if (!orders.length) break;
+      for (const row of orders) {
+        const pid = String(row.player_id || row.playerId || '').trim();
+        if (pid === playerId) matches.push(row);
+      }
+    }
+    return jsonResponse({
+      success: true,
+      playerId,
+      count: matches.length,
+      orders: matches,
+    });
   }
 
   if (action === 'checkFulfillmentAvailability' || action === 'diagnoseFulfillment') {
@@ -1921,6 +1965,19 @@ Deno.serve(async (req) => {
       }
     }
 
+    if (
+      orderMeta.do_not_refulfill === true
+      || orderMeta.free_after_refund === true
+    ) {
+      return jsonResponse({
+        success: false,
+        message: 'Order is locked (do_not_refulfill) — supplier already completed; refusing any new purchase.',
+        fulfillmentStatus: order.fulfillment_status || 'fulfilled',
+        reason: 'do_not_refulfill_lock',
+        balanceRefunded: balanceRefunded || orderMeta.balance_refunded === true,
+      }, 409);
+    }
+
     if (balanceRefunded && !existingSupplierId) {
       return jsonResponse({
         success: false,
@@ -1929,6 +1986,11 @@ Deno.serve(async (req) => {
         reason: 'balance_refunded_block_new_purchase',
         balanceRefunded: true,
       }, 409);
+    }
+
+    // Refunded + already has supplier id: poll-only is OK; never place a second purchase
+    if (balanceRefunded && existingSupplierId) {
+      // Fall through to resume poll path only — purchase loop is blocked below
     }
 
     const settingsRow = await loadStoreSettingsRow(serviceClient);
@@ -2005,6 +2067,13 @@ Deno.serve(async (req) => {
         fulfillmentStatus: 'failed',
         reason: 'balance_refunded_block_new_purchase',
         balanceRefunded: true,
+      }, 409);
+    }
+    if (!primaryG2bulkOrderId && (orderMeta.do_not_refulfill === true || orderMeta.free_after_refund === true)) {
+      return jsonResponse({
+        success: false,
+        message: 'Order is locked against new supplier purchases.',
+        reason: 'do_not_refulfill_lock',
       }, 409);
     }
 

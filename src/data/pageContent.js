@@ -147,7 +147,7 @@ const ar = {
     },
     {
       q: 'ماذا لو لم يصلني الكود؟',
-      a: 'تواصل معنا فوراً عبر الدعم أو الديسكورد. سنقوم بحل المشكلة خلال دقائق.',
+      a: 'تواصل معنا فوراً عبر الدعم أو تيليجرام. سنقوم بحل المشكلة خلال دقائق.',
     },
     {
       q: 'هل بياناتي آمنة؟',
@@ -370,7 +370,7 @@ const en = {
     },
     {
       q: 'What if I don’t receive my code?',
-      a: 'Contact us immediately via support or Discord. We’ll resolve it within minutes.',
+      a: 'Contact us immediately via support or Telegram. We’ll resolve it within minutes.',
     },
     {
       q: 'Is my data secure?',

@@ -23,6 +23,7 @@ import {
   getOrderStatusFilterOptions,
   isOrderBalanceRefunded,
   isSoftFulfillmentTimeout,
+  shouldShowAdminFulfillmentError,
 } from '../../lib/adminOrderFilters';
 import {
   adminGetUserByUsername,
@@ -368,7 +369,7 @@ export default function AdminOrdersManager({
           </div>
         )}
 
-        {order.g2bulk_metadata?.last_error && (outcome === 'failed' || softTimeout) && (
+        {shouldShowAdminFulfillmentError(order) && (
           <div className={`mt-3 text-xs rounded-lg border px-3 py-2 ${
             softTimeout && !refunded
               ? 'text-amber-200/95 border-amber-500/30 bg-amber-500/10'
