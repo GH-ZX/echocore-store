@@ -294,19 +294,27 @@ function absImageUrl(url: string | null | undefined) {
 }
 
 async function loadStorePricingSettings(serviceClient: ReturnType<typeof createClient>) {
+  const fallback = 12;
   const { data: settings, error } = await serviceClient
     .from('store_settings')
     .select('g2bulk_markup_percent')
     .eq('id', 1)
     .maybeSingle();
 
-  if (error) {
-    return { markup: 15 };
+  if (error || !settings) {
+    return { markup: fallback };
   }
 
-  return {
-    markup: Number(settings?.g2bulk_markup_percent ?? 15),
-  };
+  // Never treat null/NaN as 0 (Number(null) === 0 would reprice at cost).
+  const raw = settings.g2bulk_markup_percent;
+  if (raw == null || raw === '') {
+    return { markup: fallback };
+  }
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) {
+    return { markup: fallback };
+  }
+  return { markup: n };
 }
 
 const GAMING_ACCOUNT_KEYWORDS = [

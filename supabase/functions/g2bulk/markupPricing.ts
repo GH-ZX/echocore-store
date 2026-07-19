@@ -42,10 +42,14 @@ export function resolveSyncedPrice(
   }
 
   if (mode === 'margin') {
-    const m = Number(existing?.pricing_margin_percent);
-    const pct = Number.isFinite(m) ? m : storeMarkupPercent;
+    const raw = existing?.pricing_margin_percent;
+    // Number(null) === 0 would wipe store markup — only use explicit numbers
+    const m = raw == null || raw === '' ? NaN : Number(raw);
+    const pct = Number.isFinite(m) && m >= 0 ? m : storeMarkupPercent;
     return { price: priceFromCost(cost, pct), preservePrice: false };
   }
 
-  return { price: priceFromCost(cost, storeMarkupPercent), preservePrice: false };
+  const store = Number(storeMarkupPercent);
+  const safeStore = Number.isFinite(store) && store >= 0 ? store : 12;
+  return { price: priceFromCost(cost, safeStore), preservePrice: false };
 }
