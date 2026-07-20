@@ -18,23 +18,11 @@ export function getFulfillmentUnavailableMessage(result = {}, t = {}) {
     items_required: t.fulfillmentTemporarilyUnavailable || t.fulfillmentOutOfStock,
   };
 
-  let message = messages[reason]
+  // Never append wallet/cost figures — those are admin-only (console.warn below).
+  return messages[reason]
     || t.fulfillmentTemporarilyUnavailable
     || t.fulfillmentOutOfStock
     || 'This product is temporarily unavailable.';
-
-  // Helpful detail for wallet shortfall when amounts are present.
-  if (
-    reason === 'insufficient_supplier_balance'
-    && Number.isFinite(Number(result.walletBalance))
-    && Number.isFinite(Number(result.requiredCost))
-  ) {
-    const wallet = Number(result.walletBalance).toFixed(2);
-    const need = Number(result.requiredCost).toFixed(2);
-    message = `${message} (${wallet} / ${need} USD)`;
-  }
-
-  return message;
 }
 
 export async function inspectFulfillmentAvailability(items = []) {
