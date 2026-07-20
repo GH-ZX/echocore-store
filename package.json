@@ -9,6 +9,8 @@
     "dev": "cross-env NODE_NO_WARNINGS=1 vite",
     "build": "vite build && node scripts/gh-pages-spa.mjs",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "preview": "vite preview",
     "upload:game-logos": "node scripts/upload-game-logos.mjs"
   },
@@ -41,6 +43,7 @@
     "globals": "^17.6.0",
     "postcss": "^8.5.15",
     "tailwindcss": "^4.3.0",
-    "vite": "^8.0.12"
+    "vite": "^8.0.12",
+    "vitest": "^3.2.7"
   }
 }

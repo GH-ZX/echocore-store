@@ -11,6 +11,10 @@ export default defineConfig(({ command, mode }) => {
   return {
     base: useProductionBase ? productionBase : '/',
     plugins: [react()],
+    test: {
+      environment: 'node',
+      include: ['src/**/*.test.js'],
+    },
     build: {
       sourcemap: false,
       target: 'es2020',
@@ -43,6 +47,10 @@ export default defineConfig(({ command, mode }) => {
               }
               if (id.includes('ogl') || id.includes('/Aurora')) {
                 return 'vendor-effects'
+              }
+              // Keep invoice export libs out of the main vendor graph
+              if (id.includes('jspdf') || id.includes('html-to-image') || id.includes('html2canvas')) {
+                return 'vendor-invoice-export'
               }
             }
           },

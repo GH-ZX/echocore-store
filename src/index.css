@@ -6793,6 +6793,32 @@ html, body {
   color: var(--text-muted);
 }
 
+button.admin-profit-customer-order__id {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.admin-profit-order-link {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  text-align: inherit;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-profit-order-link:hover {
+  text-decoration: underline;
+}
+
 .admin-profit-customer-order__items {
   margin: 0 0 0.4rem;
   font-size: 0.8rem;

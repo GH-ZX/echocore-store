@@ -60,6 +60,7 @@ function RankList({
   emptyLabel,
   nameOf,
   onOpenOrders,
+  onOpenOrder,
 }) {
   const [expandedKey, setExpandedKey] = useState(null);
 
@@ -219,11 +220,30 @@ function RankList({
                                     minute: '2-digit',
                                   })
                                   : '—';
+                                const canOpenOrder = Boolean(purchase.orderId && onOpenOrder);
                                 return (
                                   <li key={purchase.orderId || `${buyer.userId}-${purchaseIndex}`}>
                                     <span className="admin-profit-customer-order__line-name">
-                                      {purchaseDate}
-                                      {purchase.units > 1 ? ` · ×${purchase.units}` : ''}
+                                      {canOpenOrder ? (
+                                        <button
+                                          type="button"
+                                          className="admin-profit-order-link"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            onOpenOrder(purchase.orderId, buyer.username);
+                                          }}
+                                        >
+                                          {purchaseDate}
+                                          {purchase.units > 1 ? ` · ×${purchase.units}` : ''}
+                                          {' · '}
+                                          <span dir="ltr">#{String(purchase.orderId).slice(0, 8)}</span>
+                                        </button>
+                                      ) : (
+                                        <>
+                                          {purchaseDate}
+                                          {purchase.units > 1 ? ` · ×${purchase.units}` : ''}
+                                        </>
+                                      )}
                                     </span>
                                     <span className="admin-profit-customer-order__line-money" dir="ltr">
                                       {metrics.formatUsd(purchase.revenue)}
@@ -259,6 +279,7 @@ function CustomerRankList({
   lang,
   emptyLabel,
   onOpenOrders,
+  onOpenOrder,
 }) {
   const [expandedKey, setExpandedKey] = useState(null);
 
@@ -371,9 +392,23 @@ function CustomerRankList({
                           <div className="admin-profit-customer-order__head">
                             <span className="admin-profit-customer-order__date">{orderDate}</span>
                             {order.orderId ? (
-                              <span className="admin-profit-customer-order__id" dir="ltr">
-                                #{String(order.orderId).slice(0, 8)}
-                              </span>
+                              onOpenOrder ? (
+                                <button
+                                  type="button"
+                                  className="admin-profit-customer-order__id admin-profit-order-link"
+                                  dir="ltr"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    onOpenOrder(order.orderId, row.username);
+                                  }}
+                                >
+                                  #{String(order.orderId).slice(0, 8)}
+                                </button>
+                              ) : (
+                                <span className="admin-profit-customer-order__id" dir="ltr">
+                                  #{String(order.orderId).slice(0, 8)}
+                                </span>
+                              )
                             ) : null}
                           </div>
                           <p className="admin-profit-customer-order__items">{itemNames}</p>
@@ -520,6 +555,14 @@ export default function AdminProfitStatsPage({
   const openCustomerOrders = (row) => {
     if (!row?.username) return;
     navigate(getAdminOrdersPath({ username: row.username }));
+  };
+
+  const openOrder = (orderId, username = '') => {
+    if (!orderId) return;
+    navigate(getAdminOrdersPath({
+      orderId,
+      username: username || '',
+    }));
   };
 
   if (loadingOrders) {
@@ -693,6 +736,7 @@ export default function AdminProfitStatsPage({
           emptyLabel={t.adminProfitRankEmpty}
           nameOf={(row) => row.name}
           onOpenOrders={openCustomerOrders}
+          onOpenOrder={openOrder}
         />
       </AdminDashSection>
 
@@ -728,6 +772,7 @@ export default function AdminProfitStatsPage({
           lang={lang}
           emptyLabel={t.adminProfitCustomerEmpty}
           onOpenOrders={openCustomerOrders}
+          onOpenOrder={openOrder}
         />
       </AdminDashSection>
 

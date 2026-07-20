@@ -37,6 +37,10 @@ coverage/
 # Optional local configs
 *.local
 
+# Local owner reports (not product source)
+تقرير-*.txt
+تقرير*.txt
+
 # Ignore runtime generated files
 npm-debug.log
 

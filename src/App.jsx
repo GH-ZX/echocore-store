@@ -460,31 +460,29 @@ export default function App() {
         console.warn('expire_stale_pending_orders:', expireErr);
       }
 
-      // Fetch orders + items (+ offer/game when readable) for admin labels
-      let ordersData = null;
-      let ordersError = null;
-      {
-        const rich = await supabase
-          .from('orders')
-          .select('*, order_items(*, offers(id, name_en, name_ar, game_id, g2bulk_catalogue_name, games(id, name_en, name_ar, slug, g2bulk_game_code)))')
-          .order('created_at', { ascending: false });
-        if (rich.error) {
-          const plain = await supabase
+      // Paginate past PostgREST 1000-row default so profits/orders stay complete.
+      let ordersData = [];
+      try {
+        ordersData = await fetchAllSupabaseRows(() => (
+          supabase
             .from('orders')
-            .select('*, order_items(*)')
-            .order('created_at', { ascending: false });
-          ordersData = plain.data;
-          ordersError = plain.error;
-        } else {
-          ordersData = rich.data;
-          ordersError = null;
+            .select('*, order_items(*, offers(id, name_en, name_ar, game_id, g2bulk_catalogue_name, games(id, name_en, name_ar, slug, g2bulk_game_code)))')
+            .order('created_at', { ascending: false })
+        ));
+      } catch (richErr) {
+        console.warn('Rich order fetch failed, falling back to plain items:', richErr);
+        try {
+          ordersData = await fetchAllSupabaseRows(() => (
+            supabase
+              .from('orders')
+              .select('*, order_items(*)')
+              .order('created_at', { ascending: false })
+          ));
+        } catch (plainErr) {
+          console.error('Failed to load orders:', plainErr);
+          setOrders([]);
+          return;
         }
-      }
-
-      if (ordersError) {
-        console.error('Failed to load orders:', ordersError);
-        setOrders([]);
-        return;
       }
 
       let ordersWithUsers = ordersData || [];
@@ -492,7 +490,14 @@ export default function App() {
         const userIds = [...new Set(ordersWithUsers.map((o) => o.user_id).filter(Boolean))];
         if (userIds.length > 0) {
           try {
-            const profilesData = await fetchAdminProfileSummaries(userIds);
+            // RPC may also cap large id lists — chunk to stay under PostgREST limits.
+            const CHUNK = 200;
+            const profilesData = [];
+            for (let i = 0; i < userIds.length; i += CHUNK) {
+              const chunk = userIds.slice(i, i + CHUNK);
+              const part = await fetchAdminProfileSummaries(chunk);
+              profilesData.push(...(part || []));
+            }
             const profileMap = Object.fromEntries(profilesData.map((p) => [p.id, p]));
             ordersWithUsers = ordersWithUsers.map((order) => ({
               ...order,
@@ -500,16 +505,26 @@ export default function App() {
             }));
           } catch (profileErr) {
             console.error('Failed to load order customer profiles:', profileErr);
-            const { data: profilesData } = await supabase
-              .from('profiles')
-              .select('id, username, name')
-              .in('id', userIds);
-            if (profilesData) {
+            try {
+              const CHUNK = 200;
+              const profilesData = [];
+              for (let i = 0; i < userIds.length; i += CHUNK) {
+                const chunk = userIds.slice(i, i + CHUNK);
+                const part = await fetchAllSupabaseRows(() => (
+                  supabase
+                    .from('profiles')
+                    .select('id, username, name')
+                    .in('id', chunk)
+                ));
+                profilesData.push(...(part || []));
+              }
               const profileMap = Object.fromEntries(profilesData.map((p) => [p.id, p]));
               ordersWithUsers = ordersWithUsers.map((order) => ({
                 ...order,
                 profiles: profileMap[order.user_id] || null,
               }));
+            } catch {
+              /* leave profiles null */
             }
           }
         }

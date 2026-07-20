@@ -5,6 +5,9 @@ const MS_PER_DAY = 86_400_000;
 /** Preset period lengths for the profit stats page (null = all time). */
 export const PROFIT_PERIOD_OPTIONS = [1, 7, 14, 30, 90, null];
 
+/** Max per-customer orders / per-buyer purchases kept for expand UI (newest first). */
+export const PROFIT_DETAIL_LIST_LIMIT = 20;
+
 function parseMoney(value) {
   const num = Number.parseFloat(value);
   return Number.isFinite(num) ? num : 0;
@@ -235,6 +238,10 @@ function buildDayBuckets(days, locale = 'en-US') {
   return buckets;
 }
 
+function capNewest(list, limit = PROFIT_DETAIL_LIST_LIMIT) {
+  return list.slice(0, Math.max(0, limit));
+}
+
 function finalizeBuyerList(buyersMap = {}) {
   return Object.values(buyersMap)
     .map((buyer) => {
@@ -243,14 +250,16 @@ function finalizeBuyerList(buyersMap = {}) {
       const profit = roundMoney(buyer.profit);
       const units = buyer.units || 0;
       const orders = buyer.orders || 0;
-      const purchases = [...(buyer.purchases || [])]
-        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
-        .map((p) => ({
-          ...p,
-          revenue: roundMoney(p.revenue),
-          cost: roundMoney(p.cost),
-          profit: roundMoney(p.profit),
-        }));
+      const purchases = capNewest(
+        [...(buyer.purchases || [])]
+          .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+          .map((p) => ({
+            ...p,
+            revenue: roundMoney(p.revenue),
+            cost: roundMoney(p.cost),
+            profit: roundMoney(p.profit),
+          })),
+      );
       return {
         userId: buyer.userId,
         username: buyer.username,
@@ -319,20 +328,22 @@ function rankCustomerRows(rows, sortKey, limit, totalRevenue) {
       const cost = roundMoney(row.cost);
       const profit = roundMoney(row.profit);
       const orders = row.orders || 0;
-      const orderList = [...(row.orderList || [])]
-        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
-        .map((entry) => ({
-          ...entry,
-          revenue: roundMoney(entry.revenue),
-          cost: roundMoney(entry.cost),
-          profit: roundMoney(entry.profit),
-          items: (entry.items || []).map((item) => ({
-            ...item,
-            revenue: roundMoney(item.revenue),
-            cost: roundMoney(item.cost),
-            profit: roundMoney(item.profit),
+      const orderList = capNewest(
+        [...(row.orderList || [])]
+          .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+          .map((entry) => ({
+            ...entry,
+            revenue: roundMoney(entry.revenue),
+            cost: roundMoney(entry.cost),
+            profit: roundMoney(entry.profit),
+            items: (entry.items || []).map((item) => ({
+              ...item,
+              revenue: roundMoney(item.revenue),
+              cost: roundMoney(item.cost),
+              profit: roundMoney(item.profit),
+            })),
           })),
-        }));
+      );
       return {
         userId: row.userId,
         username: row.username,
@@ -389,7 +400,6 @@ export function computeAdminProfitMetrics(orders = [], offers = [], {
 
   const offerTotals = {};
   const gameTotals = {};
-  const paymentTotals = {};
   const customerTotals = {};
 
   for (const order of orders) {
@@ -420,15 +430,6 @@ export function computeAdminProfitMetrics(orders = [], offers = [], {
     } else {
       untrackedRevenue += metrics.revenue;
     }
-
-    const payMethod = order.payment_method || 'unknown';
-    if (!paymentTotals[payMethod]) {
-      paymentTotals[payMethod] = { method: payMethod, revenue: 0, orders: 0, cost: 0, profit: 0 };
-    }
-    paymentTotals[payMethod].revenue += metrics.revenue;
-    paymentTotals[payMethod].orders += 1;
-    paymentTotals[payMethod].cost += metrics.cost;
-    paymentTotals[payMethod].profit += metrics.revenue - metrics.cost;
 
     const customer = resolveCustomerIdentity(order);
     if (!customerTotals[customer.userId]) {
@@ -593,18 +594,6 @@ export function computeAdminProfitMetrics(orders = [], offers = [], {
     ? roundMoney(totalRevenueAll / completedOrders)
     : 0;
 
-  const paymentBreakdown = Object.values(paymentTotals)
-    .map((row) => ({
-      ...row,
-      revenue: roundMoney(row.revenue),
-      cost: roundMoney(row.cost),
-      profit: roundMoney(row.profit),
-      sharePercent: totalRevenueAll > 0
-        ? roundMoney((row.revenue / totalRevenueAll) * 100)
-        : 0,
-    }))
-    .sort((a, b) => b.revenue - a.revenue);
-
   return {
     periodDays,
     chartDayCount: resolvedChartDays,
@@ -661,7 +650,6 @@ export function computeAdminProfitMetrics(orders = [], offers = [], {
       'profit',
       5,
     ),
-    paymentBreakdown,
     dailyReview: dayBuckets
       .filter((d) => d.orders > 0)
       .map((day) => ({

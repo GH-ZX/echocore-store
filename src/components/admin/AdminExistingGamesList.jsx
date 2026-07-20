@@ -62,7 +62,7 @@ export default function AdminExistingGamesList({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
         <div className="min-w-0">
           <span className="font-bold">
-            {filteredGames.length} {t.existingGames || (isAr ? 'ألعاب' : 'Games')}
+            {filteredGames.length} {t.existingGames}
           </span>
           {(filter !== 'all' || search) && (
             <span className="text-xs text-[var(--text-sec)] ml-2">{t.filtered}</span>
@@ -73,7 +73,7 @@ export default function AdminExistingGamesList({
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={t.searchGamesPlaceholder || (isAr ? 'ابحث...' : 'Search...')}
+            placeholder={t.searchGamesPlaceholder}
             className="input text-xs py-2 w-full sm:w-44 min-w-0"
           />
           <select
@@ -81,9 +81,9 @@ export default function AdminExistingGamesList({
             onChange={(e) => setFilter(e.target.value)}
             className="input text-xs py-2 w-full sm:w-auto min-w-0"
           >
-            <option value="all">{t.allGamesOption || (isAr ? 'كل الألعاب' : 'All Games')}</option>
-            <option value="topup">{t.filterTopup || (isAr ? 'شحن' : 'Top-up')}</option>
-            <option value="redeem">{t.filterRedeem || (isAr ? 'أكواد' : 'Redeem')}</option>
+            <option value="all">{t.allGamesOption}</option>
+            <option value="topup">{t.filterTopup}</option>
+            <option value="redeem">{t.filterRedeem}</option>
           </select>
         </div>
       </div>
@@ -91,7 +91,9 @@ export default function AdminExistingGamesList({
       <div className="space-y-2 max-h-[60rem] overflow-auto pr-1">
         {filteredGames.length > 0 ? (
           filteredGames.map((game) => {
-            const displayName = isAr ? (game.name_ar || game.name_en) : game.name_en;
+            const displayName = isAr
+              ? (game.name_ar || game.name_en)
+              : (game.name_en || game.name_ar);
             const packCount = offerCountByGame.get(game.id) || 0;
             const img = game.image_url || game.logo_url;
             const isEditing = editingGameId === game.id;
@@ -120,32 +122,31 @@ export default function AdminExistingGamesList({
                     {game.points_name && <span>{game.points_name}</span>}
                     {packCount > 0 && (
                       <span>
-                        {packCount} {t.packsShort || (isAr ? 'باقة' : 'packs')}
+                        {packCount} {t.packsShort}
                       </span>
                     )}
                     {game.redemption_method === 'redeem_code' && (
                       <span className="px-1 py-0.5 bg-violet-500/10 text-violet-300 rounded text-[10px]">
-                        {t.redemptionCode || 'Redeem'}
+                        {t.redemptionCode || t.filterRedeem}
                       </span>
                     )}
                     {game.redemption_method === 'uid' && (
                       <span className="px-1 py-0.5 bg-cyan-500/10 text-cyan-300 rounded text-[10px]">
-                        {t.redemptionUid || 'UID'}
+                        {t.redemptionUid || t.filterTopup}
                       </span>
                     )}
                     {game.region_label && <span>• {game.region_label}</span>}
                     {game.show_in_carousel && (
                       <span className="px-1 py-0.5 bg-amber-500/10 text-amber-300 rounded text-[10px]">
-                        {isAr ? 'سلايدر' : 'Carousel'}
+                        {t.gameBadgeCarousel}
                       </span>
                     )}
                     {game.active === false && (
                       <span className="px-1 py-0.5 bg-red-500/10 text-red-400 rounded text-[10px]">
-                        {isAr ? 'معطل' : 'Inactive'}
+                        {t.gameBadgeInactive}
                       </span>
                     )}
                   </div>
-                  
                 </div>
 
                 <div className="flex items-center gap-1 self-end sm:self-auto opacity-100 sm:opacity-60 sm:group-hover:opacity-100 transition-opacity">
@@ -163,7 +164,7 @@ export default function AdminExistingGamesList({
           })
         ) : (
           <div className="p-8 text-center text-[var(--text-sec)]">
-            {t.noGamesMatchFilter || (isAr ? 'لا توجد ألعاب تطابق البحث' : 'No games match your search')}
+            {t.noGamesMatchFilter}
           </div>
         )}
       </div>
