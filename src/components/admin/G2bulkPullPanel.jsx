@@ -13,6 +13,8 @@ import {
 } from '../../lib/catalogNav';
 import {
   alignSelectionSetsToCatalog,
+  carouselKeyForTopup,
+  carouselKeyForVoucher,
   catalogModeSelectionKeys,
   hasPullSelection,
   normalizeCatalogMode,
@@ -420,15 +422,21 @@ export default function G2bulkPullPanel({
     userEditedSelectionRef.current = true;
   };
 
+  const carouselKeyForItem = (item) => {
+    if (activeTab === TABS.topups) return carouselKeyForTopup(item.code);
+    return carouselKeyForVoucher(getItemKey(item));
+  };
+
   const toggleItem = (item) => {
     markSelectionEdited();
     if (activeTab === TABS.topups) {
       const key = item.code;
+      const cKey = carouselKeyForTopup(key);
       setSelection((prev) => {
         const next = cloneSelection(prev);
         if (isGameSelectedIn(prev, key)) {
           next[modeKeys.topup].delete(key);
-          next.carouselBaseKeys.delete(key);
+          if (cKey) next.carouselBaseKeys.delete(cKey);
         } else {
           next[modeKeys.topup].add(key);
         }
@@ -440,10 +448,12 @@ export default function G2bulkPullPanel({
     const itemKey = getItemKey(item);
     if (itemKey == null) return;
     const laneKey = getVoucherLaneKey(item);
+    const cKey = carouselKeyForVoucher(itemKey);
     setSelection((prev) => {
       const next = cloneSelection(prev);
       if (isVoucherSelectedIn(prev, item)) {
         next[laneKey].delete(itemKey);
+        if (cKey) next.carouselBaseKeys.delete(cKey);
       } else {
         next[laneKey].add(itemKey);
       }
@@ -454,14 +464,26 @@ export default function G2bulkPullPanel({
   const toggleCarousel = (item) => {
     if (resolvedCatalogMode !== 'sync') return;
     markSelectionEdited();
-    const key = item.code;
+    const cKey = carouselKeyForItem(item);
+    if (!cKey) return;
+
     setSelection((prev) => {
       const next = cloneSelection(prev);
-      if (!next[modeKeys.topup].has(key)) {
-        next[modeKeys.topup].add(key);
+      if (activeTab === TABS.topups) {
+        const key = item.code;
+        if (!next[modeKeys.topup].has(key)) {
+          next[modeKeys.topup].add(key);
+        }
+      } else {
+        const itemKey = getItemKey(item);
+        if (itemKey == null) return prev;
+        const laneKey = getVoucherLaneKey(item);
+        if (!next[laneKey].has(itemKey)) {
+          next[laneKey].add(itemKey);
+        }
       }
-      if (next.carouselBaseKeys.has(key)) next.carouselBaseKeys.delete(key);
-      else next.carouselBaseKeys.add(key);
+      if (next.carouselBaseKeys.has(cKey)) next.carouselBaseKeys.delete(cKey);
+      else next.carouselBaseKeys.add(cKey);
       return next;
     });
   };
@@ -490,11 +512,15 @@ export default function G2bulkPullPanel({
       if (activeTab === TABS.topups) {
         activeItems.forEach((item) => {
           next[modeKeys.topup].delete(item.code);
-          next.carouselBaseKeys.delete(item.code);
+          const cKey = carouselKeyForTopup(item.code);
+          if (cKey) next.carouselBaseKeys.delete(cKey);
         });
       } else {
         activeItems.forEach((item) => {
-          next[getVoucherLaneKey(item)].delete(getItemKey(item));
+          const itemKey = getItemKey(item);
+          next[getVoucherLaneKey(item)].delete(itemKey);
+          const cKey = carouselKeyForVoucher(itemKey);
+          if (cKey) next.carouselBaseKeys.delete(cKey);
         });
       }
       return next;
@@ -775,7 +801,7 @@ export default function G2bulkPullPanel({
               ) : (
                 <div className="space-y-1.5">
                   <div className="hidden sm:flex items-center gap-2 px-2 pb-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
-                    {activeTab === TABS.topups && resolvedCatalogMode === 'sync' && (
+                    {resolvedCatalogMode === 'sync' && (
                       <span className="w-11 text-center shrink-0">{t.g2bulkPullCarousel}</span>
                     )}
                     <span className="flex-1">
@@ -786,9 +812,10 @@ export default function G2bulkPullPanel({
                   {activeItems.map((item) => {
                     const key = getItemKey(item);
                     const selected = isSelected(item);
-                    const inCarousel = activeTab === TABS.topups
-                      && resolvedCatalogMode === 'sync'
-                      && selection.carouselBaseKeys.has(item.code);
+                    const cKey = carouselKeyForItem(item);
+                    const inCarousel = resolvedCatalogMode === 'sync'
+                      && !!cKey
+                      && selection.carouselBaseKeys.has(cKey);
                     const title = translateRegion(item.name || item.title, lang);
                     const inStore = !!item.synced;
                     const voucherTag = item.voucherKind === 'account'
@@ -798,7 +825,7 @@ export default function G2bulkPullPanel({
                         : '';
                     const meta = activeTab === TABS.topups
                       ? `${item.code || ''}${inStore ? ` · ${t.g2bulkPullStoreBadge}` : ''}${inCarousel ? ` · ${t.g2bulkPullCarousel}` : ''}`
-                      : `${item.productCount || 0} ${t.g2bulkPullProducts}${voucherTag ? ` · ${voucherTag}` : ''}${inStore ? ` · ${t.g2bulkPullStoreBadge}` : ''}`;
+                      : `${item.productCount || 0} ${t.g2bulkPullProducts}${voucherTag ? ` · ${voucherTag}` : ''}${inStore ? ` · ${t.g2bulkPullStoreBadge}` : ''}${inCarousel ? ` · ${t.g2bulkPullCarousel}` : ''}`;
 
                     return (
                       <div
@@ -821,7 +848,7 @@ export default function G2bulkPullPanel({
                               : 'border-[var(--border)] bg-[var(--bg-primary)]/25 active:bg-[var(--bg-primary)]/40'
                         }`}
                       >
-                        {activeTab === TABS.topups && resolvedCatalogMode === 'sync' && (
+                        {resolvedCatalogMode === 'sync' && (
                           <div
                             className="w-11 shrink-0 flex justify-center pointer-events-auto"
                             onClick={(e) => e.stopPropagation()}

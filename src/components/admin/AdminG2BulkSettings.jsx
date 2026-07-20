@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
-  Zap, Loader2, CheckCircle, AlertCircle, Save, RefreshCw, Download, X,
-  Clock, Key, Store, Truck, CalendarClock, ShieldCheck,
+  Zap, Loader2, CheckCircle, AlertCircle, Save, Download, X,
+  Clock, Key, Store, CalendarClock, ShieldCheck,
   Package, Info, CloudDownload, Trash2,
 } from 'lucide-react';
 import G2bulkWalletCard from '../ui/G2bulkWalletCard';
 import G2bulkPullPanel from './G2bulkPullPanel';
 import PricingEditableValue from './PricingEditableValue';
 import ConfirmDialog from '../ui/ConfirmDialog';
+import AdminApiKeyField from './AdminApiKeyField';
 import {
   fetchG2bulkSettings,
   saveG2bulkSettings,
@@ -21,7 +22,10 @@ import { useAdminG2bulkWallet } from '../../hooks/useAdminG2bulkWallet';
 import { countPullSelection, normalizeCatalogMode, normalizePullSelection } from '../../lib/pullCatalogUtils';
 import { formatMessage } from '../../lib/i18n';
 import { logDevEvent } from '../../lib/siteLogs';
-import { setCachedStoreMarkupPercent } from '../../lib/storeMarkupCache';
+import {
+  invalidateStoreMarkupPercent,
+  setCachedStoreMarkupPercent,
+} from '../../lib/storeMarkupCache';
 
 const TIMEZONE_OPTIONS = [
   { value: 'Asia/Damascus', label: 'Syria (Asia/Damascus)' },
@@ -140,6 +144,9 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [markupSaving, setMarkupSaving] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState('');
+  const [deleteKeyOpen, setDeleteKeyOpen] = useState(false);
+  const [deletingKey, setDeletingKey] = useState(false);
+  const apiKeyLocked = !!form.g2bulk_api_key_set;
   const walletEnabled = !loading && (form.g2bulk_api_key_set || apiKeyInput.trim().length > 0);
 
   const parseMarkupPercent = (value) => {
@@ -160,11 +167,11 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     try {
       const data = await fetchG2bulkSettings();
       const markup = parseMarkupPercent(data?.g2bulk_markup_percent);
-      if (markup != null) setCachedStoreMarkupPercent(markup);
+      const safeMarkup = markup != null && markup > 0 ? markup : 12;
+      setCachedStoreMarkupPercent(safeMarkup);
       setForm({
         g2bulk_enabled: data.g2bulk_enabled ?? false,
-        // Only fall back to 15 when the server truly has no value
-        g2bulk_markup_percent: markup != null ? markup : 15,
+        g2bulk_markup_percent: safeMarkup,
         g2bulk_catalog_only: data.g2bulk_catalog_only ?? true,
         g2bulk_catalog_mode: normalizeCatalogMode(data.g2bulk_catalog_mode),
         g2bulk_auto_sync_enabled: data.g2bulk_auto_sync_enabled ?? true,
@@ -204,10 +211,10 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
   const persistSettings = async (overrides = {}) => {
     const payload = { ...form, ...overrides };
     const markup = parseMarkupPercent(payload.g2bulk_markup_percent);
-    // Never force 15 when markup is unknown — that was overwriting the real saved margin.
+    // Skip 0 — empty/broken values were wiping the real store margin to 0%
     const saved = await saveG2bulkSettings({
       enabled: payload.g2bulk_enabled,
-      markupPercent: markup != null ? markup : undefined,
+      markupPercent: markup != null && markup > 0 ? markup : undefined,
       catalogOnly: payload.g2bulk_catalog_only,
       catalogMode: payload.g2bulk_catalog_mode,
       autoSyncEnabled: payload.g2bulk_auto_sync_enabled,
@@ -218,10 +225,16 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     if (apiKeyInput.trim()) setApiKeyInput('');
     if (saved) {
       const savedMarkup = parseMarkupPercent(saved.g2bulk_markup_percent);
+      if (savedMarkup != null && savedMarkup > 0) {
+        invalidateStoreMarkupPercent();
+        setCachedStoreMarkupPercent(savedMarkup);
+      }
       setForm((prev) => ({
         ...prev,
         g2bulk_enabled: saved.g2bulk_enabled ?? prev.g2bulk_enabled,
-        g2bulk_markup_percent: savedMarkup != null ? savedMarkup : prev.g2bulk_markup_percent,
+        g2bulk_markup_percent: savedMarkup != null && savedMarkup > 0
+          ? savedMarkup
+          : prev.g2bulk_markup_percent,
         g2bulk_catalog_only: saved.g2bulk_catalog_only ?? prev.g2bulk_catalog_only,
         g2bulk_catalog_mode: saved.g2bulk_catalog_mode || prev.g2bulk_catalog_mode,
         g2bulk_auto_sync_enabled: saved.g2bulk_auto_sync_enabled ?? prev.g2bulk_auto_sync_enabled,
@@ -263,12 +276,35 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     }
   };
 
+  const handleDeleteApiKey = async () => {
+    setDeletingKey(true);
+    setError('');
+    try {
+      const saved = await saveG2bulkSettings({ apiKey: '' });
+      setApiKeyInput('');
+      setForm((prev) => ({
+        ...prev,
+        g2bulk_api_key_set: saved?.g2bulk_api_key_set ?? false,
+        g2bulk_api_key_masked: saved?.g2bulk_api_key_masked || '',
+        g2bulk_api_key_source: saved?.g2bulk_api_key_source || 'none',
+      }));
+      setDeleteKeyOpen(false);
+      setSuccess(t.g2bulkApiKeyRemoved || t.samApiKeyRemoved);
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError(err.message || t.g2bulkSaveFailed);
+    } finally {
+      setDeletingKey(false);
+    }
+  };
+
   const handleTest = async () => {
     setTesting(true);
     setError('');
     setTestResult(null);
     try {
-      if (apiKeyInput.trim()) {
+      // Save pending key before test (same flow as Sam)
+      if (!apiKeyLocked && apiKeyInput.trim()) {
         await persistSettings();
       }
       // Direct getMe for test result (hook may keep last-good on flaky refresh).
@@ -456,6 +492,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
       if (!cancelled) {
         logDevEvent('g2bulk_sync_failed', {
           severity: 'danger',
+          error: err,
           metadata: {
             error: err.message || t.g2bulkImportFailed,
             endpoint: 'g2bulk/sync-catalog',
@@ -512,17 +549,19 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
 
   const handleMarkupCommit = async (raw) => {
     const n = parseMarkupPercent(raw);
-    if (n == null || n < 0) return;
+    // Reject 0 / empty — saving 0 made every pack badge show "+0%"
+    if (n == null || n <= 0) return;
     setForm((p) => ({ ...p, g2bulk_markup_percent: n }));
     setMarkupSaving(true);
     setError('');
     try {
       const saved = await saveG2bulkSettings({ markupPercent: n });
       const savedMarkup = parseMarkupPercent(saved?.g2bulk_markup_percent);
-      setCachedStoreMarkupPercent(savedMarkup != null ? savedMarkup : n);
-      if (savedMarkup != null) {
-        setForm((p) => ({ ...p, g2bulk_markup_percent: savedMarkup }));
-      }
+      const finalMarkup = savedMarkup != null && savedMarkup > 0 ? savedMarkup : n;
+      // Force badges to re-read so 12% → 15% / 17% shows immediately
+      invalidateStoreMarkupPercent();
+      setCachedStoreMarkupPercent(finalMarkup);
+      setForm((p) => ({ ...p, g2bulk_markup_percent: finalMarkup }));
       setSuccess(t.g2bulkMarkupSaved || t.g2bulkSettingsSaved);
       setTimeout(() => setSuccess(''), 2500);
     } catch (err) {
@@ -579,7 +618,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
               value={form.g2bulk_markup_percent}
               displayValue={`${form.g2bulk_markup_percent}%`}
               suffix="%"
-              min={0}
+              min={0.5}
               max={500}
               step={0.5}
               t={t}
@@ -792,21 +831,23 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
           title={t.g2bulkApiConnection}
           description={t.g2bulkApiConnectionDesc}
         >
-          {form.g2bulk_api_key_set && (
-            <div className="flex items-center gap-2 text-sm text-[var(--text-sec)] bg-[var(--bg-primary)]/50 rounded-lg px-3 py-2">
-              <Key className="w-4 h-4 text-[var(--accent)] shrink-0" />
-              <span className="font-mono truncate">{form.g2bulk_api_key_masked}</span>
-            </div>
-          )}
-          <input
-            type="password"
-            autoComplete="off"
+          <AdminApiKeyField
+            t={t}
+            id="g2bulk-api-key"
+            title={t.g2bulkApiKeyLabel || t.g2bulkApiConnection}
+            description={apiKeyHint()}
+            locked={apiKeyLocked}
+            maskedValue={form.g2bulk_api_key_masked}
             value={apiKeyInput}
-            onChange={(e) => setApiKeyInput(e.target.value)}
+            onChange={setApiKeyInput}
             placeholder={t.g2bulkNewApiKeyPlaceholder}
-            className="input w-full font-mono text-sm"
+            onConnect={handleTest}
+            connectLabel={t.testConnection}
+            connectDisabled={!apiKeyLocked && !apiKeyInput.trim()}
+            connecting={testing}
+            onDelete={() => setDeleteKeyOpen(true)}
+            deleteLabel={t.g2bulkApiDeleteKey || t.samApiDeleteKey}
           />
-          <p className="text-xs text-[var(--text-muted)]">{apiKeyHint()}</p>
 
           {walletEnabled && (
             <G2bulkWalletCard
@@ -819,16 +860,6 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
               onRefresh={() => refreshG2bulkWallet()}
             />
           )}
-
-          <button
-            type="button"
-            onClick={handleTest}
-            disabled={testing}
-            className="btn btn-secondary w-full sm:w-auto inline-flex items-center justify-center gap-2"
-          >
-            {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            {t.testConnection}
-          </button>
         </SectionCard>
 
         <SectionCard
@@ -965,32 +996,6 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
       </header>
       )}
 
-      {embedded && (
-        <div className="rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent)]/5 px-4 py-4 sm:px-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex items-start gap-3 min-w-0">
-              <div className="p-2.5 rounded-xl bg-[var(--accent)]/15 text-[var(--accent)] shrink-0">
-                <Zap className="w-5 h-5" />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-lg font-bold">{t.g2bulkTitle}</h2>
-                <p className="text-sm text-[var(--text-sec)] mt-0.5">{t.g2bulkCatalogDesc}</p>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <StatusPill
-                ok={form.g2bulk_api_key_set}
-                label={form.g2bulk_api_key_set ? t.g2bulkApiConfigured : t.g2bulkApiNotSet}
-              />
-              <StatusPill
-                ok={!!form.g2bulk_last_sync_at}
-                label={form.g2bulk_last_sync_at ? t.g2bulkSynced : t.g2bulkNeverSynced}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
       {(error || success) && (
         <div className="space-y-2">
           {error && (
@@ -1017,7 +1022,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
             <span className="font-semibold text-sm text-[var(--text-primary)]">
               {t.g2bulkApiConnection} · {t.g2bulkScheduledSync}
             </span>
-            <span className="text-xs text-[var(--text-muted)] group-open:hidden">{t.saveSettings}</span>
+            <span className="text-xs text-[var(--text-muted)] group-open:hidden">{t.showMore || '…'}</span>
           </summary>
           <div className="px-4 pb-5 sm:px-5 space-y-6 border-t border-[var(--border)] pt-4">
             {connectionSections}
@@ -1027,20 +1032,23 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         connectionSections
       )}
 
-      <div className="flex flex-wrap gap-3 pt-2 border-t border-[var(--border)]">
+      {/* Markup saves via pencil; this button covers API key, enable toggle, schedule */}
+      <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-[var(--border)]">
         <button
           type="button"
           onClick={handleSave}
           disabled={saving}
-          className="btn btn-primary inline-flex items-center gap-2"
+          className="btn btn-primary action-chip gap-2 !border-0 disabled:opacity-50"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          {t.saveSettings}
+          {t.save || t.saveSettings}
         </button>
-        <p className="text-xs text-[var(--text-muted)] self-center flex items-center gap-1.5">
-          <Truck className="w-3.5 h-3.5" />
-          {t.g2bulkSaveSettingsHint}
-        </p>
+        {success && (
+          <span className="text-xs text-emerald-400 inline-flex items-center gap-1">
+            <CheckCircle className="w-3.5 h-3.5" />
+            {success}
+          </span>
+        )}
       </div>
 
       <G2bulkPullPanel
@@ -1064,6 +1072,17 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         loading={clearing}
         onConfirm={confirmClearSyncedCatalog}
         onCancel={() => setShowClearConfirm(false)}
+      />
+
+      <ConfirmDialog
+        open={deleteKeyOpen}
+        title={t.g2bulkApiDeleteKeyTitle || t.samApiDeleteKey}
+        message={t.g2bulkApiDeleteKeyConfirm || t.samApiDeleteKeyConfirm}
+        confirmLabel={t.g2bulkApiDeleteKey || t.samApiDeleteKey}
+        cancelLabel={t.cancel}
+        loading={deletingKey}
+        onConfirm={handleDeleteApiKey}
+        onCancel={() => setDeleteKeyOpen(false)}
       />
     </div>
   );

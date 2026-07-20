@@ -31,6 +31,10 @@ import {
 } from '../../lib/adminModeration';
 import { getAdminOrdersPath, getAdminUserPath } from '../../lib/adminRoutes';
 import { formatDateTime, formatMessage } from '../../lib/i18n';
+import InboxPager from '../notifications/InboxPager';
+
+/** Match recharges / users admin lists */
+const PAGE_SIZE = 25;
 import {
   formatOrderDisplayId,
   formatOrderItemDisplayName,
@@ -119,6 +123,7 @@ export default function AdminOrdersManager({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(ORDER_STATUS_FILTER_IDS.ALL);
   const [expandedOrderId, setExpandedOrderId] = useState(highlightOrderId || null);
+  const [page, setPage] = useState(1);
   const [resolvedUserId, setResolvedUserId] = useState('');
   const [userFilterProfile, setUserFilterProfile] = useState(null);
   const [userFilterLoading, setUserFilterLoading] = useState(false);
@@ -142,11 +147,32 @@ export default function AdminOrdersManager({
     userId: resolvedUserId,
   });
 
+  const totalFiltered = filteredOrders.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE) || 1);
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const rangeStart = totalFiltered === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(totalFiltered, safePage * PAGE_SIZE);
+  const pagedOrders = useMemo(
+    () => filteredOrders.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    [filteredOrders, safePage],
+  );
+
   useEffect(() => {
-    if (highlightOrderId) {
-      setExpandedOrderId(highlightOrderId);
+    setPage(1);
+  }, [search, statusFilter, resolvedUserId]);
+
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
+
+  useEffect(() => {
+    if (!highlightOrderId) return;
+    setExpandedOrderId(highlightOrderId);
+    const idx = filteredOrders.findIndex((order) => order.id === highlightOrderId);
+    if (idx >= 0) {
+      setPage(Math.floor(idx / PAGE_SIZE) + 1);
     }
-  }, [highlightOrderId]);
+  }, [highlightOrderId, filteredOrders]);
 
   useEffect(() => {
     if (!userFilterParam) {
@@ -446,18 +472,30 @@ export default function AdminOrdersManager({
 
   return (
     <div className="card p-4 sm:p-6 space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex items-start gap-3">
-          <ShoppingBag className="w-5 h-5 text-[var(--accent)] mt-0.5 flex-shrink-0" />
-          <div>
+          <span className="admin-list-head-badge" aria-hidden>
+            <ShoppingBag className="w-5 h-5" strokeWidth={2} />
+          </span>
+          <div className="min-w-0">
             <h3 className="font-bold text-lg sm:text-xl">
               {t.ordersTab}
-              {' '}
-              <span className="text-[var(--text-muted)] font-semibold">
-                ({filteredOrders.length}{filteredOrders.length !== orders.length ? ` / ${orders.length}` : ''})
-              </span>
             </h3>
-            <p className="text-xs text-[var(--text-sec)] mt-0.5">{t.adminOrdersDesc}</p>
+            <p className="text-xs sm:text-sm text-[var(--text-sec)] mt-0.5 leading-relaxed">
+              {t.adminOrdersDesc}
+            </p>
+            {totalFiltered > 0 && (
+              <p className="text-xs text-[var(--text-muted)] mt-1.5" dir="ltr">
+                {formatMessage(t.adminListRange, {
+                  from: rangeStart,
+                  to: rangeEnd,
+                  total: totalFiltered,
+                })}
+                {totalFiltered !== orders.length
+                  ? ` · ${formatMessage(t.adminOrdersFilteredOfTotal, { total: orders.length })}`
+                  : ''}
+              </p>
+            )}
           </div>
         </div>
         {refreshOrders && (
@@ -489,17 +527,20 @@ export default function AdminOrdersManager({
         <div className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
           {t.adminOrdersFilterStatus}
         </div>
-        <div className="inbox-filter-bar">
+        <div className="inbox-filter-bar" role="tablist" aria-label={t.adminOrdersFilterStatus}>
           {statusOptions.map((option) => {
             const count = option.id === ORDER_STATUS_FILTER_IDS.ALL
               ? userScopedOrders.length
               : countOrdersForFilter(userScopedOrders, option.id);
+            const active = statusFilter === option.id;
             return (
               <button
                 key={option.id}
                 type="button"
+                role="tab"
+                aria-selected={active}
                 onClick={() => setStatusFilter(option.id)}
-                className={`inbox-filter-chip ${statusFilter === option.id ? 'inbox-filter-chip--active' : ''}`}
+                className={`inbox-filter-chip ${active ? 'inbox-filter-chip--active' : ''}`}
               >
                 {option.label}
                 <span className="inbox-filter-chip-count">{count}</span>
@@ -566,7 +607,7 @@ export default function AdminOrdersManager({
         <div className="py-12 text-center">
           <Loader2 className="w-6 h-6 animate-spin mx-auto text-[var(--accent)]" />
         </div>
-      ) : filteredOrders.length === 0 ? (
+      ) : totalFiltered === 0 ? (
         <div className="py-12 text-center space-y-3">
           <p className="text-[var(--text-sec)]">{t[emptyMessageKey] || t.noOrdersYet}</p>
           {hasActiveFilters && (
@@ -576,8 +617,9 @@ export default function AdminOrdersManager({
           )}
         </div>
       ) : (
+        <>
         <div className="space-y-3">
-          {filteredOrders.map((order) => {
+          {pagedOrders.map((order) => {
             const isExpanded = expandedOrderId === order.id;
             const items = order.order_items || [];
             const previewItem = items[0]
@@ -585,11 +627,13 @@ export default function AdminOrdersManager({
               : '';
             const previewUid = items[0]?.player_uid;
             const isFilteredUserOrder = resolvedUserId && order.user_id === resolvedUserId;
+            const isHighlight = highlightOrderId && order.id === highlightOrderId;
 
             return (
               <div
                 key={order.id}
-                className={`admin-order-row ${isExpanded ? 'admin-order-row--expanded' : ''}`}
+                id={isHighlight ? `admin-order-${order.id}` : undefined}
+                className={`admin-order-row ${isExpanded ? 'admin-order-row--expanded' : ''}${isHighlight ? ' admin-order-row--highlight' : ''}`}
               >
                 <button
                   type="button"
@@ -642,8 +686,18 @@ export default function AdminOrdersManager({
                 {isExpanded && renderExpandedDetails(order)}
               </div>
             );
-          }          )}
+          })}
         </div>
+        <InboxPager
+          page={safePage}
+          totalPages={totalPages}
+          total={totalFiltered}
+          onPageChange={setPage}
+          t={t}
+          lang={lang}
+          infoKey="adminOrdersPageInfo"
+        />
+        </>
       )}
 
     </div>

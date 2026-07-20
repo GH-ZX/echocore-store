@@ -12,44 +12,57 @@ export function sortGamesByCarousel(games = []) {
 
 const CAROUSEL_FALLBACK_LIMIT = 12;
 
+export function isCarouselRedeemItem(game) {
+  return !!game && game.redemption_method === 'redeem_code';
+}
+
+/** Active storefront titles eligible for carousel (top-up games + redeem codes). */
+export function getCarouselEligibleGames(games = []) {
+  return games.filter((game) =>
+    isStorefrontGame(game)
+    && game.active !== false
+    && (game.image_url || game.logo_url),
+  );
+}
+
 export function getCarouselGames(games = []) {
   const sorted = sortGamesByCarousel(games.filter(isStorefrontGame));
   const explicit = sorted.filter((g) => g.show_in_carousel === true);
   if (explicit.length > 0) return explicit;
 
+  // Default fallback: top-up games only (legacy behaviour when nothing pinned)
   return sorted
     .filter((g) =>
       g.active !== false
-      && g.redemption_method !== 'redeem_code'
+      && !isCarouselRedeemItem(g)
       && (g.image_url || g.logo_url))
     .slice(0, CAROUSEL_FALLBACK_LIMIT);
 }
 
-/** Top-up storefront games in the store that are not already in the carousel */
-export function getCarouselPickableGames(games = []) {
-  const topupParents = games.filter((game) =>
-    isStorefrontGame(game)
-    && game.active !== false
-    && game.redemption_method !== 'redeem_code',
-  );
-  const inCarouselIds = new Set(getCarouselGames(topupParents).map((game) => game.id));
+/**
+ * Store titles not already on the carousel (games + redeem codes).
+ * @param {object[]} games
+ * @param {{ kind?: 'all'|'games'|'redeem' }} [opts]
+ */
+export function getCarouselPickableGames(games = [], { kind = 'all' } = {}) {
+  const eligible = getCarouselEligibleGames(games);
+  const inCarouselIds = new Set(getCarouselGames(games).map((game) => game.id));
 
-  return sortGamesByCarousel(
-    topupParents.filter((game) =>
-      !inCarouselIds.has(game.id)
-      && (game.image_url || game.logo_url),
-    ),
+  let list = eligible.filter((game) =>
+    !inCarouselIds.has(game.id)
+    && (game.image_url || game.logo_url),
   );
+
+  if (kind === 'games') {
+    list = list.filter((game) => !isCarouselRedeemItem(game));
+  } else if (kind === 'redeem') {
+    list = list.filter((game) => isCarouselRedeemItem(game));
+  }
+
+  return sortGamesByCarousel(list);
 }
 
-/** Games eligible for carousel management (store top-ups only) */
+/** Games + redeem codes eligible for carousel management UI */
 export function getCarouselManageableGames(games = []) {
-  return sortGamesByCarousel(
-    games.filter((game) =>
-      isStorefrontGame(game)
-      && game.active !== false
-      && game.redemption_method !== 'redeem_code'
-      && (game.image_url || game.logo_url),
-    ),
-  );
+  return sortGamesByCarousel(getCarouselEligibleGames(games));
 }

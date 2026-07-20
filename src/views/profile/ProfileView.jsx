@@ -40,6 +40,10 @@ import {
   PROFILE_SELECT,
   PROFILE_CORE_SELECT,
   emptyProfileValue,
+  getDateOfBirthMax,
+  getDateOfBirthMin,
+  normalizeProfileGender,
+  normalizeProfileDateOfBirth,
 } from '../../lib/profile';
 import { getOrderStatusLabel } from '../../lib/orderReceipt';
 import { isInvoiceReadyForOrder } from '../../lib/invoices';
@@ -101,6 +105,8 @@ export default function ProfileView({
   const [favoriteGameDraft, setFavoriteGameDraft] = useState('');
   const [discordDraft, setDiscordDraft] = useState('');
   const [playerUidDraft, setPlayerUidDraft] = useState('');
+  const [genderDraft, setGenderDraft] = useState(user?.gender || '');
+  const [dateOfBirthDraft, setDateOfBirthDraft] = useState(user?.date_of_birth || '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '');
   const [avatarPreview, setAvatarPreview] = useState('');
   const [pendingAvatarFile, setPendingAvatarFile] = useState(null);
@@ -137,6 +143,8 @@ export default function ProfileView({
     setFavoriteGameDraft(profile?.favorite_game || currentUser?.favorite_game || '');
     setDiscordDraft(profile?.discord_username || currentUser?.discord_username || '');
     setPlayerUidDraft(profile?.default_player_uid || currentUser?.default_player_uid || '');
+    setGenderDraft(profile?.gender || currentUser?.gender || '');
+    setDateOfBirthDraft(profile?.date_of_birth || currentUser?.date_of_birth || '');
     setAvatarUrl(profile?.avatar_url || currentUser?.avatar_url || '');
     setAvatarPreview('');
     setPendingAvatarFile(null);
@@ -241,6 +249,8 @@ export default function ProfileView({
   const savedFavoriteGame = savedProfile.favorite_game || '';
   const savedDiscord = savedProfile.discord_username || '';
   const savedPlayerUid = savedProfile.default_player_uid || '';
+  const savedGender = savedProfile.gender || user?.gender || '';
+  const savedDateOfBirth = savedProfile.date_of_birth || user?.date_of_birth || '';
   const heroName = editingProfile ? (nameDraft || user.name) : savedName;
   const displayAvatar = removeAvatar ? '' : (avatarPreview || avatarUrl);
   const memberSince = formatDate(profileMeta?.created_at, lang);
@@ -252,22 +262,36 @@ export default function ProfileView({
 
   const accountTypeLabel = isAdmin ? t.profileRoleAdmin : t.profileRolePlayer;
 
-  const profileDetails = useMemo(() => [
-    ...(savedUsername ? [{
-      key: 'username',
-      label: t.profileUsername,
-      icon: AtSign,
-      value: formatProfileUsername(savedUsername),
-    }] : []),
-    { key: 'bio', label: t.profileBio, icon: Sparkles, value: formatDetail(savedBio) },
-    { key: 'phone', label: t.profilePhone, icon: Phone, value: formatDetail(savedPhone) },
-    { key: 'country', label: t.profileCountry, icon: MapPin, value: formatDetail(savedCountry) },
-    { key: 'favorite_game', label: t.profileFavoriteGame, icon: Gamepad2, value: formatDetail(savedFavoriteGame) },
-    { key: 'discord', label: t.profileDiscord, icon: AtSign, value: formatDetail(savedDiscord) },
-    { key: 'player_uid', label: t.profileDefaultUid, icon: Hash, value: formatDetail(savedPlayerUid) },
-    { key: 'member_since', label: t.memberSince, icon: Calendar, value: memberSince },
-    { key: 'account_type', label: t.accountType, icon: ShieldCheck, value: accountTypeLabel },
-  ], [savedUsername, savedBio, savedPhone, savedCountry, savedFavoriteGame, savedDiscord, savedPlayerUid, memberSince, accountTypeLabel, t, formatDetail]);
+  const profileDetails = useMemo(() => {
+    const genderValue = savedGender === 'male'
+      ? t.genderMale
+      : savedGender === 'female'
+        ? t.genderFemale
+        : notSetLabel;
+    return [
+      ...(savedUsername ? [{
+        key: 'username',
+        label: t.profileUsername,
+        icon: AtSign,
+        value: formatProfileUsername(savedUsername),
+      }] : []),
+      { key: 'gender', label: t.gender, icon: UserRound, value: genderValue },
+      {
+        key: 'date_of_birth',
+        label: t.dateOfBirth,
+        icon: Calendar,
+        value: savedDateOfBirth ? formatDate(savedDateOfBirth, lang) : notSetLabel,
+      },
+      { key: 'bio', label: t.profileBio, icon: Sparkles, value: formatDetail(savedBio) },
+      { key: 'phone', label: t.profilePhone, icon: Phone, value: formatDetail(savedPhone) },
+      { key: 'country', label: t.profileCountry, icon: MapPin, value: formatDetail(savedCountry) },
+      { key: 'favorite_game', label: t.profileFavoriteGame, icon: Gamepad2, value: formatDetail(savedFavoriteGame) },
+      { key: 'discord', label: t.profileDiscord, icon: AtSign, value: formatDetail(savedDiscord) },
+      { key: 'player_uid', label: t.profileDefaultUid, icon: Hash, value: formatDetail(savedPlayerUid) },
+      { key: 'member_since', label: t.memberSince, icon: Calendar, value: memberSince },
+      { key: 'account_type', label: t.accountType, icon: ShieldCheck, value: accountTypeLabel },
+    ];
+  }, [savedUsername, savedGender, savedDateOfBirth, savedBio, savedPhone, savedCountry, savedFavoriteGame, savedDiscord, savedPlayerUid, memberSince, accountTypeLabel, t, formatDetail, notSetLabel, lang]);
 
   const isDirty = useMemo(() => {
     const base = {
@@ -279,6 +303,8 @@ export default function ProfileView({
       favorite_game: profileMeta?.favorite_game || user?.favorite_game || '',
       discord_username: profileMeta?.discord_username || user?.discord_username || '',
       default_player_uid: profileMeta?.default_player_uid || user?.default_player_uid || '',
+      gender: profileMeta?.gender || user?.gender || '',
+      date_of_birth: profileMeta?.date_of_birth || user?.date_of_birth || '',
     };
     const baseAvatar = profileMeta?.avatar_url || user?.avatar_url || '';
     return (
@@ -290,10 +316,12 @@ export default function ProfileView({
       || favoriteGameDraft.trim() !== base.favorite_game.trim()
       || discordDraft.trim() !== base.discord_username.trim()
       || playerUidDraft.trim() !== base.default_player_uid.trim()
+      || (genderDraft || '') !== (base.gender || '')
+      || (dateOfBirthDraft || '') !== (base.date_of_birth || '')
       || !!pendingAvatarFile
       || (removeAvatar && !!baseAvatar)
     );
-  }, [usernameDraft, nameDraft, bioDraft, phoneDraft, countryDraft, favoriteGameDraft, discordDraft, playerUidDraft, pendingAvatarFile, removeAvatar, profileMeta, user]);
+  }, [usernameDraft, nameDraft, bioDraft, phoneDraft, countryDraft, favoriteGameDraft, discordDraft, playerUidDraft, genderDraft, dateOfBirthDraft, pendingAvatarFile, removeAvatar, profileMeta, user]);
 
   const handleAvatarPick = (file) => {
     if (!file) return;
@@ -400,6 +428,13 @@ export default function ProfileView({
         };
       }
 
+      const dobCheck = normalizeProfileDateOfBirth(dateOfBirthDraft);
+      if (!dobCheck.ok) {
+        setProfileError(t.dateOfBirthInvalid || t.profileSaveFailed);
+        setSavingProfile(false);
+        return;
+      }
+
       const updated = await updateUserProfileRecord(user.id, {
         name: trimmedName,
         bio: bioDraft,
@@ -408,6 +443,8 @@ export default function ProfileView({
         favorite_game: favoriteGameDraft,
         discord_username: discordDraft,
         default_player_uid: playerUidDraft,
+        gender: normalizeProfileGender(genderDraft),
+        date_of_birth: dobCheck.value,
         avatar_url: nextAvatarUrl,
       });
 
@@ -430,6 +467,8 @@ export default function ProfileView({
         favorite_game: updated.favorite_game || '',
         discord_username: updated.discord_username || '',
         default_player_uid: updated.default_player_uid || '',
+        gender: updated.gender || null,
+        date_of_birth: updated.date_of_birth || null,
         avatar_url: updated.avatar_url || '',
       });
 
@@ -673,8 +712,8 @@ export default function ProfileView({
               <label className="profile-field-label" htmlFor="profile-username">
                 {t.profileUsername}
               </label>
-              <div className="relative">
-                <span className="absolute inset-y-0 start-3 flex items-center text-[var(--text-muted)] font-mono text-sm pointer-events-none">@</span>
+              <div className="relative" dir="ltr">
+                <span className="absolute inset-y-0 left-3 flex items-center text-[var(--text-muted)] font-mono text-sm pointer-events-none">@</span>
                 <input
                   id="profile-username"
                   type="text"
@@ -682,7 +721,8 @@ export default function ProfileView({
                   onChange={(e) => setUsernameDraft(normalizeUsernameInput(e.target.value))}
                   maxLength={20}
                   disabled={!usernameChangeAllowed || savingProfile}
-                  className="profile-field-input font-mono ps-7 disabled:opacity-60"
+                  className="profile-field-input font-mono pl-7 text-left disabled:opacity-60"
+                  dir="ltr"
                   placeholder={t.profileUsernamePlaceholder}
                   autoComplete="username"
                   spellCheck={false}
@@ -710,6 +750,51 @@ export default function ProfileView({
                 className="profile-field-input"
                 placeholder={t.displayNamePlaceholder}
               />
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="profile-field-label" htmlFor="profile-dob">
+                  {t.dateOfBirth}
+                </label>
+                <input
+                  id="profile-dob"
+                  type="date"
+                  value={dateOfBirthDraft || ''}
+                  onChange={(e) => setDateOfBirthDraft(e.target.value)}
+                  min={getDateOfBirthMin()}
+                  max={getDateOfBirthMax()}
+                  className="profile-field-input"
+                />
+              </div>
+              <div>
+                <span className="profile-field-label">
+                  {t.gender}
+                </span>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  {[
+                    { id: 'male', label: t.genderMale },
+                    { id: 'female', label: t.genderFemale },
+                  ].map((opt) => {
+                    const active = genderDraft === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setGenderDraft((prev) => (prev === opt.id ? '' : opt.id))}
+                        className={`py-2.5 rounded-xl border text-sm font-semibold transition-colors ${
+                          active
+                            ? 'border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)]'
+                            : 'border-[var(--border)] text-[var(--text-sec)] hover:text-[var(--text)]'
+                        }`}
+                        aria-pressed={active}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             <div>

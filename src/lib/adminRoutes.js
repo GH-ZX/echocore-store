@@ -5,6 +5,8 @@ export const ADMIN_TAB_SEGMENTS = {
   home: 'home',
   products: 'products',
   orders: 'orders',
+  profits: 'profits',
+  apis: 'apis',
   payments: 'payments',
   g2bulk: 'g2bulk',
   recharges: 'recharges',
@@ -20,14 +22,38 @@ export const ADMIN_SEGMENT_TO_TAB = Object.fromEntries(
   Object.entries(ADMIN_TAB_SEGMENTS).map(([tabId, segment]) => [segment, tabId]),
 );
 
+/** Nested section under /dashboard/apis/:section (survives refresh). */
+export const ADMIN_API_SECTIONS = ['g2bulk', 'sam', 'igdb'];
+
+export function isValidAdminApisSection(section = '') {
+  return ADMIN_API_SECTIONS.includes(String(section || '').trim());
+}
+
+export function resolveAdminApisSectionFromPath(pathname = '') {
+  const parts = String(pathname).replace(/\/+$/, '').split('/').filter(Boolean);
+  if (parts[0] !== 'dashboard' || parts[1] !== ADMIN_TAB_SEGMENTS.apis) return '';
+  const section = parts[2] || '';
+  return isValidAdminApisSection(section) ? section : '';
+}
+
 export function resolveAdminTabFromPath(pathname = '') {
   const parts = String(pathname).replace(/\/+$/, '').split('/').filter(Boolean);
   if (parts.length < 2 || parts[0] !== 'dashboard') return 'overview';
   if (parts.length === 1) return 'overview';
   const segment = parts[1];
   if (segment === ADMIN_TAB_SEGMENTS.users) return 'users';
-  if (segment === ADMIN_TAB_SEGMENTS.g2bulk) return 'products';
+  // /dashboard/apis or /dashboard/apis/:section
+  if (segment === ADMIN_TAB_SEGMENTS.apis) return 'apis';
+  // Legacy /dashboard/g2bulk → unified APIs hub
+  if (segment === ADMIN_TAB_SEGMENTS.g2bulk) return 'apis';
   return ADMIN_SEGMENT_TO_TAB[segment] || 'overview';
+}
+
+export function getAdminApisPath({ section = '' } = {}) {
+  const base = getAdminDashboardPath('apis');
+  const id = String(section || '').trim();
+  if (!id || !isValidAdminApisSection(id)) return base;
+  return `${base}/${id}`;
 }
 
 export function resolveAdminUserRouteParamFromPath(pathname = '') {
@@ -54,6 +80,13 @@ export function getAdminUserPath(username = '') {
   return `/dashboard/users/${encodeURIComponent(slug)}`;
 }
 
+/** User admin page scrolled to wallet purchase/recharge ledger. */
+export function getAdminUserWalletFlowPath(username = '') {
+  const base = getAdminUserPath(username);
+  if (base === getAdminDashboardPath('users')) return base;
+  return `${base}#wallet-flow`;
+}
+
 /** @deprecated Use getAdminUserPath(username) */
 export function getAdminUserDetailPath(username = '') {
   return getAdminUserPath(username);
@@ -68,8 +101,15 @@ export function getAdminDashboardPath(tabId = 'overview') {
 export const ADMIN_FOCUS_SYP_RATE_STATE = { focusSypRate: true };
 
 export function getAdminPaymentsPath({ focusSypRate = false } = {}) {
+  // SYP rate lives on Sam API settings → APIs hub
+  if (focusSypRate) {
+    return {
+      pathname: getAdminApisPath({ section: 'sam' }),
+      state: { focusSypRate: true },
+    };
+  }
   const base = getAdminDashboardPath('payments');
-  return focusSypRate ? { pathname: base, state: ADMIN_FOCUS_SYP_RATE_STATE } : base;
+  return base;
 }
 
 export function getAdminSaleDiscountsPath() {

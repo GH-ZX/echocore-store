@@ -136,7 +136,9 @@ export default function AppRoutes({
               onBuyNow={openBuyOffer}
               onEditOffer={homeShowsAdminChrome ? setAdminEditOffer : undefined}
               onEditGame={homeShowsAdminChrome ? setAdminEditGame : undefined}
-              onAddGame={homeShowsAdminChrome ? (options = {}) => setAdminEditGame({ id: null, show_in_carousel: !!options.showInCarousel }) : undefined}
+              onAddGame={homeShowsAdminChrome
+                ? () => navigate('/dashboard/products')
+                : undefined}
               onAddOffer={homeShowsAdminChrome ? (options = {}) => {
                 if (options.isSale) {
                   onNavigateToSaleDiscounts?.();
@@ -359,6 +361,24 @@ export default function AppRoutes({
 
         <Route
           path="/login"
+          element={(
+            <LoginView
+              t={t}
+              lang={lang}
+              user={user}
+              loadingAuth={loadingAuth}
+              navigate={navigate}
+              siteStatus={siteStatus}
+              handleAuthLogin={handleAuthLogin}
+              handleAuthSignup={handleAuthSignup}
+              onLoginSuccess={handleLoginSuccess}
+              resolveUserAfterAuth={resolveUserAfterAuth}
+            />
+          )}
+        />
+
+        <Route
+          path="/signup"
           element={(
             <LoginView
               t={t}

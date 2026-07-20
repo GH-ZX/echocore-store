@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react';
 import { X, ChevronUp, ChevronDown, Eye, EyeOff, Plus, GripVertical, ExternalLink } from 'lucide-react';
 import AdminEditButton from './AdminEditButton';
 import Modal from '../ui/Modal';
-import { resolveCarouselLogo } from '../../lib/carouselUtils';
+import {
+  getCarouselGames,
+  isCarouselRedeemItem,
+  resolveCarouselLogo,
+  sortGamesByCarousel,
+} from '../../lib/carouselUtils';
 
 export default function AdminCarouselManager({
   games = [],
@@ -20,15 +25,11 @@ export default function AdminCarouselManager({
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const sorted = [...games].sort((a, b) => {
-      const ao = a.carousel_order ?? 999999;
-      const bo = b.carousel_order ?? 999999;
-      if (ao !== bo) return ao - bo;
-      return new Date(a.created_at) - new Date(b.created_at);
-    });
-
-    const visible = sorted.filter((g) => g.show_in_carousel !== false);
-    const hidden = sorted.filter((g) => g.show_in_carousel === false);
+    const visible = getCarouselGames(games);
+    const visibleIds = new Set(visible.map((g) => g.id));
+    const hidden = sortGamesByCarousel(
+      games.filter((g) => !visibleIds.has(g.id)),
+    );
     setCarouselList(visible);
     setHiddenList(hidden);
     setError('');
@@ -97,7 +98,9 @@ export default function AdminCarouselManager({
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-sm truncate">{gameName(game)}</div>
         <div className="text-[10px] text-[var(--text-muted)] truncate">
-          {(lang === 'ar' ? game.description_ar : game.description_en) || t.noDescription || 'No carousel description'}
+          {isCarouselRedeemItem(game)
+            ? (t.carouselPickerRedeemBadge || (lang === 'ar' ? 'كود استرداد' : 'Redeem'))
+            : ((lang === 'ar' ? game.description_ar : game.description_en) || t.noDescription || 'No carousel description')}
         </div>
       </div>
 

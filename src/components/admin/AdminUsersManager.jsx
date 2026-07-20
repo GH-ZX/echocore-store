@@ -4,6 +4,8 @@ import {
   Ban,
   Bell,
   BadgeCheck,
+  ChevronLeft,
+  ChevronRight,
   Loader2,
   Megaphone,
   RefreshCw,
@@ -42,6 +44,21 @@ import { formatMessage } from '../../lib/i18n';
 import { getProfileAdminLabel, getProfileDisplayName, profileNamesDiffer } from '../../lib/username';
 
 const BROADCAST_KINDS = ['announcement', 'warning', 'maintenance'];
+const PAGE_SIZE = 25;
+
+const STATUS_FILTERS = [
+  { id: 'all', labelKey: 'adminUsersFilterAll' },
+  { id: 'verified', labelKey: 'adminUsersFilterVerified' },
+  { id: 'unverified', labelKey: 'adminUsersFilterUnverified' },
+  { id: 'banned', labelKey: 'adminUsersFilterBanned' },
+  { id: 'active', labelKey: 'adminUsersFilterActive' },
+];
+
+const BALANCE_FILTERS = [
+  { id: 'all', labelKey: 'adminCustomerBalancesFilterAll' },
+  { id: 'positive', labelKey: 'adminCustomerBalancesFilterPositive' },
+  { id: 'zero', labelKey: 'adminCustomerBalancesFilterZero' },
+];
 
 export default function AdminUsersManager({
   t = {},
@@ -56,8 +73,12 @@ export default function AdminUsersManager({
 
   const [usersLoading, setUsersLoading] = useState(true);
   const [users, setUsers] = useState([]);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [balanceFilter, setBalanceFilter] = useState('all');
 
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -94,18 +115,37 @@ export default function AdminUsersManager({
   const [verifyTarget, setVerifyTarget] = useState(null);
   const [verifyLoading, setVerifyLoading] = useState(false);
 
-  const loadUsers = useCallback(async (query = search) => {
+  const totalPages = Math.max(1, Math.ceil(totalUsers / PAGE_SIZE) || 1);
+  const safePage = Math.min(page, totalPages - 1);
+
+  const loadUsers = useCallback(async (
+    query = search,
+    pageIndex = safePage,
+    status = statusFilter,
+    bal = balanceFilter,
+  ) => {
     setUsersLoading(true);
     try {
-      const rows = await fetchAdminUsers(query);
-      setUsers(rows);
+      const { rows, total } = await fetchAdminUsers(
+        query,
+        PAGE_SIZE,
+        pageIndex * PAGE_SIZE,
+        {
+          orderBy: 'created_at',
+          balanceFilter: bal,
+          statusFilter: status,
+        },
+      );
+      setUsers(Array.isArray(rows) ? rows : []);
+      setTotalUsers(Number(total) || 0);
     } catch (err) {
       notifyError(err.message);
       setUsers([]);
+      setTotalUsers(0);
     } finally {
       setUsersLoading(false);
     }
-  }, [notifyError, search]);
+  }, [notifyError, search, safePage, statusFilter, balanceFilter]);
 
   const loadSettings = useCallback(async () => {
     setSettingsLoading(true);
@@ -127,16 +167,47 @@ export default function AdminUsersManager({
 
   useEffect(() => {
     if (!routeUserParam) {
-      loadUsers();
+      loadUsers(search, safePage, statusFilter, balanceFilter);
     }
+  }, [routeUserParam, loadUsers, search, safePage, statusFilter, balanceFilter]);
+
+  useEffect(() => {
     loadSettings();
-  }, [routeUserParam, loadUsers, loadSettings]);
+  }, [loadSettings]);
+
+  useEffect(() => {
+    if (page > 0 && page >= totalPages) {
+      setPage(Math.max(0, totalPages - 1));
+    }
+  }, [page, totalPages]);
 
   const handleSearch = (event) => {
     event.preventDefault();
+    setPage(0);
     setSearch(searchInput.trim());
-    loadUsers(searchInput.trim());
   };
+
+  const setStatus = (id) => {
+    setStatusFilter(id);
+    setPage(0);
+  };
+
+  const setBalance = (id) => {
+    setBalanceFilter(id);
+    setPage(0);
+  };
+
+  const clearFilters = () => {
+    setSearchInput('');
+    setSearch('');
+    setStatusFilter('all');
+    setBalanceFilter('all');
+    setPage(0);
+  };
+
+  const rangeStart = totalUsers === 0 ? 0 : safePage * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(totalUsers, (safePage + 1) * PAGE_SIZE);
+  const hasActiveFilters = search || statusFilter !== 'all' || balanceFilter !== 'all';
 
   const handleSaveSiteSettings = async () => {
     setSettingsSaving(true);
@@ -298,125 +369,212 @@ export default function AdminUsersManager({
 
   return (
     <div className="space-y-6">
-      <section className="card p-5 sm:p-6 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <UserRound className="w-5 h-5 text-[var(--accent)] mt-0.5" />
-            <div>
+      <section className="card overflow-hidden">
+        <div className="p-4 sm:p-5 border-b border-[var(--border)] flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <UserRound className="w-5 h-5 text-[var(--accent)] mt-0.5 shrink-0" />
+            <div className="min-w-0">
               <h2 className="text-xl font-black">{t.adminUsersTitle}</h2>
               <p className="text-sm text-[var(--text-sec)] mt-1">{t.adminUsersDesc}</p>
             </div>
           </div>
-          <button type="button" onClick={() => loadUsers()} className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5">
-            <RefreshCw className="w-3.5 h-3.5" />
-            {t.refresh}
-          </button>
+          <div className="text-end shrink-0">
+            <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide">
+              {t.adminCustomerBalancesTotal || t.adminUsersTitle}
+            </div>
+            <div className="font-mono font-black text-[var(--accent)] text-lg">
+              {formatMessage(t.adminUsersCount || '{count}', { count: totalUsers })}
+            </div>
+          </div>
         </div>
 
-        <form onSubmit={handleSearch} className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 start-3 text-[var(--text-muted)]" />
-            <input
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-              className="input w-full ps-9"
-              placeholder={t.adminUsersSearchPlaceholder}
-            />
+        <div className="p-4 sm:p-5 border-b border-[var(--border)] space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {STATUS_FILTERS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setStatus(f.id)}
+                className={`action-chip text-xs ${
+                  statusFilter === f.id ? 'border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10' : ''
+                }`}
+              >
+                {t[f.labelKey] || f.id}
+              </button>
+            ))}
           </div>
-          <button type="submit" className="btn btn-secondary">{t.adminUsersSearch}</button>
-        </form>
+          <div className="flex flex-wrap gap-2">
+            {BALANCE_FILTERS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setBalance(f.id)}
+                className={`action-chip text-xs ${
+                  balanceFilter === f.id ? 'border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10' : ''
+                }`}
+              >
+                {t[f.labelKey] || f.id}
+              </button>
+            ))}
+          </div>
+          <form onSubmit={handleSearch} className="flex flex-wrap gap-2">
+            <div className="relative flex-1 min-w-[12rem]">
+              <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 start-3 text-[var(--text-muted)]" />
+              <input
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                className="input w-full ps-9"
+                placeholder={t.adminUsersSearchPlaceholder}
+              />
+            </div>
+            <button type="submit" className="action-chip gap-2">
+              <Search className="w-4 h-4" />
+              {t.adminUsersSearch}
+            </button>
+            <button
+              type="button"
+              onClick={() => loadUsers(search, safePage, statusFilter, balanceFilter)}
+              className="action-chip gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              {t.refresh}
+            </button>
+            {hasActiveFilters && (
+              <button type="button" onClick={clearFilters} className="action-chip text-xs">
+                {t.clearSearch}
+              </button>
+            )}
+          </form>
+        </div>
 
         {usersLoading ? (
-          <div className="py-10 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[var(--accent)]" /></div>
+          <div className="p-10 text-center">
+            <Loader2 className="w-6 h-6 animate-spin mx-auto text-[var(--accent)]" />
+          </div>
         ) : users.length === 0 ? (
-          <p className="text-sm text-[var(--text-sec)] text-center py-8">{t.adminUsersEmpty}</p>
+          <p className="text-sm text-[var(--text-sec)] text-center py-10">{t.adminUsersEmpty}</p>
         ) : (
-          <div className="space-y-2">
-            {users.map((row) => {
-              const banned = isUserRowBanned(row);
-              const verified = isUserRowVerified(row);
-              return (
-                <div
-                  key={row.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => navigate(getAdminUserPath(getProfileUsername(row) || row.id))}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      navigate(getAdminUserPath(getProfileUsername(row) || row.id));
-                    }
-                  }}
-                  className="admin-user-row rounded-xl border border-[var(--border)] p-4 flex flex-wrap items-start justify-between gap-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="font-bold text-sm flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-[var(--accent)]">{getProfileAdminLabel(row, t.adminUsersUnnamed)}</span>
-                      {verified && <span className="admin-user-badge admin-user-badge--verified">{t.adminUserVerified}</span>}
-                    </div>
-                    {profileNamesDiffer(row) && (
-                      <div className="text-xs text-[var(--text-sec)] mt-0.5">{getProfileDisplayName(row)}</div>
-                    )}
-                    <div className="text-xs text-[var(--text-muted)] mt-0.5 break-all">{row.email}</div>
-                    <div className="text-xs text-[var(--text-sec)] mt-1">
-                      {t.balance}: ${parseFloat(row.balance || 0).toFixed(2)}
-                    </div>
-                    {banned && (
-                      <div className="text-xs text-red-400 mt-1">
-                        {row.ban_expires_at ? formatMessage(t.adminUserBannedUntil, {
-                          date: new Date(row.ban_expires_at).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US'),
-                        }) : t.adminUserBannedPermanent}
-                        {row.ban_reason ? ` — ${row.ban_reason}` : ''}
+          <>
+            <div className="space-y-2 p-4 sm:p-5">
+              {users.map((row) => {
+                const banned = isUserRowBanned(row);
+                const verified = isUserRowVerified(row);
+                return (
+                  <div
+                    key={row.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigate(getAdminUserPath(getProfileUsername(row) || row.id))}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        navigate(getAdminUserPath(getProfileUsername(row) || row.id));
+                      }
+                    }}
+                    className="admin-user-row rounded-xl border border-[var(--border)] p-4 flex flex-wrap items-start justify-between gap-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-sm flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-[var(--accent)]">{getProfileAdminLabel(row, t.adminUsersUnnamed)}</span>
+                        {verified && <span className="admin-user-badge admin-user-badge--verified">{t.adminUserVerified}</span>}
                       </div>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
-                    <button
-                      type="button"
-                      onClick={() => setVerifyTarget(row)}
-                      className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5"
-                    >
-                      <BadgeCheck className="w-3.5 h-3.5" />
-                      {verified ? t.adminUnverifyUser : t.adminVerifyUser}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMessageTarget(row);
-                        setMessageKind('announcement');
-                        setMessageTitle('');
-                        setMessageBody('');
-                      }}
-                      className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5"
-                    >
-                      <Bell className="w-3.5 h-3.5" />
-                      {t.adminUserMessage}
-                    </button>
-                    {banned ? (
-                      <button type="button" onClick={() => setUnbanTarget(row)} className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5">
-                        <ShieldOff className="w-3.5 h-3.5" />
-                        {t.adminUnbanUser}
+                      {profileNamesDiffer(row) && (
+                        <div className="text-xs text-[var(--text-sec)] mt-0.5">{getProfileDisplayName(row)}</div>
+                      )}
+                      <div className="text-xs text-[var(--text-muted)] mt-0.5 break-all">{row.email}</div>
+                      <div className="text-xs text-[var(--text-sec)] mt-1">
+                        {t.balance}: ${parseFloat(row.balance || 0).toFixed(2)}
+                      </div>
+                      {banned && (
+                        <div className="text-xs text-red-400 mt-1">
+                          {row.ban_expires_at ? formatMessage(t.adminUserBannedUntil, {
+                            date: new Date(row.ban_expires_at).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US'),
+                          }) : t.adminUserBannedPermanent}
+                          {row.ban_reason ? ` — ${row.ban_reason}` : ''}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => setVerifyTarget(row)}
+                        className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5"
+                      >
+                        <BadgeCheck className="w-3.5 h-3.5" />
+                        {verified ? t.adminUnverifyUser : t.adminVerifyUser}
                       </button>
-                    ) : (
                       <button
                         type="button"
                         onClick={() => {
-                          setBanTarget(row);
-                          setBanReason('');
-                          setBanDuration('permanent');
-                          setBanDays('7');
+                          setMessageTarget(row);
+                          setMessageKind('announcement');
+                          setMessageTitle('');
+                          setMessageBody('');
                         }}
-                        className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5 border-red-500/30 text-red-400"
+                        className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5"
                       >
-                        <Ban className="w-3.5 h-3.5" />
-                        {t.adminBanUser}
+                        <Bell className="w-3.5 h-3.5" />
+                        {t.adminUserMessage}
                       </button>
-                    )}
+                      {banned ? (
+                        <button type="button" onClick={() => setUnbanTarget(row)} className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5">
+                          <ShieldOff className="w-3.5 h-3.5" />
+                          {t.adminUnbanUser}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBanTarget(row);
+                            setBanReason('');
+                            setBanDuration('permanent');
+                            setBanDays('7');
+                          }}
+                          className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5 border-red-500/30 text-red-400"
+                        >
+                          <Ban className="w-3.5 h-3.5" />
+                          {t.adminBanUser}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+
+            <div className="p-3 sm:p-4 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-3">
+              <div className="text-xs text-[var(--text-muted)]">
+                {formatMessage(t.adminCustomerBalancesPageRange || '{from}–{to} of {total}', {
+                  from: rangeStart,
+                  to: rangeEnd,
+                  total: totalUsers,
+                })}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={safePage <= 0 || usersLoading}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  className="action-chip gap-1 text-xs disabled:opacity-40"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  {t.prev || 'Prev'}
+                </button>
+                <span className="text-xs font-mono text-[var(--text-sec)] min-w-[4.5rem] text-center">
+                  {safePage + 1} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={safePage >= totalPages - 1 || usersLoading}
+                  onClick={() => setPage((p) => p + 1)}
+                  className="action-chip gap-1 text-xs disabled:opacity-40"
+                >
+                  {t.next || 'Next'}
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </section>
 
@@ -442,8 +600,8 @@ export default function AdminUsersManager({
               <span className="text-sm font-semibold">{t.adminRequireVerifiedAccounts}</span>
             </label>
             <p className="text-xs text-[var(--text-muted)]">{t.adminRequireVerifiedAccountsHelp}</p>
-            <button type="button" onClick={handleSaveSiteSettings} disabled={settingsSaving} className="btn btn-primary">
-              {settingsSaving ? t.sending : t.adminSaveSiteSettings}
+            <button type="button" onClick={handleSaveSiteSettings} disabled={settingsSaving} className="btn btn-primary action-chip gap-2 !border-0">
+              {settingsSaving ? t.sending : (t.save || t.adminSaveSiteSettings)}
             </button>
           </div>
         )}
@@ -505,8 +663,8 @@ export default function AdminUsersManager({
               <input type="checkbox" checked={maintenanceBroadcast} onChange={(e) => setMaintenanceBroadcast(e.target.checked)} className="w-4 h-4 accent-[var(--accent)]" />
               <span className="text-sm">{t.adminMaintenanceBroadcast}</span>
             </label>
-            <button type="button" onClick={handleSaveMaintenance} disabled={maintenanceSaving} className="btn btn-primary">
-              {maintenanceSaving ? t.sending : t.adminSaveMaintenance}
+            <button type="button" onClick={handleSaveMaintenance} disabled={maintenanceSaving} className="btn btn-primary action-chip gap-2 !border-0">
+              {maintenanceSaving ? t.sending : (t.save || t.adminSaveMaintenance)}
             </button>
           </div>
         )}

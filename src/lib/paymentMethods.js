@@ -17,6 +17,8 @@ export const PAYMENT_METHOD_DEFS = {
   ShamCash: {
     id: 'ShamCash',
     icon: Wallet,
+    /** Official brand mark — public/shamcash-logo.svg (~1.6KB optimized) */
+    logoSrc: '/shamcash-logo.svg',
     color: 'text-green-500',
     nameKey: 'shamCash',
     fallbackEn: 'ShamCash',

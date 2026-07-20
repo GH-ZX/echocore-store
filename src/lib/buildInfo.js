@@ -7,8 +7,8 @@ export const DEVELOPER = {
   telegram: '@ahmedghx',
   telegramUrl: 'https://t.me/ahmedghx',
   email: 'ahmedghuwu3@gmail.com',
-  github: 'github.com/GH-ZX',
-  githubUrl: 'https://github.com/GH-ZX',
+  instagram: '@ahmedghx3',
+  instagramUrl: 'https://www.instagram.com/ahmedghx3',
 };
 
 export const OPERATOR = {

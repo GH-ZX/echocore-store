@@ -25,16 +25,24 @@ export default function AdminOfferCostBadge({
   });
 
   useEffect(() => {
-    if (storeMarkupPercent != null && Number.isFinite(Number(storeMarkupPercent))) {
+    if (storeMarkupPercent != null && Number.isFinite(Number(storeMarkupPercent)) && Number(storeMarkupPercent) > 0) {
       setStoreMarkup(Number(storeMarkupPercent));
       return undefined;
     }
     let cancelled = false;
     ensureStoreMarkupPercent().then((n) => {
-      if (!cancelled) setStoreMarkup(n);
+      if (!cancelled && n != null && Number(n) > 0) setStoreMarkup(Number(n));
     });
-    return () => { cancelled = true; };
-  }, [storeMarkupPercent]);
+    const onMarkupChanged = (event) => {
+      const n = Number(event?.detail);
+      if (Number.isFinite(n) && n > 0) setStoreMarkup(n);
+    };
+    window.addEventListener('echocore-store-markup-changed', onMarkupChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('echocore-store-markup-changed', onMarkupChanged);
+    };
+  }, [storeMarkupPercent, offer?.id]);
 
   if (!offer) return null;
 

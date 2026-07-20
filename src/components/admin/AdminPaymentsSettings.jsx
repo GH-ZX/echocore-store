@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Wallet,
@@ -11,7 +11,6 @@ import {
 import { fetchStoreSettings, saveStoreSettings } from '../../lib/storeSettings';
 import { fetchSamApiSettings, saveSamApiSettings } from '../../lib/samApi';
 import { uploadImage } from '../../lib/uploadImage';
-import AdminSamApiSettings from './AdminSamApiSettings';
 import AdminManualBalanceCredit from './AdminManualBalanceCredit';
 
 function ManualWalletSection({
@@ -112,18 +111,6 @@ export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved, on
   });
 
   const isApiMode = samForm.sam_wallet_mode === 'api';
-  const apiKeyLocked = !!samForm.sam_api_key_set;
-
-  const notifyError = useCallback((message) => {
-    if (message) setError(message);
-    else setError('');
-  }, []);
-
-  const notifySuccess = useCallback((message) => {
-    if (!message) return;
-    setSuccess(message);
-    setTimeout(() => setSuccess(''), 3000);
-  }, []);
 
   const load = async () => {
     setLoading(true);
@@ -272,8 +259,8 @@ export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved, on
           </div>
         </div>
 
-        <div className="mb-6 p-4 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)]">
-          <label className="text-xs text-[var(--text-muted)] block mb-2">{t.samWalletModeLabel}</label>
+        <div className="mb-6 p-4 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] space-y-3">
+          <label className="text-xs text-[var(--text-muted)] block">{t.samWalletModeLabel}</label>
           <div className="flex flex-wrap gap-2">
             {['manual', 'api'].map((mode) => (
               <button
@@ -286,6 +273,11 @@ export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved, on
               </button>
             ))}
           </div>
+          {isApiMode && (
+            <p className="text-xs text-[var(--text-sec)] leading-relaxed">
+              {t.apisPaymentsSamHint}
+            </p>
+          )}
         </div>
 
         <div className="mb-4">
@@ -338,54 +330,36 @@ export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved, on
               onEnabledChange={(e) => setForm((p) => ({ ...p, syriatel_enabled: e.target.checked }))}
             />
 
-            <div className="flex flex-wrap gap-2 mt-6 pt-4 border-t border-[var(--border)]">
-              <button
-                type="button"
-                onClick={() => handleSaveAll(false)}
-                disabled={saving}
-                className="btn btn-primary action-chip gap-2 !border-0"
-              >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                {t.saveSettings}
-              </button>
-              <button type="button" onClick={load} className="action-chip gap-2">
-                <RefreshCw className="w-4 h-4" />
-                {t.refresh}
-              </button>
-            </div>
           </div>
         ) : (
-          <AdminSamApiSettings
-            t={t}
-            samForm={samForm}
-            setSamForm={setSamForm}
-            onSaved={onSaved}
-            onError={notifyError}
-            onSuccess={notifySuccess}
-            saving={saving}
-            onSaveAll={handleSaveAll}
-          />
-        )}
-
-        {isApiMode && (
-          <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-[var(--border)]">
-            {apiKeyLocked && (
-              <button
-                type="button"
-                onClick={() => handleSaveAll(false)}
-                disabled={saving}
-                className="btn btn-primary action-chip gap-2 !border-0"
-              >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                {t.saveSettings}
-              </button>
-            )}
-            <button type="button" onClick={load} className="action-chip gap-2">
-              <RefreshCw className="w-4 h-4" />
-              {t.refresh}
+          <div className="rounded-xl border border-[var(--accent)]/25 bg-[var(--accent)]/5 p-4 space-y-3">
+            <p className="text-sm text-[var(--text-sec)] leading-relaxed">{t.apisPaymentsSamHint}</p>
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard/apis/sam')}
+              className="btn btn-secondary text-xs py-2 px-3"
+            >
+              {t.apisOpenHub}
             </button>
           </div>
         )}
+
+        {/* Single save for both manual and API modes */}
+        <div className="flex flex-wrap items-center gap-2 mt-6 pt-4 border-t border-[var(--border)]">
+          <button
+            type="button"
+            onClick={() => handleSaveAll(false)}
+            disabled={saving}
+            className="btn btn-primary action-chip gap-2 !border-0 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {t.save || t.saveSettings}
+          </button>
+          <button type="button" onClick={load} className="action-chip gap-2" disabled={saving}>
+            <RefreshCw className="w-4 h-4" />
+            {t.refresh}
+          </button>
+        </div>
 
         {error && (
           <div className="mt-4 flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 text-sm">

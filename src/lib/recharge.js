@@ -32,7 +32,28 @@ export function validateRechargeAmount(amount) {
   };
 }
 
+/** Cancel abandoned pending recharges (expired invoice or older than maxAgeMinutes). */
+export async function expireStalePendingRecharges(maxAgeMinutes = 20) {
+  const { data, error } = await supabase.rpc('expire_stale_pending_recharges', {
+    p_max_age_minutes: maxAgeMinutes,
+  });
+  if (error) {
+    if (error.message?.includes('function') && error.message?.includes('does not exist')) {
+      return { cancelledPending: 0, skipped: true };
+    }
+    throw error;
+  }
+  return data || { cancelledPending: 0 };
+}
+
 export async function getMyActiveRechargeRequest() {
+  // Drop abandoned pending recharges so users aren't stuck on «already pending»
+  try {
+    await expireStalePendingRecharges(20);
+  } catch {
+    /* optional cleanup */
+  }
+
   const { data, error } = await supabase.rpc('get_my_active_recharge_request');
   if (error) {
     if (error.message?.includes('function') && error.message?.includes('does not exist')) {
@@ -74,17 +95,47 @@ export async function cancelMyRechargeRequest(requestId) {
   return assertRpcData(data, error);
 }
 
-export async function fetchAdminRechargeRequests(status = 'all') {
-  const { data, error } = await supabase.rpc('get_admin_recharge_requests', {
+export async function fetchAdminRechargeRequests(status = 'all', {
+  limit = 25,
+  offset = 0,
+} = {}) {
+  const payload = {
     p_status: status,
-  });
-  if (error) {
-    if (error.message?.includes('function') && error.message?.includes('does not exist')) {
-      throw new Error(RPC_SETUP_MSG);
+    p_limit: limit,
+    p_offset: offset,
+  };
+  const primary = await supabase.rpc('get_admin_recharge_requests', payload);
+  let data = primary.data;
+
+  // Fallback: older 1-arg RPC returns a plain array (cap 100)
+  if (primary.error) {
+    const legacy = await supabase.rpc('get_admin_recharge_requests', {
+      p_status: status,
+    });
+    if (legacy.error) {
+      if (
+        (primary.error.message?.includes('function') && primary.error.message?.includes('does not exist'))
+        || (legacy.error.message?.includes('function') && legacy.error.message?.includes('does not exist'))
+      ) {
+        throw new Error(RPC_SETUP_MSG);
+      }
+      throw primary.error;
     }
-    throw error;
+    data = legacy.data;
   }
-  return Array.isArray(data) ? data : [];
+
+  if (Array.isArray(data)) {
+    const all = data;
+    const slice = all.slice(offset, offset + limit);
+    return { rows: slice, total: all.length };
+  }
+
+  const rows = Array.isArray(data?.rows) ? data.rows : [];
+  const total = Number(data?.total);
+  return {
+    rows,
+    total: Number.isFinite(total) ? total : rows.length,
+  };
 }
 
 export async function approveRechargeRequest(requestId) {

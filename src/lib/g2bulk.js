@@ -4,6 +4,12 @@ import {
   buildPullCatalogClientFallback,
   isEdgeTransportError,
 } from './g2bulkPullCatalogClient';
+import { classifyVoucherSegment } from './catalogSegments';
+import {
+  buildCarouselBaseKeysFromGames,
+  getVoucherCategoryId,
+  normalizePullSelection,
+} from './pullCatalogUtils';
 import { supabase } from './supabase';
 
 async function parseInvokeError(error, { sanitizeForUser = false } = {}) {
@@ -358,6 +364,75 @@ export async function g2bulkGetTopupMeta(gameCode) {
 const PULL_CATALOG_CACHE_TTL_MS = 5 * 60 * 1000;
 let pullCatalogCache = null;
 let pullCatalogCacheAt = 0;
+
+/**
+ * Keep g2bulk_pull_selection paired with homepage carousel:
+ * - carouselBaseKeys from games.show_in_carousel (top-up + redeem)
+ * - ensure carousel items are also selected for sync so the dashboard list shows the tick
+ */
+export async function syncPullSelectionCarouselFromGames(games = []) {
+  const carouselBaseKeys = buildCarouselBaseKeysFromGames(games);
+  const onCarousel = (games || []).filter((g) => g?.show_in_carousel === true);
+
+  const { data, error } = await supabase
+    .from('store_settings')
+    .select('g2bulk_pull_selection')
+    .eq('id', 1)
+    .maybeSingle();
+  if (error) throw error;
+
+  const current = normalizePullSelection(data?.g2bulk_pull_selection || {});
+  const topupSync = new Set(current.topupSyncBaseKeys);
+  const accountSync = new Set(current.accountSyncCategoryIds);
+  const giftSync = new Set(current.giftSyncCategoryIds);
+
+  for (const game of onCarousel) {
+    if (game.redemption_method === 'redeem_code') {
+      const categoryId = getVoucherCategoryId(game);
+      if (!Number.isFinite(categoryId)) continue;
+      const ui = classifyVoucherSegment(game.name_en || game.name_ar || game.slug || '');
+      if (ui === 'gaming_account') accountSync.add(categoryId);
+      else giftSync.add(categoryId);
+    } else {
+      const code = String(game.g2bulk_game_code || '').trim();
+      if (code) topupSync.add(code);
+    }
+  }
+
+  const next = normalizePullSelection({
+    ...current,
+    topupSyncBaseKeys: [...topupSync],
+    accountSyncCategoryIds: [...accountSync],
+    giftSyncCategoryIds: [...giftSync],
+    carouselBaseKeys,
+  });
+
+  const payload = {
+    topupSyncBaseKeys: next.topupSyncBaseKeys,
+    topupLiveBaseKeys: next.topupLiveBaseKeys,
+    topupBaseKeys: next.topupBaseKeys,
+    accountSyncCategoryIds: next.accountSyncCategoryIds,
+    accountLiveCategoryIds: next.accountLiveCategoryIds,
+    accountCategoryIds: next.accountCategoryIds,
+    giftSyncCategoryIds: next.giftSyncCategoryIds,
+    giftLiveCategoryIds: next.giftLiveCategoryIds,
+    giftCategoryIds: next.giftCategoryIds,
+    carouselBaseKeys: next.carouselBaseKeys,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const { error: saveError } = await supabase
+    .from('store_settings')
+    .update({
+      g2bulk_pull_selection: payload,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', 1);
+  if (saveError) throw saveError;
+
+  invalidateG2bulkPullCatalogCache();
+  return payload;
+}
 
 export function invalidateG2bulkPullCatalogCache() {
   pullCatalogCache = null;

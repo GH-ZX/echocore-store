@@ -97,7 +97,7 @@ export default function AdminManualBalanceCredit({
     if (!query) return;
     setSearching(true);
     try {
-      const rows = await fetchAdminUsers(query, 12);
+      const { rows } = await fetchAdminUsers(query, 12);
       setResults(rows);
       if (rows.length === 1) setSelectedUser(rows[0]);
     } catch (err) {

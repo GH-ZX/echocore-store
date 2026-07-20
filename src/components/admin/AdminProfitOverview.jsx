@@ -1,17 +1,40 @@
-import { useMemo } from 'react';
-import { TrendingUp, Package, Percent, AlertTriangle, BarChart3 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import {
+  TrendingUp,
+  Package,
+  Percent,
+  AlertTriangle,
+  BarChart3,
+  Trophy,
+} from 'lucide-react';
 import { formatMessage } from '../../lib/i18n';
 import { computeAdminProfitMetrics } from '../../lib/adminProfitMetrics';
 import AdminDashSection from './AdminDashSection';
 import AdminDashStatCard from './AdminDashStatCard';
+import AdminDashGoTo from './AdminDashGoTo';
+import { ProfitChartPanel } from './AdminProfitCharts';
 
-export default function AdminProfitOverview({ orders = [], offers = [], t = {} }) {
+export default function AdminProfitOverview({
+  orders = [],
+  offers = [],
+  games = [],
+  t = {},
+  lang = 'ar',
+  onOpenFullStats,
+}) {
+  const [chartView, setChartView] = useState('stacked');
+
   const metrics = useMemo(
-    () => computeAdminProfitMetrics(orders, offers, { chartDays: 7 }),
-    [orders, offers],
+    () => computeAdminProfitMetrics(orders, offers, {
+      periodDays: null,
+      chartDays: 7,
+      games,
+      lang,
+      topLimit: 5,
+    }),
+    [orders, offers, games, lang],
   );
 
-  const hasChartData = metrics.chartDays.some((day) => day.orders > 0);
   const marginLabel = metrics.marginPercent != null ? `${metrics.marginPercent}%` : '—';
   const catalogMarginLabel = metrics.catalogMarginPercent != null
     ? `${metrics.catalogMarginPercent}%`
@@ -22,22 +45,14 @@ export default function AdminProfitOverview({ orders = [], offers = [], t = {} }
       title={t.adminProfitTitle}
       description={t.adminProfitSubtitle}
       className="admin-dash-section--profit"
-      action={(
-        <div className="admin-profit-legend" aria-label={t.adminProfitTitle}>
-          <span className="admin-profit-legend__item">
-            <span className="admin-profit-legend__swatch admin-profit-legend__swatch--revenue" />
-            {t.adminProfitLegendRevenue}
-          </span>
-          <span className="admin-profit-legend__item">
-            <span className="admin-profit-legend__swatch admin-profit-legend__swatch--cost" />
-            {t.adminProfitLegendCost}
-          </span>
-          <span className="admin-profit-legend__item">
-            <span className="admin-profit-legend__swatch admin-profit-legend__swatch--profit" />
-            {t.adminProfitLegendProfit}
-          </span>
-        </div>
-      )}
+      icon={TrendingUp}
+      action={onOpenFullStats ? (
+        <AdminDashGoTo
+          label={t.adminProfitOpenFullStats}
+          onClick={onOpenFullStats}
+          lang={lang}
+        />
+      ) : null}
     >
       <div className="admin-dash-grid admin-dash-grid--profit">
         <AdminDashStatCard
@@ -83,53 +98,60 @@ export default function AdminProfitOverview({ orders = [], offers = [], t = {} }
         </div>
       ) : null}
 
-      <div className="admin-profit-chart-panel">
-        <div className="admin-profit-chart-panel__head">
-          <h3 className="admin-profit-chart-panel__title">{t.adminProfitChartTitle}</h3>
-          <span className="admin-profit-chart-panel__range">{t.adminProfitChartRange}</span>
-        </div>
-
-        {!hasChartData ? (
-          <p className="admin-dash-empty">{t.adminProfitChartEmpty}</p>
-        ) : (
-          <div className="admin-profit-chart" role="img" aria-label={t.adminProfitChartTitle}>
-            {metrics.chartDays.map((day) => (
-              <div key={day.key} className="admin-profit-chart__col">
-                <div className="admin-profit-chart__bar-stack" style={{ height: `${day.revenuePct}%` }}>
-                  {day.revenue > 0 ? (
-                    <>
-                      <div
-                        className="admin-profit-chart__segment admin-profit-chart__segment--profit"
-                        style={{ flexGrow: Math.max(day.profit, 0) }}
-                        title={`${t.adminProfitLegendProfit}: ${metrics.formatUsd(day.profit)}`}
-                      />
-                      <div
-                        className="admin-profit-chart__segment admin-profit-chart__segment--cost"
-                        style={{ flexGrow: Math.max(day.cost, 0) }}
-                        title={`${t.adminProfitLegendCost}: ${metrics.formatUsd(day.cost)}`}
-                      />
-                    </>
-                  ) : (
-                    <div className="admin-profit-chart__segment admin-profit-chart__segment--empty" />
-                  )}
-                </div>
-                <div className="admin-profit-chart__meta">
-                  <span className="admin-profit-chart__value" dir="ltr">
-                    {metrics.formatUsd(day.revenue)}
-                  </span>
-                  <span className="admin-profit-chart__label">{day.label}</span>
-                  {day.orders > 0 ? (
-                    <span className="admin-profit-chart__orders">
-                      {formatMessage(t.adminProfitDayOrders, { count: day.orders })}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+      <div className="admin-profit-legend admin-profit-legend--inline" aria-label={t.adminProfitTitle}>
+        <span className="admin-profit-legend__item">
+          <span className="admin-profit-legend__swatch admin-profit-legend__swatch--revenue" />
+          {t.adminProfitLegendRevenue}
+        </span>
+        <span className="admin-profit-legend__item">
+          <span className="admin-profit-legend__swatch admin-profit-legend__swatch--cost" />
+          {t.adminProfitLegendCost}
+        </span>
+        <span className="admin-profit-legend__item">
+          <span className="admin-profit-legend__swatch admin-profit-legend__swatch--profit" />
+          {t.adminProfitLegendProfit}
+        </span>
       </div>
 
+      <ProfitChartPanel
+        chartView={chartView}
+        onChartViewChange={setChartView}
+        metrics={metrics}
+        t={t}
+        rangeLabel={t.adminProfitChartRange}
+      />
+
+      {metrics.topOffers?.length > 0 ? (
+        <div className="admin-profit-top">
+          <h3 className="admin-profit-top__title">
+            <Trophy className="w-4 h-4" aria-hidden />
+            {t.adminProfitTopOffers}
+          </h3>
+          <ol className="admin-profit-top-list">
+            {metrics.topOffers.map((row, index) => (
+              <li key={row.offerId || row.name} className="admin-profit-top-row">
+                <span
+                  className={`admin-profit-top-row__rank${index < 3 ? ` admin-profit-top-row__rank--${index + 1}` : ''}`}
+                >
+                  {index + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-sm truncate">{row.name}</div>
+                  <div className="text-xs text-[var(--text-sec)]">
+                    {formatMessage(t.adminProfitTopOfferMeta, {
+                      revenue: metrics.formatUsd(row.revenue),
+                      margin: row.marginPercent != null ? `${row.marginPercent}%` : '—',
+                    })}
+                  </div>
+                </div>
+                <span className="admin-profit-top-row__profit" dir="ltr">
+                  {metrics.formatUsd(row.profit)}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
     </AdminDashSection>
   );
 }

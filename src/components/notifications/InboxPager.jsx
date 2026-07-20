@@ -8,15 +8,18 @@ export default function InboxPager({
   onPageChange,
   t = {},
   lang = 'ar',
+  /** Translation key for “page X of Y — N items” (defaults to inbox) */
+  infoKey = 'inboxPageInfo',
 }) {
   if (totalPages <= 1 && total === 0) return null;
 
   const isRtl = lang === 'ar';
   const PrevIcon = isRtl ? ChevronRight : ChevronLeft;
   const NextIcon = isRtl ? ChevronLeft : ChevronRight;
+  const infoTemplate = t[infoKey] || t.inboxPageInfo;
 
   return (
-    <nav className="inbox-pager" aria-label={t.inboxPagerLabel}>
+    <nav className="inbox-pager" aria-label={t.inboxPagerLabel || t.adminListPagerLabel}>
       <button
         type="button"
         className="inbox-pager__btn"
@@ -27,7 +30,7 @@ export default function InboxPager({
         <PrevIcon className="w-4 h-4" />
       </button>
       <span className="inbox-pager__info">
-        {formatMessage(t.inboxPageInfo, { page, pages: totalPages, total })}
+        {formatMessage(infoTemplate, { page, pages: totalPages, total })}
       </span>
       <button
         type="button"

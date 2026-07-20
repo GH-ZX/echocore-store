@@ -8,17 +8,18 @@ import {
   Save,
   Copy,
   Smartphone,
-  Trash2,
   Lock,
-  KeyRound,
 } from 'lucide-react';
-import { listSamWallets, saveSamApiSettings } from '../../lib/samApi';
+import { fetchAllSamWalletBalances, listSamWallets, saveSamApiSettings } from '../../lib/samApi';
 import { formatSypExchangeRate } from '../../lib/rechargeCurrency';
 import ConfirmDialog from '../ui/ConfirmDialog';
+import AdminApiKeyField from './AdminApiKeyField';
 import {
-  findSamWalletByIdentifier,
+  formatSamCurrencyAmount,
   getSamWalletDisplayName,
   getSamWalletInvoiceIdentifier,
+  getWalletDisplayBalanceLines,
+  normalizeSamWalletRows,
 } from '../../lib/samWalletFormat';
 
 function StatusPill({ ok, label }) {
@@ -132,36 +133,55 @@ function WalletPickerChips({ wallets, onPick, disabled, selectedIds = [] }) {
   );
 }
 
+const SHAMCASH_LOGO_SRC = '/shamcash-logo.svg';
+
+/** Clean wallet row — same idea as overview supplier wallets (USD + SYP only). */
 function LinkedWalletCard({ wallet, selectedId, t }) {
   const id = getSamWalletInvoiceIdentifier(wallet);
   const isSelected = selectedId && id.toLowerCase() === String(selectedId).toLowerCase();
   const isSyriatel = wallet.provider === 'syriatel';
-  const Icon = isSyriatel ? Smartphone : Wallet;
+  const lines = getWalletDisplayBalanceLines(wallet);
 
   return (
-    <div
-      className={`rounded-xl border p-3 ${
-        isSelected
-          ? 'border-[var(--accent)]/50 bg-[var(--accent)]/10'
-          : 'border-[var(--border)] bg-[var(--bg-surface)]'
-      }`}
-    >
-      <div className="flex items-start gap-2">
-        <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${isSyriatel ? 'text-red-400' : 'text-green-400'}`} />
-        <div className="min-w-0 flex-1">
-          <div className="font-semibold text-sm truncate">{getSamWalletDisplayName(wallet)}</div>
-          <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
-            {wallet.providerDisplayName || wallet.provider}
-            {wallet.phone ? ` · ${wallet.phone}` : ''}
-          </div>
-          <div className="font-mono text-xs text-[var(--text-sec)] mt-2 break-all">{id}</div>
-        </div>
-        {isSelected && (
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--accent)]/15 text-[var(--accent)] shrink-0">
-            {t.samApiLockedBadge}
+    <div className={`sam-wallet-row${isSelected ? ' sam-wallet-row--linked' : ''}`}>
+      <span className="sam-wallet-row__lead">
+        <span
+          className={`sam-wallet-row__icon${isSyriatel ? ' sam-wallet-row__icon--syriatel' : ' sam-wallet-row__icon--sham'}`}
+          aria-hidden
+        >
+          {isSyriatel ? (
+            <Smartphone strokeWidth={2} />
+          ) : (
+            <img
+              src={SHAMCASH_LOGO_SRC}
+              alt=""
+              className="sam-wallet-row__brand-logo"
+              width={22}
+              height={26}
+              decoding="async"
+              draggable={false}
+            />
+          )}
+        </span>
+        <span className="sam-wallet-row__copy">
+          <span className="sam-wallet-row__name">{getSamWalletDisplayName(wallet) || (isSyriatel ? t.syriatelCash : t.shamCash)}</span>
+          <span className="sam-wallet-row__hint">
+            {isSyriatel ? (t.syriatelCash || 'Syriatel') : (t.shamCash || 'ShamCash')}
+            {isSelected ? ` · ${t.samApiReceivingBadge || t.samApiLockedBadge}` : ''}
           </span>
+        </span>
+      </span>
+      <span className="sam-wallet-row__amounts" dir="ltr">
+        {lines.length > 0 ? (
+          lines.map((row) => (
+            <span key={row.currency} className="sam-wallet-row__amount font-mono">
+              {formatSamCurrencyAmount(row.currency, row.amount)}
+            </span>
+          ))
+        ) : (
+          <span className="sam-wallet-row__amount sam-wallet-row__amount--empty">—</span>
         )}
-      </div>
+      </span>
     </div>
   );
 }
@@ -216,7 +236,7 @@ export default function AdminSamApiSettings({
     }
   };
 
-  const fetchWallets = useCallback(async ({ savePendingKey = false } = {}) => {
+  const fetchWallets = useCallback(async ({ savePendingKey = false, withBalances = true } = {}) => {
     setWalletsLoading(true);
     try {
       if (savePendingKey && samForm.sam_api_key?.trim()) {
@@ -232,8 +252,15 @@ export default function AdminSamApiSettings({
         setSamForm((prev) => ({ ...prev, sam_api_key: '', sam_api_key_set: true }));
       }
 
-      const wallets = await listSamWallets();
-      const list = Array.isArray(wallets) ? wallets : [];
+      // Same source as dashboard overview — includes USD/SYP balances
+      let list = [];
+      if (withBalances) {
+        const data = await fetchAllSamWalletBalances();
+        list = normalizeSamWalletRows(data?.wallets);
+      } else {
+        const wallets = await listSamWallets();
+        list = normalizeSamWalletRows(Array.isArray(wallets) ? wallets : []);
+      }
       setSamWallets(list);
       return list;
     } finally {
@@ -325,8 +352,6 @@ export default function AdminSamApiSettings({
 
   const shamWallets = samWallets.filter((w) => w.provider !== 'syriatel');
   const syriatelWallets = samWallets.filter((w) => w.provider === 'syriatel');
-  const shamLinked = findSamWalletByIdentifier(samWallets, samForm.sam_shamcash_wallet_identifier);
-  const syriatelLinked = findSamWalletByIdentifier(samWallets, samForm.sam_syriatel_wallet_identifier);
 
   return (
     <div className="space-y-4 pt-2 border-t border-[var(--border)]">
@@ -356,38 +381,23 @@ export default function AdminSamApiSettings({
         </div>
       )}
 
-      <SectionCard icon={KeyRound} title={t.samApiKeyLabel} description={t.samApiKeyHelp} accent={apiKeyLocked}>
-        <input
-          type="password"
-          value={apiKeyLocked ? samForm.sam_api_key_masked : samForm.sam_api_key}
-          onChange={(e) => !apiKeyLocked && setSamForm((p) => ({ ...p, sam_api_key: e.target.value }))}
-          placeholder={apiKeyLocked ? '' : 'sk_...'}
-          readOnly={apiKeyLocked}
-          disabled={apiKeyLocked}
-          className="w-full bg-[var(--bg-surface)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 font-mono text-sm outline-none disabled:opacity-80 disabled:cursor-not-allowed"
-          autoComplete="off"
-        />
-        {apiKeyLocked ? (
-          <button
-            type="button"
-            onClick={() => setDeleteKeyOpen(true)}
-            className="action-chip border-red-500/40 text-red-400 hover:bg-red-500/10 gap-1.5"
-          >
-            <Trash2 className="w-4 h-4" />
-            {t.samApiDeleteKey}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={handleSamTestWallets}
-            disabled={samTesting || !samForm.sam_api_key?.trim()}
-            className="action-chip border-green-500/30 text-green-400 hover:bg-green-500/10 disabled:opacity-50 gap-1.5"
-          >
-            {samTesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
-            {t.samTestWallets}
-          </button>
-        )}
-      </SectionCard>
+      <AdminApiKeyField
+        t={t}
+        id="sam-api-key"
+        title={t.samApiKeyLabel}
+        description={t.samApiKeyHelp}
+        locked={apiKeyLocked}
+        maskedValue={samForm.sam_api_key_masked}
+        value={samForm.sam_api_key}
+        onChange={(v) => setSamForm((p) => ({ ...p, sam_api_key: v }))}
+        placeholder="sk_..."
+        onConnect={handleSamTestWallets}
+        connectLabel={t.samTestWallets}
+        connectDisabled={!samForm.sam_api_key?.trim()}
+        connecting={samTesting}
+        onDelete={() => setDeleteKeyOpen(true)}
+        deleteLabel={t.samApiDeleteKey}
+      />
 
       <SectionCard icon={Wallet} title={t.samApiSectionTitle} description={apiKeyLocked ? t.samApiSettingsLocked : t.samApiEnabledHelp}>
         <LockedField label={t.samApiEnabledLabel} locked={apiKeyLocked}>
@@ -463,7 +473,20 @@ export default function AdminSamApiSettings({
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
             <LockedField
-              label={t.samShamcashWalletLabel}
+              label={(
+                <span className="inline-flex items-center gap-1.5">
+                  <img
+                    src={SHAMCASH_LOGO_SRC}
+                    alt=""
+                    className="sam-field-brand-logo"
+                    width={14}
+                    height={16}
+                    decoding="async"
+                    draggable={false}
+                  />
+                  {t.samShamcashWalletLabel}
+                </span>
+              )}
               hint={!apiKeyLocked ? t.samWalletIdentifierHelp : undefined}
               value={samForm.sam_shamcash_wallet_identifier}
               locked={apiKeyLocked}
@@ -503,21 +526,23 @@ export default function AdminSamApiSettings({
       </SectionCard>
 
       <SectionCard
-        icon={Link2}
+        icon={Wallet}
         title={t.samApiLinkedWallets}
         description={t.samApiLinkedWalletsHelp}
       >
-        {apiKeyLocked && (
-          <button
-            type="button"
-            onClick={() => fetchWallets().catch((err) => onError?.(err.message))}
-            disabled={walletsLoading}
-            className="action-chip gap-1.5 text-xs"
-          >
-            {walletsLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-            {t.samApiRefreshWallets}
-          </button>
-        )}
+        <div className="flex justify-end">
+          {apiKeyLocked && (
+            <button
+              type="button"
+              onClick={() => fetchWallets().catch((err) => onError?.(err.message))}
+              disabled={walletsLoading}
+              className="action-chip gap-1.5 text-xs"
+            >
+              {walletsLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              {t.samApiRefreshWallets}
+            </button>
+          )}
+        </div>
 
         {walletsLoading && !samWallets.length ? (
           <div className="flex items-center gap-2 text-sm text-[var(--text-sec)] py-4">
@@ -527,7 +552,7 @@ export default function AdminSamApiSettings({
         ) : samWallets.length === 0 ? (
           <p className="text-sm text-[var(--text-muted)] py-2">{t.samApiNoWalletsYet}</p>
         ) : (
-          <div className="grid sm:grid-cols-2 gap-3">
+          <div className="sam-wallet-list">
             {samWallets.map((wallet) => {
               const id = getSamWalletInvoiceIdentifier(wallet);
               const selectedId = wallet.provider === 'syriatel'
@@ -542,23 +567,6 @@ export default function AdminSamApiSettings({
                 />
               );
             })}
-          </div>
-        )}
-
-        {apiKeyLocked && (shamLinked || syriatelLinked) && (
-          <div className="text-xs text-[var(--text-muted)] space-y-1 pt-1">
-            {shamLinked && (
-              <div>
-                <span className="text-green-400 font-medium">{t.samShamcashWalletLabel}:</span>{' '}
-                {getSamWalletDisplayName(shamLinked)}
-              </div>
-            )}
-            {syriatelLinked && (
-              <div>
-                <span className="text-red-400 font-medium">{t.samSyriatelWalletLabel}:</span>{' '}
-                {getSamWalletDisplayName(syriatelLinked)}
-              </div>
-            )}
           </div>
         )}
       </SectionCard>
@@ -591,15 +599,7 @@ export default function AdminSamApiSettings({
             {t.samTestWallets}
           </button>
         )}
-        <button
-          type="button"
-          onClick={() => onSaveAll(false)}
-          disabled={saving}
-          className="btn btn-primary action-chip gap-2 !border-0 disabled:opacity-50"
-        >
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          {t.saveSettings}
-        </button>
+        {/* Main Save lives once in parent AdminPaymentsSettings — avoid duplicate Save buttons */}
         {apiKeyLocked && (
           <button
             type="button"

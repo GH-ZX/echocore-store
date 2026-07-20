@@ -117,7 +117,7 @@ export default function AdminGiftForm({
     setRecipientPickerOpen(true);
     setSearching(true);
     try {
-      const rows = await fetchAdminUsers(String(query || '').trim(), RECIPIENT_SEARCH_LIMIT);
+      const { rows } = await fetchAdminUsers(String(query || '').trim(), RECIPIENT_SEARCH_LIMIT);
       setRecipientResults((rows || []).filter((row) => row.role !== 'admin'));
     } catch (err) {
       notifyError(err.message);

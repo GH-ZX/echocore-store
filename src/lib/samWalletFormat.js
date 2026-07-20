@@ -1,4 +1,8 @@
-const CURRENCY_ORDER = ['USD', 'USDT', 'SYP', 'EUR'];
+/** Storefront / admin UI only care about USD + SYP (not USDT/EUR). */
+export const SUPPLIER_SAM_CURRENCIES = ['USD', 'SYP'];
+
+/** @deprecated use SUPPLIER_SAM_CURRENCIES — kept for any raw API dumps */
+const CURRENCY_ORDER = ['USD', 'SYP'];
 
 export function normalizeSamBalances(balances) {
   if (!Array.isArray(balances)) return [];
@@ -6,13 +10,32 @@ export function normalizeSamBalances(balances) {
   balances.forEach((row) => {
     const currency = String(row?.currency || '').toUpperCase();
     if (!currency) return;
+    // Ignore USDT / EUR / other — store only uses USD + SYP
+    if (currency !== 'USD' && currency !== 'SYP') return;
     const amount = Number(row?.amount);
     map.set(currency, Number.isFinite(amount) ? amount : 0);
   });
-  return CURRENCY_ORDER.map((currency) => ({
-    currency,
-    amount: map.get(currency) ?? 0,
-  }));
+  // Only include currencies that were present in the payload (avoid inventing $0 EUR etc.)
+  if (map.size === 0) return [];
+  return CURRENCY_ORDER
+    .filter((currency) => map.has(currency))
+    .map((currency) => ({
+      currency,
+      amount: map.get(currency) ?? 0,
+    }));
+}
+
+/** Display lines for a single wallet — USD then SYP only. */
+export function getWalletDisplayBalanceLines(wallet) {
+  const balances = Array.isArray(wallet?.balances) ? wallet.balances : [];
+  if (!balances.length) return [];
+  return SUPPLIER_SAM_CURRENCIES
+    .map((currency) => {
+      const row = balances.find((b) => String(b.currency).toUpperCase() === currency);
+      if (!row) return null;
+      return { currency, amount: Number(row.amount) || 0 };
+    })
+    .filter(Boolean);
 }
 
 const AMOUNT_LOCALE = 'en-US';
@@ -62,7 +85,13 @@ export function getSamWalletDisplayName(wallet) {
 export function getSamWalletInvoiceIdentifier(wallet) {
   if (!wallet) return '';
   return String(
-    wallet.walletAddress || wallet.phone || wallet.cashCode || wallet.accountNumber || wallet.id || '',
+    wallet.identifier
+    || wallet.walletAddress
+    || wallet.phone
+    || wallet.cashCode
+    || wallet.accountNumber
+    || wallet.id
+    || '',
   ).trim();
 }
 
@@ -71,6 +100,7 @@ export function findSamWalletByIdentifier(wallets, identifier) {
   if (!needle || !Array.isArray(wallets)) return null;
   return wallets.find((wallet) => {
     const candidates = [
+      wallet.identifier,
       wallet.walletAddress,
       wallet.phone,
       wallet.cashCode,
@@ -81,6 +111,30 @@ export function findSamWalletByIdentifier(wallets, identifier) {
       .map((value) => String(value).trim().toLowerCase());
     return candidates.includes(needle);
   }) || null;
+}
+
+/**
+ * Normalize Sam wallet rows from listWallets / getAllWalletBalances for admin UI.
+ * Matches overview supplier-wallets store shape.
+ */
+export function normalizeSamWalletRows(wallets) {
+  if (!Array.isArray(wallets)) return [];
+  return wallets.map((wallet) => {
+    const rawBalances = Array.isArray(wallet.balances) ? wallet.balances : [];
+    const hasBalancePayload = rawBalances.length > 0;
+    const identifier = getSamWalletInvoiceIdentifier(wallet);
+    return {
+      ...wallet,
+      id: wallet.id,
+      provider: wallet.provider,
+      providerDisplayName: wallet.providerDisplayName || wallet.provider,
+      label: wallet.label || '',
+      identifier,
+      balances: hasBalancePayload ? normalizeSamBalances(rawBalances) : [],
+      error: wallet.error || null,
+      balanceOk: hasBalancePayload && !wallet.error,
+    };
+  });
 }
 
 export function getSamAccountLabel(wallets, fallback = '') {
@@ -97,10 +151,8 @@ export function sumBalancesAcrossWallets(wallets, currency) {
   }, 0);
 }
 
-export const SUPPLIER_SAM_CURRENCIES = ['USD', 'SYP'];
-
 /**
- * Aggregate Sam balances for the admin card.
+ * Aggregate Sam balances for the admin card (USD + SYP only).
  * Returns [] when no wallet has real balance data — avoids fake $0 lines.
  */
 export function getSamSupplierBalanceLines(wallets, currencies = SUPPLIER_SAM_CURRENCIES) {
@@ -110,8 +162,10 @@ export function getSamSupplierBalanceLines(wallets, currencies = SUPPLIER_SAM_CU
   ));
   if (!hasAnyBalance) return [];
 
-  return currencies.map((currency) => ({
-    currency,
-    amount: sumBalancesAcrossWallets(list, currency),
-  }));
+  return currencies
+    .map((currency) => ({
+      currency,
+      amount: sumBalancesAcrossWallets(list, currency),
+    }))
+    .filter((row) => list.some((w) => (w.balances || []).some((b) => b.currency === row.currency)));
 }

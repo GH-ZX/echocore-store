@@ -11,8 +11,10 @@ import {
   XCircle,
   AlertTriangle,
   Gift,
+  MessageSquareHeart,
 } from 'lucide-react';
 import { fetchMyOrderReceipt } from '../lib/orders';
+import CustomerReviewForm from '../components/reviews/CustomerReviewForm';
 import {
   canUserAccessOrderReceipt,
   consumeOrderFulfillMarker,
@@ -438,6 +440,28 @@ export default function SuccessView({
       {fulfillmentFailed && (
         <div className={`card p-6 mb-6 text-center border ${balanceRefunded ? 'border-amber-500/30 bg-amber-500/5 text-amber-200' : 'border-red-500/30 bg-red-500/5 text-red-300'}`}>
           <p>{getFulfillmentFailureMessage(orderDetails, t)}</p>
+        </div>
+      )}
+
+      {presentation.showSuccess && !fulfillmentFailed && user?.id && (
+        <div className="card p-6 mb-6 border border-[var(--accent)]/20 bg-[var(--accent)]/5">
+          <div className="flex items-start gap-3 mb-4">
+            <div className="w-11 h-11 rounded-2xl bg-[var(--accent)]/15 text-[var(--accent)] flex items-center justify-center shrink-0">
+              <MessageSquareHeart className="w-6 h-6" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="font-bold text-lg">{t.reviewAfterPurchaseTitle}</h2>
+              <p className="text-sm text-[var(--text-sec)] mt-1 leading-relaxed">
+                {t.reviewAfterPurchaseDesc}
+              </p>
+            </div>
+          </div>
+          <CustomerReviewForm
+            t={t}
+            user={user}
+            orderId={orderDetails.id}
+            compact
+          />
         </div>
       )}
 

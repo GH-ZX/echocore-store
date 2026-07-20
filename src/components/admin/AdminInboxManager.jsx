@@ -20,6 +20,9 @@ import { paginateInboxItems, searchInboxNotifications } from '../../lib/inboxLis
 import { formatMessage } from '../../lib/i18n';
 import { getAdminDashboardPath, navigateTo } from '../../lib/adminRoutes';
 
+/** Align with orders / recharges / users list density */
+const ADMIN_INBOX_PAGE_SIZE = 25;
+
 export default function AdminInboxManager({
   t = {},
   lang = 'ar',
@@ -31,7 +34,8 @@ export default function AdminInboxManager({
   onMarkAllRead,
 }) {
   const navigate = useNavigate();
-  const [activeFilter, setActiveFilter] = useState(INBOX_FILTER_IDS.ALL);
+  // Alerts-first: open on unread so this page is not a second “orders” list
+  const [activeFilter, setActiveFilter] = useState(INBOX_FILTER_IDS.UNREAD);
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
 
@@ -56,7 +60,7 @@ export default function AdminInboxManager({
   );
 
   const pagination = useMemo(
-    () => paginateInboxItems(searchedNotifications, page),
+    () => paginateInboxItems(searchedNotifications, page, ADMIN_INBOX_PAGE_SIZE),
     [searchedNotifications, page],
   );
 
@@ -126,19 +130,21 @@ export default function AdminInboxManager({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => navigate(getAdminDashboardPath('recharges'))}
+              onClick={() => navigate(getAdminDashboardPath('orders'))}
               className="action-chip gap-1.5 text-xs"
+              title={t.adminInboxOpenOrdersHint}
             >
-              <Wallet className="w-3.5 h-3.5" />
-              {t.rechargesTab}
+              <ShoppingCart className="w-3.5 h-3.5" />
+              {formatMessage(t.adminInboxOpenQueue, { queue: t.ordersTab })}
             </button>
             <button
               type="button"
-              onClick={() => navigate(getAdminDashboardPath('orders'))}
+              onClick={() => navigate(getAdminDashboardPath('recharges'))}
               className="action-chip gap-1.5 text-xs"
+              title={t.adminInboxOpenRechargesHint}
             >
-              <ShoppingCart className="w-3.5 h-3.5" />
-              {t.ordersTab}
+              <Wallet className="w-3.5 h-3.5" />
+              {formatMessage(t.adminInboxOpenQueue, { queue: t.rechargesTab })}
             </button>
             <button type="button" onClick={onRefresh} className="action-chip gap-1.5 text-xs">
               <RefreshCw className="w-3.5 h-3.5" />
@@ -185,9 +191,28 @@ export default function AdminInboxManager({
           <Loader2 className="w-7 h-7 animate-spin text-[var(--accent)] mx-auto" />
         </div>
       ) : pagination.total === 0 ? (
-        <div className="card p-10 text-center text-[var(--text-sec)]">
-          <Bell className="w-9 h-9 mx-auto mb-3 opacity-35" />
+        <div className="card p-10 text-center text-[var(--text-sec)] space-y-3">
+          <Bell className="w-9 h-9 mx-auto mb-1 opacity-35" />
           <p>{searchQuery.trim() ? t.inboxSearchEmpty : (t[emptyMessageKey] || t.noNotifications)}</p>
+          {!searchQuery.trim() && activeFilter === INBOX_FILTER_IDS.UNREAD ? (
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setActiveFilter(INBOX_FILTER_IDS.ACTIVITY)}
+                className="btn btn-secondary text-xs py-2 px-3"
+              >
+                {t.adminInboxShowActivity}
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(getAdminDashboardPath('orders'))}
+                className="action-chip gap-1.5 text-xs"
+              >
+                <ShoppingCart className="w-3.5 h-3.5" />
+                {t.ordersTab}
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : (
         <>

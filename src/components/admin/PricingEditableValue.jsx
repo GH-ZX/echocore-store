@@ -74,7 +74,8 @@ export default function PricingEditableValue({
   };
 
   const editLabel = t.pricingEdit || t.edit || 'Edit';
-  const doneLabel = t.pricingEditDone || t.save || 'Done';
+  // Short "Save" after pencil edit — same as dashboard primary action wording
+  const doneLabel = t.save || t.pricingEditDone || 'Save';
   const cancelLabel = t.cancel || 'Cancel';
 
   return (

@@ -5,6 +5,10 @@ import {
   resolvePointsName,
 } from './gameCurrency.ts';
 import { priceFromCost, resolveSyncedPrice } from './markupPricing.ts';
+import {
+  loadIgdbAutoCoverConfig,
+  maybeApplyIgdbAutoCover,
+} from './igdbCover.ts';
 
 const G2BULK_BASE = 'https://api.g2bulk.com/v1';
 /** G2Bulk docs: poll every 2–5 s. Median top-up time can be ~3 min — do not hard-fail on short waits. */
@@ -520,7 +524,13 @@ function mergePullSelections(saved: PullSelection, db: PullSelection): PullSelec
   if (isEmptyPullSelection(saved)) {
     return normalizePullSelection(db);
   }
-  return normalizePullSelection(saved);
+  // Keep product lanes from saved admin picks; carousel follows live DB flags.
+  return normalizePullSelection({
+    ...saved,
+    carouselBaseKeys: db.carouselBaseKeys.length > 0
+      ? db.carouselBaseKeys
+      : saved.carouselBaseKeys,
+  });
 }
 
 function slugifyPullKey(value: string) {
@@ -588,6 +598,23 @@ function prunePullSelectionToCatalog(
     ids.filter((value) => Number.isFinite(value) && valid.has(value)),
   )];
 
+  const allVoucherIds = new Set([...validAccountIds, ...validGiftIds]);
+  const pruneCarouselKeys = (keys: string[]) => [...new Set(
+    keys
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .map((key) => {
+        if (key.startsWith('voucher:')) {
+          const categoryId = Number(key.slice('voucher:'.length));
+          if (!Number.isFinite(categoryId) || !allVoucherIds.has(categoryId)) return '';
+          return `voucher:${categoryId}`;
+        }
+        const code = resolveCatalogBaseKey(key, index);
+        return code && validCodes.has(code) ? code : '';
+      })
+      .filter(Boolean),
+  )];
+
   return normalizePullSelection({
     ...selection,
     topupSyncBaseKeys: pruneKeys(selection.topupSyncBaseKeys),
@@ -596,7 +623,7 @@ function prunePullSelectionToCatalog(
     accountLiveCategoryIds: pruneIds(selection.accountLiveCategoryIds, validAccountIds),
     giftSyncCategoryIds: pruneIds(selection.giftSyncCategoryIds, validGiftIds),
     giftLiveCategoryIds: pruneIds(selection.giftLiveCategoryIds, validGiftIds),
-    carouselBaseKeys: pruneKeys(selection.carouselBaseKeys),
+    carouselBaseKeys: pruneCarouselKeys(selection.carouselBaseKeys),
   });
 }
 
@@ -625,7 +652,7 @@ async function buildDatabasePullSelectionFromDb(
       .not('g2bulk_game_code', 'is', null),
     serviceClient
       .from('games')
-      .select('g2bulk_source_id, catalog_segment, name_en')
+      .select('g2bulk_source_id, catalog_segment, name_en, show_in_carousel, carousel_order')
       .eq('catalog_source', 'g2bulk')
       .eq('redemption_method', 'redeem_code'),
   ]);
@@ -645,8 +672,6 @@ async function buildDatabasePullSelectionFromDb(
     }
   }
 
-  carouselRows.sort((a, b) => a.order - b.order);
-
   const accountSyncCategoryIds: number[] = [];
   const giftSyncCategoryIds: number[] = [];
   for (const row of voucherGames || []) {
@@ -655,7 +680,15 @@ async function buildDatabasePullSelectionFromDb(
     const uiSegment = classifyVoucherSegment(String(row.name_en || ''));
     if (uiSegment === 'gaming_account') accountSyncCategoryIds.push(categoryId);
     else giftSyncCategoryIds.push(categoryId);
+    if (row.show_in_carousel) {
+      carouselRows.push({
+        code: `voucher:${categoryId}`,
+        order: Number(row.carousel_order ?? 999),
+      });
+    }
   }
+
+  carouselRows.sort((a, b) => a.order - b.order);
 
   return normalizePullSelection({
     topupSyncBaseKeys,
@@ -2447,6 +2480,7 @@ Deno.serve(async (req) => {
     const now = new Date().toISOString();
 
     const { markup } = await loadStorePricingSettings(serviceClient);
+    const igdbAutoCover = await loadIgdbAutoCoverConfig(serviceClient);
 
     async function syncTopupGame(
       g: Json,
@@ -2539,6 +2573,16 @@ Deno.serve(async (req) => {
           gameId = inserted.id;
           gamesSynced += 1;
         }
+      }
+
+      // Optional: IGDB cover using first name word only (when admin enabled)
+      if (gameId && igdbAutoCover.enabled) {
+        await maybeApplyIgdbAutoCover(
+          serviceClient,
+          gameId,
+          meta.baseName || displayName,
+          igdbAutoCover,
+        );
       }
 
       const liveNames: string[] = [];
@@ -2733,6 +2777,10 @@ Deno.serve(async (req) => {
               gameId = inserted.id;
               gamesSynced += 1;
             }
+          }
+
+          if (gameId && igdbAutoCover.enabled) {
+            await maybeApplyIgdbAutoCover(serviceClient, gameId, title, igdbAutoCover);
           }
 
           const liveProductIds: number[] = [];
@@ -2978,12 +3026,19 @@ Deno.serve(async (req) => {
       const pullSelection = normalizePullSelection(state?.pullSelection || await loadPullSelection(serviceClient));
       const carouselBaseKeys = pullSelection.carouselBaseKeys;
 
-      const { data: topupGames } = await serviceClient
-        .from('games')
-        .select('id, g2bulk_game_code, name_en')
-        .eq('catalog_source', 'g2bulk')
-        .eq('redemption_method', 'uid')
-        .not('g2bulk_game_code', 'is', null);
+      const [{ data: topupGames }, { data: voucherGames }] = await Promise.all([
+        serviceClient
+          .from('games')
+          .select('id, g2bulk_game_code, name_en')
+          .eq('catalog_source', 'g2bulk')
+          .eq('redemption_method', 'uid')
+          .not('g2bulk_game_code', 'is', null),
+        serviceClient
+          .from('games')
+          .select('id, g2bulk_source_id, name_en')
+          .eq('catalog_source', 'g2bulk')
+          .eq('redemption_method', 'redeem_code'),
+      ]);
 
       await serviceClient
         .from('games')
@@ -2991,6 +3046,11 @@ Deno.serve(async (req) => {
         .eq('catalog_source', 'g2bulk');
 
       const selectedCodes = new Set(pullSelection.topupSyncBaseKeys);
+      const selectedVoucherIds = new Set([
+        ...pullSelection.accountSyncCategoryIds,
+        ...pullSelection.giftSyncCategoryIds,
+      ]);
+
       for (const game of topupGames || []) {
         const code = String(game.g2bulk_game_code || '').trim();
         if (!code || !selectedCodes.has(code)) {
@@ -3001,10 +3061,28 @@ Deno.serve(async (req) => {
 
       const carouselIds: string[] = [];
       for (let i = 0; i < carouselBaseKeys.length; i++) {
-        const targetCode = carouselBaseKeys[i];
+        const targetKey = String(carouselBaseKeys[i] || '').trim();
+        if (!targetKey) continue;
+
+        if (targetKey.startsWith('voucher:')) {
+          const categoryId = Number(targetKey.slice('voucher:'.length));
+          if (!Number.isFinite(categoryId) || !selectedVoucherIds.has(categoryId)) continue;
+          const matching = (voucherGames || []).filter((row) => (
+            Number(row.g2bulk_source_id) === categoryId
+          ));
+          for (const game of matching) {
+            carouselIds.push(game.id as string);
+            await serviceClient
+              .from('games')
+              .update({ show_in_carousel: true, carousel_order: i })
+              .eq('id', game.id);
+          }
+          continue;
+        }
+
         const matching = (topupGames || []).filter((row) => {
           const code = String(row.g2bulk_game_code || '').trim();
-          return code && code === targetCode && selectedCodes.has(code);
+          return code && code === targetKey && selectedCodes.has(code);
         });
         for (const game of matching) {
           carouselIds.push(game.id as string);

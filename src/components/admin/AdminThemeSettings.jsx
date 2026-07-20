@@ -1259,7 +1259,7 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
         <div className="flex flex-wrap gap-2 mt-6 pt-4 border-t border-[var(--border)]">
           <button type="button" onClick={handleSave} disabled={saving} className="btn btn-primary action-chip gap-2 !border-0">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {t.saveTheme}
+            {t.save || t.saveTheme}
           </button>
           <button type="button" onClick={handleReset} className="action-chip gap-2">
             <RotateCcw className="w-4 h-4" />

@@ -179,7 +179,8 @@ export default function HomeView({
     return map;
   }, [layout, offersWithGames]);
 
-  const carouselGames = getCarouselGames(topupGames);
+  // Include top-up games + redeem codes pinned to the carousel
+  const carouselGames = getCarouselGames(games);
 
   const carouselItems = carouselGames.map((g) => {
     const descriptions = resolveCarouselDescription(g, games, offers, t);
@@ -253,7 +254,7 @@ export default function HomeView({
         footerSlot={showAddCard ? (
           <AdminAddCard
             variant="game"
-            ariaLabel={t.addGame}
+            ariaLabel={t.goToAddGames || t.adminGamesFromG2bulkOnly || t.addGame}
             onClick={() => onAddGame(options.addContext || {})}
           />
         ) : null}
@@ -439,14 +440,53 @@ export default function HomeView({
 
       case 'game_picks': {
         const picked = (section.game_ids || [])
-          .map((id) => topupGames.find((game) => game.id === id) || games.find((game) => game.id === id))
-          .filter(Boolean);
+          .map((id) => topupGamesWithStats.find((game) => game.id === id)
+            || topupGames.find((game) => game.id === id)
+            || games.find((game) => game.id === id))
+          .filter(Boolean)
+          .map((game) => {
+            if (game.packCount != null || game.offerCount != null) return game;
+            const activeOffers = offers.filter(
+              (offer) => offer.game_id === game.id && offer.active !== false,
+            );
+            return {
+              ...game,
+              packCount: activeOffers.length,
+              marketingDescription: getGameMarketingDescription(game, lang, games, offers, t),
+            };
+          });
         if (picked.length === 0 && !loading && !(isAdmin && onAddGame)) return null;
         return renderSectionBlock(
           section,
           'sale',
           null,
           renderGamesExpandable(section, picked, { hideAdd: true }),
+        );
+      }
+
+      case 'redeem_picks': {
+        const picked = (section.game_ids || [])
+          .map((id) => voucherGames.find((game) => game.id === id)
+            || games.find((game) => game.id === id && game.redemption_method === 'redeem_code'))
+          .filter(Boolean)
+          .map((game) => {
+            if (game.offerCount != null) return game;
+            return {
+              ...game,
+              offerCount: countActiveOffers(game.id, offers),
+            };
+          });
+        if (picked.length === 0 && !loading) return null;
+        return renderSectionBlock(
+          section,
+          'games',
+          null,
+          renderGamesExpandable(section, picked, {
+            hideAdd: true,
+            gridClassName: HOME_GRID_VOUCHER,
+            layoutId: 'voucher',
+            loadingSkeleton: voucherGridSkeleton(),
+          }),
         );
       }
 

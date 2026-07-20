@@ -1,6 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
-import { Mail, Lock, User, KeyRound, ArrowLeft, Loader2 } from 'lucide-react';
+import {
+  Mail,
+  Lock,
+  User,
+  AtSign,
+  Calendar,
+  KeyRound,
+  ArrowLeft,
+  Loader2,
+  Check,
+  X,
+} from 'lucide-react';
 import EchoLogo from '../../components/ui/EchoLogo';
 import { supabase } from '../../lib/supabase';
 import {
@@ -17,6 +28,14 @@ import {
   PASSWORD_MIN_LENGTH,
   PASSWORD_MAX_LENGTH,
 } from '../../lib/auth';
+import {
+  getDateOfBirthMax,
+  getDateOfBirthMin,
+  normalizeProfileDateOfBirth,
+  normalizeProfileGender,
+} from '../../lib/profile';
+import { normalizeUsernameInput, validateUsername } from '../../lib/username';
+import { checkUsernameAvailable, getUsernameErrorMessage } from '../../lib/usernameChange';
 
 function GoogleIcon() {
   return (
@@ -47,20 +66,34 @@ export default function LoginView({
     ? location.state.from
     : '/';
 
-  const [mode, setMode] = useState(() => (
-    isPasswordRecoveryUrl() || isPasswordRecoveryPending() ? 'recovery' : 'login'
-  ));
+  const authPath = String(location.pathname || '').replace(/\/+$/, '');
+  const isSignupPath = authPath === '/signup' || authPath.endsWith('/signup');
+  const isLoginPath = authPath === '/login' || authPath.endsWith('/login');
+
+  const [mode, setMode] = useState(() => {
+    if (isPasswordRecoveryUrl() || isPasswordRecoveryPending()) return 'recovery';
+    const path = typeof window !== 'undefined'
+      ? String(window.location.pathname || '').replace(/\/+$/, '')
+      : '';
+    if (path === '/signup' || path.endsWith('/signup')) return 'signup';
+    return 'login';
+  });
   const [loginMethod, setLoginMethod] = useState('password');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
+  const [gender, setGender] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [usernameStatus, setUsernameStatus] = useState({ state: 'idle' }); // idle|checking|ok|bad
   const [otpCode, setOtpCode] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const otpInputRef = useRef(null);
+  const usernameCheckTimer = useRef(null);
 
   const isRecoveryFlow = mode === 'recovery'
     || searchParams.get('recovery') === '1'
@@ -73,11 +106,28 @@ export default function LoginView({
     if (loadingAuth || !user?.id || isRecoveryFlow) return undefined;
     const timer = window.setTimeout(() => {
       if (typeof navigate === 'function') {
-        navigate(redirectTo === '/login' ? '/' : redirectTo, { replace: true });
+        const dest = (redirectTo === '/login' || redirectTo === '/signup') ? '/' : redirectTo;
+        navigate(dest, { replace: true });
       }
     }, 900);
     return () => window.clearTimeout(timer);
   }, [loadingAuth, user?.id, isRecoveryFlow, navigate, redirectTo]);
+
+  // Keep mode in sync with /login vs /signup URL
+  useEffect(() => {
+    if (
+      searchParams.get('recovery') === '1'
+      || isPasswordRecoveryUrl()
+      || isPasswordRecoveryPending()
+    ) {
+      return;
+    }
+    if (isSignupPath) {
+      setMode((m) => (m === 'signup' ? m : 'signup'));
+    } else if (isLoginPath) {
+      setMode((m) => (m === 'login' || m === 'forgot' || m === 'otp' || m === 'recovery' ? m : 'login'));
+    }
+  }, [isSignupPath, isLoginPath, searchParams]);
 
   useEffect(() => {
     if (
@@ -105,6 +155,42 @@ export default function LoginView({
       otpInputRef.current.focus();
     }
   }, [otpSent]);
+
+  useEffect(() => () => {
+    if (usernameCheckTimer.current) window.clearTimeout(usernameCheckTimer.current);
+  }, []);
+
+  useEffect(() => {
+    if (mode !== 'signup') return undefined;
+    const value = normalizeUsernameInput(username);
+    if (!value) {
+      setUsernameStatus({ state: 'idle' });
+      return undefined;
+    }
+    const local = validateUsername(value);
+    if (!local.ok) {
+      setUsernameStatus({ state: 'bad', reason: local.code });
+      return undefined;
+    }
+    setUsernameStatus({ state: 'checking' });
+    if (usernameCheckTimer.current) window.clearTimeout(usernameCheckTimer.current);
+    usernameCheckTimer.current = window.setTimeout(async () => {
+      try {
+        const result = await checkUsernameAvailable(value);
+        if (!result.available) {
+          setUsernameStatus({ state: 'bad', reason: result.reason || 'username_taken' });
+        } else {
+          setUsernameStatus({ state: 'ok', username: result.username || value });
+        }
+      } catch {
+        // Network/RPC hiccup — allow submit; server will re-validate
+        setUsernameStatus({ state: 'idle' });
+      }
+    }, 420);
+    return () => {
+      if (usernameCheckTimer.current) window.clearTimeout(usernameCheckTimer.current);
+    };
+  }, [username, mode]);
 
   const resetMessages = () => {
     setError('');
@@ -145,7 +231,27 @@ export default function LoginView({
         if (password !== confirmPassword) {
           throw new Error(t.passwordMismatch);
         }
-        const result = await handleAuthSignup(email, password, name);
+        const uname = normalizeUsernameInput(username);
+        if (uname) {
+          const format = validateUsername(uname);
+          if (!format.ok) {
+            throw new Error(getUsernameErrorMessage(format.code, t));
+          }
+          const availability = await checkUsernameAvailable(format.value);
+          if (!availability.available) {
+            throw new Error(getUsernameErrorMessage(availability.reason || 'username_taken', t));
+          }
+        }
+        const dob = normalizeProfileDateOfBirth(dateOfBirth);
+        if (!dob.ok) {
+          throw new Error(t.dateOfBirthInvalid || t.authError);
+        }
+        const result = await handleAuthSignup(email, password, {
+          name: name.trim(),
+          username: uname,
+          gender: normalizeProfileGender(gender),
+          dateOfBirth: dob.value,
+        });
         if (result.autoLogin && result.userData) {
           onLoginSuccess(result.userData, redirectTo);
         } else {
@@ -216,6 +322,30 @@ export default function LoginView({
     setOtpCode('');
     setPassword('');
     setConfirmPassword('');
+    if (next !== 'signup') {
+      setUsername('');
+      setGender('');
+      setDateOfBirth('');
+      setUsernameStatus({ state: 'idle' });
+    }
+    if (typeof navigate === 'function') {
+      const state = location.state;
+      if (next === 'signup') {
+        navigate('/signup', { replace: true, state });
+      } else if (next === 'login' || next === 'forgot' || next === 'otp') {
+        navigate('/login', { replace: true, state });
+      }
+    }
+  };
+
+  const usernameHint = () => {
+    if (!username.trim() || usernameStatus.state === 'idle') return '';
+    if (usernameStatus.state === 'checking') return t.usernameChecking;
+    if (usernameStatus.state === 'ok') return t.usernameAvailable;
+    if (usernameStatus.state === 'bad') {
+      return getUsernameErrorMessage(usernameStatus.reason, t);
+    }
+    return '';
   };
 
   const title = () => {
@@ -227,6 +357,7 @@ export default function LoginView({
   };
 
   const subtitle = () => {
+    if (mode === 'signup') return t.signupDesc;
     if (mode === 'forgot') return t.forgotPasswordDesc;
     if (mode === 'recovery') return t.newPasswordDesc;
     if (mode === 'otp') return otpSent ? t.otpSentDesc : t.otpDesc;
@@ -344,19 +475,111 @@ export default function LoginView({
           )}
 
           {mode === 'signup' && (
-            <div>
-              <label className="text-sm font-semibold flex items-center gap-2 mb-1.5 text-[var(--text-sec)]">
-                <User className="w-4 h-4 text-[var(--accent)]" /> {t.yourName}
-              </label>
-              <input
-                type="text"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="input w-full"
-                placeholder={t.yourName}
-              />
-            </div>
+            <>
+              <div>
+                <label className="text-sm font-semibold flex items-center gap-2 mb-1.5 text-[var(--text-sec)]">
+                  <User className="w-4 h-4 text-[var(--accent)]" /> {t.yourName}
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  maxLength={40}
+                  className="input w-full"
+                  placeholder={t.yourName}
+                  autoComplete="name"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold flex items-center gap-2 mb-1.5 text-[var(--text-sec)]">
+                  <AtSign className="w-4 h-4 text-[var(--accent)]" /> {t.profileUsername}
+                </label>
+                <div className="relative" dir="ltr">
+                  <span className="absolute inset-y-0 left-3 flex items-center text-[var(--text-muted)] font-mono text-sm pointer-events-none">@</span>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(normalizeUsernameInput(e.target.value))}
+                    maxLength={20}
+                    className="input w-full font-mono pl-7 pr-10 text-left"
+                    dir="ltr"
+                    placeholder={t.profileUsernamePlaceholder}
+                    autoComplete="username"
+                    spellCheck={false}
+                    aria-invalid={usernameStatus.state === 'bad'}
+                  />
+                  <span className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+                    {usernameStatus.state === 'checking' && (
+                      <Loader2 className="w-4 h-4 animate-spin text-[var(--text-muted)]" />
+                    )}
+                    {usernameStatus.state === 'ok' && (
+                      <Check className="w-4 h-4 text-emerald-400" aria-hidden />
+                    )}
+                    {usernameStatus.state === 'bad' && (
+                      <X className="w-4 h-4 text-red-400" aria-hidden />
+                    )}
+                  </span>
+                </div>
+                {usernameHint() ? (
+                  <p className={`text-[10px] mt-1 ${
+                    usernameStatus.state === 'ok'
+                      ? 'text-emerald-400'
+                      : usernameStatus.state === 'bad'
+                        ? 'text-red-400'
+                        : 'text-[var(--text-muted)]'
+                  }`}
+                  >
+                    {usernameHint()}
+                  </p>
+                ) : null}
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold flex items-center gap-2 mb-1.5 text-[var(--text-sec)]">
+                  <Calendar className="w-4 h-4 text-[var(--accent)]" /> {t.dateOfBirth}
+                </label>
+                <input
+                  type="date"
+                  value={dateOfBirth}
+                  onChange={(e) => setDateOfBirth(e.target.value)}
+                  min={getDateOfBirthMin()}
+                  max={getDateOfBirthMax()}
+                  className="input w-full text-left"
+                  dir="ltr"
+                  autoComplete="bday"
+                />
+              </div>
+
+              <div>
+                <span className="text-sm font-semibold flex items-center gap-2 mb-1.5 text-[var(--text-sec)]">
+                  {t.gender}
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'male', label: t.genderMale },
+                    { id: 'female', label: t.genderFemale },
+                  ].map((opt) => {
+                    const active = gender === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setGender((prev) => (prev === opt.id ? '' : opt.id))}
+                        className={`py-2.5 rounded-xl border text-sm font-semibold transition-colors ${
+                          active
+                            ? 'border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)]'
+                            : 'border-[var(--border)] text-[var(--text-sec)] hover:text-[var(--text)] hover:border-[var(--accent)]/40'
+                        }`}
+                        aria-pressed={active}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
           )}
 
           {(mode !== 'recovery') && (
@@ -369,7 +592,8 @@ export default function LoginView({
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="input w-full"
+                className="input w-full text-left"
+                dir="ltr"
                 autoComplete="email"
                 disabled={mode === 'otp' && otpSent}
               />
@@ -427,7 +651,8 @@ export default function LoginView({
                 maxLength={PASSWORD_MAX_LENGTH}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="input w-full"
+                className="input w-full text-left"
+                dir="ltr"
                 autoComplete={mode === 'recovery' ? 'new-password' : mode === 'signup' ? 'new-password' : 'current-password'}
               />
             </div>
@@ -445,7 +670,8 @@ export default function LoginView({
                 maxLength={PASSWORD_MAX_LENGTH}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="input w-full"
+                className="input w-full text-left"
+                dir="ltr"
                 autoComplete="new-password"
               />
             </div>
@@ -463,7 +689,8 @@ export default function LoginView({
                 maxLength={PASSWORD_MAX_LENGTH}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="input w-full"
+                className="input w-full text-left"
+                dir="ltr"
                 autoComplete="new-password"
               />
             </div>

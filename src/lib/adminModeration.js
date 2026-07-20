@@ -11,12 +11,123 @@ function wrapRpcError(error) {
   throw error;
 }
 
-export async function fetchAdminUsers(search = '', limit = 50) {
-  const { data, error } = await supabase.rpc('admin_list_users', {
+function isRowBanned(user) {
+  if (!user?.banned_at) return false;
+  if (!user.ban_expires_at) return true;
+  return new Date(user.ban_expires_at).getTime() > Date.now();
+}
+
+function applyClientUserFilters(rows, { balanceFilter = 'all', statusFilter = 'all' } = {}) {
+  let list = Array.isArray(rows) ? rows : [];
+  const bal = String(balanceFilter || 'all').toLowerCase();
+  if (bal === 'positive') list = list.filter((u) => Number(u?.balance || 0) > 0);
+  if (bal === 'zero') list = list.filter((u) => Number(u?.balance || 0) === 0);
+
+  const status = String(statusFilter || 'all').toLowerCase();
+  if (status === 'verified') list = list.filter((u) => !!u?.verified_at);
+  if (status === 'unverified') list = list.filter((u) => !u?.verified_at);
+  if (status === 'banned') list = list.filter((u) => isRowBanned(u));
+  if (status === 'active') list = list.filter((u) => !isRowBanned(u));
+  return list;
+}
+
+function normalizeAdminUsersResult(data, {
+  balanceFilter = 'all',
+  statusFilter = 'all',
+  applyClientFilters = false,
+} = {}) {
+  let rows;
+  let total;
+  if (Array.isArray(data)) {
+    rows = data;
+    total = data.length;
+  } else {
+    rows = Array.isArray(data?.rows) ? data.rows : [];
+    const t = Number(data?.total);
+    total = Number.isFinite(t) ? t : rows.length;
+  }
+  if (applyClientFilters) {
+    rows = applyClientUserFilters(rows, { balanceFilter, statusFilter });
+    total = rows.length;
+  }
+  return { rows, total };
+}
+
+/**
+ * List storefront users (role=user).
+ * @returns {{ rows: object[], total: number }}
+ */
+export async function fetchAdminUsers(search = '', limit = 50, offset = 0, {
+  orderBy = 'created_at',
+  balanceFilter = 'all',
+  statusFilter = 'all',
+} = {}) {
+  const bal = balanceFilter || 'all';
+  const status = statusFilter || 'all';
+  const payload = {
+    p_search: search,
+    p_limit: limit,
+    p_offset: offset,
+    p_order_by: orderBy,
+    p_balance_filter: bal,
+    p_status_filter: status,
+  };
+  const primary = await supabase.rpc('admin_list_users', payload);
+  if (!primary.error) {
+    return normalizeAdminUsersResult(primary.data, { balanceFilter: bal, statusFilter: status });
+  }
+
+  // Fallback without status filter
+  const mid = await supabase.rpc('admin_list_users', {
+    p_search: search,
+    p_limit: limit,
+    p_offset: offset,
+    p_order_by: orderBy,
+    p_balance_filter: bal,
+  });
+  if (!mid.error) {
+    return normalizeAdminUsersResult(mid.data, {
+      balanceFilter: bal,
+      statusFilter: status,
+      applyClientFilters: status !== 'all',
+    });
+  }
+
+  const older = await supabase.rpc('admin_list_users', {
+    p_search: search,
+    p_limit: limit,
+    p_offset: offset,
+    p_order_by: orderBy,
+  });
+  if (!older.error) {
+    return normalizeAdminUsersResult(older.data, {
+      balanceFilter: bal,
+      statusFilter: status,
+      applyClientFilters: true,
+    });
+  }
+
+  const legacy = await supabase.rpc('admin_list_users', {
     p_search: search,
     p_limit: limit,
   });
-  if (error) wrapRpcError(error);
+  if (legacy.error) wrapRpcError(primary.error);
+  return normalizeAdminUsersResult(
+    Array.isArray(legacy.data) ? legacy.data : (legacy.data?.rows || []),
+    { balanceFilter: bal, statusFilter: status, applyClientFilters: true },
+  );
+}
+
+/** Admin: wallet ledger for one user (purchase / recharge / refund / adjustment). */
+export async function fetchAdminUserTransactions(userId, { limit = 100 } = {}) {
+  if (!userId) return [];
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('id, type, amount, balance_after, payment_method, reference, status, metadata, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(Math.min(200, Math.max(1, limit)));
+  if (error) throw error;
   return Array.isArray(data) ? data : [];
 }
 

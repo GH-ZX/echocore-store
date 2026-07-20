@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
-import { Star, Quote, Send, Loader2, CheckCircle, ChevronLeft, ChevronRight } from 'lucide-react';
-import { getReviewText, pickReviewsForSection, submitCustomerReview } from '../../lib/customerReviews';
+import { Star, Quote, ChevronLeft, ChevronRight, MessageSquare } from 'lucide-react';
+import { getReviewText, pickReviewsForSection } from '../../lib/customerReviews';
 import { getSectionLabel } from '../../lib/homeLayout';
+import CustomerReviewForm from '../../components/reviews/CustomerReviewForm';
 
 function StarRating({ rating, size = 'sm' }) {
   const iconClass = size === 'lg' ? 'w-5 h-5' : 'w-3.5 h-3.5';
@@ -63,10 +64,6 @@ export default function CustomerReviewsSection({
   const [activeIndex, setActiveIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState('');
-  const [submitSuccess, setSubmitSuccess] = useState(false);
-  const [form, setForm] = useState({ authorName: '', content: '', rating: 5 });
 
   useEffect(() => {
     if (!emblaApi) return undefined;
@@ -97,12 +94,6 @@ export default function CustomerReviewsSection({
     return () => clearInterval(timer);
   }, [emblaApi, items.length, intervalMs, paused]);
 
-  useEffect(() => {
-    if (user?.name && !form.authorName) {
-      setForm((prev) => ({ ...prev, authorName: user.name }));
-    }
-  }, [user?.name, form.authorName]);
-
   const goNext = useCallback(() => {
     emblaApi?.scrollNext();
   }, [emblaApi]);
@@ -111,33 +102,8 @@ export default function CustomerReviewsSection({
     emblaApi?.scrollPrev();
   }, [emblaApi]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!user?.id) return;
-    setSubmitting(true);
-    setSubmitError('');
-    setSubmitSuccess(false);
-    try {
-      await submitCustomerReview({
-        authorName: form.authorName,
-        content: form.content,
-        rating: form.rating,
-        userId: user.id,
-      });
-      setSubmitSuccess(true);
-      setForm((prev) => ({ ...prev, content: '' }));
-      onReviewSubmitted?.();
-      setTimeout(() => setSubmitSuccess(false), 4000);
-    } catch (err) {
-      setSubmitError(err.message || t.reviewSubmitFailed);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  if (items.length === 0 && !section.show_submit_form) return null;
-
   const title = getSectionLabel(section, lang);
+  const showForm = section.show_submit_form !== false;
 
   return (
     <section
@@ -157,7 +123,14 @@ export default function CustomerReviewsSection({
         </p>
       </div>
 
-      {items.length > 0 && (
+      {items.length === 0 ? (
+        <div className="reviews-empty card max-w-xl mx-auto p-6 sm:p-8 text-center mb-6">
+          <MessageSquare className="w-9 h-9 mx-auto mb-3 text-[var(--accent)] opacity-60" aria-hidden />
+          <p className="text-sm text-[var(--text-sec)] leading-relaxed">
+            {t.reviewsEmptyHomepage}
+          </p>
+        </div>
+      ) : (
         <div className="reviews-embla relative max-w-5xl mx-auto px-1 sm:px-2" dir="ltr">
           {items.length > 1 && (
             <>
@@ -227,66 +200,25 @@ export default function CustomerReviewsSection({
         </div>
       )}
 
-      {section.show_submit_form && (
+      {showForm && (
         <div className="reviews-submit-wrap">
-          {!user ? (
-            <p className="text-sm text-[var(--text-sec)] text-center">{t.reviewLoginToSubmit}</p>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="reviews-submit-toggle"
-                onClick={() => setFormOpen((v) => !v)}
-              >
-                {formOpen ? t.reviewHideForm : t.reviewShareYours}
-              </button>
+          <button
+            type="button"
+            className="reviews-submit-toggle"
+            onClick={() => setFormOpen((v) => !v)}
+          >
+            {formOpen ? t.reviewHideForm : t.reviewShareYours}
+          </button>
 
-              {formOpen && (
-                <form onSubmit={handleSubmit} className="reviews-submit-form card p-4 sm:p-5">
-                  <div className="grid sm:grid-cols-2 gap-3 mb-3">
-                    <input
-                      required
-                      value={form.authorName}
-                      onChange={(e) => setForm((prev) => ({ ...prev, authorName: e.target.value }))}
-                      placeholder={t.reviewYourName}
-                      className="input"
-                      maxLength={60}
-                    />
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-[var(--text-muted)]">{t.reviewRating}</span>
-                      <select
-                        value={form.rating}
-                        onChange={(e) => setForm((prev) => ({ ...prev, rating: Number(e.target.value) }))}
-                        className="input flex-1"
-                      >
-                        {[5, 4, 3, 2, 1].map((n) => (
-                          <option key={n} value={n}>{n} ★</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <textarea
-                    required
-                    value={form.content}
-                    onChange={(e) => setForm((prev) => ({ ...prev, content: e.target.value }))}
-                    placeholder={t.reviewYourOpinion}
-                    className="input w-full min-h-[100px] resize-y mb-3"
-                    maxLength={500}
-                  />
-                  {submitError && <p className="text-xs text-red-400 mb-2">{submitError}</p>}
-                  {submitSuccess && (
-                    <p className="text-xs text-emerald-400 mb-2 flex items-center gap-1.5">
-                      <CheckCircle className="w-3.5 h-3.5" />
-                      {t.reviewSubmitPending}
-                    </p>
-                  )}
-                  <button type="submit" disabled={submitting} className="btn btn-primary gap-2">
-                    {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                    {t.reviewSubmit}
-                  </button>
-                </form>
-              )}
-            </>
+          {formOpen && (
+            <div className="reviews-submit-form card p-4 sm:p-5">
+              <CustomerReviewForm
+                t={t}
+                user={user}
+                compact
+                onSubmitted={onReviewSubmitted}
+              />
+            </div>
           )}
         </div>
       )}

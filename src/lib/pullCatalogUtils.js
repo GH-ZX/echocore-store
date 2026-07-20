@@ -35,6 +35,79 @@ export function getVoucherCategoryId(game) {
   return null;
 }
 
+/** Carousel selection key for a top-up game (g2bulk code). */
+export function carouselKeyForTopup(code) {
+  const key = String(code || '').trim();
+  return key || null;
+}
+
+/** Carousel selection key for a redeem/voucher category. */
+export function carouselKeyForVoucher(categoryId) {
+  const id = Number(categoryId);
+  if (!Number.isFinite(id)) return null;
+  return `voucher:${id}`;
+}
+
+/**
+ * Parse a carouselBaseKeys entry.
+ * @returns {{ kind: 'topup', code: string } | { kind: 'voucher', categoryId: number } | null}
+ */
+export function parseCarouselKey(key) {
+  const raw = String(key || '').trim();
+  if (!raw) return null;
+  if (raw.startsWith('voucher:')) {
+    const categoryId = Number(raw.slice('voucher:'.length));
+    if (!Number.isFinite(categoryId)) return null;
+    return { kind: 'voucher', categoryId };
+  }
+  return { kind: 'topup', code: raw };
+}
+
+/**
+ * Build carouselBaseKeys from live games rows (homepage source of truth).
+ * Top-ups → g2bulk_game_code; redeem → voucher:{g2bulk_source_id}
+ */
+export function buildCarouselBaseKeysFromGames(games = []) {
+  const ordered = [...games]
+    .filter((game) => game && game.show_in_carousel === true)
+    .sort((a, b) => {
+      const ao = Number(a.carousel_order);
+      const bo = Number(b.carousel_order);
+      const aOrd = Number.isFinite(ao) ? ao : 999999;
+      const bOrd = Number.isFinite(bo) ? bo : 999999;
+      if (aOrd !== bOrd) return aOrd - bOrd;
+      return String(a.name_en || a.name_ar || '').localeCompare(String(b.name_en || b.name_ar || ''));
+    });
+
+  const keys = [];
+  const seen = new Set();
+  for (const game of ordered) {
+    const key = game.redemption_method === 'redeem_code'
+      ? carouselKeyForVoucher(getVoucherCategoryId(game))
+      : carouselKeyForTopup(game.g2bulk_game_code);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    keys.push(key);
+  }
+  return keys;
+}
+
+/** Prefer live DB carousel keys when merging saved pull selection. */
+export function mergePullSelections(saved = {}, database = {}) {
+  const savedNorm = normalizePullSelection(saved);
+  const dbNorm = normalizePullSelection(database);
+  if (isEmptyPullSelection(savedNorm)) {
+    return dbNorm;
+  }
+  // Product lanes stay from saved admin picks; carousel ticks follow live DB flags.
+  return normalizePullSelection({
+    ...savedNorm,
+    carouselBaseKeys: dbNorm.carouselBaseKeys.length > 0
+      ? dbNorm.carouselBaseKeys
+      : savedNorm.carouselBaseKeys,
+  });
+}
+
 function voucherMatchesCategorySets(game, accountIds, giftIds) {
   const categoryId = getVoucherCategoryId(game);
   if (!Number.isFinite(categoryId)) return false;
@@ -178,15 +251,6 @@ export function isEmptyPullSelection(pull = {}) {
     && normalized.giftCategoryIds.length === 0;
 }
 
-/** Saved selection wins; DB rebuild is only a fallback when nothing was saved yet. */
-export function mergePullSelections(saved = {}, database = {}) {
-  const savedNorm = normalizePullSelection(saved);
-  if (isEmptyPullSelection(savedNorm)) {
-    return normalizePullSelection(database);
-  }
-  return savedNorm;
-}
-
 function slugifyPullKey(value = '') {
   return String(value)
     .trim()
@@ -275,6 +339,33 @@ export function pruneSelectionToCatalog(selection = {}, catalog = {}) {
       .filter((value) => Number.isFinite(value) && valid.has(value)),
   )];
 
+  const allVoucherIds = new Set([
+    ...voucherIds.accounts,
+    ...voucherIds.giftCards,
+  ]);
+
+  const pruneCarouselKeys = (keys = []) => [...new Set(
+    keys
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .filter((key) => {
+        const parsed = parseCarouselKey(key);
+        if (!parsed) return false;
+        if (parsed.kind === 'voucher') {
+          return allVoucherIds.has(parsed.categoryId);
+        }
+        const code = resolveCatalogBaseKey(parsed.code, index);
+        return code && validCodes.has(code);
+      })
+      .map((key) => {
+        const parsed = parseCarouselKey(key);
+        if (!parsed) return key;
+        if (parsed.kind === 'voucher') return carouselKeyForVoucher(parsed.categoryId);
+        return resolveCatalogBaseKey(parsed.code, index) || parsed.code;
+      })
+      .filter(Boolean),
+  )];
+
   return normalizePullSelection({
     ...normalized,
     topupSyncBaseKeys: pruneKeys(normalized.topupSyncBaseKeys),
@@ -283,7 +374,7 @@ export function pruneSelectionToCatalog(selection = {}, catalog = {}) {
     accountLiveCategoryIds: pruneIds(normalized.accountLiveCategoryIds, voucherIds.accounts),
     giftSyncCategoryIds: pruneIds(normalized.giftSyncCategoryIds, voucherIds.giftCards),
     giftLiveCategoryIds: pruneIds(normalized.giftLiveCategoryIds, voucherIds.giftCards),
-    carouselBaseKeys: pruneKeys(normalized.carouselBaseKeys),
+    carouselBaseKeys: pruneCarouselKeys(normalized.carouselBaseKeys),
   });
 }
 

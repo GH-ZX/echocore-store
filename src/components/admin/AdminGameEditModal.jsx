@@ -146,6 +146,11 @@ export default function AdminGameEditModal({
     e.preventDefault();
     setError('');
 
+    if (isNew || !game?.id) {
+      setError(t.adminGamesFromG2bulkOnly || 'Games are added only via G2Bulk catalog sync.');
+      return;
+    }
+
     if (!form.name_en || !form.slug) {
       setError(t.gameNameAndSlugRequired || 'Game name and slug are required.');
       return;
@@ -295,7 +300,6 @@ export default function AdminGameEditModal({
           <GameImageSearch
             gameName={form.name_en}
             t={t}
-            lang={lang}
             onSelectCover={(url) => {
               setCoverFile(null);
               setForm((prev) => ({

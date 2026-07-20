@@ -1,23 +1,25 @@
-import { useState, useEffect, useCallback } from 'react';
-import { ImageIcon, Loader2, Sparkles } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { ChevronDown, ImageIcon, Loader2, Sparkles } from 'lucide-react';
 import { searchGameImages } from '../../lib/gameImageSearch';
-
-const QUICK_SUFFIXES = ['', 'game', 'wallpaper', 'key art'];
+import { igdbFirstNameQuery } from '../../lib/igdb';
 
 export default function GameImageSearch({
   gameName = '',
   onSelectCover,
   onSelectLogo,
   t = {},
-  lang = 'en',
 }) {
-  const isAr = lang === 'ar';
-  const [query, setQuery] = useState(gameName);
+  const firstNameHint = useMemo(() => igdbFirstNameQuery(gameName), [gameName]);
+  const [query, setQuery] = useState(gameName || firstNameHint);
   const [loading, setLoading] = useState(false);
   const [covers, setCovers] = useState([]);
   const [logos, setLogos] = useState([]);
   const [error, setError] = useState('');
-  const [meta, setMeta] = useState({ hasRawgKey: false, hasSteamGridKey: false, sourcesUsed: [], totalFound: 0 });
+  const [meta, setMeta] = useState({
+    hasIgdbKey: false,
+    sourcesUsed: [],
+    totalFound: 0,
+  });
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState('covers');
 
@@ -25,104 +27,107 @@ export default function GameImageSearch({
     if (gameName) setQuery(gameName);
   }, [gameName]);
 
-  const runSearch = useCallback(async (searchQuery, deep = true) => {
+  const runSearch = useCallback(async (searchQuery) => {
     const q = searchQuery.trim();
     if (q.length < 2) {
-      setError(isAr ? 'اكتب اسم اللعبة للبحث' : 'Enter a game name to search');
+      setError(t.igdbSearchMinChars);
       return;
     }
 
     setLoading(true);
     setError('');
     try {
-      const data = await searchGameImages(q, { deep });
+      const data = await searchGameImages(q, { deep: true });
       setCovers(data.covers || []);
       setLogos(data.logos || []);
       setMeta({
-        hasRawgKey: data.hasRawgKey,
-        hasSteamGridKey: data.hasSteamGridKey,
+        hasIgdbKey: !!data.hasIgdbKey,
         sourcesUsed: data.sourcesUsed || [],
         totalFound: data.totalFound || 0,
       });
 
-      if (!data.covers?.length && !data.logos?.length) {
-        setError(
-          isAr
-            ? 'لم يتم العثور على صور. جرّب اقتراحًا أدناه أو ارفع يدويًا.'
-            : 'No images found. Try a suggestion below or upload manually.'
-        );
+      if (data.error && !data.covers?.length && !data.logos?.length) {
+        setError(data.error);
+      } else if (!data.covers?.length && !data.logos?.length) {
+        setError(t.igdbNoImages);
       } else {
         setTab(data.covers?.length ? 'covers' : 'logos');
       }
     } catch (err) {
-      setError(err.message || (isAr ? 'فشل البحث' : 'Search failed'));
+      setError(err.message || t.igdbSearchFailed);
       setCovers([]);
       setLogos([]);
     } finally {
       setLoading(false);
     }
-  }, [isAr]);
+  }, [t]);
 
-  const handleSearch = () => runSearch(query, true);
-
-  const quickQueries = gameName
-    ? [...new Set(QUICK_SUFFIXES.map((s) => (s ? `${gameName} ${s}` : gameName)))]
-    : [];
-
+  const handleSearch = () => runSearch(query);
   const displayList = tab === 'covers' ? covers : logos;
 
+  const chips = useMemo(() => {
+    const list = [];
+    if (firstNameHint) list.push(firstNameHint);
+    if (gameName && gameName !== firstNameHint) list.push(gameName);
+    return [...new Set(list.filter(Boolean))];
+  }, [firstNameHint, gameName]);
+
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] overflow-hidden">
+    <div className="igdb-search">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left text-sm font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/5 transition-colors"
+        className="igdb-search__toggle"
+        aria-expanded={open}
       >
-        <span className="flex items-center gap-2">
-          <ImageIcon className="w-4 h-4" />
-          {t.findImagesOnline || (isAr ? 'البحث المتقدم عن صور' : 'Advanced image search')}
+        <span className="igdb-search__toggle-lead">
+          <ImageIcon className="w-4 h-4 shrink-0" aria-hidden />
+          <span className="igdb-search__toggle-title">{t.findImagesOnline}</span>
         </span>
-        <span className="text-[10px] text-[var(--text-muted)] font-normal">
-          {t.optional || (isAr ? 'اختياري' : 'optional')}
+        <span className="igdb-search__toggle-meta">
+          <span className="igdb-search__badge">{t.optional}</span>
+          <ChevronDown
+            className={`w-4 h-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
         </span>
       </button>
 
       {open && (
-        <div className="px-3 pb-3 space-y-3 border-t border-[var(--border)]">
-          <p className="text-[10px] text-[var(--text-muted)] pt-2 leading-relaxed">
-            {t.imageSearchHelpAdvanced || (isAr
-              ? 'يبحث في RAWG وSteam وWikimedia والويب عن غلافات وشاشات عرض — وليس الشعارات فقط. الرفع اليدوي لا يزال متاحًا.'
-              : 'Searches RAWG, Steam, Wikimedia & the web for covers, heroes & screenshots — not just logos. Manual upload still available.')}
-          </p>
+        <div className="igdb-search__panel">
+          <p className="igdb-search__help">{t.imageSearchHelpIgdb}</p>
 
-          <div className="flex gap-2">
+          <div className="igdb-search__row">
             <input
-              type="text"
+              type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleSearch())}
-              placeholder={t.searchGameImages || (isAr ? 'مثال: Valorant' : 'e.g. Valorant')}
-              className="input flex-1 text-sm"
+              placeholder={t.searchGameImages}
+              className="input igdb-search__input"
+              enterKeyHint="search"
+              autoComplete="off"
             />
             <button
               type="button"
               onClick={handleSearch}
               disabled={loading}
-              className="btn btn-primary px-3 flex items-center gap-1.5 text-sm disabled:opacity-50"
+              className="btn btn-primary igdb-search__go"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              {t.deepSearch || (isAr ? 'بحث عميق' : 'Deep search')}
+              <span>{t.deepSearch}</span>
             </button>
           </div>
 
-          {quickQueries.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {quickQueries.map((q) => (
+          {chips.length > 0 && (
+            <div className="igdb-search__chips" role="group" aria-label={t.searchGameImages}>
+              {chips.map((q) => (
                 <button
                   key={q}
                   type="button"
-                  onClick={() => { setQuery(q); runSearch(q, true); }}
-                  className="text-[10px] px-2 py-1 rounded-full border border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)]/50 hover:text-[var(--accent)]"
+                  onClick={() => { setQuery(q); runSearch(q); }}
+                  className="igdb-search__chip"
+                  dir="auto"
                 >
                   {q}
                 </button>
@@ -130,112 +135,95 @@ export default function GameImageSearch({
             </div>
           )}
 
-          {(!meta.hasRawgKey || !meta.hasSteamGridKey) && (
-            <div className="text-[10px] text-amber-400/90 space-y-0.5 leading-relaxed">
-              {!meta.hasRawgKey && (
-                <p>{t.rawgKeyHint || 'Add VITE_RAWG_API_KEY to .env for best PC game art (free at rawg.io)'}</p>
-              )}
-              {!meta.hasSteamGridKey && (
-                <p>{t.steamgridKeyHint || 'Add VITE_STEAMGRIDDB_API_KEY for hero banners & covers (free at steamgriddb.com)'}</p>
-              )}
-            </div>
+          {!meta.hasIgdbKey && (
+            <p className="igdb-search__warn">{t.igdbKeyHint}</p>
           )}
 
           {meta.sourcesUsed?.length > 0 && (
-            <p className="text-[10px] text-[var(--text-muted)]">
-              {isAr ? 'المصادر:' : 'Sources:'} {meta.sourcesUsed.join(' • ')}
-              {meta.totalFound > 0 && ` — ${meta.totalFound} ${isAr ? 'نتيجة' : 'found'}`}
+            <p className="igdb-search__meta" dir="auto">
+              {t.igdbSourcesLabel}: {meta.sourcesUsed.join(' · ')}
+              {meta.totalFound > 0 ? ` · ${meta.totalFound}` : ''}
             </p>
           )}
 
           {(covers.length > 0 || logos.length > 0) && (
-            <div className="flex gap-1 p-0.5 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)]">
+            <div className="igdb-search__tabs" role="tablist">
               <button
                 type="button"
+                role="tab"
+                aria-selected={tab === 'covers'}
                 onClick={() => setTab('covers')}
-                className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-all ${tab === 'covers' ? 'bg-[var(--accent)]/20 text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}
+                className={`igdb-search__tab${tab === 'covers' ? ' igdb-search__tab--active' : ''}`}
               >
-                {t.coversTab || (isAr ? `أغلفة (${covers.length})` : `Covers (${covers.length})`)}
+                {t.coversTab}
+                <span className="igdb-search__tab-count" dir="ltr">{covers.length}</span>
               </button>
               <button
                 type="button"
+                role="tab"
+                aria-selected={tab === 'logos'}
                 onClick={() => setTab('logos')}
-                className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-all ${tab === 'logos' ? 'bg-[var(--accent)]/20 text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}
+                className={`igdb-search__tab${tab === 'logos' ? ' igdb-search__tab--active' : ''}`}
               >
-                {t.logosTab || (isAr ? `شعارات (${logos.length})` : `Logos (${logos.length})`)}
+                {t.logosTab}
+                <span className="igdb-search__tab-count" dir="ltr">{logos.length}</span>
               </button>
             </div>
           )}
 
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error ? <p className="igdb-search__error">{error}</p> : null}
 
           {displayList.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[320px] overflow-y-auto pr-0.5">
+            <div className="igdb-search__grid">
               {displayList.map((item) => (
-                <div
-                  key={item.url}
-                  className="group relative rounded-lg border border-[var(--border)] overflow-hidden bg-[var(--bg-surface)] hover:border-[var(--accent)]/40 transition-colors"
-                >
-                  <div className="relative h-24 sm:h-28 bg-black/40">
+                <article key={`${item.url}-${item.source}-${item.title}`} className="igdb-search__card">
+                  <div className="igdb-search__thumb-wrap">
                     <img
                       src={item.thumb || item.url}
-                      alt={item.title}
-                      className={`w-full h-full ${tab === 'logos' ? 'object-contain p-1' : 'object-cover'}`}
+                      alt=""
+                      className={`igdb-search__thumb${tab === 'logos' ? ' igdb-search__thumb--contain' : ''}`}
                       loading="lazy"
-                      onError={(e) => { e.currentTarget.parentElement.style.display = 'none'; }}
+                      onError={(e) => { e.currentTarget.closest('.igdb-search__card')?.classList.add('igdb-search__card--broken'); }}
                     />
-                    <span className="absolute top-1 left-1 text-[7px] font-bold uppercase px-1 py-0.5 rounded bg-black/70 text-white/90">
-                      {item.source}
-                    </span>
-                    {item.width > 0 && (
-                      <span className="absolute bottom-1 right-1 text-[7px] font-mono px-1 py-0.5 rounded bg-black/70 text-white/70">
-                        {item.width}×{item.height}
-                      </span>
-                    )}
+                    <span className="igdb-search__source">{item.source}</span>
                   </div>
-                  <div className="p-1.5 space-y-1">
-                    <p className="text-[9px] text-[var(--text-muted)] truncate leading-tight" title={item.title}>
-                      {item.title}
-                    </p>
-                    <div className="flex gap-1">
-                      {tab === 'covers' ? (
+                  <p className="igdb-search__card-title" dir="auto" title={item.title}>{item.title}</p>
+                  <div className="igdb-search__actions">
+                    {tab === 'covers' ? (
+                      <>
                         <button
                           type="button"
                           onClick={() => onSelectCover?.(item.url)}
-                          className="flex-1 text-[9px] font-bold py-1.5 rounded bg-[var(--accent)]/15 text-[var(--accent)] hover:bg-[var(--accent)]/25 border border-[var(--accent)]/30"
+                          className="igdb-search__action igdb-search__action--primary"
                         >
-                          {t.useAsCover || (isAr ? 'استخدم كغلاف' : 'Use as cover')}
+                          {t.useAsCover}
                         </button>
-                      ) : (
                         <button
                           type="button"
                           onClick={() => onSelectLogo?.(item.url)}
-                          className="flex-1 text-[9px] font-bold py-1.5 rounded bg-[var(--accent)]/15 text-[var(--accent)] hover:bg-[var(--accent)]/25 border border-[var(--accent)]/30"
+                          className="igdb-search__action"
+                          title={t.useAsLogo}
                         >
-                          {t.useAsLogo || (isAr ? 'استخدم كشعار' : 'Use as logo')}
+                          {t.useAsLogoShort}
                         </button>
-                      )}
-                      {tab === 'covers' && (
-                        <button
-                          type="button"
-                          onClick={() => onSelectLogo?.(item.url)}
-                          className="text-[9px] font-bold py-1.5 px-2 rounded bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--accent)] border border-[var(--border)]"
-                          title={t.useAsLogo || 'Logo'}
-                        >
-                          {isAr ? 'شعار' : 'Logo'}
-                        </button>
-                      )}
-                    </div>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onSelectLogo?.(item.url)}
+                        className="igdb-search__action igdb-search__action--primary igdb-search__action--full"
+                      >
+                        {t.useAsLogo}
+                      </button>
+                    )}
                   </div>
-                </div>
+                </article>
               ))}
             </div>
           )}
 
           {!loading && !covers.length && !logos.length && !error && (
-            <p className="text-[10px] text-center text-[var(--text-muted)] py-2">
-              {isAr ? 'اضغط "بحث عميق" للبدء' : 'Press "Deep search" to start'}
-            </p>
+            <p className="igdb-search__empty">{t.igdbSearchStartHint}</p>
           )}
         </div>
       )}

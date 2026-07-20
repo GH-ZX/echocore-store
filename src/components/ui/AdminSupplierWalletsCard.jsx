@@ -7,6 +7,7 @@ import {
   getSamAccountLabel,
   getSamSupplierBalanceLines,
 } from '../../lib/samWalletFormat';
+import AdminDashGoTo from '../admin/AdminDashGoTo';
 
 function isPanelVariant(variant) {
   return variant === 'dropdown' || variant === 'compact';
@@ -99,6 +100,7 @@ function WalletRow({
 
 export default function AdminSupplierWalletsCard({
   t = {},
+  lang = 'ar',
   variant = 'card',
   /** null = unknown (do not invent $0); 0 is a valid balance */
   g2bulkBalance = null,
@@ -116,6 +118,9 @@ export default function AdminSupplierWalletsCard({
   onOpenDashboard,
   onOpenPayments,
   onOpenExchangeRate,
+  /** Same style as other overview section “go to page” buttons */
+  goToLabel = '',
+  onGoToPage,
   sypPerUsd: sypPerUsdProp,
 }) {
   const rowNav = variant === 'dropdown' || variant === 'compact';
@@ -132,6 +137,7 @@ export default function AdminSupplierWalletsCard({
   const showHeader = variant !== 'dropdown';
   const showIdleHint = idle && idleHint && variant === 'card';
   const statusMessage = g2bulkError || samError || (samNotConfigured ? t.samWalletNotConfigured : '');
+  const showGoTo = variant === 'card' && goToLabel && typeof onGoToPage === 'function';
 
   return (
     <div className={`supplier-wallets-card supplier-wallets-card--${variant}`}>
@@ -146,17 +152,26 @@ export default function AdminSupplierWalletsCard({
               <p className="supplier-wallets-card__subtitle">{t.supplierWalletsHelp}</p>
             </div>
           </div>
-          {onRefresh && (
-            <button
-              type="button"
-              onClick={() => onRefresh()}
-              disabled={loading}
-              className="supplier-wallets-card__refresh"
-              aria-label={t.supplierWalletsRefresh}
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} strokeWidth={2} />
-            </button>
-          )}
+          <div className="supplier-wallets-card__header-actions">
+            {onRefresh && (
+              <button
+                type="button"
+                onClick={() => onRefresh()}
+                disabled={loading}
+                className="supplier-wallets-card__refresh"
+                aria-label={t.supplierWalletsRefresh}
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} strokeWidth={2} />
+              </button>
+            )}
+            {showGoTo ? (
+              <AdminDashGoTo
+                label={goToLabel}
+                onClick={onGoToPage}
+                lang={lang}
+              />
+            ) : null}
+          </div>
         </div>
       )}
 

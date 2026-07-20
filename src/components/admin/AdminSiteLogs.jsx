@@ -1,15 +1,26 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Loader2, RefreshCw, ScrollText } from 'lucide-react';
+import { ChevronDown, Loader2, RefreshCw, ScrollText } from 'lucide-react';
 import { fetchAdminSiteLogs, formatDevLogLine, formatSiteLogCount } from '../../lib/siteLogs';
 
+/** Filters: category id or special severity mode */
 const FILTER_OPTIONS = [
   { id: null, labelKey: 'siteLogsFilterAll' },
-  { id: 'auth', labelKey: 'siteLogsFilterAuth' },
-  { id: 'recharge', labelKey: 'siteLogsFilterRecharge' },
   { id: 'order', labelKey: 'siteLogsFilterOrder' },
+  { id: 'recharge', labelKey: 'siteLogsFilterRecharge' },
+  { id: 'wallet', labelKey: 'siteLogsFilterWallet' },
+  { id: 'error', labelKey: 'siteLogsFilterErrors' },
+  { id: '__critical', labelKey: 'siteLogsFilterCritical' },
+  { id: 'auth', labelKey: 'siteLogsFilterAuth' },
   { id: 'contact', labelKey: 'siteLogsFilterContact' },
   { id: 'dev', labelKey: 'siteLogsFilterDev' },
 ];
+
+function resolveFilter(filterId) {
+  if (filterId === '__critical') {
+    return { category: null, severity: 'critical' };
+  }
+  return { category: filterId || null, severity: null };
+}
 
 export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
   const onNotifyRef = useRef(onNotify);
@@ -25,6 +36,7 @@ export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
   const [filter, setFilter] = useState(null);
   const [logs, setLogs] = useState([]);
   const [total, setTotal] = useState(0);
+  const [expandedId, setExpandedId] = useState(null);
   const loadInFlightRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -32,9 +44,16 @@ export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
     loadInFlightRef.current = true;
     setLoading(true);
     try {
-      const result = await fetchAdminSiteLogs({ limit: 200, offset: 0, category: filter });
+      const { category, severity } = resolveFilter(filter);
+      const result = await fetchAdminSiteLogs({
+        limit: 200,
+        offset: 0,
+        category,
+        severity,
+      });
       setLogs(result.logs);
       setTotal(result.total);
+      setExpandedId(null);
     } catch (err) {
       notifyError(err.message);
       setLogs([]);
@@ -49,28 +68,34 @@ export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
     load();
   }, [load]);
 
+  const toggleExpanded = (id) => {
+    setExpandedId((prev) => (prev === id ? null : id));
+  };
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-w-0">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+        <div className="min-w-0">
           <h2 className="text-lg font-semibold text-[var(--text)] flex items-center gap-2">
-            <ScrollText size={20} className="text-[var(--accent)]" />
-            {t.siteLogsTitle}
+            <ScrollText size={20} className="text-[var(--accent)] shrink-0" />
+            <span className="truncate">{t.siteLogsTitle}</span>
           </h2>
-          <p className="text-sm text-[var(--text-sec)] mt-1">{t.siteLogsSubtitle}</p>
+          <p className="text-sm text-[var(--text-sec)] mt-1 leading-relaxed">
+            {t.siteLogsSubtitle}
+          </p>
         </div>
         <button
           type="button"
           onClick={load}
           disabled={loading}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-[var(--border)] text-sm text-[var(--text)] hover:bg-[var(--surface-hover)] disabled:opacity-50"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[var(--border)] text-sm text-[var(--text)] hover:bg-[var(--surface-hover)] disabled:opacity-50 w-full sm:w-auto shrink-0"
         >
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           {t.siteLogsRefresh}
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-nowrap sm:flex-wrap gap-2 overflow-x-auto pb-1 -mx-0.5 px-0.5 scrollbar-thin">
         {FILTER_OPTIONS.map((option) => {
           const isActive = filter === option.id;
           return (
@@ -78,13 +103,13 @@ export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
               key={option.labelKey}
               type="button"
               onClick={() => setFilter(option.id)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors shrink-0 ${
                 isActive
                   ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
                   : 'border-[var(--border)] text-[var(--text-sec)] hover:text-[var(--text)]'
               }`}
             >
-              {t[option.labelKey]}
+              {t[option.labelKey] || option.labelKey}
             </button>
           );
         })}
@@ -107,14 +132,49 @@ export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
         ) : (
           logs.map((item) => {
             const line = formatDevLogLine(item, lang);
+            const expanded = expandedId === line.id;
             return (
-              <div
+              <button
                 key={line.id}
-                className={`dev-log-line dev-log-line--${line.severity}`}
+                type="button"
+                className={`dev-log-line dev-log-line--${line.severity}${expanded ? ' dev-log-line--expanded' : ''}`}
+                onClick={() => toggleExpanded(line.id)}
+                aria-expanded={expanded}
                 title={line.text}
               >
-                {line.text}
-              </div>
+                <span className="dev-log-line__row">
+                  <span className="dev-log-line__body">{line.body}</span>
+                  <span className="dev-log-line__meta">
+                    <span className="dev-log-line__time">{line.timestamp}</span>
+                    <ChevronDown
+                      size={14}
+                      className={`dev-log-line__chevron${expanded ? ' dev-log-line__chevron--open' : ''}`}
+                      aria-hidden="true"
+                    />
+                  </span>
+                </span>
+                {expanded && (
+                  <span className="dev-log-line__detail">
+                    {line.fields ? (
+                      <span className="dev-log-line__fields">{line.fields}</span>
+                    ) : null}
+                    {line.isAlert && line.consoleLog ? (
+                      <span className="dev-log-line__console" role="log">
+                        <span className="dev-log-line__console-label">
+                          {t.siteLogsConsoleDump || 'console'}
+                        </span>
+                        <pre className="dev-log-line__console-pre">{line.consoleLog}</pre>
+                      </span>
+                    ) : null}
+                    {!line.isAlert && line.consoleLog ? (
+                      <span className="dev-log-line__console" role="log">
+                        <pre className="dev-log-line__console-pre">{line.consoleLog}</pre>
+                      </span>
+                    ) : null}
+                    <span className="dev-log-line__detail-time">{line.timestamp}</span>
+                  </span>
+                )}
+              </button>
             );
           })
         )}

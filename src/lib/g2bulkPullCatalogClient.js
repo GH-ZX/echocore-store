@@ -1,18 +1,22 @@
 import { classifyVoucherSegment } from './catalogSegments';
 import { supabase } from './supabase';
-import { normalizePullSelection, pruneSelectionToCatalog } from './pullCatalogUtils';
+import {
+  buildCarouselBaseKeysFromGames,
+  normalizePullSelection,
+  pruneSelectionToCatalog,
+} from './pullCatalogUtils';
 
 async function fetchSyncedPullFlags() {
   const [topupRes, voucherRes] = await Promise.all([
     supabase
       .from('games')
-      .select('g2bulk_game_code')
+      .select('g2bulk_game_code, g2bulk_source_id, redemption_method, show_in_carousel, carousel_order, name_en, name_ar')
       .eq('catalog_source', 'g2bulk')
       .eq('redemption_method', 'uid')
       .not('g2bulk_game_code', 'is', null),
     supabase
       .from('games')
-      .select('g2bulk_source_id')
+      .select('g2bulk_source_id, redemption_method, show_in_carousel, carousel_order, name_en, name_ar')
       .eq('catalog_source', 'g2bulk')
       .eq('redemption_method', 'redeem_code'),
   ]);
@@ -20,15 +24,23 @@ async function fetchSyncedPullFlags() {
   if (topupRes.error) throw topupRes.error;
   if (voucherRes.error) throw voucherRes.error;
 
+  const topupRows = topupRes.data || [];
+  const voucherRows = voucherRes.data || [];
+
   return {
     topupCodes: new Set(
-      (topupRes.data || []).map((row) => String(row.g2bulk_game_code || '').trim()).filter(Boolean),
+      topupRows.map((row) => String(row.g2bulk_game_code || '').trim()).filter(Boolean),
     ),
     voucherCategoryIds: new Set(
-      (voucherRes.data || [])
+      voucherRows
         .map((row) => Number(row.g2bulk_source_id))
         .filter((value) => Number.isFinite(value)),
     ),
+    // Live homepage carousel flags (redeem + top-up)
+    carouselBaseKeys: buildCarouselBaseKeysFromGames([
+      ...topupRows,
+      ...voucherRows,
+    ]),
   };
 }
 
@@ -139,8 +151,15 @@ export async function buildPullCatalogClientFallback(invokeG2bulk, settings = {}
   }
 
   const savedSelection = normalizePullSelection(settings.g2bulk_pull_selection || {});
-  const marked = markCatalogSynced(remote, flags, savedSelection);
-  const selection = pruneSelectionToCatalog(savedSelection, marked);
+  // Pair dashboard carousel ticks with live games.show_in_carousel (homepage edits)
+  const selectionWithLiveCarousel = normalizePullSelection({
+    ...savedSelection,
+    carouselBaseKeys: Array.isArray(flags.carouselBaseKeys) && flags.carouselBaseKeys.length > 0
+      ? flags.carouselBaseKeys
+      : savedSelection.carouselBaseKeys,
+  });
+  const marked = markCatalogSynced(remote, flags, selectionWithLiveCarousel);
+  const selection = pruneSelectionToCatalog(selectionWithLiveCarousel, marked);
 
   return {
     success: true,

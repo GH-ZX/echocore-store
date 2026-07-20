@@ -51,6 +51,7 @@ const SECTION_TYPE_ICONS = {
   gift_cards: Gift,
   gaming_accounts: UserCircle,
   game_picks: Star,
+  redeem_picks: Gift,
   offer_picks: Tags,
   suggested_offers: Sparkles,
   customer_reviews: MessageSquare,
@@ -200,14 +201,20 @@ function SectionEditor({
         </div>
       )}
 
-      {section.type === 'game_picks' && (
+      {(section.type === 'game_picks' || section.type === 'redeem_picks') && (
         <div>
           <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-            {t.homePickGames}
+            {section.type === 'redeem_picks'
+              ? (t.homePickRedeemCodes || t.homePickGames)
+              : t.homePickGames}
           </label>
-          <div className="max-h-40 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-2 space-y-1">
+          <div className="max-h-48 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-2 space-y-1">
             {games.length === 0 ? (
-              <p className="text-xs text-[var(--text-muted)] p-2">{t.homeNoGames}</p>
+              <p className="text-xs text-[var(--text-muted)] p-2">
+                {section.type === 'redeem_picks'
+                  ? (t.homeNoRedeemCodes || t.homeNoGames)
+                  : t.homeNoGames}
+              </p>
             ) : (
               games.map((game) => {
                 const checked = (draft.game_ids || []).includes(game.id);
@@ -224,7 +231,7 @@ function SectionEditor({
                       }}
                       className="accent-[var(--accent)]"
                     />
-                    <span className="truncate">{game.name_en}</span>
+                    <span className="truncate">{game.name_en || game.name_ar}</span>
                   </label>
                 );
               })
@@ -353,7 +360,7 @@ function SectionEditor({
           className="btn btn-primary action-chip gap-2 !border-0 text-sm disabled:opacity-50"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          {t.saveHomeSection}
+          {t.save || t.saveHomeSection}
         </button>
         {isDirty && (
           <span className="text-xs text-[var(--warning)]">
@@ -382,6 +389,10 @@ function getSectionContentHint(type, counts, t) {
       return formatMessage(t.homeHintOffersAvailable, { count: counts.offerCount });
     case 'game_picks':
       return formatMessage(t.homeHintGamePicks, { count: counts.gamesCount });
+    case 'redeem_picks':
+      return formatMessage(t.homeHintRedeemPicks || t.homeHintGiftCards, {
+        count: counts.voucherCount,
+      });
     case 'customer_reviews':
       return formatMessage(t.homeHintReviews, { count: counts.approvedReviewCount });
     case 'social_links':
@@ -420,7 +431,7 @@ export default function AdminHomeLayoutSettings({
   );
 
   const statusContext = useMemo(() => ({
-    carouselCount: getCarouselGames(topupGames).length,
+    carouselCount: getCarouselGames(games).length,
     gamesCount: topupGames.length,
     voucherCount: getCatalogVoucherGames(games)
       .filter((game) => countActiveOffers(game.id, offers) > 0 || game.catalog_source === 'live')
@@ -443,6 +454,13 @@ export default function AdminHomeLayoutSettings({
   const pickableGames = useMemo(
     () => topupGames,
     [topupGames],
+  );
+
+  const pickableRedeemGames = useMemo(
+    () => getCatalogVoucherGames(games)
+      .filter((game) => countActiveOffers(game.id, offers) > 0 || game.catalog_source === 'live' || game.active !== false)
+      .sort((a, b) => String(a.name_en || a.name_ar || '').localeCompare(String(b.name_en || b.name_ar || ''))),
+    [games, offers],
   );
 
   const persistLayout = useCallback(async (nextSections, successMessage) => {
@@ -687,7 +705,7 @@ export default function AdminHomeLayoutSettings({
                     <div className="px-4 pb-4">
                       <SectionEditor
                         section={section}
-                        games={pickableGames}
+                        games={section.type === 'redeem_picks' ? pickableRedeemGames : pickableGames}
                         offers={storefrontOffers}
                         reviews={reviews}
                         lang={lang}
@@ -772,13 +790,13 @@ export default function AdminHomeLayoutSettings({
         <div className="flex flex-wrap gap-2 mt-6 pt-4 border-t border-[var(--border)]">
           <button type="button" onClick={handleSave} disabled={saving || !layoutDirty} className="btn btn-primary action-chip gap-2 !border-0 disabled:opacity-50">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {t.saveHomeLayout}
+            {t.save || t.saveHomeLayout}
           </button>
-          <button type="button" onClick={handleReset} className="action-chip gap-2">
+          <button type="button" onClick={handleReset} className="action-chip gap-2" disabled={saving}>
             <RefreshCw className="w-4 h-4" />
             {t.resetHomeLayout}
           </button>
-          <button type="button" onClick={load} className="action-chip gap-2">
+          <button type="button" onClick={load} className="action-chip gap-2" disabled={saving}>
             <RefreshCw className="w-4 h-4" />
             {t.refresh}
           </button>

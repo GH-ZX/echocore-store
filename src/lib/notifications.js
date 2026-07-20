@@ -118,6 +118,16 @@ export function formatNotification(item, t = {}, lang = 'ar') {
       adminTab: 'contact',
       tone: 'info',
     },
+    admin_customer_review: {
+      title: t.notifAdminReviewTitle,
+      body: applyTemplate(t.notifAdminReviewBody, {
+        user: m.authorName || m.userName || userName,
+        rating: m.rating != null ? String(m.rating) : '5',
+        message: String(m.message || '').slice(0, 160),
+      }),
+      adminTab: 'reviews',
+      tone: 'info',
+    },
     admin_contact_reply: {
       title: t.notifAdminContactReplyTitle,
       body: m.preview
@@ -311,6 +321,9 @@ export function getNotificationDestination(item, formatted, userRole) {
   }
 
   if (userRole === 'admin') {
+    if (item?.type === 'admin_customer_review') {
+      return { path: getAdminDashboardPath('reviews') };
+    }
     // Invoice only for successful delivery / approved recharge notification types
     if (invoicePath) {
       return { path: invoicePath };

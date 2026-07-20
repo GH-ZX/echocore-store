@@ -1,7 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { getAdminDashboardPath, isValidAdminTabSegment, resolveAdminTabFromPath } from '../../lib/adminRoutes';
-import { Trash2, Plus, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Percent, PanelLeftClose, PanelLeftOpen, Users, ScrollText, Bell, Mail } from 'lucide-react';
+import {
+  getAdminApisPath,
+  getAdminDashboardPath,
+  isValidAdminApisSection,
+  isValidAdminTabSegment,
+  resolveAdminTabFromPath,
+} from '../../lib/adminRoutes';
+import { Trash2, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Percent, PanelLeftClose, PanelLeftOpen, Users, ScrollText, Bell, Mail, TrendingUp, Cable } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 import { centerActiveMobileTab, resetPageHorizontalScroll } from '../../lib/adminMobileNav';
@@ -19,12 +25,13 @@ const AdminThemeSettings = lazy(() => import('../../components/admin/AdminThemeS
 const AdminHomeLayoutSettings = lazy(() => import('../../components/admin/AdminHomeLayoutSettings'));
 const AdminReviewsManager = lazy(() => import('../../components/admin/AdminReviewsManager'));
 const AdminRechargeManager = lazy(() => import('../../components/admin/AdminRechargeManager'));
-const AdminG2BulkSettings = lazy(() => import('../../components/admin/AdminG2BulkSettings'));
 const AdminUsersManager = lazy(() => import('../../components/admin/AdminUsersManager'));
 const AdminInboxManager = lazy(() => import('../../components/admin/AdminInboxManager'));
 const AdminContactMessages = lazy(() => import('../../components/admin/AdminContactMessages'));
 const AdminOrdersManager = lazy(() => import('../../components/admin/AdminOrdersManager'));
+const AdminProfitStatsPage = lazy(() => import('../../components/admin/AdminProfitStatsPage'));
 const AdminSiteLogs = lazy(() => import('../../components/admin/AdminSiteLogs'));
+const AdminApisPage = lazy(() => import('../../components/admin/AdminApisPage'));
 
 function AdminTabLoader({ label = 'Loading...' }) {
   return (
@@ -50,6 +57,8 @@ function buildAdminNavItems(t) {
     { id: 'home', label: t.homeLayoutTab, shortLabel: t.tabHomeShort, icon: LayoutGrid },
     { id: 'products', label: t.gamesAndOffers, shortLabel: t.tabGamesShort, icon: Package },
     { id: 'orders', label: t.ordersTab, shortLabel: t.tabOrdersShort, icon: ShoppingCart },
+    { id: 'profits', label: t.profitsTab, shortLabel: t.tabProfitsShort, icon: TrendingUp },
+    { id: 'apis', label: t.apisTab, shortLabel: t.tabApisShort, icon: Cable },
     { id: 'recharges', label: t.rechargesTab, shortLabel: t.tabRechargesShort, icon: CircleDollarSign },
     { id: 'inbox', label: t.adminInboxTab, shortLabel: t.tabInboxShort, icon: Bell },
     { id: 'contact', label: t.adminContactTab, shortLabel: t.tabContactShort, icon: Mail },
@@ -72,7 +81,7 @@ export default function AdminView({
   deleteProduct,
   deleteGame: deleteGameProp,
   updateGame,
-  saveGame,
+  saveGame: _saveGame,
   refreshProducts,
   refreshOffers,
   refreshOrders,
@@ -125,8 +134,15 @@ export default function AdminView({
     const parts = location.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
     if (parts[0] !== 'dashboard' || parts.length < 2) return;
     if (parts.length === 3 && parts[1] === 'users') return;
+    // /dashboard/apis/:section — valid nested API section
+    if (parts.length === 3 && parts[1] === 'apis' && isValidAdminApisSection(parts[2])) return;
+    // Invalid nested apis path → hub root
+    if (parts.length >= 3 && parts[1] === 'apis') {
+      navigate(getAdminApisPath(), { replace: true });
+      return;
+    }
     if (parts[1] === 'g2bulk') {
-      navigate('/dashboard/products', { replace: true });
+      navigate(getAdminApisPath({ section: 'g2bulk' }), { replace: true });
       return;
     }
     if (parts[1] === 'devtools') {
@@ -186,30 +202,21 @@ export default function AdminView({
   }, [sidebarCollapsed]);
 
   const handleSaveGame = async (gameData) => {
+    // Games are created only via G2Bulk sync — edit existing rows only
+    if (!gameData?.id) {
+      throw new Error(t.adminGamesFromG2bulkOnly || 'Games are added only via G2Bulk catalog sync.');
+    }
     const payload = { ...gameData, active: true };
-    if (gameData.id) {
-      if (updateGame) {
-        await updateGame(payload);
-      } else {
-        const { error } = await supabase
-          .from('games')
-          .update(payload)
-          .eq('id', gameData.id);
-        if (error) throw error;
-      }
-      notifySuccess(t.gameUpdatedSuccess);
-    } else if (saveGame) {
-      await saveGame(payload);
-      notifySuccess(t.gameAddedSelectOffer);
+    if (updateGame) {
+      await updateGame(payload);
     } else {
       const { error } = await supabase
         .from('games')
-        .insert(payload)
-        .select()
-        .single();
+        .update(payload)
+        .eq('id', gameData.id);
       if (error) throw error;
-      notifySuccess(t.gameAddedSelectOffer);
     }
+    notifySuccess(t.gameUpdatedSuccess);
     if (refreshProducts) await refreshProducts();
     if (refreshOffers) await refreshOffers();
   };
@@ -294,7 +301,6 @@ export default function AdminView({
     .filter((order) => order.status === 'completed' && order.payment_method !== 'admin_gift')
     .reduce((sum, order) => sum + parseFloat(order.total || 0), 0)
     .toFixed(2);
-  const recentOrders = [...orders].slice(0, 5);
   const inboxUnreadCount = useMemo(
     () => notifications.filter((item) => !item.read_at && matchesAdminActivityFilter(item)).length,
     [notifications],
@@ -391,7 +397,13 @@ export default function AdminView({
             {activeNavItem?.label || t.adminDashboard}
           </h1>
           <p className="text-xs sm:text-base text-[var(--text-sec)] mt-0.5 sm:mt-0">
-            {activeTab === 'overview' ? t.manageYourStore : t.adminSectionHelp}
+            {activeTab === 'overview'
+              ? t.manageYourStore
+              : activeTab === 'profits'
+                ? t.adminProfitStatsSubtitle
+                : activeTab === 'apis'
+                  ? t.apisPageDesc
+                  : t.adminSectionHelp}
           </p>
         </header>
 
@@ -407,8 +419,7 @@ export default function AdminView({
           totalRevenue={totalRevenue}
           orders={orders}
           offers={offers}
-          recentOrders={recentOrders}
-          loadingOrders={loadingOrders}
+          games={games}
           g2bulkWallet={g2bulkWallet}
           g2bulkError={g2bulkError}
           g2bulkFetched={g2bulkFetched}
@@ -425,14 +436,26 @@ export default function AdminView({
       {/* PRODUCTS TAB */}
       {activeTab === 'products' && (
         <div className="space-y-6">
-          <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
-            <AdminG2BulkSettings
-              embedded
-              t={t}
-              lang={lang}
-              onCatalogSynced={onCatalogSynced}
-            />
-          </Suspense>
+          <div className="card p-4 sm:p-5 border-[var(--accent)]/20">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="font-bold text-sm sm:text-base flex items-center gap-2">
+                  <Cable className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                  {t.apisProductsHintTitle}
+                </h3>
+                <p className="text-xs text-[var(--text-sec)] mt-1 leading-relaxed">
+                  {t.apisProductsHintDesc}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAdminTab('apis')}
+                className="btn btn-secondary text-xs py-2 px-3 shrink-0 self-start sm:self-center"
+              >
+                {t.apisOpenHub}
+              </button>
+            </div>
+          </div>
 
           <AdminSaleDiscountsManager
             t={t}
@@ -458,16 +481,10 @@ export default function AdminView({
                   <Package className="w-5 h-5 text-[var(--accent)]" />
                   {t.gamesAndOffers}
                 </h3>
-                <p className="text-xs text-[var(--text-muted)] mt-1">{t.englishNameOnlyHelp}</p>
+                <p className="text-xs text-[var(--text-muted)] mt-1">
+                  {t.adminGamesFromG2bulkOnly || t.englishNameOnlyHelp}
+                </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setGameModal({})}
-                className="btn btn-primary inline-flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                {t.addNewGame}
-              </button>
             </div>
             <AdminExistingGamesList
               games={games}
@@ -475,7 +492,7 @@ export default function AdminView({
               lang={lang}
               t={t}
               editingGameId={gameModal?.id}
-              onEdit={(game) => setGameModal(game)}
+              onEdit={(game) => game?.id && setGameModal(game)}
               onDelete={requestDeleteGame}
             />
           </div>
@@ -576,7 +593,9 @@ export default function AdminView({
                   );
                 })
               ) : (
-                <div className="p-8 text-center text-[var(--text-sec)]">{t.noOffersYetAddGame}</div>
+                <div className="p-8 text-center text-[var(--text-sec)]">
+                  {t.noOffersYetSyncG2bulk || t.noOffersYetAddGame}
+                </div>
               )}
             </div>
           </div>
@@ -593,6 +612,31 @@ export default function AdminView({
             refreshOrders={refreshOrders}
             onNotify={onNotify}
             onFulfillOrder={onFulfillOrder}
+          />
+        </Suspense>
+      )}
+
+      {activeTab === 'profits' && (
+        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+          <AdminProfitStatsPage
+            t={t}
+            lang={lang}
+            orders={orders}
+            offers={offers}
+            games={games}
+            loadingOrders={loadingOrders}
+          />
+        </Suspense>
+      )}
+
+      {activeTab === 'apis' && (
+        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+          <AdminApisPage
+            t={t}
+            lang={lang}
+            onCatalogSynced={onCatalogSynced}
+            onPaymentSettingsSaved={onPaymentSettingsSaved}
+            onNotify={onNotify}
           />
         </Suspense>
       )}
@@ -703,7 +747,7 @@ export default function AdminView({
         </div>
       </div>
 
-      {gameModal && (
+      {gameModal?.id && (
         <AdminGameEditModal
           game={gameModal}
           games={games}

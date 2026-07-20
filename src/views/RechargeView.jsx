@@ -20,7 +20,9 @@ import {
   isPaymentMethodReady,
 } from '../lib/paymentMethods';
 import { createRechargeInvoice, mapSamRechargeError } from '../lib/samApi';
+import { logClientError } from '../lib/siteLogs';
 import SamInvoicePaymentPanel from '../components/SamInvoicePaymentPanel';
+import PaymentMethodIcon from '../components/ui/PaymentMethodIcon';
 import {
   normalizePayCurrency,
   getSypPerUsd,
@@ -209,6 +211,15 @@ export default function RechargeView({
         } catch (invoiceErr) {
           await cancelPendingRecharge(result.requestId);
           notifyError(mapSamRechargeError(invoiceErr, t));
+          logClientError('recharge_invoice_failed', {
+            severity: 'danger',
+            error: invoiceErr,
+            metadata: {
+              paymentMethod: selectedMethod,
+              requestId: result.requestId,
+              amount: effectiveAmount,
+            },
+          });
         }
         return;
       }
@@ -217,6 +228,14 @@ export default function RechargeView({
       setStep('payment');
     } catch (err) {
       notifyError(err.message || t.rechargeFailed);
+      logClientError('recharge_failed', {
+        severity: 'danger',
+        error: err,
+        metadata: {
+          paymentMethod: selectedMethod,
+          amount: effectiveAmount,
+        },
+      });
     } finally {
       setIsProcessing(false);
     }
@@ -511,7 +530,6 @@ export default function RechargeView({
               <div className="text-sm font-semibold mb-3 text-[var(--text-sec)]">{t.paymentMethod}</div>
               <div className="space-y-2">
                 {walletMethods.map((m) => {
-                  const Icon = m.icon;
                   const active = selectedMethod === m.id;
                   const isDisabled = m.disabled;
                   return (
@@ -520,7 +538,7 @@ export default function RechargeView({
                       type="button"
                       disabled={isDisabled}
                       onClick={() => !isDisabled && setSelectedMethod(m.id)}
-                      className={`w-full flex items-center p-4 rounded-2xl border transition text-left ${
+                      className={`w-full flex items-center p-4 rounded-2xl border transition text-start ${
                         isDisabled
                           ? 'border-[var(--border)] opacity-50 cursor-not-allowed'
                           : active
@@ -528,8 +546,10 @@ export default function RechargeView({
                             : 'border-[var(--border)] hover:border-[var(--accent)]/60'
                       }`}
                     >
-                      <Icon className={`w-7 h-7 ${m.color} mr-3 flex-shrink-0`} />
-                      <div>
+                      <span className={`payment-method-icon-wrap me-3 flex-shrink-0 ${m.color || ''}`}>
+                        <PaymentMethodIcon method={m} className="w-8 h-8" />
+                      </span>
+                      <div className="min-w-0">
                         <div className="font-bold">{m.name}</div>
                         <div className="text-xs text-[var(--text-muted)]">{t[methodNoteKey]}</div>
                       </div>

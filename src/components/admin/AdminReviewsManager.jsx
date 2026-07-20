@@ -16,7 +16,9 @@ import {
   saveReview,
   updateReviewStatus,
   deleteReview,
+  deleteSeedReviews,
 } from '../../lib/customerReviews';
+import { formatMessage } from '../../lib/i18n';
 
 const EMPTY_FORM = {
   author_name: '',
@@ -59,6 +61,21 @@ export default function AdminReviewsManager({ t = {}, onChanged }) {
   });
 
   const pendingCount = reviews.filter((r) => r.status === 'pending').length;
+  const seedCount = reviews.filter((r) => r.is_seed).length;
+
+  const handleClearSeeds = async () => {
+    if (!seedCount) return;
+    if (!confirm(t.reviewsClearSeedsConfirm)) return;
+    try {
+      await deleteSeedReviews();
+      await load();
+      onChanged?.();
+      setSuccess(t.reviewsClearSeedsDone);
+      setTimeout(() => setSuccess(''), 2500);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
 
   const handleApprove = async (id) => {
     try {
@@ -148,15 +165,23 @@ export default function AdminReviewsManager({ t = {}, onChanged }) {
             </h2>
             <p className="text-sm text-[var(--text-sec)] mt-1">{t.reviewsAdminHelp}</p>
           </div>
-          <button type="button" onClick={load} className="action-chip gap-2 text-sm">
-            <RefreshCw className="w-4 h-4" />
-            {t.refresh}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {seedCount > 0 && (
+              <button type="button" onClick={handleClearSeeds} className="action-chip gap-2 text-sm text-amber-300 border-amber-500/30">
+                <Trash2 className="w-4 h-4" />
+                {formatMessage(t.reviewsClearSeeds, { count: seedCount })}
+              </button>
+            )}
+            <button type="button" onClick={load} className="action-chip gap-2 text-sm">
+              <RefreshCw className="w-4 h-4" />
+              {t.refresh}
+            </button>
+          </div>
         </div>
 
         {pendingCount > 0 && (
           <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-300 text-sm">
-            {t.reviewsPendingCount.replace('{count}', String(pendingCount))}
+            {formatMessage(t.reviewsPendingCount, { count: pendingCount })}
           </div>
         )}
 

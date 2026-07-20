@@ -19,7 +19,7 @@ import { tryAcquirePurchaseLock, releasePurchaseLock } from './lib/purchaseLock'
 import { markOrderFulfillAllowed } from './lib/orderAccess';
 import { adminGiftOrder, pollOrderFulfillment } from './lib/adminGifts';
 import { mergeGamePlayerUidIntoProfile } from './lib/gamePlayerUid';
-import { fulfillOrderG2bulk } from './lib/g2bulk';
+import { fulfillOrderG2bulk, syncPullSelectionCarouselFromGames } from './lib/g2bulk';
 import {
   assertBalanceFulfillmentAvailable,
   assertNoOpenDuplicateTopup,
@@ -55,7 +55,7 @@ import {
   refreshSupplierWallets,
   resetSupplierWalletsStore,
 } from './lib/adminSupplierWalletsStore';
-import { logAuthEvent } from './lib/siteLogs';
+import { logAuthEvent, logClientError } from './lib/siteLogs';
 import {
   filterGamesByPullSelection,
   filterOffersByPullSelection,
@@ -592,30 +592,66 @@ export default function App() {
     return rejectMaintenanceLogin(userData);
   };
 
-  // Signup helper (used by LoginView)
-  const handleAuthSignup = async (email, password, name) => {
+  // Signup helper (used by LoginView). Extra profile fields optional.
+  // Username uniqueness is enforced in DB (handle_new_user + unique index).
+  const handleAuthSignup = async (email, password, profile = {}) => {
     if (siteStatus?.maintenanceEnabled) {
       throw new Error(t.maintenanceSignupBlocked);
     }
 
+    const name = typeof profile === 'string'
+      ? profile
+      : String(profile?.name || '').trim();
+    const username = typeof profile === 'object' && profile
+      ? String(profile.username || '').trim().replace(/^@+/, '').toLowerCase()
+      : '';
+    const gender = typeof profile === 'object' && profile
+      ? String(profile.gender || '').trim().toLowerCase()
+      : '';
+    const dateOfBirth = typeof profile === 'object' && profile
+      ? String(profile.dateOfBirth || profile.date_of_birth || '').trim()
+      : '';
+
+    const meta = {};
+    if (name) meta.name = name;
+    if (username) meta.username = username;
+    if (gender === 'male' || gender === 'female') meta.gender = gender;
+    if (dateOfBirth) meta.date_of_birth = dateOfBirth;
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { name } }
+      options: { data: meta },
     });
     if (error) {
       await logAuthEvent('signup_failed', { email });
+      const msg = String(error.message || '');
+      if (/username_taken/i.test(msg)) throw new Error(t.usernameTaken || 'username_taken');
+      if (/username_invalid/i.test(msg)) throw new Error(t.usernameInvalid || 'username_invalid');
       throw error;
     }
 
-    // Create profile immediately (trigger may or may not have run)
+    // Patch non-username fields if session exists (username set by handle_new_user trigger)
     if (data.user) {
-      await supabase.from('profiles').upsert({
+      const patch = {
         id: data.user.id,
         role: 'user',
         name: name || email.split('@')[0],
-        balance: 0
-      }, { onConflict: 'id' });
+        balance: 0,
+      };
+      if (gender === 'male' || gender === 'female') patch.gender = gender;
+      if (dateOfBirth) patch.date_of_birth = dateOfBirth;
+
+      const upsertRes = await supabase.from('profiles').upsert(patch, { onConflict: 'id' });
+      if (upsertRes.error && /gender|date_of_birth|column/i.test(upsertRes.error.message || '')) {
+        // Columns not migrated yet — still create core profile
+        await supabase.from('profiles').upsert({
+          id: data.user.id,
+          role: 'user',
+          name: name || email.split('@')[0],
+          balance: 0,
+        }, { onConflict: 'id' });
+      }
 
       // If Supabase gave us a session immediately (email confirmation disabled in project settings),
       // log the user in right away
@@ -628,7 +664,7 @@ export default function App() {
         await logAuthEvent('signup_success', {
           email,
           userId: data.user.id,
-          userName: name || userData.name || null,
+          userName: name || userData.name || username || null,
         });
         await rejectMaintenanceLogin(userData);
         return { success: true, autoLogin: true, userData };
@@ -637,13 +673,13 @@ export default function App() {
       await logAuthEvent('signup_success', {
         email,
         userId: data.user.id,
-        userName: name || email.split('@')[0],
+        userName: name || username || email.split('@')[0],
       });
-      return { success: true, message: 'Check your email to confirm your account (if required by your Supabase settings).' };
+      return { success: true, message: t.checkEmailToConfirm || 'Check your email to confirm your account.' };
     }
 
-    await logAuthEvent('signup_success', { email, userName: name || null });
-    return { success: true, message: 'Check your email to confirm your account (if required by your Supabase settings).' };
+    await logAuthEvent('signup_success', { email, userName: name || username || null });
+    return { success: true, message: t.checkEmailToConfirm || 'Check your email to confirm your account.' };
   };
 
   const runWithPurchaseGuard = async (userId, fn) => {
@@ -672,7 +708,8 @@ export default function App() {
     if (!user?.id) throw new Error('Not logged in');
     if (user?.role === 'admin') throw new Error(t.adminCannotPurchase);
 
-    return runWithPurchaseGuard(user.id, async () => {
+    try {
+    return await runWithPurchaseGuard(user.id, async () => {
 
     const preparedCart = await resolveCheckoutOffers(currentCart);
     const { items: syncedCart, removedCount } = syncCartWithOffers(preparedCart, offers.length ? offers : preparedCart);
@@ -742,6 +779,23 @@ export default function App() {
 
     return { orderId: data.orderId, status: data.status || 'completed' };
     });
+    } catch (err) {
+      // Critical purchase failures → admin Dev Logs (expand for full console dump)
+      const msg = err?.message || String(err || '');
+      const soft = /in progress|قيد التنفيذ|cart empty|empty or unavailable|UID|uid/i.test(msg);
+      if (!soft) {
+        logClientError('purchase_failed', {
+          severity: 'danger',
+          error: err,
+          metadata: {
+            paymentMethod,
+            userId: user?.id,
+            userName: user?.name || user?.username || null,
+          },
+        });
+      }
+      throw err;
+    }
   };
 
   const handleRechargeApproved = (result) => {
@@ -1085,46 +1139,11 @@ export default function App() {
     }));
   }, []);
 
-  const createGame = async (gameData) => {
-    const { id: _omitId, show_in_carousel, ...payload } = gameData;
-
-    const { data, error } = await supabase
-      .from('games')
-      .insert({
-        name_en: payload.name_en,
-        name_ar: payload.name_ar || payload.name_en,
-        slug: payload.slug,
-        points_name: payload.points_name || 'Points',
-        logo_url: payload.logo_url || null,
-        image_url: payload.image_url || null,
-        image_custom: !!payload.image_url,
-        logo_custom: !!payload.logo_url,
-        redemption_method: payload.redemption_method || 'both',
-        servers: payload.servers || [],
-        description_en: payload.description_en || '',
-        description_ar: payload.description_ar || '',
-        carousel_focus_x: payload.carousel_focus_x ?? 50,
-        carousel_focus_y: payload.carousel_focus_y ?? 50,
-        show_in_carousel: !!show_in_carousel,
-        carousel_order: show_in_carousel ? getCarouselGames(games).length : games.length,
-        g2bulk_game_code: payload.g2bulk_game_code?.trim() || null,
-        active: true,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Create game error:', error);
-      throw new Error(`Failed to add game: ${error.message}`);
-    }
-
-    setGames((prev) => sortGamesByCarousel([...prev, data]));
-    showNotification(t.gameAddedSuccess || 'Game added successfully');
-    return data;
-  };
-
   const saveGame = async (gameData) => {
-    if (!gameData?.id) return createGame(gameData);
+    // Manual game create is disabled — catalog comes from G2Bulk sync only
+    if (!gameData?.id) {
+      throw new Error(t.adminGamesFromG2bulkOnly || 'Games are added only via G2Bulk catalog sync.');
+    }
     return updateGame(gameData);
   };
 
@@ -1194,13 +1213,22 @@ export default function App() {
       }
     }
 
+    let nextGames = [];
     setGames((prev) => {
       const updated = prev.map((g) => {
         const u = updates.find((x) => x.id === g.id);
         return u ? { ...g, carousel_order: u.carousel_order, show_in_carousel: u.show_in_carousel } : g;
       });
-      return sortGamesByCarousel(updated);
+      nextGames = sortGamesByCarousel(updated);
+      return nextGames;
     });
+
+    // Pair dashboard G2Bulk carousel ticks with homepage carousel (incl. redeem)
+    try {
+      await syncPullSelectionCarouselFromGames(nextGames);
+    } catch (syncErr) {
+      console.warn('carousel pull-selection sync:', syncErr);
+    }
   };
 
   const addGameToCarousel = async (game) => {
@@ -1973,7 +2001,7 @@ export default function App() {
         />
       )}
 
-      {isAdmin && adminEditGame && (
+      {isAdmin && adminEditGame?.id && (
         <AdminGameEditModal
           game={adminEditGame}
           games={games}

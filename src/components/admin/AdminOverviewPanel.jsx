@@ -2,26 +2,21 @@ import {
   BarChart3,
   Gamepad2,
   Gift,
+  Package,
   ShoppingCart,
   Zap,
 } from 'lucide-react';
 import AdminDashSection from './AdminDashSection';
 import AdminDashStatCard from './AdminDashStatCard';
+import AdminDashGoTo from './AdminDashGoTo';
 import AdminProfitOverview from './AdminProfitOverview';
 import AdminSupplierWalletsCard from '../ui/AdminSupplierWalletsCard';
-import { getAdminOrdersPath, getAdminPaymentsPath } from '../../lib/adminRoutes';
+import {
+  getAdminDashboardPath,
+  getAdminOrdersPath,
+  getAdminPaymentsPath,
+} from '../../lib/adminRoutes';
 import { getSypPerUsd } from '../../lib/rechargeCurrency';
-import { formatOrderDisplayId, getOrderStatusLabel } from '../../lib/orderReceipt';
-import { getOrderCustomerLabel } from '../../lib/adminOrderFilters';
-import { formatMessage } from '../../lib/i18n';
-
-function resolvePaymentMethodLabel(method, t = {}) {
-  if (method === 'balance') return t.payFromBalance;
-  if (method === 'admin_gift') return t.orderPaymentGift;
-  if (method === 'ShamCash') return t.shamCash;
-  if (method === 'SyriatelCash') return t.syriatelCash;
-  return method || '—';
-}
 
 export default function AdminOverviewPanel({
   t = {},
@@ -33,8 +28,7 @@ export default function AdminOverviewPanel({
   totalRevenue,
   orders = [],
   offers = [],
-  recentOrders = [],
-  loadingOrders = false,
+  games = [],
   g2bulkWallet,
   g2bulkError,
   g2bulkFetched,
@@ -53,10 +47,17 @@ export default function AdminOverviewPanel({
     navigate(target.pathname, { state: target.state });
   };
 
+  const goToTab = (tabId, path) => {
+    setAdminTab?.(tabId);
+    if (path) navigate(path);
+    else navigate(getAdminDashboardPath(tabId));
+  };
+
   return (
     <div className="admin-overview space-y-6 sm:space-y-8">
       <AdminSupplierWalletsCard
         t={t}
+        lang={lang}
         variant="card"
         g2bulkBalance={g2bulkWallet != null ? g2bulkWallet.balance : null}
         g2bulkUsername={g2bulkWallet?.username}
@@ -69,14 +70,24 @@ export default function AdminOverviewPanel({
         loading={supplierWalletsLoading}
         sypPerUsd={sypPerUsd}
         onRefresh={refreshSupplierWallets}
-        onOpenDashboard={() => setAdminTab('products')}
-        onOpenPayments={() => setAdminTab('payments')}
+        onOpenDashboard={() => goToTab('apis')}
+        onOpenPayments={() => goToTab('apis')}
         onOpenExchangeRate={openExchangeRateSettings}
+        goToLabel={t.adminOverviewGoWallets}
+        onGoToPage={() => goToTab('payments')}
       />
 
       <AdminDashSection
         title={t.adminOverviewCatalogTitle}
         description={t.adminOverviewCatalogDesc}
+        icon={Package}
+        action={(
+          <AdminDashGoTo
+            label={t.adminOverviewGoCatalog}
+            onClick={() => goToTab('products')}
+            lang={lang}
+          />
+        )}
       >
         <div className="admin-dash-grid admin-dash-grid--catalog">
           <AdminDashStatCard
@@ -106,6 +117,14 @@ export default function AdminOverviewPanel({
       <AdminDashSection
         title={t.adminOverviewSalesTitle}
         description={t.adminOverviewSalesDesc}
+        icon={BarChart3}
+        action={(
+          <AdminDashGoTo
+            label={t.adminOverviewGoSales}
+            onClick={() => goToTab('orders', getAdminOrdersPath())}
+            lang={lang}
+          />
+        )}
       >
         <div className="admin-dash-grid admin-dash-grid--sales">
           <AdminDashStatCard
@@ -126,67 +145,14 @@ export default function AdminOverviewPanel({
         </div>
       </AdminDashSection>
 
-      <AdminProfitOverview orders={orders} offers={offers} t={t} />
-
-      <AdminDashSection
-        title={t.recentOrders}
-        description={t.last5Orders}
-        action={(
-          <button
-            type="button"
-            onClick={() => setAdminTab('orders')}
-            className="admin-dash-link"
-          >
-            {t.viewAll}
-          </button>
-        )}
-      >
-        {loadingOrders ? (
-          <p className="admin-dash-empty">{t.loadingOrders}</p>
-        ) : recentOrders.length === 0 ? (
-          <p className="admin-dash-empty">{t.noOrdersYet}</p>
-        ) : (
-          <div className="admin-dash-orders">
-            {recentOrders.map((order) => {
-              const customer = getOrderCustomerLabel(order, t);
-              const paymentLabel = resolvePaymentMethodLabel(order.payment_method, t);
-              const itemCount = order.order_items?.length || 0;
-              const statusLabel = getOrderStatusLabel(order.status, t);
-
-              return (
-                <button
-                  key={order.id}
-                  type="button"
-                  onClick={() => navigate(getAdminOrdersPath({ orderId: order.id }))}
-                  className="admin-dash-order"
-                >
-                  <div className="admin-dash-order__main">
-                    <span className="admin-dash-order__ref" dir="ltr">
-                      #{formatOrderDisplayId(order)}
-                    </span>
-                    <span className="admin-dash-order__customer">{customer}</span>
-                  </div>
-                  <div className="admin-dash-order__meta">
-                    <span>{new Date(order.created_at).toLocaleDateString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US')}</span>
-                    <span className="admin-dash-order__dot" aria-hidden="true">·</span>
-                    <span className="admin-dash-order__badge">{paymentLabel}</span>
-                    <span className="admin-dash-order__dot" aria-hidden="true">·</span>
-                    <span>{formatMessage(t.adminOverviewOrderItems, { count: itemCount })}</span>
-                  </div>
-                  <div className="admin-dash-order__side">
-                    <span className="admin-dash-order__amount" dir="ltr">
-                      ${parseFloat(order.total || 0).toFixed(2)}
-                    </span>
-                    <span className={`admin-dash-order__status admin-dash-order__status--${order.status || 'pending'}`}>
-                      {statusLabel}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </AdminDashSection>
+      <AdminProfitOverview
+        orders={orders}
+        offers={offers}
+        games={games}
+        t={t}
+        lang={lang}
+        onOpenFullStats={() => goToTab('profits')}
+      />
     </div>
   );
 }

@@ -14,6 +14,7 @@ import {
   hasAnyManualWalletReady,
 } from '../lib/paymentMethods';
 import SamInvoicePaymentPanel from '../components/SamInvoicePaymentPanel';
+import PaymentMethodIcon from '../components/ui/PaymentMethodIcon';
 import { formatMessage } from '../lib/i18n';
 import { markOrderPaymentSent } from '../lib/orders';
 import { getOfferDisplayName } from '../lib/offerDisplay';
@@ -676,7 +677,6 @@ export default function BuyView({
           <div className="font-semibold mb-3 text-sm text-[var(--text-sec)]">{t.paymentMethod}</div>
           <div className="space-y-2">
             {paymentMethods.map((m) => {
-              const Icon = m.icon;
               const active = selectedMethod === m.id;
               const isBalance = m.id === 'balance';
               const isDisabled = m.disabled || m.comingSoon || (isBalance && !hasEnough);
@@ -690,7 +690,9 @@ export default function BuyView({
                       : `cursor-pointer ${active ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border)] hover:border-[var(--accent)]/50'}`
                   }`}
                 >
-                  <Icon className={`w-7 h-7 ${m.color} mr-4 flex-shrink-0`} />
+                  <span className={`payment-method-icon-wrap me-4 flex-shrink-0 ${m.color || ''}`}>
+                    <PaymentMethodIcon method={m} className="w-8 h-8" />
+                  </span>
                   <div className="min-w-0">
                     <div className="font-bold flex items-center gap-2">
                       {m.name}

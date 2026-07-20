@@ -41,8 +41,15 @@ export const HOME_SECTION_TYPES = {
   game_picks: {
     labelEn: 'Custom Game Cards',
     labelAr: 'بطاقات ألعاب مخصصة',
-    descriptionEn: 'Hand-picked games you choose',
-    descriptionAr: 'ألعاب تختارها يدوياً',
+    descriptionEn: 'Hand-picked top-up games you choose',
+    descriptionAr: 'ألعاب شحن (UID) تختارها يدوياً',
+    singleton: false,
+  },
+  redeem_picks: {
+    labelEn: 'Custom Redeem Codes',
+    labelAr: 'أكواد استرداد مخصصة',
+    descriptionEn: 'Hand-picked gift cards & redeem codes (same as games, for vouchers)',
+    descriptionAr: 'بطاقات هدايا وأكواد استرداد تختارها يدوياً — مثل بطاقات الألعاب',
     singleton: false,
   },
   offer_picks: {
@@ -152,6 +159,14 @@ function defaultSectionConfig(type, id) {
       ...base,
       title_en: 'Featured Games',
       title_ar: 'ألعاب مميزة',
+      game_ids: [],
+    };
+  }
+  if (type === 'redeem_picks') {
+    return {
+      ...base,
+      title_en: 'Redeem Codes',
+      title_ar: 'أكواد الاسترداد',
       game_ids: [],
     };
   }
@@ -288,6 +303,13 @@ export function evaluateHomeSectionStatus(section, context = {}) {
       const valid = (section.game_ids || []).filter((id) => (
         games.some((game) => game.id === id)
       ));
+      return { hidden: false, empty: valid.length === 0 };
+    }
+    case 'redeem_picks': {
+      const valid = (section.game_ids || []).filter((id) => {
+        const game = games.find((row) => row.id === id);
+        return game && game.redemption_method === 'redeem_code';
+      });
       return { hidden: false, empty: valid.length === 0 };
     }
     case 'offer_picks': {

@@ -2,11 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
+  ArrowDownRight,
+  ArrowUpRight,
   Ban,
   Bell,
   BadgeCheck,
   BadgeX,
   Copy,
+  History,
   KeyRound,
   Link2,
   Loader2,
@@ -28,6 +31,7 @@ import {
   adminUnverifyUser,
   adminUpdateUserProfile,
   adminVerifyUser,
+  fetchAdminUserTransactions,
   isUserRowBanned,
 } from '../../lib/adminModeration';
 import {
@@ -111,6 +115,9 @@ export default function AdminUserDetail({
     default_player_uid: '',
   });
   const [profileSaving, setProfileSaving] = useState(false);
+  const [walletTxs, setWalletTxs] = useState([]);
+  const [walletTxLoading, setWalletTxLoading] = useState(false);
+  const [walletTxFilter, setWalletTxFilter] = useState('all');
 
   const loadProfile = useCallback(async () => {
     if (!userRouteParam) return;
@@ -134,6 +141,7 @@ export default function AdminUserDetail({
 
       if (!userId) {
         setProfile(null);
+        setWalletTxs([]);
         return;
       }
 
@@ -149,9 +157,21 @@ export default function AdminUserDetail({
         favorite_game: data?.favorite_game || '',
         default_player_uid: data?.default_player_uid || '',
       });
+
+      setWalletTxLoading(true);
+      try {
+        const txs = await fetchAdminUserTransactions(userId, { limit: 100 });
+        setWalletTxs(txs);
+      } catch (txErr) {
+        console.warn('wallet txs:', txErr);
+        setWalletTxs([]);
+      } finally {
+        setWalletTxLoading(false);
+      }
     } catch (err) {
       notifyError(err.message);
       setProfile(null);
+      setWalletTxs([]);
     } finally {
       setLoading(false);
     }
@@ -160,6 +180,16 @@ export default function AdminUserDetail({
   useEffect(() => {
     loadProfile();
   }, [loadProfile]);
+
+  useEffect(() => {
+    if (loading || !profile?.id) return undefined;
+    if (typeof window === 'undefined') return undefined;
+    if (window.location.hash !== '#wallet-flow') return undefined;
+    const timer = window.setTimeout(() => {
+      document.getElementById('wallet-flow')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [loading, profile?.id]);
 
   const handleVerifyToggle = async () => {
     if (!profile?.id) return;
@@ -479,6 +509,110 @@ export default function AdminUserDetail({
               await loadProfile();
             }}
           />
+        </div>
+
+        {/* Wallet ledger — recharges, purchases, refunds, adjustments */}
+        <div id="wallet-flow" className="scroll-mt-24">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h3 className="text-sm font-bold flex items-center gap-2">
+              <History className="w-4 h-4 text-[var(--accent)]" />
+              {t.adminTrackPurchases || t.transactionHistory}
+            </h3>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { id: 'all', label: t.adminWalletTxFilterAll || t.all || 'All' },
+                { id: 'purchase', label: t.txnPurchase || 'Purchase' },
+                { id: 'recharge', label: t.recharge || 'Recharge' },
+                { id: 'refund', label: t.txnRefund || 'Refund' },
+                { id: 'adjustment', label: t.txnAdjustment || 'Adjustment' },
+              ].map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setWalletTxFilter(f.id)}
+                  className={`action-chip text-[10px] !py-1 ${
+                    walletTxFilter === f.id ? 'border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10' : ''
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="text-xs text-[var(--text-muted)] mb-3">
+            {t.adminWalletFlowHelp}
+          </p>
+          {walletTxLoading ? (
+            <div className="py-8 text-center">
+              <Loader2 className="w-6 h-6 animate-spin mx-auto text-[var(--accent)]" />
+            </div>
+          ) : (() => {
+            const filtered = walletTxFilter === 'all'
+              ? walletTxs
+              : walletTxs.filter((tx) => tx.type === walletTxFilter);
+            if (filtered.length === 0) {
+              return (
+                <div className="rounded-xl border border-[var(--border)] p-6 text-center text-sm text-[var(--text-sec)]">
+                  {t.noTransactions}
+                </div>
+              );
+            }
+            const txLabel = (type) => {
+              const map = {
+                recharge: t.recharge,
+                purchase: t.txnPurchase,
+                refund: t.txnRefund,
+                adjustment: t.txnAdjustment,
+              };
+              return map[type] || type;
+            };
+            return (
+              <div className="rounded-xl border border-[var(--border)] overflow-hidden max-h-[28rem] overflow-y-auto">
+                {filtered.map((tx) => {
+                  const amount = parseFloat(tx.amount || 0);
+                  const isCredit = amount > 0;
+                  return (
+                    <div
+                      key={tx.id}
+                      className="flex items-center justify-between gap-3 px-3 py-2.5 border-b border-[var(--border)] last:border-0 text-sm"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`p-1.5 rounded-lg shrink-0 ${isCredit ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                          {isCredit ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-semibold truncate">{txLabel(tx.type)}</div>
+                          <div className="text-[10px] text-[var(--text-muted)] truncate">
+                            {[tx.payment_method, tx.reference, formatAdminDate(tx.created_at, lang)]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </div>
+                          {tx.balance_after != null && (
+                            <div className="text-[10px] text-[var(--text-muted)] font-mono">
+                              {t.balance}: ${Number(tx.balance_after).toFixed(2)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className={`font-mono font-bold shrink-0 ${isCredit ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {isCredit ? '+' : ''}{amount.toFixed(2)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+          {onOpenOrders && (
+            <button
+              type="button"
+              onClick={() => onOpenOrders(getProfileUsername(profile) || profile.id)}
+              className="btn btn-secondary text-xs py-2 px-3 mt-3 inline-flex items-center gap-1.5"
+            >
+              <ShoppingBag className="w-3.5 h-3.5" />
+              {t.adminViewUserOrders}
+            </button>
+          )}
         </div>
 
         <div>

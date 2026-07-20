@@ -10,6 +10,7 @@ import {
   isPaymentMethodReady,
 } from '../lib/paymentMethods';
 import SamInvoicePaymentPanel from '../components/SamInvoicePaymentPanel';
+import PaymentMethodIcon from '../components/ui/PaymentMethodIcon';
 import { markOrderPaymentSent } from '../lib/orders';
 import { formatMessage } from '../lib/i18n';
 import { getAdminGiftPath, getAdminDashboardPath } from '../lib/adminRoutes';
@@ -302,7 +303,6 @@ export default function CheckoutView({
 
         <div className="space-y-3 mb-8">
           {allMethods.map((method) => {
-            const Icon = method.icon;
             const active = selectedMethod === method.id;
             const isBalance = method.id === 'balance';
             const isDisabled = method.disabled || method.comingSoon;
@@ -320,7 +320,9 @@ export default function CheckoutView({
                     : `cursor-pointer ${active ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border)] hover:border-[var(--accent)]/70'} ${isBalance ? 'ring-1 ring-emerald-500/30' : ''}`
                 }`}
               >
-                <Icon className={`w-9 h-9 ${method.color} mx-4 flex-shrink-0`} />
+                <span className={`payment-method-icon-wrap mx-4 flex-shrink-0 ${method.color || ''}`}>
+                  <PaymentMethodIcon method={method} className="w-9 h-9" />
+                </span>
                 <div className="flex-1 min-w-0">
                   <div className="font-bold text-lg flex items-center gap-2">
                     {method.name}

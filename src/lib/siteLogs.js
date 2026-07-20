@@ -186,21 +186,54 @@ function capitalize(value = '') {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-export async function fetchAdminSiteLogs({ limit = 50, offset = 0, category = null } = {}) {
-  const { data, error } = await supabase.rpc('get_admin_site_logs', {
+/**
+ * @param {{ limit?: number, offset?: number, category?: string|null, severity?: string|null }} opts
+ * category: auth | recharge | order | wallet | contact | dev | error
+ * severity: info | success | warning | danger | critical (warn+danger)
+ */
+export async function fetchAdminSiteLogs({
+  limit = 50,
+  offset = 0,
+  category = null,
+  severity = null,
+} = {}) {
+  const payload = {
     p_limit: limit,
     p_offset: offset,
     p_category: category || null,
-  });
-
+    p_severity: severity || null,
+  };
+  let { data, error } = await supabase.rpc('get_admin_site_logs', payload);
   if (error) {
-    if (isMissingRpc(error)) throw new Error(RPC_SETUP_MSG);
-    throw error;
+    // Fallback for older 3-arg RPC (no p_severity)
+    const legacy = await supabase.rpc('get_admin_site_logs', {
+      p_limit: limit,
+      p_offset: offset,
+      p_category: category || null,
+    });
+    if (legacy.error) {
+      if (isMissingRpc(error) || isMissingRpc(legacy.error)) throw new Error(RPC_SETUP_MSG);
+      throw error;
+    }
+    data = legacy.data;
+  }
+
+  let logs = Array.isArray(data?.logs) ? data.logs : [];
+  let total = Number(data?.total) || 0;
+
+  // Client-side severity filter when RPC lacks p_severity
+  if (severity === 'critical' && logs.length) {
+    const crit = new Set(['warning', 'danger', 'error', 'warn', 'err']);
+    const filtered = logs.filter((row) => crit.has(String(row?.severity || '').toLowerCase()));
+    if (filtered.length !== logs.length) {
+      logs = filtered;
+      total = filtered.length;
+    }
   }
 
   return {
-    logs: Array.isArray(data?.logs) ? data.logs : [],
-    total: Number(data?.total) || 0,
+    logs,
+    total,
     limit: Number(data?.limit) || limit,
     offset: Number(data?.offset) || offset,
   };
@@ -260,6 +293,16 @@ const DEV_LOG_SEVERITY = {
   danger: 'ERR ',
 };
 
+/** Keys reserved for expanded console dump (not the one-line summary). */
+const CONSOLE_META_KEYS = new Set([
+  'consoleLog',
+  'stack',
+  'componentStack',
+  'fullError',
+  'raw',
+  'trace',
+]);
+
 const DEV_LOG_META_ORDER = [
   'user',
   'actor',
@@ -270,27 +313,42 @@ const DEV_LOG_META_ORDER = [
   'adminName',
   'amount',
   'total',
+  'balanceAfter',
   'method',
   'paymentMethod',
   'reference',
   'orderId',
   'requestId',
+  'transactionId',
   'messageId',
   'samInvoiceId',
   'status',
+  'type',
   'error',
   'message',
   'reason',
   'endpoint',
   'httpStatus',
+  'filename',
+  'lineno',
+  'colno',
+  'url',
   'response',
   'body',
   'webhook',
   'payload',
   'code',
   'detail',
-  'stack',
 ];
+
+export function normalizeLogSeverity(value) {
+  const s = String(value || 'info').toLowerCase().trim();
+  if (s === 'error' || s === 'err' || s === 'critical' || s === 'fatal') return 'danger';
+  if (s === 'warn') return 'warning';
+  if (s === 'ok') return 'success';
+  if (['info', 'success', 'warning', 'danger'].includes(s)) return s;
+  return 'info';
+}
 
 function formatDevLogTimestamp(value) {
   const date = new Date(value);
@@ -330,6 +388,11 @@ function buildDevLogFields(item, lang = 'ar') {
     metadata.subject = item.subject_name;
   }
   delete metadata.userName;
+  CONSOLE_META_KEYS.forEach((key) => {
+    delete metadata[key];
+  });
+  // userAgent is huge and noisy on the one-liner
+  delete metadata.userAgent;
 
   const used = new Set();
   const parts = [];
@@ -350,34 +413,211 @@ function buildDevLogFields(item, lang = 'ar') {
   return parts.join(' ');
 }
 
+/** Full multi-line console dump for expanded WARN/ERR rows. */
+export function extractConsoleLogDump(item) {
+  const m = item?.metadata && typeof item.metadata === 'object' ? item.metadata : {};
+  const chunks = [];
+
+  const push = (label, value) => {
+    if (value == null || value === '') return;
+    const text = typeof value === 'object'
+      ? (() => {
+        try {
+          return JSON.stringify(value, null, 2);
+        } catch {
+          return String(value);
+        }
+      })()
+      : String(value);
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    chunks.push(label ? `${label}:\n${trimmed}` : trimmed);
+  };
+
+  push(null, m.consoleLog);
+  push('stack', m.stack && m.stack !== m.consoleLog ? m.stack : null);
+  push('componentStack', m.componentStack);
+  push('fullError', m.fullError);
+  push('trace', m.trace);
+  push('raw', m.raw);
+
+  if (!chunks.length && (m.error || m.message || m.detail)) {
+    push('error', m.error);
+    push('message', m.message);
+    push('detail', m.detail);
+  }
+
+  if (!chunks.length && m.response != null) {
+    push('response', m.response);
+  }
+
+  return chunks.length ? chunks.join('\n\n') : '';
+}
+
 export function formatDevLogLine(item, lang = 'ar') {
-  const severity = DEV_LOG_SEVERITY[item?.severity] || DEV_LOG_SEVERITY.info;
+  const severityKey = normalizeLogSeverity(item?.severity);
+  const severity = DEV_LOG_SEVERITY[severityKey] || DEV_LOG_SEVERITY.info;
   const tag = `${item?.category || 'unknown'}.${item?.event_type || 'event'}`;
   const fields = buildDevLogFields(item, lang);
   const timestamp = formatDevLogTimestamp(item?.created_at);
-  const text = fields
-    ? `${timestamp} | ${severity} | ${tag} | ${fields}`
-    : `${timestamp} | ${severity} | ${tag}`;
+  const consoleLog = extractConsoleLogDump(item);
+  const isAlert = severityKey === 'warning' || severityKey === 'danger';
+  // Message first; timestamp last (easier to scan on mobile).
+  const body = fields
+    ? `${severity} | ${tag} | ${fields}`
+    : `${severity} | ${tag}`;
+  const text = `${body} · ${timestamp}`;
 
   return {
     text,
-    severity: item?.severity || 'info',
+    body,
+    fields,
+    timestamp,
+    consoleLog,
+    isAlert,
+    severity: severityKey,
     tag,
     id: item?.id,
+    createdAt: item?.created_at,
   };
 }
 
-export async function logDevEvent(eventType, { severity = 'info', metadata = {} } = {}) {
+function safeMetadata(metadata = {}) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return {};
+  return { ...metadata };
+}
+
+/**
+ * Serialize Error / unknown into metadata suitable for site_logs + expand panel.
+ */
+export function serializeErrorForLog(error, extra = {}) {
+  const meta = safeMetadata(extra);
+  if (error == null) {
+    return {
+      ...meta,
+      message: meta.message || 'Unknown error',
+      consoleLog: meta.consoleLog || meta.message || 'Unknown error',
+    };
+  }
+  if (typeof error === 'string') {
+    return {
+      ...meta,
+      message: error,
+      consoleLog: meta.consoleLog || error,
+    };
+  }
+  if (error instanceof Error) {
+    const consoleLog = [error.stack || `${error.name || 'Error'}: ${error.message}`]
+      .filter(Boolean)
+      .join('\n');
+    return {
+      ...meta,
+      name: error.name,
+      message: error.message || String(error),
+      stack: error.stack || null,
+      consoleLog: meta.consoleLog || consoleLog,
+    };
+  }
   try {
-    const { error } = await supabase.rpc('log_dev_event', {
+    const asJson = JSON.stringify(error, null, 2);
+    return {
+      ...meta,
+      message: meta.message || String(error),
+      consoleLog: meta.consoleLog || asJson || String(error),
+      fullError: error,
+    };
+  } catch {
+    return {
+      ...meta,
+      message: meta.message || String(error),
+      consoleLog: meta.consoleLog || String(error),
+    };
+  }
+}
+
+export async function logDevEvent(eventType, { severity = 'info', metadata = {}, error = null } = {}) {
+  try {
+    const meta = error != null
+      ? serializeErrorForLog(error, safeMetadata(metadata))
+      : safeMetadata(metadata);
+    const { error: rpcError } = await supabase.rpc('log_dev_event', {
       p_event_type: eventType,
-      p_severity: severity,
-      p_metadata: metadata,
+      p_severity: normalizeLogSeverity(severity),
+      p_metadata: meta,
     });
-    if (error && !isMissingRpc(error)) {
-      console.warn('log_dev_event failed:', error.message);
+    if (rpcError && !isMissingRpc(rpcError)) {
+      console.warn('log_dev_event failed:', rpcError.message);
     }
   } catch (err) {
     console.warn('log_dev_event failed:', err);
   }
+}
+
+/**
+ * Critical client/storefront errors (purchase failures, uncaught UI errors, etc.).
+ * Non-throwing. Rate-limited server-side.
+ */
+export async function logClientError(eventType, {
+  severity = 'danger',
+  error = null,
+  metadata = {},
+} = {}) {
+  try {
+    const meta = serializeErrorForLog(error, {
+      ...safeMetadata(metadata),
+      url: typeof window !== 'undefined' ? window.location?.href : undefined,
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+    });
+    const { error: rpcError } = await supabase.rpc('log_client_error', {
+      p_event_type: eventType || 'client_error',
+      p_severity: normalizeLogSeverity(severity),
+      p_metadata: meta,
+    });
+    if (rpcError && !isMissingRpc(rpcError)) {
+      console.warn('log_client_error failed:', rpcError.message);
+    }
+  } catch (err) {
+    console.warn('log_client_error failed:', err);
+  }
+}
+
+let globalErrorLoggingInstalled = false;
+
+/** Install once: window error + unhandledrejection → site_logs (category error). */
+export function installGlobalErrorLogging() {
+  if (typeof window === 'undefined' || globalErrorLoggingInstalled) return;
+  globalErrorLoggingInstalled = true;
+
+  window.addEventListener('error', (event) => {
+    const message = event?.message || 'window_error';
+    // Ignore noisy browser extensions / script load noise without useful stack
+    if (/ResizeObserver|Script error\.?/i.test(message) && !event?.error) return;
+    logClientError('window_error', {
+      severity: 'danger',
+      error: event?.error || message,
+      metadata: {
+        message,
+        filename: event?.filename || null,
+        lineno: event?.lineno ?? null,
+        colno: event?.colno ?? null,
+        consoleLog: event?.error?.stack
+          || `${message}${event?.filename ? ` at ${event.filename}:${event.lineno || 0}:${event.colno || 0}` : ''}`,
+      },
+    });
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event?.reason;
+    logClientError('unhandled_rejection', {
+      severity: 'danger',
+      error: reason,
+      metadata: {
+        consoleLog: reason instanceof Error
+          ? (reason.stack || reason.message)
+          : (typeof reason === 'string' ? reason : (() => {
+            try { return JSON.stringify(reason, null, 2); } catch { return String(reason); }
+          })()),
+      },
+    });
+  });
 }

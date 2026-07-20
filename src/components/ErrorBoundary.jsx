@@ -1,5 +1,6 @@
 import { Component } from 'react';
 import { getT } from '../lib/i18n';
+import { logClientError } from '../lib/siteLogs';
 
 export default class ErrorBoundary extends Component {
   constructor(props) {
@@ -13,6 +14,17 @@ export default class ErrorBoundary extends Component {
 
   componentDidCatch(error, info) {
     console.error('Unhandled UI error:', error, info);
+    logClientError('react_error_boundary', {
+      severity: 'danger',
+      error,
+      metadata: {
+        componentStack: info?.componentStack || null,
+        consoleLog: [
+          error?.stack || `${error?.name || 'Error'}: ${error?.message || error}`,
+          info?.componentStack ? `\n--- componentStack ---\n${info.componentStack}` : '',
+        ].filter(Boolean).join(''),
+      },
+    });
   }
 
   handleReload = () => {

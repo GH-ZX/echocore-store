@@ -2,85 +2,15 @@ import { supabase } from './supabase';
 
 export const REVIEW_STATUSES = ['pending', 'approved', 'rejected'];
 
-export const FALLBACK_CUSTOMER_REVIEWS = [
-  {
-    id: 'fallback-review-1',
-    author_name: 'Khaled M.',
-    content: 'توصيل سريع وأسعار ممتازة. شحنت VP لفالورانت خلال أقل من دقيقة.',
-    rating: 5,
-    status: 'approved',
-    sort_order: 1,
-  },
-  {
-    id: 'fallback-review-2',
-    author_name: 'Sara A.',
-    content: 'واجهة المتجر جميلة والدفع سلس. ShamCash اشتغل بدون أي مشكلة.',
-    rating: 5,
-    status: 'approved',
-    sort_order: 2,
-  },
-  {
-    id: 'fallback-review-3',
-    author_name: 'Omar H.',
-    content: 'أفضل أسعار لقيتها لشحن الألعاب. الدعم رد بسرعة على الديسكورد.',
-    rating: 5,
-    status: 'approved',
-    sort_order: 3,
-  },
-  {
-    id: 'fallback-review-4',
-    author_name: 'Layla R.',
-    content: 'موثوق كل مرة. أستخدم المتجر لشراء RP في لول أسبوعياً.',
-    rating: 5,
-    status: 'approved',
-    sort_order: 4,
-  },
-  {
-    id: 'fallback-review-5',
-    author_name: 'Youssef K.',
-    content: 'Fast delivery and fair prices. PUBG UC arrived in under a minute.',
-    rating: 5,
-    status: 'approved',
-    sort_order: 5,
-  },
-  {
-    id: 'fallback-review-6',
-    author_name: 'Nour T.',
-    content: 'Clean checkout, clear prices, and instant top-ups. Highly recommend.',
-    rating: 5,
-    status: 'approved',
-    sort_order: 6,
-  },
-  {
-    id: 'fallback-review-7',
-    author_name: 'Rami S.',
-    content: 'اشتريت بطاقة Xbox ووصل الكود فوراً. تجربة ممتازة من البداية للنهاية.',
-    rating: 5,
-    status: 'approved',
-    sort_order: 7,
-  },
-  {
-    id: 'fallback-review-8',
-    author_name: 'Maya L.',
-    content: 'Great support when I had a question about my order. Will buy again.',
-    rating: 5,
-    status: 'approved',
-    sort_order: 8,
-  },
-];
-
+/** No client-side mock reviews — homepage shows only approved rows from Supabase. */
 export async function fetchApprovedReviews() {
   const { data, error } = await supabase.rpc('get_approved_customer_reviews');
   if (error) {
-    if (error.message?.includes('get_approved_customer_reviews')) {
-      return [...FALLBACK_CUSTOMER_REVIEWS];
-    }
     console.error('get_approved_customer_reviews:', error);
-    return [...FALLBACK_CUSTOMER_REVIEWS];
+    return [];
   }
   const rows = Array.isArray(data) ? data : [];
-  const source = rows.length > 0 ? rows : [...FALLBACK_CUSTOMER_REVIEWS];
-  return source.map((review) => ({ ...review, status: review.status || 'approved' }));
+  return rows.map((review) => ({ ...review, status: review.status || 'approved' }));
 }
 
 export async function fetchAllReviews() {
@@ -99,21 +29,55 @@ export async function fetchAllReviews() {
   return data || [];
 }
 
-export async function submitCustomerReview({ authorName, content, rating = 5, userId }) {
+/**
+ * Customer submits a pending review (homepage or post-purchase success).
+ * Admin is notified via DB trigger (admin_customer_review).
+ */
+export async function submitCustomerReview({
+  authorName,
+  content,
+  rating = 5,
+  userId,
+  orderId = null,
+}) {
   const payload = {
     user_id: userId,
-    author_name: authorName.trim(),
-    content: content.trim(),
+    author_name: String(authorName || '').trim(),
+    content: String(content || '').trim(),
     rating: Math.max(1, Math.min(5, Number(rating) || 5)),
     status: 'pending',
     is_seed: false,
   };
+
+  if (!payload.author_name || payload.author_name.length < 2) {
+    throw new Error('Author name required');
+  }
+  if (!payload.content || payload.content.length < 8) {
+    throw new Error('Review too short');
+  }
+
+  // Optional link — ignored by DB if column absent; stored when migration applied
+  if (orderId) {
+    payload.order_id = orderId;
+  }
 
   const { data, error } = await supabase
     .from('customer_reviews')
     .insert(payload)
     .select()
     .single();
+
+  // Retry without order_id if column not migrated yet
+  if (error && orderId && (error.message?.includes('order_id') || error.code === 'PGRST204')) {
+    delete payload.order_id;
+    const retry = await supabase
+      .from('customer_reviews')
+      .insert(payload)
+      .select()
+      .single();
+    if (retry.error) throw retry.error;
+    return retry.data;
+  }
 
   if (error) throw error;
   return data;
@@ -157,7 +121,7 @@ export async function saveReview(review) {
 
   const { data, error } = await supabase
     .from('customer_reviews')
-    .insert({ ...payload, is_seed: true, status: review.status || 'approved' })
+    .insert({ ...payload, is_seed: false, status: review.status || 'approved' })
     .select()
     .single();
   if (error) throw error;
@@ -166,6 +130,15 @@ export async function saveReview(review) {
 
 export async function deleteReview(id) {
   const { error } = await supabase.from('customer_reviews').delete().eq('id', id);
+  if (error) throw error;
+}
+
+/** Delete seed/mock rows (admin utility). */
+export async function deleteSeedReviews() {
+  const { error } = await supabase
+    .from('customer_reviews')
+    .delete()
+    .eq('is_seed', true);
   if (error) throw error;
 }
 

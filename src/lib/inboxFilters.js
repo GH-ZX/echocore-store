@@ -55,6 +55,7 @@ const ADMIN_TYPES = new Set([
   'admin_order_payment_sent',
   'admin_contact_message',
   'admin_contact_reply',
+  'admin_customer_review',
   'admin_purchase_completed',
   'admin_delivery_ready',
   'admin_topup_delivered',
@@ -69,6 +70,7 @@ const MESSAGE_TYPES = new Set([
   'account_banned',
   'admin_contact_message',
   'admin_contact_reply',
+  'admin_customer_review',
   'contact_reply',
 ]);
 
@@ -97,16 +99,19 @@ export function getInboxFilterOptions(t = {}, userRole) {
   return options;
 }
 
-/** Admin dashboard inbox — default to All so nothing is hidden. */
+/**
+ * Admin dashboard inbox = alerts feed (not order workbench).
+ * Unread / activity first; type chips after for triage.
+ */
 export function getAdminInboxFilterOptions(t = {}) {
   return [
-    { id: INBOX_FILTER_IDS.ALL, label: t.inboxFilterAll },
-    { id: INBOX_FILTER_IDS.ACTIVITY, label: t.adminInboxFilterActivity },
     { id: INBOX_FILTER_IDS.UNREAD, label: t.inboxFilterUnread },
+    { id: INBOX_FILTER_IDS.ACTIVITY, label: t.adminInboxFilterActivity },
     { id: INBOX_FILTER_IDS.RECHARGES, label: t.inboxFilterRecharges },
     { id: INBOX_FILTER_IDS.ORDERS, label: t.inboxFilterOrders },
     { id: INBOX_FILTER_IDS.INVOICES, label: t.inboxFilterInvoices },
     { id: INBOX_FILTER_IDS.MESSAGES, label: t.inboxFilterMessages },
+    { id: INBOX_FILTER_IDS.ALL, label: t.inboxFilterAll },
   ];
 }
 
