@@ -38,11 +38,11 @@ export async function fetchMyOrderReceipt(orderId) {
   if (orderErr) throw orderErr
 
   if (order) {
+    // order_items has no created_at column — do not .order() on it
     const { data: items, error: itemsErr } = await supabase
       .from('order_items')
       .select('*')
       .eq('order_id', orderId)
-      .order('created_at', { ascending: true })
 
     if (itemsErr) throw itemsErr
 
