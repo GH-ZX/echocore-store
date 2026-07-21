@@ -20,20 +20,72 @@ function assertRpcData(data, error, t = {}) {
   return data
 }
 
+function normalizeReceiptPayload(data) {
+  let payload = data
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload)
+    } catch {
+      return null
+    }
+  }
+  if (!payload || typeof payload !== 'object') return null
+  // Some PostgREST shapes nest under `data`
+  if (!payload.order && payload.data && typeof payload.data === 'object') {
+    payload = payload.data
+  }
+  if (!payload.order) return null
+  return {
+    order: payload.order,
+    items: Array.isArray(payload.items) ? payload.items : [],
+  }
+}
+
+/**
+ * Owner receipt for success page / deep links.
+ * Prefer RPC; fall back to direct RLS reads if RPC is missing or empty.
+ */
 export async function fetchMyOrderReceipt(orderId) {
+  if (!orderId) return null
+
   const { data, error } = await supabase.rpc('get_my_order_receipt', {
     p_order_id: orderId,
   })
+
   if (error) {
-    if (error.message?.includes('function') && error.message?.includes('does not exist')) {
-      throw new Error(RPC_SETUP_MSG)
+    const missingFn = error.message?.includes('function') && error.message?.includes('does not exist')
+    if (!missingFn) {
+      // Fall through to table read for transient RPC issues; rethrow if that also fails
+      console.warn('get_my_order_receipt RPC error, trying table fallback:', error.message)
+    } else {
+      console.warn('get_my_order_receipt missing, using table fallback')
     }
-    throw error
+  } else {
+    const fromRpc = normalizeReceiptPayload(data)
+    if (fromRpc) return fromRpc
   }
-  if (!data?.order) return null
+
+  // Fallback: RLS "Users own orders" + order_items policies
+  const { data: order, error: orderErr } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('id', orderId)
+    .maybeSingle()
+
+  if (orderErr) throw orderErr
+  if (!order) return null
+
+  const { data: items, error: itemsErr } = await supabase
+    .from('order_items')
+    .select('*')
+    .eq('order_id', orderId)
+    .order('created_at', { ascending: true })
+
+  if (itemsErr) throw itemsErr
+
   return {
-    order: data.order,
-    items: Array.isArray(data.items) ? data.items : [],
+    order,
+    items: Array.isArray(items) ? items : [],
   }
 }
 
