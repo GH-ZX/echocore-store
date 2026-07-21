@@ -74,43 +74,10 @@ function HeaderIcon({ tone, fulfillmentFailed }) {
   return <Receipt className="w-7 h-7" strokeWidth={2} />;
 }
 
-/** How long to keep retrying before treating a missing receipt as not found. */
-const ORDER_LOOKUP_MAX_MS = 45_000;
-const ORDER_LOOKUP_POLL_MS = 1_500;
+/** Quiet background refresh while supplier is still delivering (does not re-show loading). */
 const FULFILLMENT_POLL_MS = 3_000;
-/** Keep polling for codes after payment while supplier delivers. */
-const FULFILLMENT_POLL_MAX_MS = 10 * 60_000;
-/** Re-attempt supplier fulfill when customer re-opens a stuck paid order. */
-const STUCK_FULFILL_RETRY_AFTER_MS = 60_000;
+const FULFILLMENT_POLL_MAX_MS = 3 * 60_000;
 
-function getOrderAgeMs(order) {
-  if (!order?.created_at) return Number.POSITIVE_INFINITY;
-  const ts = new Date(order.created_at).getTime();
-  if (!Number.isFinite(ts)) return Number.POSITIVE_INFINITY;
-  return Math.max(0, Date.now() - ts);
-}
-
-function WaitingOrderCard({ orderRef, title, subtitle }) {
-  return (
-    <div className="max-w-3xl mx-auto p-4 sm:p-6 animate-fade-in">
-      <div className="card p-8 sm:p-10 text-center border border-[var(--accent)]/20 bg-[var(--bg-surface)]/60">
-        <Loader2 className="w-10 h-10 animate-spin text-[var(--accent)] mx-auto mb-4" />
-        <h1 className="text-2xl sm:text-3xl font-black mb-2">
-          {title}
-        </h1>
-        <p className="text-[var(--text-sec)] max-w-xl mx-auto leading-relaxed">
-          {subtitle}
-        </p>
-        {orderRef ? (
-          <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-[var(--border)] px-3 py-2 text-sm text-[var(--text-muted)]">
-            <Clock className="w-4 h-4" />
-            #{orderRef}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
 
 export default function SuccessView({
   navigate,
@@ -124,10 +91,8 @@ export default function SuccessView({
   const orderId = isValidOrderUuid(rawOrderId) ? rawOrderId.trim() : null;
   const [orderDetails, setOrderDetails] = useState(null);
   const [orderItems, setOrderItems] = useState([]);
-  /** true until first successful receipt or lookup timeout */
+  /** true until first successful receipt finishes */
   const [loading, setLoading] = useState(true);
-  /** only true after retries exhausted with no readable order */
-  const [lookupFailed, setLookupFailed] = useState(false);
   const [lookupError, setLookupError] = useState(null);
   const [copiedKey, setCopiedKey] = useState(null);
   const fulfillStarted = useRef(false);
@@ -135,142 +100,116 @@ export default function SuccessView({
   const userId = user?.id || null;
   const userRole = user?.role || null;
 
-  const loadOrder = useCallback(async () => {
-    if (!orderId || !userId) return null;
-
-    const receipt = await fetchMyOrderReceipt(orderId);
+  const applyReceipt = useCallback((receipt) => {
     const order = receipt?.order || null;
     const items = receipt?.items || [];
-
-    // Stable access principal — avoid depending on whole `user` object (balance churn)
     const principal = { id: userId, role: userRole };
-    if (!canUserAccessOrderReceipt(order, principal)) {
+    if (!order || !canUserAccessOrderReceipt(order, principal)) {
       setOrderDetails(null);
       setOrderItems([]);
-      return { order: null, items: [] };
+      return null;
     }
-
     setOrderDetails(order);
     setOrderItems(items);
     setLookupError(null);
     return { order, items };
-  }, [orderId, userId, userRole]);
+  }, [userId, userRole]);
 
+  const loadOrder = useCallback(async () => {
+    if (!orderId || !userId) return null;
+    const receipt = await fetchMyOrderReceipt(orderId);
+    return applyReceipt(receipt);
+  }, [orderId, userId, applyReceipt]);
+
+  // One fast load (same style as InvoiceView). ~1s is enough; no multi-minute retry loop.
   useEffect(() => {
-    // Invalid / missing id → not found (no point polling)
     if (!orderId) {
       setLoading(false);
-      setLookupFailed(true);
       setLookupError(null);
       setOrderDetails(null);
       setOrderItems([]);
       return undefined;
     }
 
-    // Auth still hydrating: stay on waiting UI, do not flash "not found"
     if (!userId) {
+      // Wait for auth hydrate only — brief spinner
       setLoading(true);
-      setLookupFailed(false);
       return undefined;
     }
 
     let cancelled = false;
-    let pollTimer = null;
-    const startedAt = Date.now();
-    let initialLoadDone = false;
+    fulfillStarted.current = false;
+    setLoading(true);
+    setLookupError(null);
 
-    const schedule = (ms) => {
-      if (cancelled) return;
-      pollTimer = setTimeout(run, ms);
-    };
-
-    const run = async () => {
+    (async () => {
       try {
         const result = await loadOrder();
         if (cancelled) return;
-
         if (!result?.order) {
-          if (Date.now() - startedAt < ORDER_LOOKUP_MAX_MS) {
-            // Only show full-page spinner while we have never loaded an order
-            if (!initialLoadDone) {
-              setLoading(true);
-              setLookupFailed(false);
-            }
-            schedule(ORDER_LOOKUP_POLL_MS);
-            return;
-          }
-          if (!initialLoadDone) {
-            setOrderDetails(null);
-            setOrderItems([]);
-            setLookupFailed(true);
-            setLoading(false);
-          }
-          return;
-        }
-
-        initialLoadDone = true;
-        setLookupFailed(false);
-        setLoading(false);
-
-        const codes = extractDeliveryCodes(result.items, result.order.g2bulk_metadata);
-        const fs = result.order.fulfillment_status || 'pending';
-        const fulfillmentDone = fs === 'fulfilled' || fs === 'skipped' || fs === 'failed';
-        const shouldPollFulfillment = isOrderPaid(result.order)
-          && !fulfillmentDone
-          && ['pending', 'fulfilling', 'processing'].includes(fs)
-          && codes.length === 0
-          && Date.now() - startedAt < FULFILLMENT_POLL_MAX_MS;
-
-        if (shouldPollFulfillment) {
-          schedule(FULFILLMENT_POLL_MS);
+          setOrderDetails(null);
+          setOrderItems([]);
         }
       } catch (err) {
         console.error('Fetch order error:', err);
         if (cancelled) return;
         setLookupError(err?.message || String(err));
-        // Transient RPC/network errors: keep waiting, same as missing order
-        if (Date.now() - startedAt < ORDER_LOOKUP_MAX_MS) {
-          if (!initialLoadDone) {
-            setLoading(true);
-            setLookupFailed(false);
-          }
-          schedule(ORDER_LOOKUP_POLL_MS);
-          return;
-        }
-        if (!initialLoadDone) {
-          setLookupFailed(true);
-          setLoading(false);
-        }
+        setOrderDetails(null);
+        setOrderItems([]);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    };
-
-    // Only reset loading when orderId/user identity changes — not on every poll tick
-    setLoading(true);
-    setLookupFailed(false);
-    setLookupError(null);
-    fulfillStarted.current = false;
-    run();
+    })();
 
     return () => {
       cancelled = true;
-      if (pollTimer) clearTimeout(pollTimer);
     };
   }, [orderId, userId, loadOrder]);
 
+  // Background poll for codes while delivery is still running (never flips page back to loading)
+  useEffect(() => {
+    if (loading || !orderId || !userId || !orderDetails) return undefined;
+    if (!isOrderPaid(orderDetails)) return undefined;
+
+    const fs0 = orderDetails.fulfillment_status || 'pending';
+    const codes0 = extractDeliveryCodes(orderItems, orderDetails.g2bulk_metadata);
+    const alreadyDone = fs0 === 'fulfilled' || fs0 === 'skipped' || fs0 === 'failed' || codes0.length > 0;
+    if (alreadyDone) return undefined;
+
+    let cancelled = false;
+    const startedAt = Date.now();
+    let timer = null;
+
+    const tick = async () => {
+      if (cancelled || Date.now() - startedAt > FULFILLMENT_POLL_MAX_MS) return;
+      try {
+        const result = await loadOrder();
+        if (cancelled || !result?.order) return;
+        const codes = extractDeliveryCodes(result.items, result.order.g2bulk_metadata);
+        const fs = result.order.fulfillment_status || 'pending';
+        const done = fs === 'fulfilled' || fs === 'skipped' || fs === 'failed' || codes.length > 0;
+        if (done) return;
+      } catch {
+        /* keep last good snapshot */
+      }
+      if (!cancelled) timer = setTimeout(tick, FULFILLMENT_POLL_MS);
+    };
+
+    timer = setTimeout(tick, FULFILLMENT_POLL_MS);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+    // Only start once per order id after first paint (do not restart every poll update)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid restart on each receipt refresh
+  }, [loading, orderId, userId, orderDetails?.id]);
+
+  // Auto-fulfill only right after checkout in this tab (session marker). Notif reopen must not hang.
   useEffect(() => {
     if (!orderDetails || !orderId || fulfillStarted.current || !userId) return;
     if (!canUserAccessOrderReceipt(orderDetails, { id: userId, role: userRole })) return;
     if (!shouldTriggerFulfillment(orderDetails) || !onFulfillOrder) return;
-
-    const hasCheckoutMarker = consumeOrderFulfillMarker(orderId);
-    const ageMs = getOrderAgeMs(orderDetails);
-    const fs = orderDetails.fulfillment_status || 'pending';
-    const stuckRetry = isOrderPaid(orderDetails)
-      && (fs === 'pending' || fs === 'fulfilling' || fs === 'failed')
-      && ageMs >= STUCK_FULFILL_RETRY_AFTER_MS;
-
-    // Fresh checkout tab: marker. Re-open from notif / later: retry stuck delivery.
-    if (!hasCheckoutMarker && !stuckRetry) return;
+    if (!consumeOrderFulfillMarker(orderId)) return;
 
     fulfillStarted.current = true;
     onFulfillOrder(orderId)
@@ -290,14 +229,18 @@ export default function SuccessView({
 
   const shortOrderRef = orderId ? orderId.slice(0, 8) : null;
 
-  // Looking up order (not the same as "delivery preparing")
-  if (loading || (orderId && !orderDetails && !lookupFailed)) {
+  // Brief spinner only while first fetch is in flight (auth + one table read)
+  if (loading) {
     return (
-      <WaitingOrderCard
-        orderRef={shortOrderRef}
-        title={t.loadingOrderDetails || t.orderProcessingTitle}
-        subtitle={t.orderProcessingSubtitle}
-      />
+      <div className="max-w-3xl mx-auto p-6 text-center">
+        <Loader2 className="w-8 h-8 animate-spin text-[var(--accent)] mx-auto mb-3" />
+        <p className="text-[var(--text-sec)]">{t.loadingOrderDetails}</p>
+        {shortOrderRef ? (
+          <p className="text-xs text-[var(--text-muted)] mt-2 font-mono" dir="ltr">
+            #{shortOrderRef}
+          </p>
+        ) : null}
+      </div>
     );
   }
 
@@ -320,22 +263,14 @@ export default function SuccessView({
             type="button"
             onClick={() => {
               setLoading(true);
-              setLookupFailed(false);
               setLookupError(null);
               loadOrder()
-                .then((r) => {
-                  if (!r?.order) {
-                    setLookupFailed(true);
-                    setLoading(false);
-                  } else {
-                    setLoading(false);
-                  }
-                })
                 .catch((err) => {
                   setLookupError(err?.message || String(err));
-                  setLookupFailed(true);
-                  setLoading(false);
-                });
+                  setOrderDetails(null);
+                  setOrderItems([]);
+                })
+                .finally(() => setLoading(false));
             }}
             className="btn btn-primary"
           >
