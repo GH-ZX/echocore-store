@@ -117,16 +117,19 @@ The default Grok ignore list is appropriate for this Node/TypeScript project (se
 
 ## Quick Reference for Claude Code
 
+- **Do not re-scan the whole repo.** Use `AGENTS.md` (always-on) + `/echocore-orientation` playmap at `.grok/skills/echocore-orientation/references/playmap.md` — open only the task’s files.
 - Use **`/run`** (or the `run` skill) to start the dev server when you need to verify UI changes.
-- Invoke **`/code-review`** with `--fix` to let Claude automatically apply lint‑level fixes.
-- When you need to bulk‑upload assets, call the `upload:game-logos` NPM script.
+- Invoke **`/code-review`** with `--fix` to let Claude automatically apply lint-level fixes.
+- When you need to bulk-upload assets, call the `upload:game-logos` NPM script.
 - For any Supabase Edge Function work, reference the `supabase/functions/` directory and use the `supabase` CLI.
 
 ---
 
 ## Resources
 
-- **README.md** – high‑level feature list and quick‑start steps.
+- **AGENTS.md** – always-on agent orientation (no full-repo scan).
+- **`.grok/skills/echocore-orientation/`** – task → files playmap skill.
+- **README.md** – high-level feature list and quick-start steps.
 - **PROJECT_MAP.md** – detailed layer diagram, routes, and admin tab description.
 - **SUPABASE_SETUP.md** – full database schema (single SQL file) and initialization steps.
 - **RUNNING.md** – local run instructions (Arabic version included).

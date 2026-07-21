@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|run_terminal_command|Shell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/safe-shell.mjs",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
