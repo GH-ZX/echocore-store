@@ -464,6 +464,23 @@ export async function dismissNotification(notificationId) {
   return data === true;
 }
 
+/** Customer types that should pop an on-site toast (not admin_*). */
+export const LIVE_TOAST_NOTIFICATION_TYPES = new Set([
+  'purchase_completed',
+  'delivery_ready',
+  'topup_delivered',
+  'order_fulfilled',
+  'order_completed',
+  'order_gifted',
+  'fulfillment_failed',
+  'fulfillment_failed_refunded',
+  'recharge_approved',
+]);
+
+export function shouldShowLiveToast(type) {
+  return LIVE_TOAST_NOTIFICATION_TYPES.has(type);
+}
+
 export function subscribeToNotifications(userId, onInsert) {
   if (!userId) return () => {};
 

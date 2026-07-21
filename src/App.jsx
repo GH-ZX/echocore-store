@@ -74,6 +74,9 @@ import {
   clearAllNotifications,
   dismissNotification,
   subscribeToNotifications,
+  formatNotification,
+  getNotificationDestination,
+  shouldShowLiveToast,
 } from './lib/notifications';
 
 import { translations } from './data/translations';
@@ -166,17 +169,39 @@ export default function App() {
     return Number.isFinite(original) && Number.isFinite(price) && original > price;
   });
 
-  const showToast = useCallback((message, type = 'success') => {
-    if (!message) return;
+  const showToast = useCallback((message, type = 'success', options = {}) => {
+    const title = options.title || null;
+    const body = options.body || null;
+    const onClick = typeof options.onClick === 'function' ? options.onClick : null;
+    const text = message || body || title;
+    if (!text) return;
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setNotification({ message, type });
+    const duration = Number.isFinite(options.duration)
+      ? options.duration
+      : (type === 'error' ? 4500 : 3200);
+    setNotification({
+      message: text,
+      title,
+      body: body || (title ? message : null),
+      type,
+      onClick,
+      hint: onClick ? (options.hint || null) : null,
+    });
     toastTimerRef.current = setTimeout(() => {
       setNotification(null);
       toastTimerRef.current = null;
-    }, type === 'error' ? 4500 : 3200);
+    }, duration);
   }, []);
 
   const showNotification = useCallback((msg) => showToast(msg, 'success'), [showToast]);
+
+  const dismissToast = useCallback(() => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    setNotification(null);
+  }, []);
 
   const refreshNotifications = useCallback(async (userId = user?.id, limit = 30) => {
     if (!userId) return;
@@ -1675,6 +1700,39 @@ export default function App() {
     const unsubscribe = subscribeToNotifications(user.id, async (newItem) => {
       setNotifications((prev) => [newItem, ...prev].slice(0, 30));
       setUnreadCount((count) => count + 1);
+
+      // On-site toast for purchase/delivery (click → receipt; auto-hide ~10s)
+      if (shouldShowLiveToast(newItem?.type)) {
+        const tLive = translations[lang] || translations.ar;
+        const formatted = formatNotification(newItem, tLive, lang);
+        const dest = getNotificationDestination(newItem, formatted, user.role);
+        const toastType = (formatted.tone === 'danger' || formatted.tone === 'warning')
+          ? 'error'
+          : 'success';
+        showToast(null, toastType, {
+          title: formatted.title,
+          body: formatted.body,
+          duration: 10_000,
+          hint: tLive.toastTapToView,
+          onClick: () => {
+            dismissToast();
+            if (newItem?.id) {
+              markNotificationRead(newItem.id)
+                .then(() => {
+                  setNotifications((prev) => prev.map((entry) => (
+                    entry.id === newItem.id
+                      ? { ...entry, read_at: entry.read_at || new Date().toISOString() }
+                      : entry
+                  )));
+                  setUnreadCount((count) => Math.max(0, count - 1));
+                })
+                .catch(() => {});
+            }
+            navigateTo(navigate, dest);
+          },
+        });
+      }
+
       if (newItem?.type === 'account_banned') {
         const { data: { user: authUser } } = await supabase.auth.getUser();
         const refreshed = await resolveUserData(authUser);
@@ -1695,7 +1753,7 @@ export default function App() {
       unsubscribe();
       clearInterval(pollId);
     };
-  }, [user?.id, refreshNotifications, navigate]);
+  }, [user?.id, user?.role, refreshNotifications, navigate, lang, showToast, dismissToast]);
 
   // Keep cart prices in sync when offers load or admin prices change
   useEffect(() => {
@@ -2068,7 +2126,14 @@ export default function App() {
       )}
 
       {notification && (
-        <AppToast message={notification.message} type={notification.type} />
+        <AppToast
+          message={notification.message}
+          type={notification.type}
+          title={notification.title}
+          body={notification.body}
+          hint={notification.hint}
+          onClick={notification.onClick}
+        />
       )}
     </div>
       </div>
