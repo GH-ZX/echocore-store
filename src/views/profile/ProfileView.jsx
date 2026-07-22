@@ -26,6 +26,7 @@ import {
   MapPin,
   AtSign,
   Hash,
+  Ticket,
   X,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -56,6 +57,8 @@ import {
   validateUsername,
 } from '../../lib/username';
 import { changeUsername, getUsernameErrorMessage } from '../../lib/usernameChange';
+import { couponErrorMessage, redeemInfluencerCoupon } from '../../lib/coupons';
+import { formatMessage } from '../../lib/i18n';
 
 function formatDate(dateStr, lang) {
   if (!dateStr) return '—';
@@ -112,6 +115,10 @@ export default function ProfileView({
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileError, setProfileError] = useState('');
   const [profileSuccess, setProfileSuccess] = useState('');
+  const [couponCode, setCouponCode] = useState('');
+  const [couponRedeeming, setCouponRedeeming] = useState(false);
+  const [couponMessage, setCouponMessage] = useState('');
+  const [couponError, setCouponError] = useState('');
 
   const notSetLabel = t.notSet;
 
@@ -588,6 +595,66 @@ export default function ProfileView({
                   <Wallet className="w-4 h-4" />
                   {t.recharge}
                 </button>
+                <div className="mt-4 w-full rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)]/40 p-3 space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-sec)]">
+                    <Ticket className="w-3.5 h-3.5 text-[var(--accent)]" />
+                    {t.couponRedeemTitle}
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      className="profile-field-input text-sm flex-1 font-mono"
+                      placeholder={t.couponRedeemPlaceholder}
+                      value={couponCode}
+                      onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                      dir="ltr"
+                      disabled={couponRedeeming}
+                    />
+                    <button
+                      type="button"
+                      disabled={couponRedeeming || !couponCode.trim()}
+                      onClick={async () => {
+                        setCouponError('');
+                        setCouponMessage('');
+                        setCouponRedeeming(true);
+                        try {
+                          const res = await redeemInfluencerCoupon(couponCode.trim());
+                          setCouponMessage(
+                            formatMessage(t.couponRedeemSuccess, {
+                              amount: Number(res?.amount || 0).toFixed(2),
+                              balance: Number(res?.newBalance ?? balance).toFixed(2),
+                            }),
+                          );
+                          setCouponCode('');
+                          // Refresh balance from profiles
+                          const { data: balRow } = await supabase
+                            .from('profiles')
+                            .select('balance')
+                            .eq('id', user.id)
+                            .maybeSingle();
+                          if (balRow?.balance != null) {
+                            setProfileMeta((prev) => ({ ...(prev || {}), balance: balRow.balance }));
+                            onUpdateProfile?.({ balance: balRow.balance });
+                          }
+                        } catch (err) {
+                          const code = err?.message || 'coupon_invalid';
+                          setCouponError(couponErrorMessage(code, t));
+                        } finally {
+                          setCouponRedeeming(false);
+                        }
+                      }}
+                      className="btn btn-secondary text-sm py-2 px-4 inline-flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      {couponRedeeming ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                      {t.couponRedeemBtn}
+                    </button>
+                  </div>
+                  {couponMessage ? (
+                    <p className="text-xs text-emerald-300">{couponMessage}</p>
+                  ) : null}
+                  {couponError ? (
+                    <p className="text-xs text-red-300">{couponError}</p>
+                  ) : null}
+                </div>
               </div>
             )}
           </div>

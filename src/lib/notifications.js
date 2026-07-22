@@ -246,6 +246,40 @@ export function formatNotification(item, t = {}, lang = 'ar') {
       body: applyTemplate(t.notifAccountBannedBody, { reason: m.reason || '' }),
       tone: 'danger',
     },
+    account_verified: {
+      title: t.notifAccountVerifiedTitle,
+      body: t.notifAccountVerifiedBody,
+      tone: 'success',
+    },
+    partner_assigned: {
+      title: t.notifPartnerAssignedTitle,
+      body: applyTemplate(t.notifPartnerAssignedBody, {
+        tier: lang === 'ar'
+          ? (m.tierNameAr || m.tierNameEn || m.tierSlug || '')
+          : (m.tierNameEn || m.tierNameAr || m.tierSlug || ''),
+        pct: m.markupPercent != null ? String(m.markupPercent) : '',
+      }),
+      tone: 'success',
+    },
+    partner_removed: {
+      title: t.notifPartnerRemovedTitle,
+      body: t.notifPartnerRemovedBody,
+      tone: 'warning',
+    },
+    verified_thanks: {
+      title: m.title || t.notifVerifiedThanksTitle,
+      body: m.body || t.notifVerifiedThanksBody,
+      tone: 'success',
+    },
+    coupon_redeemed: {
+      title: t.notifCouponRedeemedTitle,
+      body: applyTemplate(t.notifCouponRedeemedBody, {
+        amount: formatMoney(m.amount),
+        balance: formatMoney(m.newBalance),
+        code: m.code || '',
+      }),
+      tone: 'success',
+    },
   };
 
   const fallback = {
@@ -393,6 +427,16 @@ export function getNotificationDestination(item, formatted, userRole) {
   if (item?.type === 'account_banned') {
     return { path: '/banned' };
   }
+  if (
+    item?.type === 'account_verified'
+    || item?.type === 'verified_thanks'
+    || item?.type === 'coupon_redeemed'
+  ) {
+    return { path: item?.link || '/profile' };
+  }
+  if (item?.type === 'partner_assigned' || item?.type === 'partner_removed') {
+    return { path: item?.link || '/catalog' };
+  }
   if (item?.type === 'admin_announcement' || item?.type === 'admin_warning' || item?.type === 'admin_maintenance_notice') {
     return { path: item?.link || '/notifications' };
   }
@@ -475,6 +519,11 @@ export const LIVE_TOAST_NOTIFICATION_TYPES = new Set([
   'fulfillment_failed',
   'fulfillment_failed_refunded',
   'recharge_approved',
+  'account_verified',
+  'partner_assigned',
+  'partner_removed',
+  'verified_thanks',
+  'coupon_redeemed',
 ]);
 
 export function shouldShowLiveToast(type) {

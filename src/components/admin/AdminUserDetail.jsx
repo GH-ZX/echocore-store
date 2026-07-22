@@ -15,12 +15,15 @@ import {
   Link2,
   Loader2,
   Mail,
+  Pencil,
   ShieldOff,
   Gift,
   ShoppingBag,
   UserRound,
   Save,
+  Trash2,
   Wallet,
+  X,
 } from 'lucide-react';
 import { getAdminGiftPath, getAdminUserPath } from '../../lib/adminRoutes';
 import {
@@ -127,7 +130,9 @@ export default function AdminUserDetail({
   const [walletTxFilter, setWalletTxFilter] = useState('all');
   const [partnerTiers, setPartnerTiers] = useState([]);
   const [partnerTierId, setPartnerTierId] = useState('');
+  const [partnerTierIdSaved, setPartnerTierIdSaved] = useState('');
   const [partnerSaving, setPartnerSaving] = useState(false);
+  const [partnerEditing, setPartnerEditing] = useState(false);
 
   const loadProfile = useCallback(async () => {
     if (!userRouteParam) return;
@@ -175,10 +180,15 @@ export default function AdminUserDetail({
           fetchPartnerTiers(),
         ]);
         setPartnerTiers(Array.isArray(tiers) ? tiers : []);
-        setPartnerTierId(tierRow?.partner_tier_id || '');
+        const tid = tierRow?.partner_tier_id || '';
+        setPartnerTierId(tid);
+        setPartnerTierIdSaved(tid);
+        setPartnerEditing(false);
       } catch {
         setPartnerTiers([]);
         setPartnerTierId('');
+        setPartnerTierIdSaved('');
+        setPartnerEditing(false);
       }
 
       setWalletTxLoading(true);
@@ -509,7 +519,7 @@ export default function AdminUserDetail({
           </div>
         </div>
 
-        {/* Partner tier */}
+        {/* Partner tier — locked when assigned; pen to edit, remove button */}
         {profile?.role !== 'admin' && (
           <div className="rounded-xl border border-[var(--accent)]/25 bg-[var(--accent)]/5 p-4 space-y-3">
             <h3 className="text-sm font-bold flex items-center gap-2">
@@ -519,57 +529,113 @@ export default function AdminUserDetail({
             <p className="text-xs text-[var(--text-muted)] leading-relaxed">
               {t.partnerUserTierHelp}
             </p>
-            {partnerTierId && (
-              <div className="text-sm text-emerald-200">
-                {t.partnerCurrentTier}:{' '}
-                <strong>
-                  {formatPartnerTierLabel(
-                    partnerTiers.find((x) => x.id === partnerTierId),
-                    lang,
+            {partnerTierIdSaved && !partnerEditing ? (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm text-emerald-200">
+                  {t.partnerCurrentTier}:{' '}
+                  <strong>
+                    {formatPartnerTierLabel(
+                      partnerTiers.find((x) => x.id === partnerTierIdSaved),
+                      lang,
+                    )}
+                  </strong>
+                  {partnerTiers.find((x) => x.id === partnerTierIdSaved) && (
+                    <span className="font-mono ms-2" dir="ltr">
+                      (cost + {Number(partnerTiers.find((x) => x.id === partnerTierIdSaved).markup_percent)}%)
+                    </span>
                   )}
-                </strong>
-                {partnerTiers.find((x) => x.id === partnerTierId) && (
-                  <span className="font-mono ms-2" dir="ltr">
-                    (cost + {Number(partnerTiers.find((x) => x.id === partnerTierId).markup_percent)}%)
-                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPartnerTierId(partnerTierIdSaved);
+                      setPartnerEditing(true);
+                    }}
+                    className="btn btn-secondary text-sm py-2 px-3 inline-flex items-center gap-1.5"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    {t.edit || t.partnerTierEdit}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={partnerSaving}
+                    onClick={async () => {
+                      if (!profile?.id) return;
+                      if (!window.confirm(t.partnerRemoveConfirm || t.partnerRemoveTier)) return;
+                      setPartnerSaving(true);
+                      try {
+                        await adminSetUserPartnerTier(profile.id, null);
+                        setPartnerTierId('');
+                        setPartnerTierIdSaved('');
+                        setPartnerEditing(false);
+                        notifySuccess(t.partnerUserAssigned);
+                        await loadProfile();
+                      } catch (err) {
+                        notifyError(err.message || t.partnerUserAssignFailed);
+                      } finally {
+                        setPartnerSaving(false);
+                      }
+                    }}
+                    className="btn btn-secondary text-sm py-2 px-3 inline-flex items-center gap-1.5 text-red-300 border-red-500/30 disabled:opacity-50"
+                  >
+                    {partnerSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    {t.remove || t.partnerTierRemove}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row gap-2">
+                <select
+                  className="profile-field-input text-sm flex-1"
+                  value={partnerTierId}
+                  onChange={(e) => setPartnerTierId(e.target.value)}
+                >
+                  <option value="">{t.partnerRemoveTier}</option>
+                  {partnerTiers.filter((x) => x.is_active || x.id === partnerTierId).map((tier) => (
+                    <option key={tier.id} value={tier.id}>
+                      {formatPartnerTierLabel(tier, lang)} — cost + {Number(tier.markup_percent)}%
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={partnerSaving}
+                  onClick={async () => {
+                    if (!profile?.id) return;
+                    setPartnerSaving(true);
+                    try {
+                      await adminSetUserPartnerTier(profile.id, partnerTierId || null);
+                      setPartnerTierIdSaved(partnerTierId || '');
+                      setPartnerEditing(false);
+                      notifySuccess(t.partnerUserAssigned);
+                      await loadProfile();
+                    } catch (err) {
+                      notifyError(err.message || t.partnerUserAssignFailed);
+                    } finally {
+                      setPartnerSaving(false);
+                    }
+                  }}
+                  className="btn btn-primary text-sm py-2 px-4 inline-flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {partnerSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  {t.partnerAssignApply}
+                </button>
+                {partnerEditing && (
+                  <button
+                    type="button"
+                    disabled={partnerSaving}
+                    onClick={() => {
+                      setPartnerTierId(partnerTierIdSaved);
+                      setPartnerEditing(false);
+                    }}
+                    className="btn btn-secondary text-sm py-2 px-3"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 )}
               </div>
             )}
-            <div className="flex flex-col sm:flex-row gap-2">
-              <select
-                className="profile-field-input text-sm flex-1"
-                value={partnerTierId}
-                onChange={(e) => setPartnerTierId(e.target.value)}
-              >
-                <option value="">{t.partnerRemoveTier}</option>
-                {partnerTiers.filter((x) => x.is_active || x.id === partnerTierId).map((tier) => (
-                  <option key={tier.id} value={tier.id}>
-                    {formatPartnerTierLabel(tier, lang)} — cost + {Number(tier.markup_percent)}%
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                disabled={partnerSaving}
-                onClick={async () => {
-                  if (!profile?.id) return;
-                  setPartnerSaving(true);
-                  try {
-                    await adminSetUserPartnerTier(profile.id, partnerTierId || null);
-                    notifySuccess(t.partnerUserAssigned);
-                    await loadProfile();
-                  } catch (err) {
-                    notifyError(err.message || t.partnerUserAssignFailed);
-                  } finally {
-                    setPartnerSaving(false);
-                  }
-                }}
-                className="btn btn-primary text-sm py-2 px-4 inline-flex items-center gap-1.5 disabled:opacity-50"
-              >
-                {partnerSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                {t.partnerAssignApply}
-              </button>
-            </div>
           </div>
         )}
 

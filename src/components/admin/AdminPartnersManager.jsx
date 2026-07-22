@@ -5,19 +5,29 @@ import {
   Handshake,
   Link2,
   Loader2,
+  Pencil,
   Plus,
   RefreshCw,
   Save,
+  Ticket,
+  Trash2,
   UserPlus,
+  X,
 } from 'lucide-react';
 import {
   adminCreatePartnerInvite,
+  adminDeletePartnerTier,
   adminSetUserPartnerTier,
   adminUpsertPartnerTier,
   fetchPartnerTiers,
   fetchRecentPartnerInvites,
   formatPartnerTierLabel,
 } from '../../lib/partners';
+import {
+  adminCreateInfluencerCoupon,
+  adminListInfluencerCoupons,
+  adminSetInfluencerCouponActive,
+} from '../../lib/coupons';
 import { fetchAdminUsers } from '../../lib/adminModeration';
 import { formatMessage } from '../../lib/i18n';
 import {
@@ -34,7 +44,9 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
   const [loading, setLoading] = useState(true);
   const [tiers, setTiers] = useState([]);
   const [invites, setInvites] = useState([]);
+  const [coupons, setCoupons] = useState([]);
   const [savingId, setSavingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
   const [inviteTierId, setInviteTierId] = useState('');
   const [inviteMinutes, setInviteMinutes] = useState(15);
   const [inviteNote, setInviteNote] = useState('');
@@ -55,15 +67,24 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
   const [newMarkup, setNewMarkup] = useState('5');
   const [creatingTier, setCreatingTier] = useState(false);
 
+  const [couponCode, setCouponCode] = useState('');
+  const [couponAmount, setCouponAmount] = useState('5');
+  const [couponMax, setCouponMax] = useState('100');
+  const [couponNote, setCouponNote] = useState('');
+  const [couponExpires, setCouponExpires] = useState('');
+  const [creatingCoupon, setCreatingCoupon] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [tList, iList] = await Promise.all([
+      const [tList, iList, cList] = await Promise.all([
         fetchPartnerTiers(),
         fetchRecentPartnerInvites(25),
+        adminListInfluencerCoupons(40).catch(() => []),
       ]);
       setTiers(tList);
       setInvites(iList);
+      setCoupons(cList);
       setInviteTierId((prev) => prev || tList.find((x) => x.is_active)?.id || tList[0]?.id || '');
     } catch (e) {
       notifyError(e.message || t.partnerLoadFailed);
@@ -95,6 +116,22 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
       notifyError(e.message || t.partnerTierSaveFailed);
     } finally {
       setSavingId(null);
+    }
+  };
+
+  const removeTier = async (tier) => {
+    if (!window.confirm(formatMessage(t.partnerTierRemoveConfirm || 'Remove {slug}?', { slug: tier.slug }))) {
+      return;
+    }
+    setDeletingId(tier.id);
+    try {
+      await adminDeletePartnerTier(tier.id);
+      notifySuccess(t.partnerTierRemoved || t.partnerTierSaved);
+      await load();
+    } catch (e) {
+      notifyError(e.message || t.partnerTierRemoveFailed);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -206,6 +243,41 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
     }
   };
 
+  const createCoupon = async () => {
+    setCreatingCoupon(true);
+    try {
+      await adminCreateInfluencerCoupon({
+        code: couponCode,
+        amountUsd: Number(couponAmount),
+        maxRedemptions: couponMax === '' ? null : Number(couponMax),
+        perUserLimit: 1,
+        expiresAt: couponExpires ? new Date(couponExpires).toISOString() : null,
+        note: couponNote,
+      });
+      setCouponCode('');
+      setCouponAmount('5');
+      setCouponMax('100');
+      setCouponNote('');
+      setCouponExpires('');
+      notifySuccess(t.couponCreated);
+      await load();
+    } catch (e) {
+      notifyError(e.message || t.couponCreateFailed);
+    } finally {
+      setCreatingCoupon(false);
+    }
+  };
+
+  const toggleCoupon = async (c) => {
+    try {
+      await adminSetInfluencerCouponActive(c.id, !c.is_active);
+      notifySuccess(c.is_active ? t.couponDeactivated : t.couponActivated);
+      await load();
+    } catch (e) {
+      notifyError(e.message || t.couponCreateFailed);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-[var(--text-muted)] gap-2">
@@ -233,14 +305,14 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
         </button>
       </div>
 
-      {/* Pricing rule callout */}
       <div className="rounded-xl border border-[var(--accent)]/25 bg-[var(--accent)]/8 px-4 py-3 text-sm text-[var(--text-sec)] leading-relaxed">
         {t.partnersPricingRule}
       </div>
 
-      {/* Tiers */}
+      {/* Tiers — locked by default, pen to edit */}
       <section className="card p-5 sm:p-6 space-y-4">
         <h3 className="font-bold text-lg">{t.partnerTiersTitle}</h3>
+        <p className="text-xs text-[var(--text-muted)]">{t.partnerTiersDbNote}</p>
         <div className="space-y-3">
           {tiers.map((tier) => (
             <TierRow
@@ -248,7 +320,9 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
               tier={tier}
               t={t}
               saving={savingId === tier.id}
+              deleting={deletingId === tier.id}
               onSave={(patch) => saveTier(tier, patch)}
+              onRemove={() => removeTier(tier)}
             />
           ))}
         </div>
@@ -298,6 +372,108 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
             </button>
           </div>
         </div>
+      </section>
+
+      {/* Influencer coupons */}
+      <section className="card p-5 sm:p-6 space-y-4">
+        <h3 className="font-bold text-lg flex items-center gap-2">
+          <Ticket className="w-5 h-5 text-[var(--accent)]" />
+          {t.couponAdminTitle}
+        </h3>
+        <p className="text-xs text-[var(--text-muted)] leading-relaxed">{t.couponAdminHelp}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+          <input
+            className="profile-field-input text-sm"
+            placeholder={t.couponCodePlaceholder}
+            value={couponCode}
+            onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+            dir="ltr"
+          />
+          <input
+            className="profile-field-input text-sm"
+            type="number"
+            min="0.01"
+            step="0.01"
+            placeholder={t.couponAmountPlaceholder}
+            value={couponAmount}
+            onChange={(e) => setCouponAmount(e.target.value)}
+            dir="ltr"
+          />
+          <input
+            className="profile-field-input text-sm"
+            type="number"
+            min="1"
+            placeholder={t.couponMaxUsesPlaceholder}
+            value={couponMax}
+            onChange={(e) => setCouponMax(e.target.value)}
+            dir="ltr"
+          />
+          <input
+            className="profile-field-input text-sm"
+            placeholder={t.couponNotePlaceholder}
+            value={couponNote}
+            onChange={(e) => setCouponNote(e.target.value)}
+          />
+          <input
+            className="profile-field-input text-sm"
+            type="datetime-local"
+            value={couponExpires}
+            onChange={(e) => setCouponExpires(e.target.value)}
+            dir="ltr"
+            title={t.couponExpiresLabel}
+          />
+        </div>
+        <button
+          type="button"
+          disabled={creatingCoupon || !couponCode.trim() || !couponAmount}
+          onClick={createCoupon}
+          className="btn btn-primary text-sm py-2 px-4 inline-flex items-center gap-2 disabled:opacity-50"
+        >
+          {creatingCoupon ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+          {t.couponCreate}
+        </button>
+
+        {coupons.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-start">
+              <thead className="text-[var(--text-muted)]">
+                <tr className="border-b border-[var(--border)]">
+                  <th className="py-2 pe-3 font-medium">{t.couponCodeLabel}</th>
+                  <th className="py-2 pe-3 font-medium">{t.couponAmountLabel}</th>
+                  <th className="py-2 pe-3 font-medium">{t.couponUsesLabel}</th>
+                  <th className="py-2 pe-3 font-medium">{t.couponNoteLabel}</th>
+                  <th className="py-2 pe-3 font-medium">{t.partnerInviteStatus}</th>
+                  <th className="py-2 font-medium" />
+                </tr>
+              </thead>
+              <tbody>
+                {coupons.map((c) => (
+                  <tr key={c.id} className="border-b border-[var(--border)]/60">
+                    <td className="py-2 pe-3 font-mono font-semibold" dir="ltr">{c.code}</td>
+                    <td className="py-2 pe-3 font-mono" dir="ltr">${Number(c.amount_usd).toFixed(2)}</td>
+                    <td className="py-2 pe-3 font-mono" dir="ltr">
+                      {c.redemption_count}
+                      {c.max_redemptions != null ? ` / ${c.max_redemptions}` : ' / ∞'}
+                    </td>
+                    <td className="py-2 pe-3 text-[var(--text-muted)]">{c.note || '—'}</td>
+                    <td className="py-2 pe-3">
+                      {c.is_active ? t.partnerTierActive : t.couponInactiveShort}
+                    </td>
+                    <td className="py-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleCoupon(c)}
+                        className="btn btn-secondary text-[11px] py-1 px-2"
+                      >
+                        {c.is_active ? t.couponDeactivate : t.couponActivate}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       {/* Invite link */}
@@ -399,7 +575,7 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
         )}
       </section>
 
-      {/* Manual assign — real admin user search */}
+      {/* Manual assign */}
       <section className="card p-5 sm:p-6 space-y-4">
         <h3 className="font-bold text-lg">{t.partnerAssignTitle}</h3>
         <p className="text-xs text-[var(--text-muted)]">{t.partnerAssignHelp}</p>
@@ -495,7 +671,8 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
   );
 }
 
-function TierRow({ tier, t, saving, onSave }) {
+function TierRow({ tier, t, saving, deleting, onSave, onRemove }) {
+  const [editing, setEditing] = useState(false);
   const [markup, setMarkup] = useState(String(tier.markup_percent));
   const [nameEn, setNameEn] = useState(tier.name_en || '');
   const [nameAr, setNameAr] = useState(tier.name_ar || '');
@@ -506,10 +683,64 @@ function TierRow({ tier, t, saving, onSave }) {
     setNameEn(tier.name_en || '');
     setNameAr(tier.name_ar || '');
     setActive(!!tier.is_active);
+    setEditing(false);
   }, [tier]);
 
+  const cancelEdit = () => {
+    setMarkup(String(tier.markup_percent));
+    setNameEn(tier.name_en || '');
+    setNameAr(tier.name_ar || '');
+    setActive(!!tier.is_active);
+    setEditing(false);
+  };
+
+  if (!editing) {
+    return (
+      <div className={`rounded-xl border border-[var(--border)] p-3 sm:p-4 flex flex-wrap items-center gap-3 justify-between ${!tier.is_active ? 'opacity-60' : ''}`}>
+        <div className="min-w-0 space-y-0.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-sm font-bold" dir="ltr">{tier.slug}</span>
+            {!tier.is_active && (
+              <span className="text-[10px] uppercase tracking-wide text-amber-300/90">{t.couponInactiveShort}</span>
+            )}
+          </div>
+          <div className="text-sm">
+            <span className="font-semibold">{tier.name_ar || tier.name_en}</span>
+            {tier.name_en && tier.name_ar && tier.name_en !== tier.name_ar ? (
+              <span className="text-[var(--text-muted)] ms-2">/ {tier.name_en}</span>
+            ) : null}
+          </div>
+          <div className="text-xs text-[var(--text-muted)] font-mono" dir="ltr">
+            {formatMessage(t.partnerPriceExample || 'cost + {pct}%', { pct: tier.markup_percent })}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="btn btn-secondary text-sm py-2 px-3 inline-flex items-center gap-1.5"
+            title={t.edit || t.partnerTierEdit}
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            {t.edit || t.partnerTierEdit}
+          </button>
+          <button
+            type="button"
+            disabled={deleting}
+            onClick={onRemove}
+            className="btn btn-secondary text-sm py-2 px-3 inline-flex items-center gap-1.5 text-red-300 border-red-500/30 hover:bg-red-500/10 disabled:opacity-50"
+            title={t.remove || t.partnerTierRemove}
+          >
+            {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+            {t.remove || t.partnerTierRemove}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="rounded-xl border border-[var(--border)] p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-12 gap-2 items-end">
+    <div className="rounded-xl border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-12 gap-2 items-end">
       <div className="lg:col-span-2">
         <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide">slug</div>
         <div className="font-mono text-sm font-semibold" dir="ltr">{tier.slug}</div>
@@ -536,28 +767,36 @@ function TierRow({ tier, t, saving, onSave }) {
           />
           <span className="text-[var(--text-muted)] text-sm">%</span>
         </div>
-        <div className="text-[10px] text-[var(--text-muted)]" dir="ltr">
-          {formatMessage(t.partnerPriceExample || 'cost + {pct}%', { pct: markup })}
-        </div>
       </label>
-      <label className="lg:col-span-2 text-xs flex items-center gap-2 pb-2">
+      <label className="lg:col-span-1 text-xs flex items-center gap-2 pb-2">
         <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
         <span>{t.partnerTierActive}</span>
       </label>
-      <div className="lg:col-span-2">
+      <div className="lg:col-span-3 flex gap-2">
         <button
           type="button"
           disabled={saving}
-          onClick={() => onSave({
-            name_en: nameEn,
-            name_ar: nameAr,
-            markup_percent: Number(markup),
-            is_active: active,
-          })}
-          className="btn btn-secondary w-full text-sm py-2 inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
+          onClick={async () => {
+            await onSave({
+              name_en: nameEn,
+              name_ar: nameAr,
+              markup_percent: Number(markup),
+              is_active: active,
+            });
+            setEditing(false);
+          }}
+          className="btn btn-primary flex-1 text-sm py-2 inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           {t.save}
+        </button>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={cancelEdit}
+          className="btn btn-secondary text-sm py-2 px-3"
+        >
+          <X className="w-4 h-4" />
         </button>
       </div>
     </div>

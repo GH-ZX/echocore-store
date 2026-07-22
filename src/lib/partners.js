@@ -53,6 +53,15 @@ export async function adminSetUserPartnerTier(userId, tierId = null) {
   return data;
 }
 
+/** Soft-delete: deactivates tier (DB-backed; not hardcoded). */
+export async function adminDeletePartnerTier(tierId) {
+  const { data, error } = await supabase.rpc('admin_delete_partner_tier', {
+    p_tier_id: tierId,
+  });
+  if (error) throw error;
+  return data;
+}
+
 export async function adminCreatePartnerInvite({ tierId, minutes = 15, note = '' } = {}) {
   const { data, error } = await supabase.rpc('admin_create_partner_invite', {
     p_tier_id: tierId,

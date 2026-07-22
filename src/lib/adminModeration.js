@@ -160,6 +160,17 @@ export async function adminBroadcastMessage({ kind, title, body, link = null }) 
   return typeof data === 'number' ? data : 0;
 }
 
+/** Thank-you blast to verified customers only. */
+export async function adminNotifyVerifiedUsers({ title, body, link = '/profile' } = {}) {
+  const { data, error } = await supabase.rpc('admin_notify_verified_users', {
+    p_title: title,
+    p_body: body,
+    p_link: link || null,
+  });
+  if (error) wrapRpcError(error);
+  return typeof data === 'number' ? data : 0;
+}
+
 export async function adminNotifyUser(userId, { kind, title, body, link = null }) {
   const { data, error } = await supabase.rpc('admin_notify_user', {
     p_user_id: userId,

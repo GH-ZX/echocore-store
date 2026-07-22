@@ -23,6 +23,7 @@ import {
   adminBanUser,
   adminBroadcastMessage,
   adminNotifyUser,
+  adminNotifyVerifiedUsers,
   adminSaveMaintenanceSettings,
   adminSaveSiteModerationSettings,
   adminUnbanUser,
@@ -97,6 +98,7 @@ export default function AdminUsersManager({
   const [broadcastBody, setBroadcastBody] = useState('');
   const [broadcastLink, setBroadcastLink] = useState('');
   const [broadcastSending, setBroadcastSending] = useState(false);
+  const [thanksSending, setThanksSending] = useState(false);
 
   const [banTarget, setBanTarget] = useState(null);
   const [banReason, setBanReason] = useState('');
@@ -262,6 +264,22 @@ export default function AdminUsersManager({
       notifyError(err.message);
     } finally {
       setBroadcastSending(false);
+    }
+  };
+
+  const handleThanksVerified = async () => {
+    setThanksSending(true);
+    try {
+      const count = await adminNotifyVerifiedUsers({
+        title: t.verifiedThanksDefaultTitle,
+        body: t.verifiedThanksDefaultBody,
+        link: '/profile',
+      });
+      notifySuccess(formatMessage(t.adminThanksVerifiedSent, { count }));
+    } catch (err) {
+      notifyError(err.message);
+    } finally {
+      setThanksSending(false);
     }
   };
 
@@ -635,6 +653,31 @@ export default function AdminUsersManager({
             {broadcastSending ? t.sending : t.adminBroadcastSend}
           </button>
         </form>
+      </section>
+
+      <section className="card p-5 sm:p-6 space-y-3">
+        <div className="flex items-start gap-3">
+          <BadgeCheck className="w-5 h-5 text-emerald-400 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <h2 className="text-xl font-black">{t.adminThanksVerifiedTitle}</h2>
+            <p className="text-sm text-[var(--text-sec)] mt-1 leading-relaxed">
+              {t.adminThanksVerifiedDesc}
+            </p>
+            <p className="text-xs text-[var(--text-muted)] mt-2 border border-[var(--border)] rounded-lg p-3">
+              <strong className="block mb-1">{t.verifiedThanksDefaultTitle}</strong>
+              {t.verifiedThanksDefaultBody}
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={thanksSending}
+          onClick={handleThanksVerified}
+          className="btn btn-primary action-chip gap-2 !border-0 disabled:opacity-50"
+        >
+          {thanksSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <BadgeCheck className="w-4 h-4" />}
+          {thanksSending ? t.sending : t.adminThanksVerifiedSend}
+        </button>
       </section>
 
       <section className="card p-5 sm:p-6 space-y-4">
