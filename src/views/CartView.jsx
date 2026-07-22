@@ -62,6 +62,10 @@ export default function CartView({
           </div>
 
           <div className="card p-7 h-fit lg:sticky lg:top-20">
+            <div className="flex justify-between mb-2 text-sm text-[var(--text-muted)]">
+              <span>{t.cartItemsCount || t.itemsPurchased}</span>
+              <span className="font-mono">{cart.length}</span>
+            </div>
             <div className="flex justify-between mb-6">
               <div className="font-bold text-lg">{t.total}</div>
               <div className="text-3xl font-black text-[var(--accent)]">${getCartTotal()}</div>
@@ -72,9 +76,15 @@ export default function CartView({
                 {t.cartUidCheckoutBlocked}
               </p>
             )}
+            {!uidBlocked && (
+              <p className="text-xs text-[var(--text-muted)] mb-3 leading-relaxed">
+                {t.cartVoucherOnlyHint}
+              </p>
+            )}
             <button
+              type="button"
               onClick={onCheckout}
-              disabled={uidBlocked}
+              disabled={uidBlocked || cart.length === 0}
               className="btn btn-primary w-full py-4 text-lg disabled:opacity-50 disabled:pointer-events-none"
             >
               {t.checkout}

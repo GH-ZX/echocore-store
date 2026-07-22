@@ -41,6 +41,34 @@ export function cartRequiresPlayerUid(cart = [], games = []) {
   });
 }
 
+/**
+ * Offers safe for cart multi-checkout: redeem codes / vouchers only.
+ * UID / both top-ups need player fields → Buy Now path only.
+ */
+export function isCartEligibleOffer(offer, games = []) {
+  if (!offer?.id) return false;
+  if (offer.active === false) return false;
+  const price = parseFloat(offer.price);
+  if (!Number.isFinite(price) || price <= 0) return false;
+
+  const gameById = new Map(games.map((g) => [String(g.id), g]));
+  const game = gameById.get(String(offer.game_id));
+  if (!game) {
+    // No game row: allow only if offer looks like a pure voucher (no top-up flags)
+    return offer.g2bulk_type === 'voucher' || offer.requires_player_id !== true;
+  }
+  if (game.active === false) return false;
+  // Top-up / dual products need player id at buy time
+  if (game.redemption_method === 'uid' || game.redemption_method === 'both') {
+    return false;
+  }
+  return true;
+}
+
+export function filterCartEligibleItems(cart = [], games = []) {
+  return (cart || []).filter((item) => isCartEligibleOffer(item, games));
+}
+
 export function getVoucherGames(games = []) {
   return getStorefrontVoucherGames(games);
 }

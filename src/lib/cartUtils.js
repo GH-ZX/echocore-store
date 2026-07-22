@@ -1,3 +1,5 @@
+import { getMaxCartLines } from './purchaseLock';
+
 const CART_SNAPSHOT_FIELDS = [
   'id',
   'game_id',
@@ -8,7 +10,16 @@ const CART_SNAPSHOT_FIELDS = [
   'is_sale',
   'original_price',
   'sale_image_url',
+  'g2bulk_type',
+  'active',
 ];
+
+export { getMaxCartLines };
+
+/** True when cart is at the multi-buy line limit. */
+export function isCartFull(cart = []) {
+  return (cart?.length || 0) >= getMaxCartLines();
+}
 
 function createCartLineId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {

@@ -40,9 +40,11 @@ export default function CheckoutView({
   const [activeOrder, setActiveOrder] = useState(null);
   const [selectedMethod, setSelectedMethod] = useState('balance');
   const [stockCheck, setStockCheck] = useState({ loading: false, available: true, message: '' });
+  /** Extra client guard — blocks double-tap before React re-renders disabled state */
+  const checkoutClickLock = useMemo(() => ({ locked: false }), []);
 
   const location = useLocation();
-  const totalNum = cart.reduce((s, i) => s + parseFloat(i.price), 0);
+  const totalNum = cart.reduce((s, i) => s + (parseFloat(i.price) || 0), 0);
   const total = totalNum.toFixed(2);
   const hasEnoughBalance = currentBalance >= totalNum;
   const goRecharge = () => navigate('/recharge', { state: { returnTo: location.pathname } });
@@ -101,6 +103,13 @@ export default function CheckoutView({
   }, [refreshStockCheck]);
 
   const handleCheckoutProcess = async () => {
+    if (isProcessing || checkoutClickLock.locked) return;
+    if (!cart?.length) {
+      notifyError(t.cartEmptyOrUnavailable || t.emptyCart);
+      return;
+    }
+    checkoutClickLock.locked = true;
+
     if (selectedMethod === 'balance') {
       setIsProcessing(true);
       try {
@@ -110,16 +119,19 @@ export default function CheckoutView({
         notifyError(`${t.checkoutFailed || 'Checkout failed'}: ${e.message || ''}`);
       } finally {
         setIsProcessing(false);
+        checkoutClickLock.locked = false;
       }
       return;
     }
 
     if (!usableMethods.some((m) => m.id === selectedMethod)) {
+      checkoutClickLock.locked = false;
       notifyError(t.paymentMethodUnavailable);
       return;
     }
 
     if (isManualWalletMethod(selectedMethod) && !methodReady) {
+      checkoutClickLock.locked = false;
       notifyError(t.walletBuyNotConfigured);
       return;
     }
@@ -144,6 +156,7 @@ export default function CheckoutView({
       notifyError(`${t.paymentFailed || 'Payment failed'}: ${e.message || ''}`);
     } finally {
       setIsProcessing(false);
+      checkoutClickLock.locked = false;
     }
   };
 

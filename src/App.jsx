@@ -15,7 +15,12 @@ import {
   rejectOrderPayment,
   expireStalePendingOrders,
 } from './lib/orders';
-import { tryAcquirePurchaseLock, releasePurchaseLock } from './lib/purchaseLock';
+import {
+  tryAcquirePurchaseLock,
+  releasePurchaseLock,
+  createCheckoutToken,
+  getMaxCartLines,
+} from './lib/purchaseLock';
 import { markOrderFulfillAllowed } from './lib/orderAccess';
 import { adminGiftOrder, pollOrderFulfillment } from './lib/adminGifts';
 import { mergeGamePlayerUidIntoProfile } from './lib/gamePlayerUid';
@@ -32,7 +37,13 @@ import {
 } from './lib/liveCatalog';
 import { refreshGameRegionOffers } from './lib/catalogOffers';
 import { resolveOffersForCheckout } from './lib/catalogPurchase';
-import { syncCartWithOffers, pickCartSnapshot, cartsAreEquivalent, getCartLineKey } from './lib/cartUtils';
+import {
+  syncCartWithOffers,
+  pickCartSnapshot,
+  cartsAreEquivalent,
+  getCartLineKey,
+  isCartFull,
+} from './lib/cartUtils';
 import ScrollToTop from './components/routing/ScrollToTop';
 import AppRoutes from './components/routing/AppRoutes';
 import LangSwitchOverlay from './components/routing/LangSwitchOverlay';
@@ -45,7 +56,7 @@ import {
 import { getOfferOrderNameSnapshot } from './lib/offerDisplay';
 import { getGameOfferBuyPath, getGameOfferPath } from './lib/offerRoutes';
 import { resolveStorefrontGame } from './lib/gameRegions';
-import { cartRequiresPlayerUid } from './lib/catalogUtils';
+import { cartRequiresPlayerUid, isCartEligibleOffer } from './lib/catalogUtils';
 import { fetchAllSupabaseRows } from './lib/supabaseQuery';
 import { fetchPaymentMethods } from './lib/storeSettings';
 import { fetchSiteStatus, isLoginBlockedDuringMaintenance } from './lib/siteStatus';
@@ -723,15 +734,17 @@ export default function App() {
   };
 
   const runWithPurchaseGuard = async (userId, fn) => {
+    // Unique token per attempt — bots/double-clicks get blocked; same token may retry
+    const checkoutToken = createCheckoutToken();
     if (purchaseInFlightRef.current) {
       throw new Error(t.purchaseInProgress);
     }
-    if (!tryAcquirePurchaseLock(userId)) {
+    if (!tryAcquirePurchaseLock(userId, checkoutToken)) {
       throw new Error(t.purchaseInProgress);
     }
     purchaseInFlightRef.current = true;
     try {
-      return await fn();
+      return await fn(checkoutToken);
     } finally {
       purchaseInFlightRef.current = false;
       releasePurchaseLock(userId);
@@ -749,7 +762,7 @@ export default function App() {
     if (user?.role === 'admin') throw new Error(t.adminCannotPurchase);
 
     try {
-    return await runWithPurchaseGuard(user.id, async () => {
+    return await runWithPurchaseGuard(user.id, async (checkoutToken) => {
 
     const preparedCart = await resolveCheckoutOffers(currentCart);
     const { items: syncedCart, removedCount } = syncCartWithOffers(preparedCart, offers.length ? offers : preparedCart);
@@ -760,18 +773,26 @@ export default function App() {
       setCart(syncedCart);
       throw new Error(t.cartItemsRemoved);
     }
-    if (cartRequiresPlayerUid(syncedCart, games)) {
+    // Cart multi-buy: vouchers / redeem codes only (UID packs need Buy Now)
+    if (cartRequiresPlayerUid(syncedCart, games)
+      || syncedCart.some((line) => !isCartEligibleOffer(line, games))) {
       throw new Error(t.cartUidCheckoutBlocked);
+    }
+    if (syncedCart.length > getMaxCartLines()) {
+      throw new Error(t.cartMaxItems || t.cartEmptyOrUnavailable);
     }
     setCart(syncedCart);
 
     const total = syncedCart.reduce((sum, item) => sum + parseFloat(item.price), 0);
+    if (!Number.isFinite(total) || total <= 0) {
+      throw new Error(t.cartEmptyOrUnavailable);
+    }
 
     const items = syncedCart.map((item) => ({
       offer_id: item.id,
       name_snapshot: getOfferOrderNameSnapshot(item, lang, games, offers),
       price: parseFloat(item.price),
-      quantity: 1
+      quantity: 1,
     }));
 
     if (paymentMethod === 'balance') {
@@ -784,11 +805,17 @@ export default function App() {
       total,
       paymentMethod,
       items,
+      idempotencyKey: checkoutToken,
       t,
     });
 
     if (paymentMethod === 'balance' && data?.newBalance != null) {
       setUser(prev => prev ? { ...prev, balance: data.newBalance } : prev);
+    }
+
+    // Clear cart only after successful order create (balance paid or pending wallet)
+    if (data?.orderId) {
+      setCart([]);
     }
 
     if (data.status === 'pending_payment' || data.status === 'payment_sent') {
@@ -886,12 +913,15 @@ export default function App() {
     if (user?.role === 'admin') throw new Error(t.adminCannotPurchase);
     if (!offer) throw new Error('No offer');
 
-    return runWithPurchaseGuard(user.id, async () => {
+    return runWithPurchaseGuard(user.id, async (checkoutToken) => {
 
     const [resolvedOffer] = await resolveCheckoutOffers([offer]);
     offer = resolvedOffer || offer;
 
     const amount = parseFloat(offer.price);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error(t.cartEmptyOrUnavailable || 'Invalid price');
+    }
     const {
       player_uid = null,
       player_server = null,
@@ -918,6 +948,9 @@ export default function App() {
       total: amount,
       paymentMethod,
       items,
+      playerUid: player_uid || null,
+      playerServer: player_server || null,
+      idempotencyKey: checkoutToken,
       t,
     });
 
@@ -1774,7 +1807,22 @@ export default function App() {
       navigate('/login');
       return;
     }
-    setCart((prev) => [...prev, pickCartSnapshot(product)]);
+    if (user?.role === 'admin') {
+      showToast(t.adminCannotPurchase, 'error');
+      return;
+    }
+    if (!isCartEligibleOffer(product, games)) {
+      showToast(t.cartUidCheckoutBlocked, 'error');
+      return;
+    }
+    if (isCartFull(cart)) {
+      showToast(t.cartMaxItems || t.cartEmptyOrUnavailable, 'error');
+      return;
+    }
+    setCart((prev) => {
+      if (isCartFull(prev)) return prev;
+      return [...prev, pickCartSnapshot(product)];
+    });
     setCartPriceUpdated(false);
     showNotification(t.addMsg);
 

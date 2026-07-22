@@ -77,13 +77,49 @@ export async function fetchMyOrderReceipt(orderId) {
   }
 }
 
-export async function createOrderAtomic({ userId, total, paymentMethod, items, t = {} }) {
-  const { data, error } = await supabase.rpc('create_order_atomic', {
+/**
+ * Server-side atomic checkout.
+ * - auth.uid must match userId
+ * - advisory lock per user (no double spend)
+ * - prices verified against offers table
+ * - optional p_idempotency_key when migration applied (safe retries)
+ */
+export async function createOrderAtomic({
+  userId,
+  total,
+  paymentMethod,
+  items,
+  playerUid = null,
+  playerServer = null,
+  idempotencyKey = null,
+  t = {},
+}) {
+  const basePayload = {
     p_user_id: userId,
     p_total: total,
     p_payment_method: paymentMethod,
     p_items: items,
-  })
+    p_player_uid: playerUid || null,
+    p_player_server: playerServer || null,
+  }
+
+  // Prefer idempotent RPC when available (scripts/cart-purchase-security-migration.sql)
+  if (idempotencyKey) {
+    const withKey = await supabase.rpc('create_order_atomic', {
+      ...basePayload,
+      p_idempotency_key: idempotencyKey,
+    })
+    if (!withKey.error) {
+      return assertRpcData(withKey.data, withKey.error, t)
+    }
+    const msg = withKey.error?.message || ''
+    // Older DBs without the extra arg — fall through once
+    if (!/could not find the function|p_idempotency_key|function.*does not exist/i.test(msg)) {
+      return assertRpcData(withKey.data, withKey.error, t)
+    }
+  }
+
+  const { data, error } = await supabase.rpc('create_order_atomic', basePayload)
   return assertRpcData(data, error, t)
 }
 
