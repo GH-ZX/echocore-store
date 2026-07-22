@@ -10,6 +10,7 @@ import {
   BadgeX,
   Copy,
   History,
+  Handshake,
   KeyRound,
   Link2,
   Loader2,
@@ -53,6 +54,12 @@ import {
   validateUsername,
 } from '../../lib/username';
 import { adminChangeUsername, getUsernameErrorMessage } from '../../lib/usernameChange';
+import {
+  adminSetUserPartnerTier,
+  fetchPartnerTiers,
+  formatPartnerTierLabel,
+} from '../../lib/partners';
+import { supabase } from '../../lib/supabase';
 import BanDurationField from './BanDurationField';
 import AdminManualBalanceCredit from './AdminManualBalanceCredit';
 import Modal from '../ui/Modal';
@@ -118,6 +125,9 @@ export default function AdminUserDetail({
   const [walletTxs, setWalletTxs] = useState([]);
   const [walletTxLoading, setWalletTxLoading] = useState(false);
   const [walletTxFilter, setWalletTxFilter] = useState('all');
+  const [partnerTiers, setPartnerTiers] = useState([]);
+  const [partnerTierId, setPartnerTierId] = useState('');
+  const [partnerSaving, setPartnerSaving] = useState(false);
 
   const loadProfile = useCallback(async () => {
     if (!userRouteParam) return;
@@ -157,6 +167,19 @@ export default function AdminUserDetail({
         favorite_game: data?.favorite_game || '',
         default_player_uid: data?.default_player_uid || '',
       });
+
+      // Partner tier (column may be absent on older profiles until migration)
+      try {
+        const [{ data: tierRow }, tiers] = await Promise.all([
+          supabase.from('profiles').select('partner_tier_id').eq('id', userId).maybeSingle(),
+          fetchPartnerTiers(),
+        ]);
+        setPartnerTiers(Array.isArray(tiers) ? tiers : []);
+        setPartnerTierId(tierRow?.partner_tier_id || '');
+      } catch {
+        setPartnerTiers([]);
+        setPartnerTierId('');
+      }
 
       setWalletTxLoading(true);
       try {
@@ -485,6 +508,70 @@ export default function AdminUserDetail({
             <div className="text-lg font-black mt-1">${parseFloat(profile.dev_test_balance || 0).toFixed(2)}</div>
           </div>
         </div>
+
+        {/* Partner tier */}
+        {profile?.role !== 'admin' && (
+          <div className="rounded-xl border border-[var(--accent)]/25 bg-[var(--accent)]/5 p-4 space-y-3">
+            <h3 className="text-sm font-bold flex items-center gap-2">
+              <Handshake className="w-4 h-4 text-[var(--accent)]" />
+              {t.partnerUserTierSection || t.partnersTab}
+            </h3>
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+              {t.partnerUserTierHelp}
+            </p>
+            {partnerTierId && (
+              <div className="text-sm text-emerald-200">
+                {t.partnerCurrentTier}:{' '}
+                <strong>
+                  {formatPartnerTierLabel(
+                    partnerTiers.find((x) => x.id === partnerTierId),
+                    lang,
+                  )}
+                </strong>
+                {partnerTiers.find((x) => x.id === partnerTierId) && (
+                  <span className="font-mono ms-2" dir="ltr">
+                    (cost + {Number(partnerTiers.find((x) => x.id === partnerTierId).markup_percent)}%)
+                  </span>
+                )}
+              </div>
+            )}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <select
+                className="profile-field-input text-sm flex-1"
+                value={partnerTierId}
+                onChange={(e) => setPartnerTierId(e.target.value)}
+              >
+                <option value="">{t.partnerRemoveTier}</option>
+                {partnerTiers.filter((x) => x.is_active || x.id === partnerTierId).map((tier) => (
+                  <option key={tier.id} value={tier.id}>
+                    {formatPartnerTierLabel(tier, lang)} — cost + {Number(tier.markup_percent)}%
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={partnerSaving}
+                onClick={async () => {
+                  if (!profile?.id) return;
+                  setPartnerSaving(true);
+                  try {
+                    await adminSetUserPartnerTier(profile.id, partnerTierId || null);
+                    notifySuccess(t.partnerUserAssigned);
+                    await loadProfile();
+                  } catch (err) {
+                    notifyError(err.message || t.partnerUserAssignFailed);
+                  } finally {
+                    setPartnerSaving(false);
+                  }
+                }}
+                className="btn btn-primary text-sm py-2 px-4 inline-flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {partnerSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {t.partnerAssignApply}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Wallet adjust — add / deduct store balance */}
         <div>

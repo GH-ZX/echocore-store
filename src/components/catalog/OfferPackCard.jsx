@@ -3,6 +3,7 @@ import AdminEditButton from '../admin/AdminEditButton';
 import AdminOfferCostBadge from '../admin/AdminOfferCostBadge';
 import AdminInlinePriceEdit from '../admin/AdminInlinePriceEdit';
 import OfferPackLabel from '../ui/OfferPackLabel';
+import PartnerPriceBadge from '../ui/PartnerPriceBadge';
 import {
   formatPrice,
   getOfferDiscount,
@@ -101,12 +102,17 @@ export default function OfferPackCard({
               ) : (
                 <span className="text-2xl font-black text-[var(--accent)] tabular-nums" dir="ltr">${price}</span>
               )}
-              {offer.is_sale && (
+              {offer.is_sale && !offer._partnerPriced && (
                 <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/25 font-bold">
                   {discount ? `-${discount}%` : (t.sale || 'SALE')}
                 </span>
               )}
             </div>
+            {!isAdmin && offer._partnerPriced && (
+              <div className="mt-1">
+                <PartnerPriceBadge offer={offer} t={t} />
+              </div>
+            )}
             {isAdmin && <AdminOfferCostBadge offer={offer} t={t} className="mt-1" />}
           </div>
           {showGift ? (

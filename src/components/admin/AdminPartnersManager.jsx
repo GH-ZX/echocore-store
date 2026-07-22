@@ -18,8 +18,14 @@ import {
   fetchRecentPartnerInvites,
   formatPartnerTierLabel,
 } from '../../lib/partners';
+import { fetchAdminUsers } from '../../lib/adminModeration';
 import { formatMessage } from '../../lib/i18n';
-import { supabase } from '../../lib/supabase';
+import {
+  formatProfileUsername,
+  getProfileAdminLabel,
+  getProfileDisplayName,
+  getProfileUsername,
+} from '../../lib/username';
 
 export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) {
   const notifyError = (m) => onNotify?.(m, 'error');
@@ -36,7 +42,10 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
   const [lastInvitePath, setLastInvitePath] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const [assignUsername, setAssignUsername] = useState('');
+  const [assignQuery, setAssignQuery] = useState('');
+  const [assignResults, setAssignResults] = useState([]);
+  const [assignSearching, setAssignSearching] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
   const [assignTierId, setAssignTierId] = useState('');
   const [assigning, setAssigning] = useState(false);
 
@@ -146,21 +155,50 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
     }
   };
 
+  const searchUsers = async () => {
+    const q = assignQuery.trim();
+    if (!q) {
+      setAssignResults([]);
+      return;
+    }
+    setAssignSearching(true);
+    setSelectedUser(null);
+    try {
+      const { rows } = await fetchAdminUsers(q, 15, 0, {
+        orderBy: 'created_at',
+        balanceFilter: 'all',
+        statusFilter: 'all',
+      });
+      setAssignResults(Array.isArray(rows) ? rows : []);
+      if (!rows?.length) notifyError(t.partnerUserNotFound);
+    } catch (e) {
+      notifyError(e.message || t.partnerUserNotFound);
+      setAssignResults([]);
+    } finally {
+      setAssignSearching(false);
+    }
+  };
+
   const assignUser = async () => {
-    const uname = assignUsername.trim().replace(/^@+/, '').toLowerCase();
-    if (!uname) return;
+    if (!selectedUser?.id) {
+      notifyError(t.partnerPickUserFirst);
+      return;
+    }
     setAssigning(true);
     try {
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('id, username, name')
-        .ilike('username', uname)
-        .maybeSingle();
-      if (error) throw error;
-      if (!profile?.id) throw new Error(t.partnerUserNotFound || 'User not found');
-      await adminSetUserPartnerTier(profile.id, assignTierId || null);
-      notifySuccess(t.partnerUserAssigned);
-      setAssignUsername('');
+      await adminSetUserPartnerTier(selectedUser.id, assignTierId || null);
+      const label = getProfileAdminLabel(selectedUser, selectedUser.email || selectedUser.id);
+      notifySuccess(
+        formatMessage(t.partnerUserAssignedNamed || t.partnerUserAssigned, {
+          user: label,
+          tier: assignTierId
+            ? formatPartnerTierLabel(tiers.find((x) => x.id === assignTierId), lang)
+            : (t.partnerRemoveTier || '—'),
+        }),
+      );
+      setSelectedUser(null);
+      setAssignResults([]);
+      setAssignQuery('');
     } catch (e) {
       notifyError(e.message || t.partnerUserAssignFailed);
     } finally {
@@ -361,33 +399,91 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
         )}
       </section>
 
-      {/* Manual assign */}
+      {/* Manual assign — real admin user search */}
       <section className="card p-5 sm:p-6 space-y-4">
         <h3 className="font-bold text-lg">{t.partnerAssignTitle}</h3>
         <p className="text-xs text-[var(--text-muted)]">{t.partnerAssignHelp}</p>
         <div className="flex flex-col sm:flex-row gap-2">
           <input
             className="profile-field-input text-sm flex-1"
-            placeholder="@username"
-            value={assignUsername}
-            onChange={(e) => setAssignUsername(e.target.value)}
-            dir="ltr"
+            placeholder={t.partnerSearchPlaceholder}
+            value={assignQuery}
+            onChange={(e) => setAssignQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                searchUsers();
+              }
+            }}
           />
+          <button
+            type="button"
+            disabled={assignSearching || !assignQuery.trim()}
+            onClick={searchUsers}
+            className="btn btn-secondary text-sm py-2 px-4 disabled:opacity-50 inline-flex items-center gap-1.5"
+          >
+            {assignSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            {t.search || t.adminUsersSearch}
+          </button>
+        </div>
+
+        {assignResults.length > 0 && (
+          <ul className="rounded-xl border border-[var(--border)] divide-y divide-[var(--border)] max-h-56 overflow-y-auto">
+            {assignResults.map((u) => {
+              const active = selectedUser?.id === u.id;
+              return (
+                <li key={u.id}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedUser(u)}
+                    className={`w-full text-start px-3 py-2.5 text-sm flex flex-wrap items-center justify-between gap-2 hover:bg-[var(--bg-elevated)] ${active ? 'bg-[var(--accent)]/12' : ''}`}
+                  >
+                    <span className="min-w-0">
+                      <span className="font-semibold font-mono text-[var(--accent)]">
+                        {formatProfileUsername(getProfileUsername(u)) || getProfileAdminLabel(u)}
+                      </span>
+                      {getProfileDisplayName(u) ? (
+                        <span className="text-[var(--text-muted)] ms-2">{getProfileDisplayName(u)}</span>
+                      ) : null}
+                      {u.email ? (
+                        <span className="block text-[11px] text-[var(--text-muted)] truncate">{u.email}</span>
+                      ) : null}
+                    </span>
+                    <span className="font-mono text-xs text-[var(--text-sec)]" dir="ltr">
+                      ${parseFloat(u.balance || 0).toFixed(2)}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        {selectedUser && (
+          <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm">
+            {t.partnerSelectedUser}:{' '}
+            <strong className="font-mono">
+              {formatProfileUsername(getProfileUsername(selectedUser)) || selectedUser.email || selectedUser.id}
+            </strong>
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row gap-2">
           <select
-            className="profile-field-input text-sm sm:w-56"
+            className="profile-field-input text-sm sm:w-64"
             value={assignTierId}
             onChange={(e) => setAssignTierId(e.target.value)}
           >
             <option value="">{t.partnerRemoveTier}</option>
             {tiers.filter((x) => x.is_active).map((tier) => (
               <option key={tier.id} value={tier.id}>
-                {formatPartnerTierLabel(tier, lang)} (+{tier.markup_percent}%)
+                {formatPartnerTierLabel(tier, lang)} (+{Number(tier.markup_percent)}%)
               </option>
             ))}
           </select>
           <button
             type="button"
-            disabled={assigning || !assignUsername.trim()}
+            disabled={assigning || !selectedUser?.id}
             onClick={assignUser}
             className="btn btn-primary text-sm py-2 px-4 disabled:opacity-50"
           >

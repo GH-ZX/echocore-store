@@ -3,10 +3,11 @@ import { ShoppingCart } from 'lucide-react';
 import AdminEditButton from '../admin/AdminEditButton';
 import AdminOfferCostBadge from '../admin/AdminOfferCostBadge';
 import BorderGlow from './BorderGlow';
-import { getOfferDisplayName } from '../../lib/offerDisplay';
+import { formatPrice, getOfferDisplayName } from '../../lib/offerDisplay';
 import { getOfferDiscount } from '../../lib/saleOffers';
 import { getFulfillmentGameForOffer } from '../../lib/gameRegions';
 import OfferPackLabel from './OfferPackLabel';
+import PartnerPriceBadge from './PartnerPriceBadge';
 import { presetImageUrl } from '../../lib/imageUtils';
 import { getGameCardImageUrl } from '../../lib/gameImages';
 
@@ -104,15 +105,21 @@ export default function SaleOfferCard({
 
         <div className="mt-auto pt-1 space-y-1">
           <div className="flex items-baseline gap-2 flex-wrap">
-            {showSale && originalPrice && (
+            {showSale && originalPrice && !offer._partnerPriced && (
               <span className="text-xs sm:text-sm line-through text-[var(--text-muted)]">
                 ${originalPrice}
               </span>
             )}
-            <span className="text-lg sm:text-xl font-black text-[var(--accent)]">
+            {offer._partnerPriced && offer._publicPrice != null && (
+              <span className="text-xs sm:text-sm line-through text-[var(--text-muted)] font-mono" dir="ltr">
+                ${formatPrice(offer._publicPrice)}
+              </span>
+            )}
+            <span className="text-lg sm:text-xl font-black text-[var(--accent)]" dir="ltr">
               ${price}
             </span>
           </div>
+          {!isAdmin && offer._partnerPriced && <PartnerPriceBadge offer={offer} t={t} />}
           {isAdmin && <AdminOfferCostBadge offer={offer} t={t} />}
         </div>
 
