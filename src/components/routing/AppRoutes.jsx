@@ -409,6 +409,7 @@ export default function AppRoutes({
                 getCartTotal={getCartTotal}
                 onRemoveItem={removeCartItem}
                 onCheckout={() => navigate('/checkout')}
+                onContinueShopping={() => navigate('/gift-cards')}
                 priceUpdated={cartPriceUpdated}
               />
             </ProtectedRoute>

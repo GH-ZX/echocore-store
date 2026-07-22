@@ -13,6 +13,7 @@ const CART_SNAPSHOT_FIELDS = [
   'is_sale',
   'original_price',
   'sale_image_url',
+  'image_url',
   'g2bulk_type',
   'active',
 ];
@@ -131,6 +132,24 @@ export function syncCartWithOffers(cart, offers = []) {
 
 export function getCartLineKey(item) {
   return item._cartLineId || String(item.id);
+}
+
+/**
+ * Best image for a cart line: offer sale art → offer image → game logo/cover.
+ */
+export function getCartItemImageUrl(item, games = [], offers = []) {
+  if (!item) return null;
+  const offer = (offers || []).find((o) => String(o.id) === String(item.id));
+  if (offer?.sale_image_url) return offer.sale_image_url;
+  if (item.sale_image_url) return item.sale_image_url;
+  if (offer?.image_url) return offer.image_url;
+  if (item.image_url) return item.image_url;
+
+  const gameId = item.game_id || offer?.game_id;
+  const game = (games || []).find((g) => String(g.id) === String(gameId));
+  if (!game) return null;
+  // Prefer logo (card identity) then full cover (redeem page hero)
+  return game.logo_url || game.image_url || null;
 }
 
 export function cartsAreEquivalent(left = [], right = []) {
