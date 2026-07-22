@@ -50,8 +50,6 @@ export default function AppRoutes({
   offers,
   partnerTier: _partnerTier = null,
   onPartnerJoined,
-  influencerCoupon = null,
-  refreshInfluencerCoupon,
   orders,
   loadingGames,
   loadingOrders,
@@ -313,6 +311,7 @@ export default function AppRoutes({
                 onOrderPaid={onOrderPaid}
                 paymentConfig={paymentConfig}
                 onNotify={showToast}
+                partnerTier={_partnerTier}
               />
             </ProtectedRoute>
           )}
@@ -524,8 +523,6 @@ export default function AppRoutes({
                 onLogout={handleLogout}
                 onRecharge={user?.role === 'admin' ? undefined : () => navigate('/recharge')}
                 onUpdateProfile={updateUserProfile}
-                influencerCoupon={influencerCoupon}
-                onInfluencerCouponChange={refreshInfluencerCoupon}
               />
             ) : (
               <Navigate to="/login" replace />

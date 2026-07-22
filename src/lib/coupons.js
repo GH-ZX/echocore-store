@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 
 const SETUP_MSG =
-  'Influencer coupons are not configured. Run scripts/influencer-referral-coupons-migration.sql in Supabase.';
+  'Influencer coupons are not configured. Run scripts/influencer-margin-model-migration.sql in Supabase.';
 
 function wrapRpcError(error) {
   if (error?.message?.includes('function') && error?.message?.includes('does not exist')) {
@@ -10,16 +10,39 @@ function wrapRpcError(error) {
   throw error;
 }
 
+function mapCouponRow(data) {
+  if (!data || typeof data !== 'object') return null;
+  return {
+    id: data.id,
+    code: data.code,
+    buyerMarkupPercent: Number(
+      data.buyerMarkupPercent ?? data.buyer_markup_percent ?? data.discountPercent ?? 10,
+    ),
+    influencerMarginPercent: Number(
+      data.influencerMarginPercent ?? data.influencer_margin_percent ?? 3,
+    ),
+    note: data.note || null,
+    influencerUserId: data.influencer_user_id || data.influencerUserId || null,
+    influencerUsername: data.influencer_username || null,
+    influencerName: data.influencer_name || null,
+    isActive: data.is_active !== false,
+    redemptionCount: Number(data.redemption_count || 0),
+    createdAt: data.created_at,
+  };
+}
+
 export async function adminCreateInfluencerCoupon({
   code,
-  discountPercent = 3,
+  buyerMarkupPercent = 10,
+  influencerMarginPercent = 3,
   influencerUserId,
   note = '',
   expiresAt = null,
 } = {}) {
   const { data, error } = await supabase.rpc('admin_create_influencer_coupon', {
     p_code: code,
-    p_discount_percent: Number(discountPercent),
+    p_buyer_markup_percent: Number(buyerMarkupPercent),
+    p_influencer_margin_percent: Number(influencerMarginPercent),
     p_influencer_user_id: influencerUserId,
     p_note: note || null,
     p_expires_at: expiresAt || null,
@@ -31,7 +54,12 @@ export async function adminCreateInfluencerCoupon({
 export async function adminUpdateInfluencerCoupon(couponId, patch = {}) {
   const { data, error } = await supabase.rpc('admin_update_influencer_coupon', {
     p_coupon_id: couponId,
-    p_discount_percent: patch.discountPercent != null ? Number(patch.discountPercent) : null,
+    p_buyer_markup_percent: patch.buyerMarkupPercent != null
+      ? Number(patch.buyerMarkupPercent)
+      : null,
+    p_influencer_margin_percent: patch.influencerMarginPercent != null
+      ? Number(patch.influencerMarginPercent)
+      : null,
     p_influencer_user_id: patch.influencerUserId || null,
     p_note: patch.note !== undefined ? patch.note : null,
     p_expires_at: patch.expiresAt || null,
@@ -47,16 +75,16 @@ export async function adminListInfluencerCoupons(limit = 50) {
     p_limit: limit,
   });
   if (error) wrapRpcError(error);
-  return Array.isArray(data) ? data : [];
+  return (Array.isArray(data) ? data : []).map(mapCouponRow).filter(Boolean);
 }
 
 export async function adminSetInfluencerCouponActive(couponId, isActive) {
   return adminUpdateInfluencerCoupon(couponId, { isActive: !!isActive });
 }
 
-/** Bind referral code to current user (discount on future purchases). */
-export async function applyInfluencerCoupon(code) {
-  const { data, error } = await supabase.rpc('apply_influencer_coupon', {
+/** Buy-page: validate code (loading → ok/error). Does not credit wallet. */
+export async function validateInfluencerCoupon(code) {
+  const { data, error } = await supabase.rpc('validate_influencer_coupon', {
     p_code: String(code || '').trim(),
   });
   if (error) {
@@ -67,31 +95,7 @@ export async function applyInfluencerCoupon(code) {
     if (msg.includes('coupon_own_code')) throw new Error('coupon_own_code');
     wrapRpcError(error);
   }
-  return data;
-}
-
-export async function clearMyInfluencerCoupon() {
-  const { data, error } = await supabase.rpc('clear_my_influencer_coupon');
-  if (error) wrapRpcError(error);
-  return data;
-}
-
-export async function fetchMyInfluencerCoupon() {
-  const { data, error } = await supabase.rpc('get_my_influencer_coupon');
-  if (error) {
-    if (error?.message?.includes('function') && error?.message?.includes('does not exist')) {
-      return null;
-    }
-    console.warn('get_my_influencer_coupon', error.message);
-    return null;
-  }
-  if (!data || typeof data !== 'object') return null;
-  return {
-    id: data.id,
-    code: data.code,
-    discountPercent: Number(data.discountPercent ?? data.discount_percent),
-    note: data.note || null,
-  };
+  return mapCouponRow(data);
 }
 
 export function couponErrorMessage(code, t = {}) {
@@ -101,5 +105,5 @@ export function couponErrorMessage(code, t = {}) {
     coupon_expired: t.couponExpired,
     coupon_own_code: t.couponOwnCode,
   };
-  return map[code] || t.couponApplyFailed || t.couponRedeemFailed || code;
+  return map[code] || t.couponApplyFailed || code;
 }

@@ -92,6 +92,7 @@ export async function createOrderAtomic({
   playerUid = null,
   playerServer = null,
   idempotencyKey = null,
+  influencerCode = null,
   t = {},
 }) {
   const basePayload = {
@@ -103,7 +104,25 @@ export async function createOrderAtomic({
     p_player_server: playerServer || null,
   }
 
-  // Prefer idempotent RPC when available (scripts/cart-purchase-security-migration.sql)
+  const code = String(influencerCode || '').trim() || null
+
+  // Prefer full signature (idempotency + influencer code)
+  if (idempotencyKey || code) {
+    const withExtras = await supabase.rpc('create_order_atomic', {
+      ...basePayload,
+      p_idempotency_key: idempotencyKey || null,
+      p_influencer_code: code,
+    })
+    if (!withExtras.error) {
+      return assertRpcData(withExtras.data, withExtras.error, t)
+    }
+    const msg = withExtras.error?.message || ''
+    // Fall back without influencer code arg
+    if (!/could not find the function|p_influencer_code|function.*does not exist/i.test(msg)) {
+      return assertRpcData(withExtras.data, withExtras.error, t)
+    }
+  }
+
   if (idempotencyKey) {
     const withKey = await supabase.rpc('create_order_atomic', {
       ...basePayload,
@@ -113,7 +132,6 @@ export async function createOrderAtomic({
       return assertRpcData(withKey.data, withKey.error, t)
     }
     const msg = withKey.error?.message || ''
-    // Older DBs without the extra arg — fall through once
     if (!/could not find the function|p_idempotency_key|function.*does not exist/i.test(msg)) {
       return assertRpcData(withKey.data, withKey.error, t)
     }

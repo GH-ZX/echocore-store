@@ -39,6 +39,11 @@ import {
   gameShowsServerField,
   resolvePlayerServerForOrder,
 } from '../lib/gameServers';
+import {
+  couponErrorMessage,
+  validateInfluencerCoupon,
+} from '../lib/coupons';
+import { resolveCustomerUnitPrice } from '../lib/partnerPricing';
 
 export default function BuyView({
   t = {},
@@ -53,6 +58,7 @@ export default function BuyView({
   onNotify,
   onOrderPaid,
   loadingCatalog = false,
+  partnerTier = null,
 }) {
   const notifyError = (message) => onNotify?.(message, 'error');
   const notifySuccess = (message) => onNotify?.(message, 'success');
@@ -72,6 +78,11 @@ export default function BuyView({
   const [activeOrder, setActiveOrder] = useState(null);
 
   const [redemptionChoice, setRedemptionChoice] = useState('uid');
+  const [couponInput, setCouponInput] = useState('');
+  const [couponApplying, setCouponApplying] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponError, setCouponError] = useState('');
+  const [couponOkMsg, setCouponOkMsg] = useState('');
 
   const catalogLoading = loadingCatalog || (!offer && offers.length === 0);
   const isValidOffer = !!(offer && game);
@@ -84,9 +95,21 @@ export default function BuyView({
   const needsServerField = showRecipientFields && gameShowsServerField(game, topupMeta);
   const needsCharnameField = showRecipientFields && gameShowsCharnameField(game, topupMeta);
 
-  const price = offer ? parseFloat(offer.price) : 0;
+  const partnerMarkup = partnerTier?.markupPercent != null
+    ? Number(partnerTier.markupPercent)
+    : null;
+  const publicPrice = offer ? parseFloat(offer.price) : 0;
+  const price = offer
+    ? resolveCustomerUnitPrice(offer, {
+      partnerMarkupPercent: partnerMarkup,
+      influencerBuyerMarkupPercent: partnerMarkup == null && appliedCoupon
+        ? appliedCoupon.buyerMarkupPercent
+        : null,
+    })
+    : 0;
   const total = price.toFixed(2);
   const hasEnough = currentBalance >= price;
+  const showCouponField = isValidOffer && user?.role !== 'admin' && partnerMarkup == null;
   const goRecharge = () => navigate('/recharge', { state: { returnTo: location.pathname } });
 
   const paymentMethods = useMemo(
@@ -288,6 +311,8 @@ export default function BuyView({
     player_uid: showUidForm ? playerUid.trim() || null : null,
     player_server: resolvedPlayerServer,
     player_charname: resolvedPlayerCharname,
+    influencer_code: appliedCoupon?.code || null,
+    influencer_buyer_markup: appliedCoupon?.buyerMarkupPercent ?? null,
   };
 
   const isUidComplete = !showUidForm || playerUid.trim().length > 2;
@@ -543,8 +568,107 @@ export default function BuyView({
 
         <div className="flex justify-between items-baseline mb-6 p-4 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)]">
           <div className="text-sm text-[var(--text-muted)]">{t.total}</div>
-          <div className="text-4xl font-black text-[var(--accent)]">${total}</div>
+          <div className="text-end">
+            {appliedCoupon && publicPrice > price + 0.0001 ? (
+              <div className="text-sm line-through text-[var(--text-muted)] font-mono" dir="ltr">
+                ${publicPrice.toFixed(2)}
+              </div>
+            ) : null}
+            <div className="text-4xl font-black text-[var(--accent)]" dir="ltr">${total}</div>
+            {appliedCoupon ? (
+              <div className="text-[11px] text-emerald-300 mt-1">
+                {formatMessage(t.couponAppliedPriceHint, {
+                  code: appliedCoupon.code,
+                  markup: appliedCoupon.buyerMarkupPercent,
+                })}
+              </div>
+            ) : null}
+          </div>
         </div>
+
+        {showCouponField ? (
+          <div className="mb-6 rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)]/60 p-4 space-y-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-sec)]">
+              <Ticket className="w-4 h-4 text-[var(--accent)]" />
+              {t.couponBuyTitle}
+            </div>
+            <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">{t.couponBuyHelp}</p>
+            {appliedCoupon ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm">
+                <span className="text-emerald-100">
+                  {formatMessage(t.couponAppliedOk, {
+                    code: appliedCoupon.code,
+                    markup: appliedCoupon.buyerMarkupPercent,
+                  })}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-secondary text-[11px] py-1 px-2"
+                  onClick={() => {
+                    setAppliedCoupon(null);
+                    setCouponInput('');
+                    setCouponError('');
+                    setCouponOkMsg('');
+                  }}
+                >
+                  {t.couponClear}
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  className="profile-field-input text-sm flex-1 font-mono"
+                  placeholder={t.couponRedeemPlaceholder}
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                  dir="ltr"
+                  disabled={couponApplying}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      document.getElementById('buy-apply-coupon-btn')?.click();
+                    }
+                  }}
+                />
+                <button
+                  id="buy-apply-coupon-btn"
+                  type="button"
+                  disabled={couponApplying || !couponInput.trim()}
+                  onClick={async () => {
+                    setCouponError('');
+                    setCouponOkMsg('');
+                    setCouponApplying(true);
+                    try {
+                      const res = await validateInfluencerCoupon(couponInput.trim());
+                      setAppliedCoupon(res);
+                      setCouponOkMsg(
+                        formatMessage(t.couponApplySuccess, {
+                          code: res.code,
+                          pct: res.buyerMarkupPercent,
+                        }),
+                      );
+                    } catch (err) {
+                      setAppliedCoupon(null);
+                      setCouponError(couponErrorMessage(err?.message || 'coupon_invalid', t));
+                    } finally {
+                      setCouponApplying(false);
+                    }
+                  }}
+                  className="btn btn-secondary text-sm py-2 px-4 inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  {couponApplying ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  {couponApplying ? t.couponChecking : t.couponApplyBtn}
+                </button>
+              </div>
+            )}
+            {couponOkMsg && !appliedCoupon ? (
+              <p className="text-xs text-emerald-300">{couponOkMsg}</p>
+            ) : null}
+            {couponError ? (
+              <p className="text-xs text-red-300">{couponError}</p>
+            ) : null}
+          </div>
+        ) : null}
 
         {isVoucherOnly ? (
           <div className="mb-8 rounded-2xl border border-violet-500/25 bg-violet-500/10 p-5">

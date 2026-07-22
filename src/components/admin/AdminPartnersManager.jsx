@@ -56,7 +56,8 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
   const [creatingTier, setCreatingTier] = useState(false);
 
   const [couponCode, setCouponCode] = useState('');
-  const [couponDiscount, setCouponDiscount] = useState('3');
+  const [couponBuyerMarkup, setCouponBuyerMarkup] = useState('10');
+  const [couponInfMargin, setCouponInfMargin] = useState('3');
   const [couponNote, setCouponNote] = useState('');
   const [couponUserQuery, setCouponUserQuery] = useState('');
   const [couponUserResults, setCouponUserResults] = useState([]);
@@ -230,12 +231,14 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
     try {
       await adminCreateInfluencerCoupon({
         code: couponCode,
-        discountPercent: Number(couponDiscount),
+        buyerMarkupPercent: Number(couponBuyerMarkup),
+        influencerMarginPercent: Number(couponInfMargin),
         influencerUserId: couponInfluencer.id,
         note: couponNote,
       });
       setCouponCode('');
-      setCouponDiscount('3');
+      setCouponBuyerMarkup('10');
+      setCouponInfMargin('3');
       setCouponNote('');
       setCouponUserQuery('');
       setCouponUserResults([]);
@@ -250,9 +253,10 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
   };
 
   const toggleCoupon = async (c) => {
+    const active = c.isActive !== false && c.is_active !== false;
     try {
-      await adminSetInfluencerCouponActive(c.id, !c.is_active);
-      notifySuccess(c.is_active ? t.couponDeactivated : t.couponActivated);
+      await adminSetInfluencerCouponActive(c.id, !active);
+      notifySuccess(active ? t.couponDeactivated : t.couponActivated);
       await load();
     } catch (e) {
       notifyError(e.message || t.couponCreateFailed);
@@ -380,19 +384,7 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
               dir="ltr"
             />
           </Field>
-          <Field label={t.couponDiscountLabel} hint={t.couponDiscountHint}>
-            <input
-              className="profile-field-input text-sm w-full"
-              type="number"
-              min="0"
-              max="50"
-              step="0.1"
-              value={couponDiscount}
-              onChange={(e) => setCouponDiscount(e.target.value)}
-              dir="ltr"
-            />
-          </Field>
-          <Field label={t.couponNoteLabel} hint={t.couponNoteHint} className="sm:col-span-2">
+          <Field label={t.couponNoteLabel} hint={t.couponNoteHint}>
             <input
               className="profile-field-input text-sm w-full"
               value={couponNote}
@@ -400,7 +392,34 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
               placeholder={t.couponNotePlaceholder}
             />
           </Field>
+          <Field label={t.couponBuyerMarkupLabel} hint={t.couponBuyerMarkupHint}>
+            <input
+              className="profile-field-input text-sm w-full"
+              type="number"
+              min="0"
+              max="500"
+              step="0.1"
+              value={couponBuyerMarkup}
+              onChange={(e) => setCouponBuyerMarkup(e.target.value)}
+              dir="ltr"
+            />
+          </Field>
+          <Field label={t.couponInfluencerMarginLabel} hint={t.couponInfluencerMarginHint}>
+            <input
+              className="profile-field-input text-sm w-full"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              value={couponInfMargin}
+              onChange={(e) => setCouponInfMargin(e.target.value)}
+              dir="ltr"
+            />
+          </Field>
         </div>
+        <p className="text-[11px] text-[var(--text-muted)] leading-relaxed border border-[var(--border)] rounded-lg px-3 py-2">
+          {t.couponExampleHelp}
+        </p>
 
         <div className="space-y-2">
           <Field label={t.couponInfluencerLabel} hint={t.couponInfluencerHint}>
@@ -723,28 +742,33 @@ function TierRow({ tier, t, saving, deleting, onSave, onRemove }) {
 
 function CouponRow({ coupon, t, onToggle, onSaved }) {
   const [editing, setEditing] = useState(false);
-  const [discount, setDiscount] = useState(String(coupon.discount_percent ?? 3));
+  const buyerDefault = coupon.buyerMarkupPercent ?? coupon.buyer_markup_percent ?? 10;
+  const infDefault = coupon.influencerMarginPercent ?? coupon.influencer_margin_percent ?? 3;
+  const [buyerMarkup, setBuyerMarkup] = useState(String(buyerDefault));
+  const [infMargin, setInfMargin] = useState(String(infDefault));
   const [note, setNote] = useState(coupon.note || '');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setDiscount(String(coupon.discount_percent ?? 3));
+    setBuyerMarkup(String(coupon.buyerMarkupPercent ?? coupon.buyer_markup_percent ?? 10));
+    setInfMargin(String(coupon.influencerMarginPercent ?? coupon.influencer_margin_percent ?? 3));
     setNote(coupon.note || '');
     setEditing(false);
   }, [coupon]);
 
-  const influencerLabel = coupon.influencer_username
-    ? `@${coupon.influencer_username}`
-    : (coupon.influencer_name || coupon.influencer_user_id || '—');
+  const influencerLabel = coupon.influencerUsername || coupon.influencer_username
+    ? `@${coupon.influencerUsername || coupon.influencer_username}`
+    : (coupon.influencerName || coupon.influencer_name || coupon.influencerUserId || coupon.influencer_user_id || '—');
 
   if (!editing) {
     return (
-      <div className={`rounded-xl border border-[var(--border)] p-3 flex flex-wrap items-center justify-between gap-3 ${!coupon.is_active ? 'opacity-60' : ''}`}>
+      <div className={`rounded-xl border border-[var(--border)] p-3 flex flex-wrap items-center justify-between gap-3 ${(coupon.isActive !== false && coupon.is_active !== false) ? '' : 'opacity-60'}`}>
         <div className="min-w-0 space-y-0.5">
           <div className="font-mono font-bold text-sm" dir="ltr">{coupon.code}</div>
           <div className="text-xs text-[var(--text-sec)]">
             {formatMessage(t.couponRowSummary, {
-              pct: coupon.discount_percent,
+              buyer: coupon.buyerMarkupPercent ?? coupon.buyer_markup_percent,
+              margin: coupon.influencerMarginPercent ?? coupon.influencer_margin_percent,
               user: influencerLabel,
             })}
           </div>
@@ -752,7 +776,9 @@ function CouponRow({ coupon, t, onToggle, onSaved }) {
             <div className="text-[11px] text-[var(--text-muted)]">{coupon.note}</div>
           ) : null}
           <div className="text-[10px] text-[var(--text-muted)] font-mono" dir="ltr">
-            {formatMessage(t.couponOrdersCount, { count: coupon.redemption_count || 0 })}
+            {formatMessage(t.couponOrdersCount, {
+              count: coupon.redemptionCount ?? coupon.redemption_count ?? 0,
+            })}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -765,7 +791,7 @@ function CouponRow({ coupon, t, onToggle, onSaved }) {
             {t.edit}
           </button>
           <button type="button" onClick={onToggle} className="btn btn-secondary text-[11px] py-1.5 px-2">
-            {coupon.is_active ? t.couponDeactivate : t.couponActivate}
+            {(coupon.isActive !== false && coupon.is_active !== false) ? t.couponDeactivate : t.couponActivate}
           </button>
         </div>
       </div>
@@ -776,19 +802,31 @@ function CouponRow({ coupon, t, onToggle, onSaved }) {
     <div className="rounded-xl border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-3 space-y-3">
       <div className="font-mono font-bold text-sm" dir="ltr">{coupon.code}</div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <Field label={t.couponDiscountLabel} hint={t.couponDiscountHint}>
+        <Field label={t.couponBuyerMarkupLabel} hint={t.couponBuyerMarkupHint}>
           <input
             type="number"
             min="0"
-            max="50"
+            max="500"
             step="0.1"
             className="profile-field-input text-sm w-full"
-            value={discount}
-            onChange={(e) => setDiscount(e.target.value)}
+            value={buyerMarkup}
+            onChange={(e) => setBuyerMarkup(e.target.value)}
             dir="ltr"
           />
         </Field>
-        <Field label={t.couponNoteLabel}>
+        <Field label={t.couponInfluencerMarginLabel} hint={t.couponInfluencerMarginHint}>
+          <input
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            className="profile-field-input text-sm w-full"
+            value={infMargin}
+            onChange={(e) => setInfMargin(e.target.value)}
+            dir="ltr"
+          />
+        </Field>
+        <Field label={t.couponNoteLabel} className="sm:col-span-2">
           <input
             className="profile-field-input text-sm w-full"
             value={note}
@@ -804,7 +842,8 @@ function CouponRow({ coupon, t, onToggle, onSaved }) {
             setSaving(true);
             try {
               await onSaved({
-                discountPercent: Number(discount),
+                buyerMarkupPercent: Number(buyerMarkup),
+                influencerMarginPercent: Number(infMargin),
                 note,
               });
               setEditing(false);
@@ -821,7 +860,8 @@ function CouponRow({ coupon, t, onToggle, onSaved }) {
           type="button"
           disabled={saving}
           onClick={() => {
-            setDiscount(String(coupon.discount_percent ?? 3));
+            setBuyerMarkup(String(buyerDefault));
+            setInfMargin(String(infDefault));
             setNote(coupon.note || '');
             setEditing(false);
           }}

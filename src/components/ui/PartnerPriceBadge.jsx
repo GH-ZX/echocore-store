@@ -18,10 +18,12 @@ export default function PartnerPriceBadge({ offer, t = {}, size = 'sm' }) {
   const pad = size === 'lg' ? 'px-2 py-1' : 'px-1.5 py-0.5';
   const label = isPartner
     ? (t.partnerPriceBadge || 'Partner')
-    : formatMessage(t.influencerPriceBadge || 'Code −{pct}%', {
-      pct: offer._influencerDiscountPercent != null
-        ? String(offer._influencerDiscountPercent)
-        : '',
+    : formatMessage(t.influencerPriceBadge || 'Code cost+{pct}%', {
+      pct: offer._influencerBuyerMarkupPercent != null
+        ? String(offer._influencerBuyerMarkupPercent)
+        : (offer._influencerDiscountPercent != null
+          ? String(offer._influencerDiscountPercent)
+          : ''),
     });
 
   return (
