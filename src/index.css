@@ -1384,10 +1384,10 @@ html, body {
 .home-expandable-grid__slot--teaser .border-glow-card,
 .home-games-card-slot--teaser .home-game-card--teaser,
 .home-games-card-slot--teaser .games-card--teaser {
-  opacity: 0.38;
-  filter: saturate(0.55) brightness(0.68);
-  transform: scale(0.985);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 55%, transparent);
+  opacity: 0.42;
+  filter: saturate(0.65) brightness(0.78);
+  transform: scale(0.99);
+  box-shadow: none !important;
 }
 
 .home-expandable-grid__slot--teaser img,
@@ -1585,17 +1585,17 @@ html, body {
 .home-games-preview-overlay-fade {
   position: absolute;
   inset: 0;
-  /* Soft fade only — no heavy shadow / blur */
+  /* Very light fade — no blur, no shadow band */
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    color-mix(in srgb, var(--bg-primary) 28%, transparent) 42%,
-    color-mix(in srgb, var(--bg-primary) 72%, transparent) 78%,
-    color-mix(in srgb, var(--bg-primary) 92%, transparent) 100%
+    color-mix(in srgb, var(--bg-primary) 12%, transparent) 55%,
+    color-mix(in srgb, var(--bg-primary) 55%, transparent) 100%
   );
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  box-shadow: none;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  filter: none !important;
 }
 
 .home-expandable-grid__overlay-btn,
@@ -1603,10 +1603,11 @@ html, body {
   position: relative;
   z-index: 2;
   pointer-events: auto;
-  box-shadow: none;
+  box-shadow: none !important;
+  filter: none !important;
 }
 
-/* Plain “Show more →” control */
+/* Plain “Show more →” — no button chrome / shadow */
 .home-expandable-grid__more-link {
   position: relative;
   z-index: 2;
@@ -1615,22 +1616,28 @@ html, body {
   align-items: center;
   gap: 0.35rem;
   padding: 0.35rem 0.15rem;
-  border: none;
-  background: transparent;
-  box-shadow: none;
+  margin: 0;
+  border: none !important;
+  outline: none;
+  background: transparent !important;
+  box-shadow: none !important;
+  filter: none !important;
+  text-shadow: none !important;
   color: var(--accent);
   font-size: 0.875rem;
   font-weight: 700;
   letter-spacing: 0.01em;
   cursor: pointer;
   font-family: inherit;
-  transition: color 0.15s ease, opacity 0.15s ease, gap 0.15s ease;
+  transition: color 0.15s ease, gap 0.15s ease;
 }
 
-.home-expandable-grid__more-link:hover {
+.home-expandable-grid__more-link:hover,
+.home-expandable-grid__more-link:focus-visible {
   color: color-mix(in srgb, var(--accent) 88%, #fff);
   gap: 0.5rem;
-  opacity: 1;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .home-expandable-grid__more-arrow {
@@ -1650,21 +1657,52 @@ html, body {
   transform: scaleX(-1) translateX(2px);
 }
 
+.home-expandable-grid__more-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+  padding-bottom: 0.25rem;
+}
+
+/* Section header: View section far start (left in LTR), title centered */
+.home-section-header {
+  width: 100%;
+  padding-inline: 0.25rem;
+}
+
+.home-section-header__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  width: 100%;
+}
+
+.home-section-header__title {
+  margin: 0;
+  text-align: center;
+  justify-self: center;
+  grid-column: 2;
+}
+
 .home-section-view-all {
+  grid-column: 1;
+  justify-self: start;
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  margin-top: 0.65rem;
-  padding: 0;
-  border: none;
-  background: none;
-  box-shadow: none;
+  margin: 0;
+  padding: 0.2rem 0;
+  border: none !important;
+  background: none !important;
+  box-shadow: none !important;
   color: var(--text-secondary);
   font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
   transition: color 0.15s ease, gap 0.15s ease;
+  white-space: nowrap;
 }
 
 .home-section-view-all:hover {
@@ -1680,6 +1718,16 @@ html, body {
 
 [dir='rtl'] .home-section-view-all__arrow {
   transform: scaleX(-1);
+}
+
+.home-section-header__spacer {
+  grid-column: 3;
+  min-width: 0;
+}
+
+/* Paired home sections — same shell as games */
+.home-section.games-section {
+  margin-bottom: 0.75rem;
 }
 
 .games-section .games-section-title {

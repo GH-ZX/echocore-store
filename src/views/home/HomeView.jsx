@@ -209,29 +209,31 @@ export default function HomeView({
     };
   });
 
-  const renderSectionHeading = (section, style = 'sale') => {
+  const renderSectionHeading = (section) => {
     const title = getSectionLabel(section, lang);
-    const isGamesStyle = style === 'games';
-    const titleClass = isGamesStyle ? 'games-section-title' : 'sale-offers-title';
-    const dividerClass = isGamesStyle ? 'games-section-divider' : 'sale-offers-divider';
     const pagePath = getHomeSectionPagePath(section);
 
     return (
-      <div className={`text-center ${isGamesStyle ? 'mb-6' : 'mb-5'}`}>
-        <h2 className="section-heading mb-2">
-          <span className={`${titleClass} text-xl md:text-2xl font-bold`}>{title}</span>
-        </h2>
-        <div className={`${dividerClass} h-px w-10 mx-auto`} />
-        {pagePath ? (
-          <button
-            type="button"
-            className="home-section-view-all"
-            onClick={() => navigate(pagePath)}
-          >
-            <span>{t.viewSectionPage || t.viewAll || 'View all'}</span>
-            <ArrowRight className="home-section-view-all__arrow" aria-hidden="true" />
-          </button>
-        ) : null}
+      <div className="home-section-header mb-5 sm:mb-6">
+        <div className="home-section-header__row">
+          {pagePath ? (
+            <button
+              type="button"
+              className="home-section-view-all"
+              onClick={() => navigate(pagePath)}
+            >
+              <span>{t.viewSectionPage || t.viewAll || 'View section'}</span>
+              <ArrowRight className="home-section-view-all__arrow" aria-hidden="true" />
+            </button>
+          ) : (
+            <span className="home-section-header__spacer" aria-hidden="true" />
+          )}
+          <h2 className="section-heading home-section-header__title">
+            <span className="games-section-title text-xl md:text-2xl font-bold">{title}</span>
+          </h2>
+          <span className="home-section-header__spacer" aria-hidden="true" />
+        </div>
+        <div className="games-section-divider h-px w-10 mx-auto mt-2" />
       </div>
     );
   };
@@ -244,12 +246,12 @@ export default function HomeView({
     ) : null
   );
 
-  const renderSectionBlock = (section, style, subtitle, content) => {
+  const renderSectionBlock = (section, _style, subtitle, content) => {
     if (!content) return null;
-    const shellClass = style === 'games' ? 'games-section home-games-section' : 'sale-offers-section';
+    // All home content sections share the same shell (paired with games)
     return (
-      <div className={shellClass}>
-        {section && renderSectionHeading(section, style)}
+      <div className="home-section games-section home-games-section">
+        {section && renderSectionHeading(section)}
         {renderSectionSubtitle(subtitle)}
         {content}
       </div>
@@ -300,7 +302,7 @@ export default function HomeView({
 
   const renderOffersExpandable = (section, items, {
     isSale = false,
-    /** When set: show all `items` (e.g. 10) and “Show more →” navigates instead of expanding */
+    /** Navigate on Show more (suggested) instead of expanding in place */
     showMorePath = null,
   } = {}) => {
     const sectionTitle = getSectionLabel(section, lang);
@@ -312,60 +314,9 @@ export default function HomeView({
 
     if (visibleItems.length === 0 && !showAddCard && !loading) return null;
 
-    // Fixed slice + navigate (suggested): no expand-in-place
-    if (showMorePath) {
-      return (
-        <div className="home-expandable-grid">
-          {loading ? denseGridSkeleton() : (
-            <>
-              <div className={`home-expandable-grid__items ${HOME_GRID_DENSE}`}>
-                {visibleItems.map((offer) => {
-                  const game = getDisplayGameForOffer(offer, games);
-                  return (
-                    <div key={offer.id} className="home-expandable-grid__slot">
-                      <SaleOfferCard
-                        offer={offer}
-                        game={game}
-                        t={t}
-                        lang={lang}
-                        onSelectOffer={onSelectOffer}
-                        onBuyNow={onBuyNow}
-                        onAddToCart={isAdmin ? undefined : addToCart}
-                        onEditOffer={onEditOffer}
-                        isAdmin={isAdmin}
-                        className="w-full min-w-0"
-                      />
-                    </div>
-                  );
-                })}
-                {showAddCard ? (
-                  <AdminAddCard
-                    variant="offer"
-                    className="w-full min-w-0"
-                    ariaLabel={isSale ? t.addSaleOffer : t.addOffer}
-                    onClick={() => onAddOffer({ isSale })}
-                  />
-                ) : null}
-              </div>
-              <div className="flex justify-center mt-5">
-                <button
-                  type="button"
-                  className="home-expandable-grid__more-link"
-                  onClick={() => navigate(showMorePath)}
-                >
-                  <span>{t.showMorePlain || 'Show more'}</span>
-                  <ArrowRight className="home-expandable-grid__more-arrow w-4 h-4" aria-hidden="true" />
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      );
-    }
-
     return (
       <HomeExpandableGrid
-        sectionKey={`${section.id}-${visibleItems.length}`}
+        sectionKey={`${section.id}-${visibleItems.length}-${showMorePath || 'expand'}`}
         items={visibleItems}
         sectionTitle={sectionTitle}
         gridClassName={HOME_GRID_DENSE}
@@ -373,6 +324,9 @@ export default function HomeView({
         loading={loading}
         loadingSkeleton={denseGridSkeleton()}
         t={t}
+        disablePeek={!!showMorePath}
+        alwaysShowMore={!!showMorePath}
+        onMoreClick={showMorePath ? () => navigate(showMorePath) : null}
         footerSlot={showAddCard ? (
           <AdminAddCard
             variant="offer"
