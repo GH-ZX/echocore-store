@@ -50,11 +50,15 @@ export default function UserRoleBadges({
           className={`profile-badge profile-badge--super profile-badge--super-animated ${sizeClass}`}
           title={partnerLabel}
         >
+          <span className="profile-badge__fx profile-badge__fx--rainbow-fire" aria-hidden="true" />
           <Crown className="w-3 h-3 profile-badge__super-icon" aria-hidden="true" />
           <span className="profile-badge__super-label">
             {t.badgeSuper || partnerLabel || 'Super'}
           </span>
           <span className="profile-badge__super-shine" aria-hidden="true" />
+          <span className="profile-badge__embers" aria-hidden="true">
+            <i /><i /><i /><i /><i />
+          </span>
         </span>
       )}
       {isPartner && (
@@ -64,9 +68,13 @@ export default function UserRoleBadges({
         </span>
       )}
       {isInfluencer && !isAdmin && (
-        <span className={`profile-badge profile-badge--influencer ${sizeClass}`}>
-          <Megaphone className="w-3 h-3" aria-hidden="true" />
-          {t.badgeInfluencer}
+        <span className={`profile-badge profile-badge--influencer profile-badge--influencer-animated ${sizeClass}`}>
+          <span className="profile-badge__fx profile-badge__fx--pixel-fire" aria-hidden="true" />
+          <Megaphone className="w-3 h-3 profile-badge__influencer-icon" aria-hidden="true" />
+          <span className="profile-badge__influencer-label">{t.badgeInfluencer}</span>
+          <span className="profile-badge__pixel-embers" aria-hidden="true">
+            <i /><i /><i /><i /><i /><i />
+          </span>
         </span>
       )}
     </div>
