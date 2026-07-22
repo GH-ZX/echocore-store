@@ -7,7 +7,7 @@ import {
   isValidAdminTabSegment,
   resolveAdminTabFromPath,
 } from '../../lib/adminRoutes';
-import { Trash2, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Percent, PanelLeftClose, PanelLeftOpen, Users, ScrollText, Bell, Mail, TrendingUp, Cable, Handshake } from 'lucide-react';
+import { Trash2, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Percent, PanelLeftClose, PanelLeftOpen, Users, ScrollText, Bell, Mail, TrendingUp, Cable } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 import { centerActiveMobileTab, resetPageHorizontalScroll } from '../../lib/adminMobileNav';
