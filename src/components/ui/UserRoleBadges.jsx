@@ -1,9 +1,25 @@
+import { useEffect, useState } from 'react';
 import { Handshake, Crown, Megaphone, Sparkles } from 'lucide-react';
 import { formatPartnerTierLabel } from '../../lib/partners';
 
+/** Frame-driven pixel animation — always moves (not pure CSS). */
+function usePixelFrame(frames = 6, ms = 110) {
+  const [frame, setFrame] = useState(0);
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return undefined;
+    }
+    const id = window.setInterval(() => {
+      setFrame((f) => (f + 1) % frames);
+    }, ms);
+    return () => window.clearInterval(id);
+  }, [frames, ms]);
+  return frame;
+}
+
 /**
- * Status badges: verified, partner/reseller, super (animated), influencer.
- * size: 'sm' | 'md'
+ * Status badges: verified, partner/reseller, super (pixel fire-rainbow), influencer (pixel fire).
  */
 export default function UserRoleBadges({
   t = {},
@@ -16,6 +32,7 @@ export default function UserRoleBadges({
   className = '',
   showPlayer = false,
 }) {
+  const frame = usePixelFrame(6, 100);
   const slug = String(partnerTier?.slug || '').toLowerCase();
   const isSuper = !!partnerTier && (slug === 'super' || slug.includes('super'));
   const isPartner = !!partnerTier && !isSuper;
@@ -23,57 +40,78 @@ export default function UserRoleBadges({
     ? (formatPartnerTierLabel(partnerTier, lang) || t.badgeReseller || t.badgePartner || 'Partner')
     : '';
 
-  const sizeClass = size === 'sm' ? 'profile-badge--sm' : '';
+  const sizeClass = size === 'sm' ? 'pixel-badge--sm' : '';
 
   return (
     <div className={`user-role-badges ${className}`.trim()}>
       {showPlayer && !isAdmin && (
-        <span className={`profile-badge profile-badge--player ${sizeClass}`}>
+        <span className={`profile-badge profile-badge--player ${size === 'sm' ? 'profile-badge--sm' : ''}`}>
           <span className="profile-badge__icon" aria-hidden="true">🎮</span>
           {t.profileRolePlayer}
         </span>
       )}
       {isAdmin && (
-        <span className={`profile-badge profile-badge--admin ${sizeClass}`}>
+        <span className={`profile-badge profile-badge--admin ${size === 'sm' ? 'profile-badge--sm' : ''}`}>
           <span className="profile-badge__icon" aria-hidden="true">🛡️</span>
           {t.profileRoleAdmin}
         </span>
       )}
       {verified && !isAdmin && (
-        <span className={`profile-badge profile-badge--verified ${sizeClass}`}>
+        <span className={`profile-badge profile-badge--verified ${size === 'sm' ? 'profile-badge--sm' : ''}`}>
           <Sparkles className="w-3 h-3" aria-hidden="true" />
           {t.verifiedGamer}
         </span>
       )}
       {isSuper && (
         <span
-          className={`profile-badge profile-badge--super profile-badge--super-animated ${sizeClass}`}
+          className={`pixel-badge pixel-badge--super pixel-badge--f${frame} ${sizeClass}`}
           title={partnerLabel}
+          data-frame={frame}
         >
-          <span className="profile-badge__fx profile-badge__fx--rainbow-fire" aria-hidden="true" />
-          <Crown className="w-3 h-3 profile-badge__super-icon" aria-hidden="true" />
-          <span className="profile-badge__super-label">
-            {t.badgeSuper || partnerLabel || 'Super'}
+          <span className="pixel-badge__fire" aria-hidden="true">
+            <span className="pixel-badge__col" />
+            <span className="pixel-badge__col" />
+            <span className="pixel-badge__col" />
+            <span className="pixel-badge__col" />
+            <span className="pixel-badge__col" />
+            <span className="pixel-badge__col" />
+            <span className="pixel-badge__col" />
+            <span className="pixel-badge__col" />
           </span>
-          <span className="profile-badge__super-shine" aria-hidden="true" />
-          <span className="profile-badge__embers" aria-hidden="true">
-            <i /><i /><i /><i /><i />
+          <span className="pixel-badge__content">
+            <Crown className="pixel-badge__icon" aria-hidden="true" strokeWidth={2.5} />
+            <span className="pixel-badge__text pixel-badge__text--super">
+              {t.badgeSuperHot || t.badgeSuper || 'SUPER'}
+            </span>
           </span>
         </span>
       )}
       {isPartner && (
-        <span className={`profile-badge profile-badge--reseller ${sizeClass}`} title={partnerLabel}>
+        <span className={`profile-badge profile-badge--reseller ${size === 'sm' ? 'profile-badge--sm' : ''}`} title={partnerLabel}>
           <Handshake className="w-3 h-3" aria-hidden="true" />
           {partnerLabel || t.badgeReseller || t.badgePartner}
         </span>
       )}
       {isInfluencer && !isAdmin && (
-        <span className={`profile-badge profile-badge--influencer profile-badge--influencer-animated ${sizeClass}`}>
-          <span className="profile-badge__fx profile-badge__fx--pixel-fire" aria-hidden="true" />
-          <Megaphone className="w-3 h-3 profile-badge__influencer-icon" aria-hidden="true" />
-          <span className="profile-badge__influencer-label">{t.badgeInfluencer}</span>
-          <span className="profile-badge__pixel-embers" aria-hidden="true">
-            <i /><i /><i /><i /><i /><i />
+        <span
+          className={`pixel-badge pixel-badge--influencer pixel-badge--f${frame} ${sizeClass}`}
+          data-frame={frame}
+        >
+          <span className="pixel-badge__fire pixel-badge__fire--inf" aria-hidden="true">
+            <span className="pixel-badge__col" />
+            <span className="pixel-badge__col" />
+            <span className="pixel-badge__col" />
+            <span className="pixel-badge__col" />
+            <span className="pixel-badge__col" />
+            <span className="pixel-badge__col" />
+            <span className="pixel-badge__col" />
+            <span className="pixel-badge__col" />
+          </span>
+          <span className="pixel-badge__content">
+            <Megaphone className="pixel-badge__icon" aria-hidden="true" strokeWidth={2.5} />
+            <span className="pixel-badge__text pixel-badge__text--influencer">
+              {t.badgeInfluencer}
+            </span>
           </span>
         </span>
       )}
