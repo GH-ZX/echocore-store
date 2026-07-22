@@ -1,5 +1,8 @@
 import { getMaxCartLines } from './purchaseLock';
 
+const CART_STORAGE_KEY = 'echocore-cart';
+const CART_STORAGE_VERSION = 1;
+
 const CART_SNAPSHOT_FIELDS = [
   'id',
   'game_id',
@@ -39,10 +42,62 @@ export function pickCartSnapshot(offer, existingLineId) {
   return snapshot;
 }
 
-/** Reconcile cart line items with current offer prices from the catalog. */
+/**
+ * Load cart from localStorage.
+ * Cart is browser-local (not DB) so it survives refresh on the same device.
+ */
+export function loadCartFromStorage() {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(CART_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    // Support legacy bare array and versioned envelope
+    const list = Array.isArray(parsed)
+      ? parsed
+      : (Array.isArray(parsed?.items) ? parsed.items : []);
+    return list
+      .filter((item) => item && item.id != null)
+      .map((item) => ({
+        ...item,
+        _cartLineId: item._cartLineId || createCartLineId(),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/** Persist cart. Never write until after first hydrate (caller responsibility). */
+export function saveCartToStorage(cart = []) {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(
+      CART_STORAGE_KEY,
+      JSON.stringify({
+        v: CART_STORAGE_VERSION,
+        items: Array.isArray(cart) ? cart : [],
+        savedAt: new Date().toISOString(),
+      }),
+    );
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+/**
+ * Reconcile cart with catalog.
+ * - Missing from catalog: keep snapshot (avoid wiping cart while catalog is partial/loading)
+ * - Found + active=false: remove
+ * - Found + active: refresh price/name snapshot
+ */
 export function syncCartWithOffers(cart, offers = []) {
   if (!Array.isArray(cart) || cart.length === 0) {
     return { items: [], removedCount: 0, priceUpdated: false };
+  }
+
+  // Catalog not ready — do not purge lines
+  if (!Array.isArray(offers) || offers.length === 0) {
+    return { items: cart, removedCount: 0, priceUpdated: false };
   }
 
   const offerMap = new Map(offers.map((offer) => [String(offer.id), offer]));
@@ -52,7 +107,11 @@ export function syncCartWithOffers(cart, offers = []) {
   const items = cart
     .map((item) => {
       const fresh = offerMap.get(String(item.id));
-      if (!fresh || fresh.active === false) {
+      if (!fresh) {
+        // Keep last known snapshot so refresh does not empty the cart
+        return item;
+      }
+      if (fresh.active === false) {
         removedCount += 1;
         return null;
       }

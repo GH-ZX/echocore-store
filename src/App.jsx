@@ -43,6 +43,8 @@ import {
   cartsAreEquivalent,
   getCartLineKey,
   isCartFull,
+  loadCartFromStorage,
+  saveCartToStorage,
 } from './lib/cartUtils';
 import ScrollToTop from './components/routing/ScrollToTop';
 import AppRoutes from './components/routing/AppRoutes';
@@ -132,7 +134,8 @@ export default function App() {
   const [loadingGames, setLoadingGames] = useState(true);
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
-  const [cart, setCart] = useState([]);
+  // Hydrate cart immediately so the first save effect cannot wipe localStorage with []
+  const [cart, setCart] = useState(() => loadCartFromStorage());
   const [cartPriceUpdated, setCartPriceUpdated] = useState(false);
   const [paymentConfig, setPaymentConfig] = useState({
     shamcash: true,
@@ -1700,18 +1703,9 @@ export default function App() {
     return () => clearInterval(intervalId);
   }, []);
 
-  // Persist cart (simple universal localStorage)
+  // Persist cart in localStorage (browser, not Supabase — survives refresh on this device)
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('echocore-cart');
-      if (saved) setCart(JSON.parse(saved));
-    } catch {
-      // corrupted localStorage — start with empty cart
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('echocore-cart', JSON.stringify(cart));
+    saveCartToStorage(cart);
   }, [cart]);
 
   // Load orders when the admin dashboard becomes visible (as admin)
@@ -1788,9 +1782,9 @@ export default function App() {
     };
   }, [user?.id, user?.role, refreshNotifications, navigate, lang, showToast, dismissToast]);
 
-  // Keep cart prices in sync when offers load or admin prices change
+  // Keep cart prices in sync when offers load — never purge unknown ids while catalog is loading
   useEffect(() => {
-    if (!offers.length || cart.length === 0) return;
+    if (loadingGames || !offers.length || cart.length === 0) return;
 
     const { items, removedCount, priceUpdated } = syncCartWithOffers(cart, offers);
     if (!cartsAreEquivalent(cart, items)) {
@@ -1800,7 +1794,7 @@ export default function App() {
       }
     }
     if (priceUpdated) setCartPriceUpdated(true);
-  }, [offers, cart, lang, t.cartItemsRemoved, showNotification]);
+  }, [offers, cart, loadingGames, lang, t.cartItemsRemoved, showNotification]);
 
   const addToCart = (product, e = null) => {
     if (!user) {
