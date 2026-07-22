@@ -353,6 +353,7 @@ export function getHomeSectionPagePath(section) {
     case 'sale_offers':
       return '/sale';
     case 'suggested_offers':
+      return '/suggested';
     case 'offer_picks':
       return '/sale';
     default:

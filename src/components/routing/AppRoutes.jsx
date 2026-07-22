@@ -18,6 +18,7 @@ const LoginView = lazy(() => import('../../views/auth/LoginView'));
 const CartView = lazy(() => import('../../views/CartView'));
 const CheckoutView = lazy(() => import('../../views/CheckoutView'));
 const SaleOffersView = lazy(() => import('../../views/SaleOffersView'));
+const SuggestedOffersView = lazy(() => import('../../views/SuggestedOffersView'));
 const FAQView = lazy(() => import('../../views/FAQView'));
 const HowItWorksView = lazy(() => import('../../views/HowItWorksView'));
 const ContactView = lazy(() => import('../../views/ContactView'));
@@ -244,6 +245,25 @@ export default function AppRoutes({
               isAdmin={isAdmin}
               addToCart={addToCart}
             />
+          )}
+        />
+
+        <Route
+          path="/suggested"
+          element={(
+            <Suspense fallback={<PageLoader t={t} />}>
+              <SuggestedOffersView
+                games={games}
+                offers={offers}
+                t={t}
+                lang={lang}
+                onSelectOffer={openOffer}
+                onBuyNow={openBuyOffer}
+                onEditOffer={isAdmin ? setAdminEditOffer : undefined}
+                isAdmin={isAdmin}
+                addToCart={addToCart}
+              />
+            </Suspense>
           )}
         />
 

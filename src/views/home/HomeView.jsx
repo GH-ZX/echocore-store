@@ -298,7 +298,11 @@ export default function HomeView({
     );
   };
 
-  const renderOffersExpandable = (section, items, { isSale = false } = {}) => {
+  const renderOffersExpandable = (section, items, {
+    isSale = false,
+    /** When set: show all `items` (e.g. 10) and “Show more →” navigates instead of expanding */
+    showMorePath = null,
+  } = {}) => {
     const sectionTitle = getSectionLabel(section, lang);
     const visibleItems = items.filter((offer) => {
       if (!offerBelongsToStorefront(offer, games)) return false;
@@ -307,6 +311,57 @@ export default function HomeView({
     const showAddCard = isAdmin && onAddOffer;
 
     if (visibleItems.length === 0 && !showAddCard && !loading) return null;
+
+    // Fixed slice + navigate (suggested): no expand-in-place
+    if (showMorePath) {
+      return (
+        <div className="home-expandable-grid">
+          {loading ? denseGridSkeleton() : (
+            <>
+              <div className={`home-expandable-grid__items ${HOME_GRID_DENSE}`}>
+                {visibleItems.map((offer) => {
+                  const game = getDisplayGameForOffer(offer, games);
+                  return (
+                    <div key={offer.id} className="home-expandable-grid__slot">
+                      <SaleOfferCard
+                        offer={offer}
+                        game={game}
+                        t={t}
+                        lang={lang}
+                        onSelectOffer={onSelectOffer}
+                        onBuyNow={onBuyNow}
+                        onAddToCart={isAdmin ? undefined : addToCart}
+                        onEditOffer={onEditOffer}
+                        isAdmin={isAdmin}
+                        className="w-full min-w-0"
+                      />
+                    </div>
+                  );
+                })}
+                {showAddCard ? (
+                  <AdminAddCard
+                    variant="offer"
+                    className="w-full min-w-0"
+                    ariaLabel={isSale ? t.addSaleOffer : t.addOffer}
+                    onClick={() => onAddOffer({ isSale })}
+                  />
+                ) : null}
+              </div>
+              <div className="flex justify-center mt-5">
+                <button
+                  type="button"
+                  className="home-expandable-grid__more-link"
+                  onClick={() => navigate(showMorePath)}
+                >
+                  <span>{t.showMorePlain || 'Show more'}</span>
+                  <ArrowRight className="home-expandable-grid__more-arrow w-4 h-4" aria-hidden="true" />
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      );
+    }
 
     return (
       <HomeExpandableGrid
@@ -400,12 +455,16 @@ export default function HomeView({
       }
 
       case 'suggested_offers': {
-        const pickedItems = suggestedOffersMap.get(section.id) || [];
+        // Home: always 10 cards; Show more → /suggested (50 most bought)
+        const pickedItems = (suggestedOffersMap.get(section.id) || []).slice(0, 10);
         return renderSectionBlock(
           section,
           'sale',
           null,
-          renderOffersExpandable(section, pickedItems, { isSale: false }),
+          renderOffersExpandable(section, pickedItems, {
+            isSale: false,
+            showMorePath: '/suggested',
+          }),
         );
       }
 
