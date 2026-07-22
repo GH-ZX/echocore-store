@@ -67,7 +67,8 @@ function buildAdminNavItems(t) {
     { id: 'theme', label: t.themeTab, shortLabel: t.tabThemeShort, icon: Palette },
     { id: 'reviews', label: t.reviewsTab, shortLabel: t.tabReviewsShort, icon: MessageSquare },
     { id: 'users', label: t.usersTab, shortLabel: t.tabUsersShort, icon: Users },
-    { id: 'partners', label: t.partnersTab, shortLabel: t.tabPartnersShort, icon: Handshake },
+    // Partners tab hidden in UI until public launch (~1 month). Route + manager stay wired.
+    // { id: 'partners', label: t.partnersTab, shortLabel: t.tabPartnersShort, icon: Handshake },
     { id: 'logs', label: t.logsTab, shortLabel: t.tabLogsShort, icon: ScrollText },
   ];
 }
