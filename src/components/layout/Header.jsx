@@ -496,7 +496,7 @@ export default function Header({
           {user.name}
         </span>
         {!isAdmin && (partnerTier || isInfluencer) ? (
-          <span className="hidden xl:inline-flex max-w-[11rem]">
+          <span className="hidden md:inline-flex max-w-[11rem]">
             <UserRoleBadges
               t={t}
               lang={lang}
@@ -594,13 +594,24 @@ export default function Header({
           {desktopToolbar}
         </div>
 
-        {/* Mobile utilities */}
+        {/* Mobile utilities — cart lives on the burger button */}
         <div className="flex md:hidden items-center gap-1.5 flex-shrink-0 min-w-0">
           {isMobile && notificationBell}
+          {!isAdmin && user && (partnerTier || isInfluencer) ? (
+            <span className="header-mobile-role-badges max-w-[7.5rem] overflow-hidden">
+              <UserRoleBadges
+                t={t}
+                lang={lang}
+                partnerTier={partnerTier}
+                isInfluencer={isInfluencer}
+                verified={false}
+                size="sm"
+              />
+            </span>
+          ) : null}
           <div ref={mobileSearchRef} className="header-mobile-search-slot">
             {renderSearchControl('mobile')}
           </div>
-          {cartButton()}
           <button
             type="button"
             onClick={() => {
@@ -609,12 +620,21 @@ export default function Header({
                 return !prev;
               });
             }}
-            className={iconBtn(isMenuOpen ? 'header-btn--accent' : '')}
-            aria-label={isMenuOpen ? t.closeMenu : t.openMenu}
+            className={`${iconBtn(isMenuOpen ? 'header-btn--accent' : '')} header-burger-cart relative`}
+            aria-label={
+              cartLength > 0
+                ? `${isMenuOpen ? t.closeMenu : t.openMenu} · ${t.cart} (${cartLength})`
+                : (isMenuOpen ? t.closeMenu : t.openMenu)
+            }
             aria-expanded={isMenuOpen}
             aria-controls="mobile-nav-drawer"
           >
             {isMenuOpen ? <X strokeWidth={2} /> : <Menu strokeWidth={2} />}
+            {cartLength > 0 && (
+              <span className="header-cart-badge header-cart-badge--burger" aria-hidden="true">
+                {cartLength > 99 ? '99+' : cartLength}
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -647,6 +667,23 @@ export default function Header({
                 dir={lang === 'ar' ? 'rtl' : 'ltr'}
               >
                 <div className="header-mobile-drawer-inner">
+                  {/* Cart — primary action from burger on mobile */}
+                  <button
+                    type="button"
+                    onClick={() => handleNav('/cart')}
+                    className="header-mobile-action header-mobile-action--cart"
+                  >
+                    <ShoppingCart className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
+                    <span>{t.cart}</span>
+                    {cartLength > 0 ? (
+                      <span className="header-mobile-cart-count" dir="ltr">{cartLength}</span>
+                    ) : (
+                      <span className="header-mobile-action-meta" dir="ltr">0</span>
+                    )}
+                  </button>
+
+                  <div className="header-mobile-divider" />
+
                   <nav aria-label={t.mainNavigation}>
                     <MobileNavLinks
                       t={t}
@@ -731,6 +768,18 @@ export default function Header({
                           <div className="min-w-0 flex-1 text-left">
                             <div className="text-sm font-bold text-[var(--text-primary)] truncate">{user.name}</div>
                             <div className="text-[11px] text-[var(--text-muted)] truncate">{user.email}</div>
+                            {!isAdmin && (partnerTier || isInfluencer || user?.verified_at) ? (
+                              <div className="mt-1.5">
+                                <UserRoleBadges
+                                  t={t}
+                                  lang={lang}
+                                  partnerTier={partnerTier}
+                                  isInfluencer={isInfluencer}
+                                  verified={!!user?.verified_at}
+                                  size="sm"
+                                />
+                              </div>
+                            ) : null}
                           </div>
                           <ChevronRight className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0" strokeWidth={2} />
                         </button>

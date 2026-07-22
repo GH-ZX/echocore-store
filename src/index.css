@@ -4784,6 +4784,53 @@ html, body {
     0 2px 8px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
+.header-cart-badge--burger {
+  top: -0.15rem;
+  right: -0.15rem;
+  min-width: 1rem;
+  height: 1rem;
+  font-size: 0.5625rem;
+}
+
+.header-mobile-role-badges {
+  display: flex;
+  align-items: center;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.header-mobile-role-badges .user-role-badges {
+  flex-wrap: nowrap;
+}
+
+.header-mobile-action--cart {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-elevated));
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.header-mobile-cart-count {
+  margin-inline-start: auto;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding-inline: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: var(--accent);
+  color: #040812;
+  font-size: 0.7rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+[dir='rtl'] .header-mobile-cart-count {
+  margin-inline-start: 0;
+  margin-inline-end: auto;
+}
+
 /* Profile / page action chips — equal proportional size */
 .action-chip {
   display: inline-flex;
