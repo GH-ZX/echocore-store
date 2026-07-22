@@ -4792,17 +4792,6 @@ html, body {
   font-size: 0.5625rem;
 }
 
-.header-mobile-role-badges {
-  display: flex;
-  align-items: center;
-  flex-shrink: 1;
-  min-width: 0;
-}
-
-.header-mobile-role-badges .user-role-badges {
-  flex-wrap: nowrap;
-}
-
 .header-mobile-action--cart {
   border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
   background: color-mix(in srgb, var(--accent) 8%, var(--bg-elevated));

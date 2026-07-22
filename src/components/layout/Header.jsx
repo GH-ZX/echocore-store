@@ -597,18 +597,6 @@ export default function Header({
         {/* Mobile utilities — cart lives on the burger button */}
         <div className="flex md:hidden items-center gap-1.5 flex-shrink-0 min-w-0">
           {isMobile && notificationBell}
-          {!isAdmin && user && (partnerTier || isInfluencer) ? (
-            <span className="header-mobile-role-badges max-w-[7.5rem] overflow-hidden">
-              <UserRoleBadges
-                t={t}
-                lang={lang}
-                partnerTier={partnerTier}
-                isInfluencer={isInfluencer}
-                verified={false}
-                size="sm"
-              />
-            </span>
-          ) : null}
           <div ref={mobileSearchRef} className="header-mobile-search-slot">
             {renderSearchControl('mobile')}
           </div>
