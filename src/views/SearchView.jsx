@@ -58,6 +58,7 @@ export default function SearchView({
   onSelectGame,
   onSelectOffer,
   onBuyNow,
+  addToCart,
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = (searchParams.get('q') || '').trim();
@@ -305,6 +306,7 @@ export default function SearchView({
                       lang={lang}
                       onSelectOffer={onSelectOffer}
                       onBuyNow={onBuyNow}
+                      onAddToCart={addToCart}
                       className="w-full min-w-0"
                     />
                   </motion.div>

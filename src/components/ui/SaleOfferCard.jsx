@@ -1,4 +1,5 @@
 import React from 'react';
+import { ShoppingCart } from 'lucide-react';
 import AdminEditButton from '../admin/AdminEditButton';
 import AdminOfferCostBadge from '../admin/AdminOfferCostBadge';
 import BorderGlow from './BorderGlow';
@@ -18,6 +19,7 @@ export default function SaleOfferCard({
   lang = 'en',
   onSelectOffer,
   onBuyNow,
+  onAddToCart,
   onEditOffer,
   isAdmin = false,
   className = '',
@@ -114,7 +116,7 @@ export default function SaleOfferCard({
           {isAdmin && <AdminOfferCostBadge offer={offer} t={t} />}
         </div>
 
-        <div className="flex gap-2 pt-2">
+        <div className="flex gap-1.5 pt-2">
           <button
             type="button"
             onClick={(e) => {
@@ -125,6 +127,20 @@ export default function SaleOfferCard({
           >
             {t.details}
           </button>
+          {onAddToCart && !isAdmin && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddToCart(offer, e);
+              }}
+              className="btn btn-secondary p-2 shrink-0 inline-flex items-center justify-center"
+              title={t.addToCart}
+              aria-label={t.addToCart}
+            >
+              <ShoppingCart className="w-3.5 h-3.5" />
+            </button>
+          )}
           <button
             type="button"
             onClick={(e) => {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { FileText, Globe, List, Loader2, Package, Zap } from 'lucide-react';
+import { FileText, Globe, List, Loader2, Package, ShoppingCart, Zap } from 'lucide-react';
 import AdminEditButton from '../components/admin/AdminEditButton';
 import AdminGameEditModal from '../components/admin/AdminGameEditModal';
 import AdminOfferEditModal from '../components/admin/AdminOfferEditModal';
@@ -211,6 +211,17 @@ export default function OfferDetail({
               )}
               {isAdmin && <AdminOfferCostBadge offer={offer} t={t} className="mt-0.5" />}
             </div>
+            {!isAdmin && addToCart && (
+              <button
+                type="button"
+                onClick={(e) => addToCart(offer, e)}
+                className="btn btn-secondary p-3 shrink-0 touch-manipulation inline-flex items-center justify-center"
+                title={t.addToCart}
+                aria-label={t.addToCart}
+              >
+                <ShoppingCart className="w-5 h-5" />
+              </button>
+            )}
             <button
               type="button"
               onClick={() => onBuyNow?.(offer)}

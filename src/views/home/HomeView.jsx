@@ -92,7 +92,7 @@ export default function HomeView({
   games = [],
   offers = [],
   loading = false,
-  addToCart: _addToCart,
+  addToCart,
   onSelectGame,
   onSelectOffer,
   onEditOffer,
@@ -315,6 +315,7 @@ export default function HomeView({
               lang={lang}
               onSelectOffer={isTeaser ? undefined : onSelectOffer}
               onBuyNow={isTeaser ? undefined : onBuyNow}
+              onAddToCart={isTeaser || isAdmin ? undefined : addToCart}
               onEditOffer={isTeaser ? undefined : onEditOffer}
               isAdmin={isAdmin && !isTeaser}
               className={`w-full min-w-0${isTeaser ? ' storefront-card--teaser pointer-events-none' : ''}`}

@@ -221,6 +221,7 @@ export default function AppRoutes({
               onSelectGame={openGame}
               onSelectOffer={openOffer}
               onBuyNow={openBuyOffer}
+              addToCart={addToCart}
             />
           )}
         />

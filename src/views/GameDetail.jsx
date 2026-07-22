@@ -39,6 +39,7 @@ export default function GameDetail({
   loadingGames = false,
   onSelectOffer,
   onBuyNow,
+  addToCart,
   onNotify,
 }) {
   const { slug } = useParams();
@@ -234,10 +235,11 @@ export default function GameDetail({
                   isAdmin={isAdmin}
                   onSelect={onSelectOffer}
                   onBuyNow={onBuyNow}
-                onGift={isAdmin ? (giftOffer) => navigate(getAdminGiftPath({
-                  offerId: giftOffer.id,
-                  returnTo: `/game/${slug}`,
-                })) : undefined}
+                  onAddToCart={!isAdmin ? addToCart : undefined}
+                  onGift={isAdmin ? (giftOffer) => navigate(getAdminGiftPath({
+                    offerId: giftOffer.id,
+                    returnTo: `/game/${slug}`,
+                  })) : undefined}
                   onEdit={setEditingOffer}
                   onPricingSaved={onPricingSaved}
                   onNotify={onNotify}

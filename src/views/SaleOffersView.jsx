@@ -10,9 +10,12 @@ export default function SaleOffersView({
   lang = 'en',
   onSelectOffer,
   onBuyNow,
+  onAddToCart,
+  addToCart,
   onEditOffer,
   isAdmin = false,
 }) {
+  const handleAddToCart = onAddToCart || addToCart;
   const saleOffers = getSaleOffers(offers);
 
   return (
@@ -53,6 +56,7 @@ export default function SaleOffersView({
                 lang={lang}
                 onSelectOffer={onSelectOffer}
                 onBuyNow={onBuyNow}
+                onAddToCart={handleAddToCart}
                 onEditOffer={onEditOffer}
                 isAdmin={isAdmin}
               />

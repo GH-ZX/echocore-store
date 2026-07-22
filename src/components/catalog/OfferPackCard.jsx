@@ -1,4 +1,4 @@
-import { Gift } from 'lucide-react';
+import { Gift, ShoppingCart } from 'lucide-react';
 import AdminEditButton from '../admin/AdminEditButton';
 import AdminOfferCostBadge from '../admin/AdminOfferCostBadge';
 import AdminInlinePriceEdit from '../admin/AdminInlinePriceEdit';
@@ -21,6 +21,7 @@ export default function OfferPackCard({
   isAdmin = false,
   onSelect,
   onBuyNow,
+  onAddToCart,
   onGift,
   onEdit,
   onPricingSaved,
@@ -121,16 +122,32 @@ export default function OfferPackCard({
               {t.giftOffer}
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onBuyNow?.(offer);
-              }}
-              className="btn btn-primary text-xs px-3 py-2 min-h-[40px] shrink-0"
-            >
-              {t.buyNow || 'Buy'}
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {onAddToCart && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddToCart(offer, e);
+                  }}
+                  className="btn btn-secondary p-2 min-h-[40px] min-w-[40px] inline-flex items-center justify-center"
+                  title={t.addToCart}
+                  aria-label={t.addToCart}
+                >
+                  <ShoppingCart className="w-4 h-4" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onBuyNow?.(offer);
+                }}
+                className="btn btn-primary text-xs px-3 py-2 min-h-[40px]"
+              >
+                {t.buyNow || 'Buy'}
+              </button>
+            </div>
           )}
         </div>
       </div>
