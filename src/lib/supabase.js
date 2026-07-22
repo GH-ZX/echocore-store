@@ -83,6 +83,7 @@ export const resolveUserData = async (authUser, { createIfMissing = false } = {}
     default_player_uid: profile.default_player_uid || '',
     gender: profile.gender || null,
     date_of_birth: profile.date_of_birth || null,
+    verified_at: profile.verified_at || null,
     game_player_uids: profile.game_player_uids && typeof profile.game_player_uids === 'object'
       ? profile.game_player_uids
       : {},

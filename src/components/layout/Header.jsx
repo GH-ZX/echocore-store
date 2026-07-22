@@ -17,6 +17,7 @@ import EchoLogo from '../ui/EchoLogo';
 import SiteNav, { MobileNavLinks } from './SiteNav';
 import NotificationBell from './NotificationBell';
 import ProfileAvatar from '../profile/ProfileAvatar';
+import UserRoleBadges from '../ui/UserRoleBadges';
 import { useHeaderDropdownPosition } from '../../hooks/useHeaderDropdownPosition';
 import { getSypPerUsd } from '../../lib/rechargeCurrency';
 import { getAdminPaymentsPath } from '../../lib/adminRoutes';
@@ -44,6 +45,8 @@ export default function Header({
   lang,
   onLangToggle,
   user,
+  partnerTier = null,
+  isInfluencer = false,
   cartLength,
   onLogout,
   navigate,
@@ -79,6 +82,10 @@ export default function Header({
   const profilePanelRef = useRef(null);
   const menuRef = useRef(null);
   const isAdmin = user?.role === 'admin';
+  const partnerSlug = String(partnerTier?.slug || '').toLowerCase();
+  const isSuper = !!partnerTier && (partnerSlug === 'super' || partnerSlug.includes('super'));
+  const isReseller = !!partnerTier && !isSuper;
+  const showRoleDots = !isAdmin && (isSuper || isReseller || isInfluencer);
   const { coords: profileCoords, updatePosition: updateProfilePosition } = useHeaderDropdownPosition(
     profileTriggerRef,
     profileOpen,
@@ -355,6 +362,19 @@ export default function Header({
                 <span className="header-profile-dd-head-username">{profileUsernameLabel}</span>
               ) : null}
               <span className="header-profile-dd-head-email">{user.email}</span>
+              {!isAdmin && (partnerTier || isInfluencer || user?.verified_at) ? (
+                <div className="header-profile-dd-badges">
+                  <UserRoleBadges
+                    t={t}
+                    lang={lang}
+                    partnerTier={partnerTier}
+                    isInfluencer={isInfluencer}
+                    verified={!!user?.verified_at}
+                    isAdmin={false}
+                    size="sm"
+                  />
+                </div>
+              ) : null}
             </div>
             <ChevronRight className="header-profile-dd-head-arrow" strokeWidth={2} aria-hidden="true" />
           </button>
@@ -456,16 +476,37 @@ export default function Header({
         aria-expanded={profileOpen}
         aria-haspopup="menu"
       >
-        <ProfileAvatar
-          name={user.name}
-          email={user.email}
-          avatarUrl={user.avatar_url}
-          size="sm"
-          className="header-avatar"
-        />
+        <span className="relative inline-flex">
+          <ProfileAvatar
+            name={user.name}
+            email={user.email}
+            avatarUrl={user.avatar_url}
+            size="sm"
+            className="header-avatar"
+          />
+          {showRoleDots ? (
+            <span className="header-profile-trigger-badges" aria-hidden="true">
+              {isSuper ? <span className="header-role-dot header-role-dot--super" /> : null}
+              {isReseller ? <span className="header-role-dot header-role-dot--reseller" /> : null}
+              {isInfluencer ? <span className="header-role-dot header-role-dot--influencer" /> : null}
+            </span>
+          ) : null}
+        </span>
         <span className="header-profile-name hidden lg:inline">
           {user.name}
         </span>
+        {!isAdmin && (partnerTier || isInfluencer) ? (
+          <span className="hidden xl:inline-flex max-w-[11rem]">
+            <UserRoleBadges
+              t={t}
+              lang={lang}
+              partnerTier={partnerTier}
+              isInfluencer={isInfluencer}
+              verified={false}
+              size="sm"
+            />
+          </span>
+        ) : null}
         <ChevronDown
           className={`header-profile-chevron ${profileOpen ? 'header-profile-chevron--open' : ''}`}
           strokeWidth={2.5}

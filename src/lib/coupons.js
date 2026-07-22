@@ -107,3 +107,21 @@ export function couponErrorMessage(code, t = {}) {
   };
   return map[code] || t.couponApplyFailed || code;
 }
+
+/** Whether current user owns any active influencer referral codes. */
+export async function fetchMyInfluencerStatus() {
+  const { data, error } = await supabase.rpc('get_my_influencer_status');
+  if (error) {
+    if (error?.message?.includes('function') && error?.message?.includes('does not exist')) {
+      return { isInfluencer: false };
+    }
+    console.warn('get_my_influencer_status', error.message);
+    return { isInfluencer: false };
+  }
+  if (!data || typeof data !== 'object') return { isInfluencer: false };
+  return {
+    isInfluencer: !!data.isInfluencer,
+    codeCount: Number(data.codeCount || 0),
+    primaryCode: data.primaryCode || null,
+  };
+}

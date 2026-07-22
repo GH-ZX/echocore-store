@@ -47,6 +47,7 @@ import {
   saveCartToStorage,
 } from './lib/cartUtils';
 import { fetchMyPartnerTier } from './lib/partners';
+import { fetchMyInfluencerStatus } from './lib/coupons';
 import { mapOffersForCustomer, resolveCustomerUnitPrice } from './lib/partnerPricing';
 import ScrollToTop from './components/routing/ScrollToTop';
 import AppRoutes from './components/routing/AppRoutes';
@@ -141,6 +142,8 @@ export default function App() {
   const [cartPriceUpdated, setCartPriceUpdated] = useState(false);
   /** Partner tier for current user (reseller / super / custom markup) */
   const [partnerTier, setPartnerTier] = useState(null);
+  /** True when user owns an active influencer referral code */
+  const [isInfluencer, setIsInfluencer] = useState(false);
   const [paymentConfig, setPaymentConfig] = useState({
     shamcash: true,
     binance: false,
@@ -233,6 +236,22 @@ export default function App() {
     } catch {
       setPartnerTier(null);
       return null;
+    }
+  }, [user?.id]);
+
+  const refreshInfluencerStatus = useCallback(async (userId = user?.id) => {
+    if (!userId) {
+      setIsInfluencer(false);
+      return false;
+    }
+    try {
+      const status = await fetchMyInfluencerStatus();
+      const next = !!status?.isInfluencer;
+      setIsInfluencer(next);
+      return next;
+    } catch {
+      setIsInfluencer(false);
+      return false;
     }
   }, [user?.id]);
 
@@ -1825,11 +1844,13 @@ export default function App() {
   useEffect(() => {
     if (!user?.id || user?.role === 'admin') {
       setPartnerTier(null);
+      setIsInfluencer(false);
       return undefined;
     }
     refreshPartnerTier(user.id);
+    refreshInfluencerStatus(user.id);
     return undefined;
-  }, [user?.id, user?.role, refreshPartnerTier]);
+  }, [user?.id, user?.role, refreshPartnerTier, refreshInfluencerStatus]);
 
   // Keep cart prices in sync when offers load — never purge unknown ids while catalog is loading
   useEffect(() => {
@@ -1993,6 +2014,8 @@ export default function App() {
         onLangToggle={toggleLanguage}
         langSwitching={langSwitching}
         user={user}
+        partnerTier={partnerTier}
+        isInfluencer={isInfluencer}
         cartLength={cart.length}
         onLogout={handleLogout}
         navigate={navigate}
@@ -2051,6 +2074,7 @@ export default function App() {
               await refreshPartnerTier(user?.id);
             }
           }}
+          isInfluencer={isInfluencer}
           orders={orders}
           loadingGames={loadingGames}
           loadingOrders={loadingOrders}

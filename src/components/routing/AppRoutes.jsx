@@ -50,6 +50,7 @@ export default function AppRoutes({
   offers,
   partnerTier: _partnerTier = null,
   onPartnerJoined,
+  isInfluencer = false,
   orders,
   loadingGames,
   loadingOrders,
@@ -523,6 +524,8 @@ export default function AppRoutes({
                 onLogout={handleLogout}
                 onRecharge={user?.role === 'admin' ? undefined : () => navigate('/recharge')}
                 onUpdateProfile={updateUserProfile}
+                partnerTier={_partnerTier}
+                isInfluencer={isInfluencer}
               />
             ) : (
               <Navigate to="/login" replace />

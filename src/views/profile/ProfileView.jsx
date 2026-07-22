@@ -56,6 +56,7 @@ import {
   validateUsername,
 } from '../../lib/username';
 import { changeUsername, getUsernameErrorMessage } from '../../lib/usernameChange';
+import UserRoleBadges from '../../components/ui/UserRoleBadges';
 
 
 function formatDate(dateStr, lang) {
@@ -85,6 +86,8 @@ export default function ProfileView({
   onLogout,
   onRecharge,
   onUpdateProfile,
+  partnerTier = null,
+  isInfluencer = false,
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const fileInputRef = useRef(null);
@@ -541,15 +544,17 @@ export default function ProfileView({
                 <Mail className="w-3.5 h-3.5 flex-shrink-0 text-[var(--accent)]/70" />
                 <span className="truncate">{user.email}</span>
               </p>
-              <div className="flex flex-wrap items-center gap-2 mt-3">
-                <span className={`profile-badge ${isAdmin ? 'profile-badge--admin' : 'profile-badge--player'}`}>
-                  {isAdmin ? <ShieldCheck className="w-3 h-3" /> : <Gamepad2 className="w-3 h-3" />}
-                  {isAdmin ? t.profileRoleAdmin : t.profileRolePlayer}
-                </span>
-                <span className="profile-badge profile-badge--verified">
-                  <Sparkles className="w-3 h-3" />
-                  {t.verifiedGamer}
-                </span>
+              <div className="mt-3">
+                <UserRoleBadges
+                  t={t}
+                  lang={lang}
+                  partnerTier={isAdmin ? null : partnerTier}
+                  isInfluencer={!isAdmin && isInfluencer}
+                  verified={!isAdmin && !!user?.verified_at}
+                  isAdmin={isAdmin}
+                  showPlayer={!isAdmin}
+                  size="md"
+                />
               </div>
             </div>
           </div>
