@@ -191,6 +191,40 @@ export function pickStableOffers(offers, limit = 8, seed = 'offers') {
   return pool.slice(0, cap);
 }
 
+/**
+ * Prefer bestsellers by units sold; fill remainder with stable shuffle of the rest.
+ * @param {Array} offers active catalog offers
+ * @param {Array<{offer_id?: string, offerId?: string, units?: number}>} rankedRows from get_bestselling_offer_ids
+ * @param {number} limit default 10
+ */
+export function pickTopBoughtOffers(offers = [], rankedRows = [], limit = 10) {
+  const cap = Math.max(1, Math.min(20, Number(limit) || 10));
+  const byId = new Map((offers || []).map((o) => [o.id, o]));
+  const picked = [];
+  const used = new Set();
+
+  for (const row of rankedRows || []) {
+    const id = row?.offer_id || row?.offerId;
+    if (!id || used.has(id)) continue;
+    const offer = byId.get(id);
+    if (!offer || offer.active === false) continue;
+    picked.push(offer);
+    used.add(id);
+    if (picked.length >= cap) return picked;
+  }
+
+  // Fill with remaining active offers (stable order by id for consistency)
+  const rest = (offers || [])
+    .filter((o) => o && o.active !== false && !used.has(o.id))
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+
+  for (const offer of rest) {
+    picked.push(offer);
+    if (picked.length >= cap) break;
+  }
+  return picked;
+}
+
 /** @deprecated Use pickStableOffers */
 export function shuffleOffers(offers, limit = 8, seed = 'offers') {
   return pickStableOffers(offers, limit, seed);

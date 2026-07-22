@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Eye, EyeOff } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowRight, Eye, EyeOff } from 'lucide-react';
 import ProductCarousel from './ProductCarousel';
 import SaleOfferCard from '../../components/ui/SaleOfferCard';
 import HomeGameCard from '../../components/ui/HomeGameCard';
@@ -19,10 +20,16 @@ import {
   getCatalogVoucherGames,
   getVisibleTopupGames,
 } from '../../lib/catalogUtils';
-import { pickStableOffers } from '../../lib/customerReviews';
+import { pickTopBoughtOffers } from '../../lib/customerReviews';
+import { fetchBestsellingOfferRanks } from '../../lib/bestsellingOffers';
 import { brandUserText } from '../../lib/branding';
 import { getGameMarketingDescription } from '../../lib/gameDescriptions';
-import { DEFAULT_HOME_LAYOUT, getSectionLabel, normalizeHomeLayout } from '../../lib/homeLayout';
+import {
+  DEFAULT_HOME_LAYOUT,
+  getHomeSectionPagePath,
+  getSectionLabel,
+  normalizeHomeLayout,
+} from '../../lib/homeLayout';
 import { getSaleOffers } from '../../lib/saleOffers';
 import {
   HOME_GRID_DENSE,
@@ -53,10 +60,6 @@ function resolveCarouselDescription(game, games = [], offers = [], t = {}) {
     description_en: brandUserText(en),
     description_ar: brandUserText(ar || en),
   };
-}
-
-function buildOfferPoolKey(offers = []) {
-  return offers.map((offer) => offer.id).sort().join('|');
 }
 
 function pickSaleOffers(offers, limit = 8) {
@@ -112,9 +115,18 @@ export default function HomeView({
   user = null,
   onReviewSubmitted,
 }) {
-  const [sessionSeed] = useState(() => `home-${Date.now()}`);
+  const navigate = useNavigate();
+  const [bestsellerRanks, setBestsellerRanks] = useState([]);
 
   const layout = useMemo(() => normalizeHomeLayout(homeLayout), [homeLayout]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchBestsellingOfferRanks(10).then((rows) => {
+      if (!cancelled) setBestsellerRanks(Array.isArray(rows) ? rows : []);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const topupGames = useMemo(
     () => getVisibleTopupGames(games, offers, { isAdmin }),
@@ -150,24 +162,22 @@ export default function HomeView({
     [offers, games],
   );
 
-  const offerPoolKey = useMemo(() => buildOfferPoolKey(offersWithGames), [offersWithGames]);
-
   const suggestedOffersMap = useMemo(() => {
     const map = new Map();
     layout.forEach((section) => {
       if (section.type === 'suggested_offers' && section.enabled) {
         map.set(
           section.id,
-          pickStableOffers(
+          pickTopBoughtOffers(
             offersWithGames,
-            section.limit ?? 8,
-            `${sessionSeed}:${section.id}:${offerPoolKey}`,
+            bestsellerRanks,
+            section.limit ?? 10,
           ),
         );
       }
     });
     return map;
-  }, [layout, offerPoolKey, offersWithGames, sessionSeed]);
+  }, [layout, offersWithGames, bestsellerRanks]);
 
   const saleOffersMap = useMemo(() => {
     const map = new Map();
@@ -204,6 +214,7 @@ export default function HomeView({
     const isGamesStyle = style === 'games';
     const titleClass = isGamesStyle ? 'games-section-title' : 'sale-offers-title';
     const dividerClass = isGamesStyle ? 'games-section-divider' : 'sale-offers-divider';
+    const pagePath = getHomeSectionPagePath(section);
 
     return (
       <div className={`text-center ${isGamesStyle ? 'mb-6' : 'mb-5'}`}>
@@ -211,6 +222,16 @@ export default function HomeView({
           <span className={`${titleClass} text-xl md:text-2xl font-bold`}>{title}</span>
         </h2>
         <div className={`${dividerClass} h-px w-10 mx-auto`} />
+        {pagePath ? (
+          <button
+            type="button"
+            className="home-section-view-all"
+            onClick={() => navigate(pagePath)}
+          >
+            <span>{t.viewSectionPage || t.viewAll || 'View all'}</span>
+            <ArrowRight className="home-section-view-all__arrow" aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
     );
   };

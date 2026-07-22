@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { formatMessage } from '../../lib/i18n';
 import useHomeExpandableMetrics from '../../hooks/useHomeExpandableMetrics';
 
@@ -67,11 +67,10 @@ export default function HomeExpandableGrid({
     return null;
   }
 
-  const remaining = Math.max(0, total - resolvedActive);
-  const expandLabel = formatMessage(t.showMoreSection, {
+  const expandLabel = t.showMorePlain || formatMessage(t.showMoreSection, {
     title: sectionTitle,
-    count: remaining,
-  });
+    count: Math.max(0, total - resolvedActive),
+  }) || 'Show more';
 
   return (
     <div className="home-expandable-grid">
@@ -108,16 +107,15 @@ export default function HomeExpandableGrid({
             <button
               type="button"
               onClick={handleExpand}
-              className="home-expandable-grid__overlay-btn btn btn-secondary inline-flex items-center gap-2"
+              className="home-expandable-grid__more-link"
               aria-expanded={false}
             >
-              {expandLabel}
-              <ChevronDown className="w-4 h-4" />
+              <span>{expandLabel}</span>
+              <ArrowRight className="home-expandable-grid__more-arrow w-4 h-4" aria-hidden="true" />
             </button>
           </div>
         )}
       </div>
-
     </div>
   );
 }

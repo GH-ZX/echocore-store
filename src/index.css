@@ -1585,15 +1585,17 @@ html, body {
 .home-games-preview-overlay-fade {
   position: absolute;
   inset: 0;
+  /* Soft fade only — no heavy shadow / blur */
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    color-mix(in srgb, var(--bg-primary) 45%, transparent) 18%,
-    color-mix(in srgb, var(--bg-primary) 92%, transparent) 58%,
-    var(--bg-primary) 100%
+    color-mix(in srgb, var(--bg-primary) 28%, transparent) 42%,
+    color-mix(in srgb, var(--bg-primary) 72%, transparent) 78%,
+    color-mix(in srgb, var(--bg-primary) 92%, transparent) 100%
   );
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
 }
 
 .home-expandable-grid__overlay-btn,
@@ -1601,9 +1603,83 @@ html, body {
   position: relative;
   z-index: 2;
   pointer-events: auto;
-  box-shadow:
-    0 10px 32px color-mix(in srgb, var(--bg-primary) 65%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+  box-shadow: none;
+}
+
+/* Plain “Show more →” control */
+.home-expandable-grid__more-link {
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.15rem;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--accent);
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s ease, opacity 0.15s ease, gap 0.15s ease;
+}
+
+.home-expandable-grid__more-link:hover {
+  color: color-mix(in srgb, var(--accent) 88%, #fff);
+  gap: 0.5rem;
+  opacity: 1;
+}
+
+.home-expandable-grid__more-arrow {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.home-expandable-grid__more-link:hover .home-expandable-grid__more-arrow {
+  transform: translateX(2px);
+}
+
+[dir='rtl'] .home-expandable-grid__more-arrow {
+  transform: scaleX(-1);
+}
+
+[dir='rtl'] .home-expandable-grid__more-link:hover .home-expandable-grid__more-arrow {
+  transform: scaleX(-1) translateX(2px);
+}
+
+.home-section-view-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.65rem;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s ease, gap 0.15s ease;
+}
+
+.home-section-view-all:hover {
+  color: var(--accent);
+  gap: 0.45rem;
+}
+
+.home-section-view-all__arrow {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex-shrink: 0;
+}
+
+[dir='rtl'] .home-section-view-all__arrow {
+  transform: scaleX(-1);
 }
 
 .games-section .games-section-title {

@@ -179,7 +179,7 @@ function defaultSectionConfig(type, id) {
     };
   }
   if (type === 'suggested_offers') {
-    return { ...base, title_en: 'Suggested Offers', title_ar: 'عروض مقترحة', limit: 8 };
+    return { ...base, title_en: 'Suggested Offers', title_ar: 'عروض مقترحة', limit: 10 };
   }
   if (type === 'customer_reviews') {
     return {
@@ -337,6 +337,27 @@ export function createHomeSection(type) {
   if (!VALID_TYPES.has(type) || isDeprecatedHomeSectionType(type)) return null;
   const id = `${type}_${Date.now().toString(36)}`;
   return defaultSectionConfig(type, id);
+}
+
+/** Storefront path for “view all” on a home section (null if no dedicated page). */
+export function getHomeSectionPagePath(section) {
+  const type = section?.type;
+  switch (type) {
+    case 'games':
+    case 'game_picks':
+      return '/games';
+    case 'gift_cards':
+    case 'redeem_picks':
+    case 'gaming_accounts':
+      return '/gift-cards';
+    case 'sale_offers':
+      return '/sale';
+    case 'suggested_offers':
+    case 'offer_picks':
+      return '/sale';
+    default:
+      return null;
+  }
 }
 
 export function getSectionLabel(section, lang = 'en') {
