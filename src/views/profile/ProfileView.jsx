@@ -386,7 +386,7 @@ export default function ProfileView({
 
     try {
       const nextUsername = normalizeUsernameInput(usernameDraft);
-      const usernameDirty = nextUsername !== savedUsername;
+      const usernameDirty = nextUsername !== normalizeUsernameInput(savedUsername);
 
       if (usernameDirty) {
         const usernameCheck = validateUsername(nextUsername);
@@ -408,9 +408,17 @@ export default function ProfileView({
       let usernamePatch = {};
       if (usernameDirty) {
         const usernameResult = await changeUsername(nextUsername);
+        // RPC jsonb may arrive as object; always prefer returned username
+        const resolvedName = String(
+          usernameResult?.username
+          || usernameResult?.data?.username
+          || nextUsername,
+        ).trim().toLowerCase();
         usernamePatch = {
-          username: usernameResult?.username || nextUsername,
-          username_changed_at: usernameResult?.username_changed_at || new Date().toISOString(),
+          username: resolvedName,
+          username_changed_at: usernameResult?.username_changed_at
+            || usernameResult?.data?.username_changed_at
+            || new Date().toISOString(),
         };
       }
 
@@ -434,8 +442,11 @@ export default function ProfileView({
         avatar_url: nextAvatarUrl,
       });
 
-      setProfileMeta((prev) => ({ ...prev, ...updated, ...usernamePatch }));
-      syncFormFromProfile(updated, user);
+      // Merge username last — profile update SELECT can still return pre-RPC cache,
+      // and syncFormFromProfile must not restore the old @name.
+      const mergedProfile = { ...updated, ...usernamePatch };
+      setProfileMeta((prev) => ({ ...prev, ...mergedProfile }));
+      syncFormFromProfile(mergedProfile, { ...user, ...usernamePatch });
       setPendingAvatarFile(null);
       setRemoveAvatar(false);
       if (avatarPreview) URL.revokeObjectURL(avatarPreview);
