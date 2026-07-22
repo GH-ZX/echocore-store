@@ -3701,7 +3701,6 @@ DECLARE
   v_uid uuid := auth.uid();
   v_row public.profiles%ROWTYPE;
   v_next text;
-  v_cooldown interval := interval '7 days';
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'Unauthorized';
@@ -3716,11 +3715,6 @@ BEGIN
 
   IF lower(COALESCE(v_row.username, '')) = v_next THEN
     RAISE EXCEPTION 'username_unchanged';
-  END IF;
-
-  IF v_row.username_changed_at IS NOT NULL
-    AND v_row.username_changed_at + v_cooldown > now() THEN
-    RAISE EXCEPTION 'username_cooldown';
   END IF;
 
   IF EXISTS (

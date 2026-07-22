@@ -48,12 +48,9 @@ import {
 import { getOrderStatusLabel } from '../../lib/orderReceipt';
 import { isInvoiceReadyForOrder } from '../../lib/invoices';
 import { INVOICE_KIND } from '../../lib/invoiceBuilder';
-import { formatMessage } from '../../lib/i18n';
 import {
-  canChangeUsername,
   formatProfileUsername,
   getProfileUsername,
-  getUsernameCooldownEndsAt,
   normalizeUsernameInput,
   profileNamesDiffer,
   validateUsername,
@@ -240,9 +237,6 @@ export default function ProfileView({
   const savedProfile = profileMeta || user || {};
   const savedName = savedProfile.name || user?.name || '';
   const savedUsername = getProfileUsername(savedProfile) || getProfileUsername(user);
-  const usernameChangedAt = profileMeta?.username_changed_at || user?.username_changed_at || null;
-  const usernameChangeAllowed = canChangeUsername(usernameChangedAt);
-  const usernameCooldownEndsAt = getUsernameCooldownEndsAt(usernameChangedAt);
   const savedBio = savedProfile.bio || '';
   const savedPhone = savedProfile.phone || '';
   const savedCountry = savedProfile.country || '';
@@ -395,14 +389,6 @@ export default function ProfileView({
       const usernameDirty = nextUsername !== savedUsername;
 
       if (usernameDirty) {
-        if (!usernameChangeAllowed) {
-          const retryDate = usernameCooldownEndsAt
-            ? formatDateTime(usernameCooldownEndsAt.toISOString(), lang)
-            : '—';
-          setProfileError(formatMessage(t.usernameCooldown, { date: retryDate }));
-          setSavingProfile(false);
-          return;
-        }
         const usernameCheck = validateUsername(nextUsername);
         if (!usernameCheck.ok) {
           setProfileError(getUsernameErrorMessage(usernameCheck.code, t));
@@ -720,7 +706,7 @@ export default function ProfileView({
                   value={usernameDraft}
                   onChange={(e) => setUsernameDraft(normalizeUsernameInput(e.target.value))}
                   maxLength={20}
-                  disabled={!usernameChangeAllowed || savingProfile}
+                  disabled={savingProfile}
                   className="profile-field-input font-mono pl-7 text-left disabled:opacity-60"
                   dir="ltr"
                   placeholder={t.profileUsernamePlaceholder}
@@ -729,11 +715,7 @@ export default function ProfileView({
                 />
               </div>
               <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                {!usernameChangeAllowed && usernameCooldownEndsAt
-                  ? formatMessage(t.usernameCooldown, {
-                    date: formatDateTime(usernameCooldownEndsAt.toISOString(), lang),
-                  })
-                  : t.profileUsernameHelp}
+                {t.profileUsernameHelp}
               </p>
             </div>
 
