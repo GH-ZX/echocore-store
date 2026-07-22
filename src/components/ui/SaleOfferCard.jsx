@@ -105,12 +105,12 @@ export default function SaleOfferCard({
 
         <div className="mt-auto pt-1 space-y-1">
           <div className="flex items-baseline gap-2 flex-wrap">
-            {showSale && originalPrice && !offer._partnerPriced && (
+            {showSale && originalPrice && !offer._partnerPriced && !offer._influencerPriced && (
               <span className="text-xs sm:text-sm line-through text-[var(--text-muted)]">
                 ${originalPrice}
               </span>
             )}
-            {offer._partnerPriced && offer._publicPrice != null && (
+            {(offer._partnerPriced || offer._influencerPriced) && offer._publicPrice != null && (
               <span className="text-xs sm:text-sm line-through text-[var(--text-muted)] font-mono" dir="ltr">
                 ${formatPrice(offer._publicPrice)}
               </span>
@@ -119,7 +119,9 @@ export default function SaleOfferCard({
               ${price}
             </span>
           </div>
-          {!isAdmin && offer._partnerPriced && <PartnerPriceBadge offer={offer} t={t} />}
+          {!isAdmin && (offer._partnerPriced || offer._influencerPriced) && (
+            <PartnerPriceBadge offer={offer} t={t} />
+          )}
           {isAdmin && <AdminOfferCostBadge offer={offer} t={t} />}
         </div>
 

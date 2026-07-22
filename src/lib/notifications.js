@@ -280,6 +280,16 @@ export function formatNotification(item, t = {}, lang = 'ar') {
       }),
       tone: 'success',
     },
+    influencer_commission: {
+      title: t.notifInfluencerCommissionTitle,
+      body: applyTemplate(t.notifInfluencerCommissionBody, {
+        amount: formatMoney(m.amount),
+        balance: formatMoney(m.newBalance),
+        code: m.code || '',
+        pct: m.discountPercent != null ? String(m.discountPercent) : '',
+      }),
+      tone: 'success',
+    },
   };
 
   const fallback = {
@@ -431,6 +441,7 @@ export function getNotificationDestination(item, formatted, userRole) {
     item?.type === 'account_verified'
     || item?.type === 'verified_thanks'
     || item?.type === 'coupon_redeemed'
+    || item?.type === 'influencer_commission'
   ) {
     return { path: item?.link || '/profile' };
   }
@@ -524,6 +535,7 @@ export const LIVE_TOAST_NOTIFICATION_TYPES = new Set([
   'partner_removed',
   'verified_thanks',
   'coupon_redeemed',
+  'influencer_commission',
 ]);
 
 export function shouldShowLiveToast(type) {

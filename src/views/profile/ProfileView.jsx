@@ -57,7 +57,11 @@ import {
   validateUsername,
 } from '../../lib/username';
 import { changeUsername, getUsernameErrorMessage } from '../../lib/usernameChange';
-import { couponErrorMessage, redeemInfluencerCoupon } from '../../lib/coupons';
+import {
+  applyInfluencerCoupon,
+  clearMyInfluencerCoupon,
+  couponErrorMessage,
+} from '../../lib/coupons';
 import { formatMessage } from '../../lib/i18n';
 
 function formatDate(dateStr, lang) {
@@ -87,6 +91,8 @@ export default function ProfileView({
   onLogout,
   onRecharge,
   onUpdateProfile,
+  influencerCoupon = null,
+  onInfluencerCouponChange,
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const fileInputRef = useRef(null);
@@ -598,8 +604,42 @@ export default function ProfileView({
                 <div className="mt-4 w-full rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)]/40 p-3 space-y-2">
                   <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-sec)]">
                     <Ticket className="w-3.5 h-3.5 text-[var(--accent)]" />
-                    {t.couponRedeemTitle}
+                    {t.couponApplyTitle}
                   </div>
+                  <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                    {t.couponApplyHelp}
+                  </p>
+                  {influencerCoupon?.code ? (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm">
+                      <span>
+                        {formatMessage(t.couponActiveLabel, {
+                          code: influencerCoupon.code,
+                          pct: influencerCoupon.discountPercent,
+                        })}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={couponRedeeming}
+                        onClick={async () => {
+                          setCouponError('');
+                          setCouponMessage('');
+                          setCouponRedeeming(true);
+                          try {
+                            await clearMyInfluencerCoupon();
+                            setCouponMessage(t.couponCleared);
+                            await onInfluencerCouponChange?.(user?.id);
+                          } catch (err) {
+                            setCouponError(err.message || t.couponApplyFailed);
+                          } finally {
+                            setCouponRedeeming(false);
+                          }
+                        }}
+                        className="btn btn-secondary text-[11px] py-1 px-2"
+                      >
+                        {t.couponClear}
+                      </button>
+                    </div>
+                  ) : null}
                   <div className="flex flex-col sm:flex-row gap-2">
                     <input
                       className="profile-field-input text-sm flex-1 font-mono"
@@ -617,24 +657,15 @@ export default function ProfileView({
                         setCouponMessage('');
                         setCouponRedeeming(true);
                         try {
-                          const res = await redeemInfluencerCoupon(couponCode.trim());
+                          const res = await applyInfluencerCoupon(couponCode.trim());
                           setCouponMessage(
-                            formatMessage(t.couponRedeemSuccess, {
-                              amount: Number(res?.amount || 0).toFixed(2),
-                              balance: Number(res?.newBalance ?? balance).toFixed(2),
+                            formatMessage(t.couponApplySuccess, {
+                              code: res?.code || couponCode.trim(),
+                              pct: res?.discountPercent ?? '',
                             }),
                           );
                           setCouponCode('');
-                          // Refresh balance from profiles
-                          const { data: balRow } = await supabase
-                            .from('profiles')
-                            .select('balance')
-                            .eq('id', user.id)
-                            .maybeSingle();
-                          if (balRow?.balance != null) {
-                            setProfileMeta((prev) => ({ ...(prev || {}), balance: balRow.balance }));
-                            onUpdateProfile?.({ balance: balRow.balance });
-                          }
+                          await onInfluencerCouponChange?.(user?.id);
                         } catch (err) {
                           const code = err?.message || 'coupon_invalid';
                           setCouponError(couponErrorMessage(code, t));
@@ -645,7 +676,7 @@ export default function ProfileView({
                       className="btn btn-secondary text-sm py-2 px-4 inline-flex items-center gap-1.5 disabled:opacity-50"
                     >
                       {couponRedeeming ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                      {t.couponRedeemBtn}
+                      {t.couponApplyBtn}
                     </button>
                   </div>
                   {couponMessage ? (

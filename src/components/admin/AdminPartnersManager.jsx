@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Copy,
-  Check,
   Handshake,
-  Link2,
   Loader2,
   Pencil,
   Plus,
@@ -11,22 +8,20 @@ import {
   Save,
   Ticket,
   Trash2,
-  UserPlus,
   X,
 } from 'lucide-react';
 import {
-  adminCreatePartnerInvite,
   adminDeletePartnerTier,
   adminSetUserPartnerTier,
   adminUpsertPartnerTier,
   fetchPartnerTiers,
-  fetchRecentPartnerInvites,
   formatPartnerTierLabel,
 } from '../../lib/partners';
 import {
   adminCreateInfluencerCoupon,
   adminListInfluencerCoupons,
   adminSetInfluencerCouponActive,
+  adminUpdateInfluencerCoupon,
 } from '../../lib/coupons';
 import { fetchAdminUsers } from '../../lib/adminModeration';
 import { formatMessage } from '../../lib/i18n';
@@ -43,16 +38,9 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
 
   const [loading, setLoading] = useState(true);
   const [tiers, setTiers] = useState([]);
-  const [invites, setInvites] = useState([]);
   const [coupons, setCoupons] = useState([]);
   const [savingId, setSavingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
-  const [inviteTierId, setInviteTierId] = useState('');
-  const [inviteMinutes, setInviteMinutes] = useState(15);
-  const [inviteNote, setInviteNote] = useState('');
-  const [creatingInvite, setCreatingInvite] = useState(false);
-  const [lastInvitePath, setLastInvitePath] = useState('');
-  const [copied, setCopied] = useState(false);
 
   const [assignQuery, setAssignQuery] = useState('');
   const [assignResults, setAssignResults] = useState([]);
@@ -68,24 +56,23 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
   const [creatingTier, setCreatingTier] = useState(false);
 
   const [couponCode, setCouponCode] = useState('');
-  const [couponAmount, setCouponAmount] = useState('5');
-  const [couponMax, setCouponMax] = useState('100');
+  const [couponDiscount, setCouponDiscount] = useState('3');
   const [couponNote, setCouponNote] = useState('');
-  const [couponExpires, setCouponExpires] = useState('');
+  const [couponUserQuery, setCouponUserQuery] = useState('');
+  const [couponUserResults, setCouponUserResults] = useState([]);
+  const [couponUserSearching, setCouponUserSearching] = useState(false);
+  const [couponInfluencer, setCouponInfluencer] = useState(null);
   const [creatingCoupon, setCreatingCoupon] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [tList, iList, cList] = await Promise.all([
+      const [tList, cList] = await Promise.all([
         fetchPartnerTiers(),
-        fetchRecentPartnerInvites(25),
         adminListInfluencerCoupons(40).catch(() => []),
       ]);
       setTiers(tList);
-      setInvites(iList);
       setCoupons(cList);
-      setInviteTierId((prev) => prev || tList.find((x) => x.is_active)?.id || tList[0]?.id || '');
     } catch (e) {
       notifyError(e.message || t.partnerLoadFailed);
     } finally {
@@ -159,39 +146,6 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
     }
   };
 
-  const createInvite = async () => {
-    if (!inviteTierId) return;
-    setCreatingInvite(true);
-    setLastInvitePath('');
-    try {
-      const inv = await adminCreatePartnerInvite({
-        tierId: inviteTierId,
-        minutes: Number(inviteMinutes) || 15,
-        note: inviteNote,
-      });
-      const path = inv?.path || `/partner/join?token=${inv?.token}`;
-      const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      setLastInvitePath(`${origin}${path}`);
-      notifySuccess(t.partnerInviteCreated);
-      await load();
-    } catch (e) {
-      notifyError(e.message || t.partnerInviteFailed);
-    } finally {
-      setCreatingInvite(false);
-    }
-  };
-
-  const copyInvite = async () => {
-    if (!lastInvitePath) return;
-    try {
-      await navigator.clipboard.writeText(lastInvitePath);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      notifyError(t.copyFailed || 'Copy failed');
-    }
-  };
-
   const searchUsers = async () => {
     const q = assignQuery.trim();
     if (!q) {
@@ -243,22 +197,49 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
     }
   };
 
+  const searchCouponInfluencer = async () => {
+    const q = couponUserQuery.trim();
+    if (!q) {
+      setCouponUserResults([]);
+      return;
+    }
+    setCouponUserSearching(true);
+    setCouponInfluencer(null);
+    try {
+      const { rows } = await fetchAdminUsers(q, 12, 0, {
+        orderBy: 'created_at',
+        balanceFilter: 'all',
+        statusFilter: 'all',
+      });
+      setCouponUserResults(Array.isArray(rows) ? rows : []);
+      if (!rows?.length) notifyError(t.partnerUserNotFound);
+    } catch (e) {
+      notifyError(e.message || t.partnerUserNotFound);
+      setCouponUserResults([]);
+    } finally {
+      setCouponUserSearching(false);
+    }
+  };
+
   const createCoupon = async () => {
+    if (!couponInfluencer?.id) {
+      notifyError(t.couponPickInfluencer);
+      return;
+    }
     setCreatingCoupon(true);
     try {
       await adminCreateInfluencerCoupon({
         code: couponCode,
-        amountUsd: Number(couponAmount),
-        maxRedemptions: couponMax === '' ? null : Number(couponMax),
-        perUserLimit: 1,
-        expiresAt: couponExpires ? new Date(couponExpires).toISOString() : null,
+        discountPercent: Number(couponDiscount),
+        influencerUserId: couponInfluencer.id,
         note: couponNote,
       });
       setCouponCode('');
-      setCouponAmount('5');
-      setCouponMax('100');
+      setCouponDiscount('3');
       setCouponNote('');
-      setCouponExpires('');
+      setCouponUserQuery('');
+      setCouponUserResults([]);
+      setCouponInfluencer(null);
       notifySuccess(t.couponCreated);
       await load();
     } catch (e) {
@@ -309,7 +290,7 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
         {t.partnersPricingRule}
       </div>
 
-      {/* Tiers — locked by default, pen to edit */}
+      {/* Partner tiers */}
       <section className="card p-5 sm:p-6 space-y-4">
         <h3 className="font-bold text-lg">{t.partnerTiersTitle}</h3>
         <p className="text-xs text-[var(--text-muted)]">{t.partnerTiersDbNote}</p>
@@ -332,100 +313,156 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
             <Plus className="w-4 h-4" />
             {t.partnerTierAdd}
           </h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
-            <input
-              className="profile-field-input text-sm"
-              placeholder="slug (e.g. gold)"
-              value={newSlug}
-              onChange={(e) => setNewSlug(e.target.value)}
-              dir="ltr"
-            />
-            <input
-              className="profile-field-input text-sm"
-              placeholder={t.partnerNameEn}
-              value={newNameEn}
-              onChange={(e) => setNewNameEn(e.target.value)}
-            />
-            <input
-              className="profile-field-input text-sm"
-              placeholder={t.partnerNameAr}
-              value={newNameAr}
-              onChange={(e) => setNewNameAr(e.target.value)}
-            />
-            <input
-              className="profile-field-input text-sm"
-              type="number"
-              min="0"
-              step="0.1"
-              placeholder={t.partnerMarkupPercent}
-              value={newMarkup}
-              onChange={(e) => setNewMarkup(e.target.value)}
-              dir="ltr"
-            />
-            <button
-              type="button"
-              disabled={creatingTier || !newSlug.trim()}
-              onClick={createTier}
-              className="btn btn-primary text-sm py-2 disabled:opacity-50"
-            >
-              {creatingTier ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : t.partnerTierCreate}
-            </button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <Field label={t.partnerSlugLabel} hint={t.partnerSlugHint}>
+              <input
+                className="profile-field-input text-sm w-full"
+                placeholder="gold"
+                value={newSlug}
+                onChange={(e) => setNewSlug(e.target.value)}
+                dir="ltr"
+              />
+            </Field>
+            <Field label={t.partnerNameEn}>
+              <input
+                className="profile-field-input text-sm w-full"
+                value={newNameEn}
+                onChange={(e) => setNewNameEn(e.target.value)}
+              />
+            </Field>
+            <Field label={t.partnerNameAr}>
+              <input
+                className="profile-field-input text-sm w-full"
+                value={newNameAr}
+                onChange={(e) => setNewNameAr(e.target.value)}
+              />
+            </Field>
+            <Field label={t.partnerMarkupPercent} hint={t.partnerMarkupHint}>
+              <input
+                className="profile-field-input text-sm w-full"
+                type="number"
+                min="0"
+                step="0.1"
+                value={newMarkup}
+                onChange={(e) => setNewMarkup(e.target.value)}
+                dir="ltr"
+              />
+            </Field>
+            <div className="flex items-end">
+              <button
+                type="button"
+                disabled={creatingTier || !newSlug.trim()}
+                onClick={createTier}
+                className="btn btn-primary text-sm py-2 w-full disabled:opacity-50"
+              >
+                {creatingTier ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : t.partnerTierCreate}
+              </button>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Influencer coupons */}
+      {/* Influencer referral coupons */}
       <section className="card p-5 sm:p-6 space-y-4">
         <h3 className="font-bold text-lg flex items-center gap-2">
           <Ticket className="w-5 h-5 text-[var(--accent)]" />
           {t.couponAdminTitle}
         </h3>
         <p className="text-xs text-[var(--text-muted)] leading-relaxed">{t.couponAdminHelp}</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
-          <input
-            className="profile-field-input text-sm"
-            placeholder={t.couponCodePlaceholder}
-            value={couponCode}
-            onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-            dir="ltr"
-          />
-          <input
-            className="profile-field-input text-sm"
-            type="number"
-            min="0.01"
-            step="0.01"
-            placeholder={t.couponAmountPlaceholder}
-            value={couponAmount}
-            onChange={(e) => setCouponAmount(e.target.value)}
-            dir="ltr"
-          />
-          <input
-            className="profile-field-input text-sm"
-            type="number"
-            min="1"
-            placeholder={t.couponMaxUsesPlaceholder}
-            value={couponMax}
-            onChange={(e) => setCouponMax(e.target.value)}
-            dir="ltr"
-          />
-          <input
-            className="profile-field-input text-sm"
-            placeholder={t.couponNotePlaceholder}
-            value={couponNote}
-            onChange={(e) => setCouponNote(e.target.value)}
-          />
-          <input
-            className="profile-field-input text-sm"
-            type="datetime-local"
-            value={couponExpires}
-            onChange={(e) => setCouponExpires(e.target.value)}
-            dir="ltr"
-            title={t.couponExpiresLabel}
-          />
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label={t.couponCodeLabel} hint={t.couponCodeHint}>
+            <input
+              className="profile-field-input text-sm w-full font-mono"
+              placeholder="YOUTUBER1"
+              value={couponCode}
+              onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+              dir="ltr"
+            />
+          </Field>
+          <Field label={t.couponDiscountLabel} hint={t.couponDiscountHint}>
+            <input
+              className="profile-field-input text-sm w-full"
+              type="number"
+              min="0"
+              max="50"
+              step="0.1"
+              value={couponDiscount}
+              onChange={(e) => setCouponDiscount(e.target.value)}
+              dir="ltr"
+            />
+          </Field>
+          <Field label={t.couponNoteLabel} hint={t.couponNoteHint} className="sm:col-span-2">
+            <input
+              className="profile-field-input text-sm w-full"
+              value={couponNote}
+              onChange={(e) => setCouponNote(e.target.value)}
+              placeholder={t.couponNotePlaceholder}
+            />
+          </Field>
         </div>
+
+        <div className="space-y-2">
+          <Field label={t.couponInfluencerLabel} hint={t.couponInfluencerHint}>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                className="profile-field-input text-sm flex-1"
+                placeholder={t.partnerSearchPlaceholder}
+                value={couponUserQuery}
+                onChange={(e) => setCouponUserQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    searchCouponInfluencer();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                disabled={couponUserSearching || !couponUserQuery.trim()}
+                onClick={searchCouponInfluencer}
+                className="btn btn-secondary text-sm py-2 px-4 disabled:opacity-50"
+              >
+                {couponUserSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : (t.search || t.adminUsersSearch)}
+              </button>
+            </div>
+          </Field>
+          {couponUserResults.length > 0 && (
+            <ul className="rounded-xl border border-[var(--border)] divide-y divide-[var(--border)] max-h-40 overflow-y-auto">
+              {couponUserResults.map((u) => {
+                const active = couponInfluencer?.id === u.id;
+                return (
+                  <li key={u.id}>
+                    <button
+                      type="button"
+                      onClick={() => setCouponInfluencer(u)}
+                      className={`w-full text-start px-3 py-2 text-sm hover:bg-[var(--bg-elevated)] ${active ? 'bg-[var(--accent)]/12' : ''}`}
+                    >
+                      <span className="font-mono font-semibold text-[var(--accent)]">
+                        {formatProfileUsername(getProfileUsername(u)) || getProfileAdminLabel(u)}
+                      </span>
+                      {getProfileDisplayName(u) ? (
+                        <span className="text-[var(--text-muted)] ms-2">{getProfileDisplayName(u)}</span>
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {couponInfluencer && (
+            <div className="text-sm rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2">
+              {t.couponSelectedInfluencer}:{' '}
+              <strong className="font-mono">
+                {formatProfileUsername(getProfileUsername(couponInfluencer)) || couponInfluencer.email}
+              </strong>
+            </div>
+          )}
+        </div>
+
         <button
           type="button"
-          disabled={creatingCoupon || !couponCode.trim() || !couponAmount}
+          disabled={creatingCoupon || !couponCode.trim() || !couponInfluencer?.id}
           onClick={createCoupon}
           className="btn btn-primary text-sm py-2 px-4 inline-flex items-center gap-2 disabled:opacity-50"
         >
@@ -434,148 +471,29 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
         </button>
 
         {coupons.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-start">
-              <thead className="text-[var(--text-muted)]">
-                <tr className="border-b border-[var(--border)]">
-                  <th className="py-2 pe-3 font-medium">{t.couponCodeLabel}</th>
-                  <th className="py-2 pe-3 font-medium">{t.couponAmountLabel}</th>
-                  <th className="py-2 pe-3 font-medium">{t.couponUsesLabel}</th>
-                  <th className="py-2 pe-3 font-medium">{t.couponNoteLabel}</th>
-                  <th className="py-2 pe-3 font-medium">{t.partnerInviteStatus}</th>
-                  <th className="py-2 font-medium" />
-                </tr>
-              </thead>
-              <tbody>
-                {coupons.map((c) => (
-                  <tr key={c.id} className="border-b border-[var(--border)]/60">
-                    <td className="py-2 pe-3 font-mono font-semibold" dir="ltr">{c.code}</td>
-                    <td className="py-2 pe-3 font-mono" dir="ltr">${Number(c.amount_usd).toFixed(2)}</td>
-                    <td className="py-2 pe-3 font-mono" dir="ltr">
-                      {c.redemption_count}
-                      {c.max_redemptions != null ? ` / ${c.max_redemptions}` : ' / ∞'}
-                    </td>
-                    <td className="py-2 pe-3 text-[var(--text-muted)]">{c.note || '—'}</td>
-                    <td className="py-2 pe-3">
-                      {c.is_active ? t.partnerTierActive : t.couponInactiveShort}
-                    </td>
-                    <td className="py-2">
-                      <button
-                        type="button"
-                        onClick={() => toggleCoupon(c)}
-                        className="btn btn-secondary text-[11px] py-1 px-2"
-                      >
-                        {c.is_active ? t.couponDeactivate : t.couponActivate}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-2 mt-2">
+            {coupons.map((c) => (
+              <CouponRow
+                key={c.id}
+                coupon={c}
+                t={t}
+                onToggle={() => toggleCoupon(c)}
+                onSaved={async (patch) => {
+                  try {
+                    await adminUpdateInfluencerCoupon(c.id, patch);
+                    notifySuccess(t.couponUpdated);
+                    await load();
+                  } catch (e) {
+                    notifyError(e.message || t.couponCreateFailed);
+                  }
+                }}
+              />
+            ))}
           </div>
         )}
       </section>
 
-      {/* Invite link */}
-      <section className="card p-5 sm:p-6 space-y-4">
-        <h3 className="font-bold text-lg flex items-center gap-2">
-          <Link2 className="w-5 h-5 text-[var(--accent)]" />
-          {t.partnerInviteTitle}
-        </h3>
-        <p className="text-xs text-[var(--text-muted)] leading-relaxed">{t.partnerInviteHelp}</p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <label className="text-xs space-y-1">
-            <span className="text-[var(--text-muted)]">{t.partnerInviteTier}</span>
-            <select
-              className="profile-field-input text-sm w-full"
-              value={inviteTierId}
-              onChange={(e) => setInviteTierId(e.target.value)}
-            >
-              {tiers.filter((x) => x.is_active).map((tier) => (
-                <option key={tier.id} value={tier.id}>
-                  {formatPartnerTierLabel(tier, lang)} (+{tier.markup_percent}%)
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-xs space-y-1">
-            <span className="text-[var(--text-muted)]">{t.partnerInviteMinutes}</span>
-            <input
-              type="number"
-              min={5}
-              max={1440}
-              className="profile-field-input text-sm w-full"
-              value={inviteMinutes}
-              onChange={(e) => setInviteMinutes(e.target.value)}
-              dir="ltr"
-            />
-          </label>
-          <label className="text-xs space-y-1">
-            <span className="text-[var(--text-muted)]">{t.partnerInviteNote}</span>
-            <input
-              className="profile-field-input text-sm w-full"
-              value={inviteNote}
-              onChange={(e) => setInviteNote(e.target.value)}
-              placeholder="Shop name…"
-            />
-          </label>
-        </div>
-        <button
-          type="button"
-          disabled={creatingInvite || !inviteTierId}
-          onClick={createInvite}
-          className="btn btn-primary inline-flex items-center gap-2 text-sm py-2.5 px-4 disabled:opacity-50"
-        >
-          {creatingInvite ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
-          {t.partnerInviteGenerate}
-        </button>
-        {lastInvitePath && (
-          <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3">
-            <code className="text-xs break-all flex-1 font-mono text-emerald-100" dir="ltr">
-              {lastInvitePath}
-            </code>
-            <button type="button" onClick={copyInvite} className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1 shrink-0">
-              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? t.copied : t.copy}
-            </button>
-          </div>
-        )}
-
-        {invites.length > 0 && (
-          <div className="overflow-x-auto mt-2">
-            <table className="w-full text-xs text-start">
-              <thead className="text-[var(--text-muted)]">
-                <tr className="border-b border-[var(--border)]">
-                  <th className="py-2 pe-3 font-medium">{t.partnerInviteTier}</th>
-                  <th className="py-2 pe-3 font-medium">{t.partnerInviteExpires}</th>
-                  <th className="py-2 pe-3 font-medium">{t.partnerInviteStatus}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {invites.map((inv) => {
-                  const status = inv.used_at
-                    ? t.partnerInviteStatusUsed
-                    : t.partnerInviteStatusOpen;
-                  return (
-                    <tr key={inv.id} className="border-b border-[var(--border)]/60">
-                      <td className="py-2 pe-3">
-                        {formatPartnerTierLabel(inv.partner_tiers, lang)}
-                        {inv.note ? ` · ${inv.note}` : ''}
-                      </td>
-                      <td className="py-2 pe-3 font-mono" dir="ltr">
-                        {new Date(inv.expires_at).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US')}
-                      </td>
-                      <td className="py-2 pe-3">{status}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      {/* Manual assign */}
+      {/* Manual partner assign */}
       <section className="card p-5 sm:p-6 space-y-4">
         <h3 className="font-bold text-lg">{t.partnerAssignTitle}</h3>
         <p className="text-xs text-[var(--text-muted)]">{t.partnerAssignHelp}</p>
@@ -671,6 +589,16 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
   );
 }
 
+function Field({ label, hint, className = '', children }) {
+  return (
+    <label className={`text-xs space-y-1 block ${className}`}>
+      <span className="font-semibold text-[var(--text-sec)]">{label}</span>
+      {hint ? <span className="block text-[10px] text-[var(--text-muted)] leading-snug">{hint}</span> : null}
+      {children}
+    </label>
+  );
+}
+
 function TierRow({ tier, t, saving, deleting, onSave, onRemove }) {
   const [editing, setEditing] = useState(false);
   const [markup, setMarkup] = useState(String(tier.markup_percent));
@@ -719,7 +647,6 @@ function TierRow({ tier, t, saving, deleting, onSave, onRemove }) {
             type="button"
             onClick={() => setEditing(true)}
             className="btn btn-secondary text-sm py-2 px-3 inline-flex items-center gap-1.5"
-            title={t.edit || t.partnerTierEdit}
           >
             <Pencil className="w-3.5 h-3.5" />
             {t.edit || t.partnerTierEdit}
@@ -729,7 +656,6 @@ function TierRow({ tier, t, saving, deleting, onSave, onRemove }) {
             disabled={deleting}
             onClick={onRemove}
             className="btn btn-secondary text-sm py-2 px-3 inline-flex items-center gap-1.5 text-red-300 border-red-500/30 hover:bg-red-500/10 disabled:opacity-50"
-            title={t.remove || t.partnerTierRemove}
           >
             {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
             {t.remove || t.partnerTierRemove}
@@ -755,18 +681,15 @@ function TierRow({ tier, t, saving, deleting, onSave, onRemove }) {
       </label>
       <label className="lg:col-span-2 text-xs space-y-1">
         <span className="text-[var(--text-muted)]">{t.partnerMarkupPercent}</span>
-        <div className="flex items-center gap-1">
-          <input
-            type="number"
-            min="0"
-            step="0.1"
-            className="profile-field-input text-sm w-full"
-            value={markup}
-            onChange={(e) => setMarkup(e.target.value)}
-            dir="ltr"
-          />
-          <span className="text-[var(--text-muted)] text-sm">%</span>
-        </div>
+        <input
+          type="number"
+          min="0"
+          step="0.1"
+          className="profile-field-input text-sm w-full"
+          value={markup}
+          onChange={(e) => setMarkup(e.target.value)}
+          dir="ltr"
+        />
       </label>
       <label className="lg:col-span-1 text-xs flex items-center gap-2 pb-2">
         <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
@@ -790,10 +713,118 @@ function TierRow({ tier, t, saving, deleting, onSave, onRemove }) {
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           {t.save}
         </button>
+        <button type="button" disabled={saving} onClick={cancelEdit} className="btn btn-secondary text-sm py-2 px-3">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CouponRow({ coupon, t, onToggle, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [discount, setDiscount] = useState(String(coupon.discount_percent ?? 3));
+  const [note, setNote] = useState(coupon.note || '');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setDiscount(String(coupon.discount_percent ?? 3));
+    setNote(coupon.note || '');
+    setEditing(false);
+  }, [coupon]);
+
+  const influencerLabel = coupon.influencer_username
+    ? `@${coupon.influencer_username}`
+    : (coupon.influencer_name || coupon.influencer_user_id || '—');
+
+  if (!editing) {
+    return (
+      <div className={`rounded-xl border border-[var(--border)] p-3 flex flex-wrap items-center justify-between gap-3 ${!coupon.is_active ? 'opacity-60' : ''}`}>
+        <div className="min-w-0 space-y-0.5">
+          <div className="font-mono font-bold text-sm" dir="ltr">{coupon.code}</div>
+          <div className="text-xs text-[var(--text-sec)]">
+            {formatMessage(t.couponRowSummary, {
+              pct: coupon.discount_percent,
+              user: influencerLabel,
+            })}
+          </div>
+          {coupon.note ? (
+            <div className="text-[11px] text-[var(--text-muted)]">{coupon.note}</div>
+          ) : null}
+          <div className="text-[10px] text-[var(--text-muted)] font-mono" dir="ltr">
+            {formatMessage(t.couponOrdersCount, { count: coupon.redemption_count || 0 })}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="btn btn-secondary text-sm py-2 px-3 inline-flex items-center gap-1.5"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            {t.edit}
+          </button>
+          <button type="button" onClick={onToggle} className="btn btn-secondary text-[11px] py-1.5 px-2">
+            {coupon.is_active ? t.couponDeactivate : t.couponActivate}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-3 space-y-3">
+      <div className="font-mono font-bold text-sm" dir="ltr">{coupon.code}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <Field label={t.couponDiscountLabel} hint={t.couponDiscountHint}>
+          <input
+            type="number"
+            min="0"
+            max="50"
+            step="0.1"
+            className="profile-field-input text-sm w-full"
+            value={discount}
+            onChange={(e) => setDiscount(e.target.value)}
+            dir="ltr"
+          />
+        </Field>
+        <Field label={t.couponNoteLabel}>
+          <input
+            className="profile-field-input text-sm w-full"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </Field>
+      </div>
+      <div className="flex gap-2">
         <button
           type="button"
           disabled={saving}
-          onClick={cancelEdit}
+          onClick={async () => {
+            setSaving(true);
+            try {
+              await onSaved({
+                discountPercent: Number(discount),
+                note,
+              });
+              setEditing(false);
+            } finally {
+              setSaving(false);
+            }
+          }}
+          className="btn btn-primary text-sm py-2 px-4 inline-flex items-center gap-1.5 disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          {t.save}
+        </button>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => {
+            setDiscount(String(coupon.discount_percent ?? 3));
+            setNote(coupon.note || '');
+            setEditing(false);
+          }}
           className="btn btn-secondary text-sm py-2 px-3"
         >
           <X className="w-4 h-4" />

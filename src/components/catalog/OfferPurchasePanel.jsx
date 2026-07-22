@@ -30,10 +30,10 @@ export default function OfferPurchasePanel({
       <div className="space-y-5">
         <div>
           <div className="text-xs uppercase tracking-wider text-[var(--text-muted)] mb-1">{t.price}</div>
-          {offer.is_sale && offer.original_price && !offer._partnerPriced && (
+          {offer.is_sale && offer.original_price && !offer._partnerPriced && !offer._influencerPriced && (
             <div className="text-sm line-through text-[var(--text-muted)]">${formatPrice(offer.original_price)}</div>
           )}
-          {offer._partnerPriced && offer._publicPrice != null && (
+          {(offer._partnerPriced || offer._influencerPriced) && offer._publicPrice != null && (
             <div className="text-sm line-through text-[var(--text-muted)] font-mono tabular-nums" dir="ltr">
               ${formatPrice(offer._publicPrice)}
             </div>
@@ -52,13 +52,13 @@ export default function OfferPurchasePanel({
                 ${formatPrice(offer.price)}
               </div>
             )}
-            {offer.is_sale && !offer._partnerPriced && (
+            {offer.is_sale && !offer._partnerPriced && !offer._influencerPriced && (
               <span className="text-[10px] px-2 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/25 font-bold">
                 {discount ? `-${discount}%` : t.sale}
               </span>
             )}
           </div>
-          {!isAdmin && offer._partnerPriced && (
+          {!isAdmin && (offer._partnerPriced || offer._influencerPriced) && (
             <div className="mt-2">
               <PartnerPriceBadge offer={offer} t={t} size="lg" />
             </div>

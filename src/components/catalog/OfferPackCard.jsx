@@ -102,13 +102,13 @@ export default function OfferPackCard({
               ) : (
                 <span className="text-2xl font-black text-[var(--accent)] tabular-nums" dir="ltr">${price}</span>
               )}
-              {offer.is_sale && !offer._partnerPriced && (
+              {offer.is_sale && !offer._partnerPriced && !offer._influencerPriced && (
                 <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/25 font-bold">
                   {discount ? `-${discount}%` : (t.sale || 'SALE')}
                 </span>
               )}
             </div>
-            {!isAdmin && offer._partnerPriced && (
+            {!isAdmin && (offer._partnerPriced || offer._influencerPriced) && (
               <div className="mt-1">
                 <PartnerPriceBadge offer={offer} t={t} />
               </div>

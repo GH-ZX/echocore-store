@@ -47,6 +47,7 @@ import {
   saveCartToStorage,
 } from './lib/cartUtils';
 import { fetchMyPartnerTier } from './lib/partners';
+import { fetchMyInfluencerCoupon } from './lib/coupons';
 import { mapOffersForCustomer, resolveCustomerUnitPrice } from './lib/partnerPricing';
 import ScrollToTop from './components/routing/ScrollToTop';
 import AppRoutes from './components/routing/AppRoutes';
@@ -141,6 +142,8 @@ export default function App() {
   const [cartPriceUpdated, setCartPriceUpdated] = useState(false);
   /** Partner tier for current user (reseller / super / custom markup) */
   const [partnerTier, setPartnerTier] = useState(null);
+  /** Influencer referral code bound to current user (% off public) */
+  const [influencerCoupon, setInfluencerCoupon] = useState(null);
   const [paymentConfig, setPaymentConfig] = useState({
     shamcash: true,
     binance: false,
@@ -181,10 +184,15 @@ export default function App() {
   const partnerMarkup = partnerTier?.markupPercent != null
     ? Number(partnerTier.markupPercent)
     : null;
-  /** Offers with plan-B partner prices for partners; admins keep public catalog prices */
+  const influencerDiscount = influencerCoupon?.discountPercent != null
+    ? Number(influencerCoupon.discountPercent)
+    : null;
+  /** Offers: partner plan-B first, else influencer % off public; admins keep public prices */
   const storefrontOffers = useMemo(
-    () => (isAdmin ? offers : mapOffersForCustomer(offers, partnerMarkup)),
-    [offers, partnerMarkup, isAdmin],
+    () => (isAdmin
+      ? offers
+      : mapOffersForCustomer(offers, partnerMarkup, influencerDiscount)),
+    [offers, partnerMarkup, influencerDiscount, isAdmin],
   );
   const [homePreviewAsUser, setHomePreviewAsUser] = useState(false);
   const homeShowsAdminChrome = isAdmin && !homePreviewAsUser;
@@ -232,6 +240,21 @@ export default function App() {
       return tier;
     } catch {
       setPartnerTier(null);
+      return null;
+    }
+  }, [user?.id]);
+
+  const refreshInfluencerCoupon = useCallback(async (userId = user?.id) => {
+    if (!userId) {
+      setInfluencerCoupon(null);
+      return null;
+    }
+    try {
+      const coupon = await fetchMyInfluencerCoupon();
+      setInfluencerCoupon(coupon);
+      return coupon;
+    } catch {
+      setInfluencerCoupon(null);
       return null;
     }
   }, [user?.id]);
@@ -814,7 +837,10 @@ export default function App() {
     setCart(syncedCart);
 
     const items = syncedCart.map((item) => {
-      const unit = resolveCustomerUnitPrice(item, { partnerMarkupPercent: partnerMarkup });
+      const unit = resolveCustomerUnitPrice(item, {
+        partnerMarkupPercent: partnerMarkup,
+        influencerDiscountPercent: partnerMarkup == null ? influencerDiscount : null,
+      });
       return {
         offer_id: item.id,
         name_snapshot: getOfferOrderNameSnapshot(item, lang, games, offers),
@@ -950,7 +976,10 @@ export default function App() {
     const [resolvedOffer] = await resolveCheckoutOffers([offer]);
     offer = resolvedOffer || offer;
 
-    const amount = resolveCustomerUnitPrice(offer, { partnerMarkupPercent: partnerMarkup });
+    const amount = resolveCustomerUnitPrice(offer, {
+      partnerMarkupPercent: partnerMarkup,
+      influencerDiscountPercent: partnerMarkup == null ? influencerDiscount : null,
+    });
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new Error(t.cartEmptyOrUnavailable || 'Invalid price');
     }
@@ -1814,11 +1843,13 @@ export default function App() {
   useEffect(() => {
     if (!user?.id || user?.role === 'admin') {
       setPartnerTier(null);
+      setInfluencerCoupon(null);
       return undefined;
     }
     refreshPartnerTier(user.id);
+    refreshInfluencerCoupon(user.id);
     return undefined;
-  }, [user?.id, user?.role, refreshPartnerTier]);
+  }, [user?.id, user?.role, refreshPartnerTier, refreshInfluencerCoupon]);
 
   // Keep cart prices in sync when offers load — never purge unknown ids while catalog is loading
   useEffect(() => {
@@ -2040,6 +2071,8 @@ export default function App() {
               await refreshPartnerTier(user?.id);
             }
           }}
+          influencerCoupon={influencerCoupon}
+          refreshInfluencerCoupon={refreshInfluencerCoupon}
           orders={orders}
           loadingGames={loadingGames}
           loadingOrders={loadingOrders}
