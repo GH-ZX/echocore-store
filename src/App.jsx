@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import StoreBackground from './components/backgrounds/StoreBackground';
 import { getCarouselGames, getCarouselManageableGames, sortGamesByCarousel } from './lib/carouselUtils';
 import AppToast from './components/ui/AppToast';
@@ -46,6 +46,8 @@ import {
   loadCartFromStorage,
   saveCartToStorage,
 } from './lib/cartUtils';
+import { fetchMyPartnerTier } from './lib/partners';
+import { mapOffersForCustomer, resolveCustomerUnitPrice } from './lib/partnerPricing';
 import ScrollToTop from './components/routing/ScrollToTop';
 import AppRoutes from './components/routing/AppRoutes';
 import LangSwitchOverlay from './components/routing/LangSwitchOverlay';
@@ -137,6 +139,8 @@ export default function App() {
   // Hydrate cart immediately so the first save effect cannot wipe localStorage with []
   const [cart, setCart] = useState(() => loadCartFromStorage());
   const [cartPriceUpdated, setCartPriceUpdated] = useState(false);
+  /** Partner tier for current user (reseller / super / custom markup) */
+  const [partnerTier, setPartnerTier] = useState(null);
   const [paymentConfig, setPaymentConfig] = useState({
     shamcash: true,
     binance: false,
@@ -174,6 +178,14 @@ export default function App() {
     return saved === 'en' || saved === 'ar' ? saved : 'ar';
   });
   const isAdmin = user?.role === 'admin';
+  const partnerMarkup = partnerTier?.markupPercent != null
+    ? Number(partnerTier.markupPercent)
+    : null;
+  /** Offers with plan-B partner prices for partners; admins keep public catalog prices */
+  const storefrontOffers = useMemo(
+    () => (isAdmin ? offers : mapOffersForCustomer(offers, partnerMarkup)),
+    [offers, partnerMarkup, isAdmin],
+  );
   const [homePreviewAsUser, setHomePreviewAsUser] = useState(false);
   const homeShowsAdminChrome = isAdmin && !homePreviewAsUser;
   const hasSaleOffers = offers.some((offer) => {
@@ -208,6 +220,21 @@ export default function App() {
   }, []);
 
   const showNotification = useCallback((msg) => showToast(msg, 'success'), [showToast]);
+
+  const refreshPartnerTier = useCallback(async (userId = user?.id) => {
+    if (!userId) {
+      setPartnerTier(null);
+      return null;
+    }
+    try {
+      const tier = await fetchMyPartnerTier();
+      setPartnerTier(tier);
+      return tier;
+    } catch {
+      setPartnerTier(null);
+      return null;
+    }
+  }, [user?.id]);
 
   const dismissToast = useCallback(() => {
     if (toastTimerRef.current) {
@@ -786,17 +813,19 @@ export default function App() {
     }
     setCart(syncedCart);
 
-    const total = syncedCart.reduce((sum, item) => sum + parseFloat(item.price), 0);
+    const items = syncedCart.map((item) => {
+      const unit = resolveCustomerUnitPrice(item, { partnerMarkupPercent: partnerMarkup });
+      return {
+        offer_id: item.id,
+        name_snapshot: getOfferOrderNameSnapshot(item, lang, games, offers),
+        price: unit,
+        quantity: 1,
+      };
+    });
+    const total = items.reduce((sum, row) => sum + row.price * row.quantity, 0);
     if (!Number.isFinite(total) || total <= 0) {
       throw new Error(t.cartEmptyOrUnavailable);
     }
-
-    const items = syncedCart.map((item) => ({
-      offer_id: item.id,
-      name_snapshot: getOfferOrderNameSnapshot(item, lang, games, offers),
-      price: parseFloat(item.price),
-      quantity: 1,
-    }));
 
     if (paymentMethod === 'balance') {
       await assertNoOpenDuplicateTopup(user.id, items, t);
@@ -921,7 +950,7 @@ export default function App() {
     const [resolvedOffer] = await resolveCheckoutOffers([offer]);
     offer = resolvedOffer || offer;
 
-    const amount = parseFloat(offer.price);
+    const amount = resolveCustomerUnitPrice(offer, { partnerMarkupPercent: partnerMarkup });
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new Error(t.cartEmptyOrUnavailable || 'Invalid price');
     }
@@ -1782,11 +1811,20 @@ export default function App() {
     };
   }, [user?.id, user?.role, refreshNotifications, navigate, lang, showToast, dismissToast]);
 
+  useEffect(() => {
+    if (!user?.id || user?.role === 'admin') {
+      setPartnerTier(null);
+      return undefined;
+    }
+    refreshPartnerTier(user.id);
+    return undefined;
+  }, [user?.id, user?.role, refreshPartnerTier]);
+
   // Keep cart prices in sync when offers load — never purge unknown ids while catalog is loading
   useEffect(() => {
-    if (loadingGames || !offers.length || cart.length === 0) return;
+    if (loadingGames || !storefrontOffers.length || cart.length === 0) return;
 
-    const { items, removedCount, priceUpdated } = syncCartWithOffers(cart, offers);
+    const { items, removedCount, priceUpdated } = syncCartWithOffers(cart, storefrontOffers);
     if (!cartsAreEquivalent(cart, items)) {
       setCart(items);
       if (removedCount > 0) {
@@ -1794,7 +1832,7 @@ export default function App() {
       }
     }
     if (priceUpdated) setCartPriceUpdated(true);
-  }, [offers, cart, loadingGames, lang, t.cartItemsRemoved, showNotification]);
+  }, [storefrontOffers, cart, loadingGames, lang, t.cartItemsRemoved, showNotification]);
 
   const addToCart = (product, e = null) => {
     if (!user) {
@@ -1987,7 +2025,21 @@ export default function App() {
           user={user}
           loadingAuth={loadingAuth}
           games={games}
-          offers={offers}
+          offers={storefrontOffers}
+          partnerTier={partnerTier}
+          onPartnerJoined={async (tier) => {
+            if (tier) {
+              setPartnerTier({
+                id: tier.id,
+                slug: tier.slug,
+                nameEn: tier.nameEn,
+                nameAr: tier.nameAr,
+                markupPercent: Number(tier.markupPercent),
+              });
+            } else {
+              await refreshPartnerTier(user?.id);
+            }
+          }}
           orders={orders}
           loadingGames={loadingGames}
           loadingOrders={loadingOrders}

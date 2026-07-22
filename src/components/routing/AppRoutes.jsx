@@ -31,6 +31,7 @@ const BannedView = lazy(() => import('../../views/BannedView'));
 const AdminView = lazy(() => import('../../views/admin/AdminView'));
 const AdminGiftView = lazy(() => import('../../views/admin/AdminGiftView'));
 const SuccessView = lazy(() => import('../../views/SuccessView'));
+const PartnerJoinView = lazy(() => import('../../views/PartnerJoinView'));
 const InvoiceView = lazy(() => import('../../views/InvoiceView'));
 const TestViewReceipt = import.meta.env.DEV
   ? lazy(() => import('../../views/TestViewReceipt'))
@@ -47,6 +48,8 @@ export default function AppRoutes({
   loadingAuth,
   games,
   offers,
+  partnerTier: _partnerTier = null,
+  onPartnerJoined,
   orders,
   loadingGames,
   loadingOrders,
@@ -240,6 +243,21 @@ export default function AppRoutes({
               isAdmin={isAdmin}
               addToCart={addToCart}
             />
+          )}
+        />
+
+        <Route
+          path="/partner/join"
+          element={(
+            <Suspense fallback={<PageLoader t={t} />}>
+              <PartnerJoinView
+                t={t}
+                lang={lang}
+                user={user}
+                navigate={navigate}
+                onPartnerJoined={onPartnerJoined}
+              />
+            </Suspense>
           )}
         />
 

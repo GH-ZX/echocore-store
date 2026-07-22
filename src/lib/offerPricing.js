@@ -18,8 +18,8 @@ export function normalizePricingMode(mode) {
 }
 
 /**
- * Resolve storefront price for an offer given supplier cost + store default markup.
- * Does not mutate the offer.
+ * Resolve public storefront price for an offer given supplier cost + store default markup.
+ * Does not mutate the offer. Partners use partnerPricing.resolvePartnerUnitPrice (plan B).
  */
 export function resolveOfferPrice(offer, cost, storeMarkupPercent) {
   const mode = normalizePricingMode(offer?.pricing_mode);

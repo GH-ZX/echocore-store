@@ -7,7 +7,7 @@ import {
   isValidAdminTabSegment,
   resolveAdminTabFromPath,
 } from '../../lib/adminRoutes';
-import { Trash2, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Percent, PanelLeftClose, PanelLeftOpen, Users, ScrollText, Bell, Mail, TrendingUp, Cable } from 'lucide-react';
+import { Trash2, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Percent, PanelLeftClose, PanelLeftOpen, Users, ScrollText, Bell, Mail, TrendingUp, Cable, Handshake } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 import { centerActiveMobileTab, resetPageHorizontalScroll } from '../../lib/adminMobileNav';
@@ -26,6 +26,7 @@ const AdminHomeLayoutSettings = lazy(() => import('../../components/admin/AdminH
 const AdminReviewsManager = lazy(() => import('../../components/admin/AdminReviewsManager'));
 const AdminRechargeManager = lazy(() => import('../../components/admin/AdminRechargeManager'));
 const AdminUsersManager = lazy(() => import('../../components/admin/AdminUsersManager'));
+const AdminPartnersManager = lazy(() => import('../../components/admin/AdminPartnersManager'));
 const AdminInboxManager = lazy(() => import('../../components/admin/AdminInboxManager'));
 const AdminContactMessages = lazy(() => import('../../components/admin/AdminContactMessages'));
 const AdminOrdersManager = lazy(() => import('../../components/admin/AdminOrdersManager'));
@@ -66,6 +67,7 @@ function buildAdminNavItems(t) {
     { id: 'theme', label: t.themeTab, shortLabel: t.tabThemeShort, icon: Palette },
     { id: 'reviews', label: t.reviewsTab, shortLabel: t.tabReviewsShort, icon: MessageSquare },
     { id: 'users', label: t.usersTab, shortLabel: t.tabUsersShort, icon: Users },
+    { id: 'partners', label: t.partnersTab, shortLabel: t.tabPartnersShort, icon: Handshake },
     { id: 'logs', label: t.logsTab, shortLabel: t.tabLogsShort, icon: ScrollText },
   ];
 }
@@ -700,6 +702,16 @@ export default function AdminView({
       {activeTab === 'users' && (
         <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
           <AdminUsersManager
+            t={t}
+            lang={lang}
+            onNotify={onNotify}
+          />
+        </Suspense>
+      )}
+
+      {activeTab === 'partners' && (
+        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+          <AdminPartnersManager
             t={t}
             lang={lang}
             onNotify={onNotify}

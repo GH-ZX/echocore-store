@@ -86,6 +86,7 @@ export const resolveUserData = async (authUser, { createIfMissing = false } = {}
     game_player_uids: profile.game_player_uids && typeof profile.game_player_uids === 'object'
       ? profile.game_player_uids
       : {},
+    partner_tier_id: profile.partner_tier_id || null,
     ...mapProfileBanFields(profile),
   }
 }

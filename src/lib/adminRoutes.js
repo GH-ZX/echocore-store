@@ -13,6 +13,7 @@ export const ADMIN_TAB_SEGMENTS = {
   theme: 'themes',
   reviews: 'reviews',
   users: 'users',
+  partners: 'partners',
   inbox: 'inbox',
   contact: 'contact',
   logs: 'logs',
