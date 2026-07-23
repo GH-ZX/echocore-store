@@ -16,6 +16,24 @@ function isSeverityBad(sev) {
   );
 }
 
+/** Stale deploy / tab left open — not a store outage; don't turn the health strip red. */
+function isBenignClientNoise(row) {
+  const type = String(row?.event_type || '').toLowerCase();
+  if (type === 'chunk_load_failed') return true;
+  if (type === 'react_error_boundary' || type === 'window_error' || type === 'unhandled_rejection') {
+    const msg = String(
+      row?.metadata?.message
+      || row?.metadata?.consoleLog
+      || row?.metadata?.error
+      || '',
+    );
+    if (/Failed to fetch dynamically imported module|Loading chunk|Importing a module script failed/i.test(msg)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Summarize admin site_logs rows for the monitor cards + feed.
  * @param {object[]} logs
@@ -43,6 +61,7 @@ export function summarizeAdminActivity(logs = [], { now = Date.now() } = {}) {
     const cat = String(row?.category || '').toLowerCase();
     const type = String(row?.event_type || '').toLowerCase();
     const bad = isSeverityBad(row?.severity);
+    const benign = isBenignClientNoise(row);
 
     if (cat === 'order' || type.includes('order') || type === 'placed' || type === 'balance_paid' || type === 'fulfilled') {
       orders24h += 1;
@@ -56,7 +75,8 @@ export function summarizeAdminActivity(logs = [], { now = Date.now() } = {}) {
     if (cat === 'contact' || type === 'message_received') {
       contact24h += 1;
     }
-    if (bad || cat === 'error' || cat === 'dev') {
+    // Count real errors for the card, but exclude deploy/chunk noise from "critical" health
+    if ((bad || cat === 'error' || cat === 'dev') && !benign) {
       errors24h += 1;
       if (['danger', 'error', 'critical', 'err'].includes(String(row?.severity || '').toLowerCase())) {
         criticalOpen += 1;

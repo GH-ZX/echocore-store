@@ -1,7 +1,7 @@
 import { Component } from 'react';
 import { getT } from '../lib/i18n';
 import { logClientError } from '../lib/siteLogs';
-import { isDynamicImportError } from '../lib/lazyRetry';
+import { clearChunkReloadGuard, isDynamicImportError, reloadOnceForStaleChunk } from '../lib/lazyRetry';
 
 export default class ErrorBoundary extends Component {
   constructor(props) {
@@ -19,7 +19,24 @@ export default class ErrorBoundary extends Component {
   componentDidCatch(error, info) {
     console.error('Unhandled UI error:', error, info);
     const chunk = isDynamicImportError(error);
-    // Chunk/HMR failures are common in local Vite — log as warning, not "critical danger"
+
+    // Stale deploy / HMR: reload once to pick up new index.html asset hashes
+    if (chunk && typeof window !== 'undefined') {
+      if (reloadOnceForStaleChunk()) {
+        // Still log as soft warning (may not finish before unload)
+        logClientError('chunk_load_failed', {
+          severity: 'warning',
+          error,
+          metadata: {
+            autoReload: true,
+            componentStack: info?.componentStack || null,
+            consoleLog: error?.stack || `${error?.name || 'Error'}: ${error?.message || error}`,
+          },
+        });
+        return;
+      }
+    }
+
     logClientError(chunk ? 'chunk_load_failed' : 'react_error_boundary', {
       severity: chunk ? 'warning' : 'danger',
       error,
@@ -33,24 +50,12 @@ export default class ErrorBoundary extends Component {
         ].filter(Boolean).join(''),
       },
     });
-
-    // Dev: one automatic reload after Vite invalidates a lazy chunk (avoids stuck blank UI)
-    if (chunk && import.meta.env.DEV && typeof window !== 'undefined') {
-      const key = 'echocore-chunk-reload';
-      try {
-        if (!sessionStorage.getItem(key)) {
-          sessionStorage.setItem(key, '1');
-          window.setTimeout(() => window.location.reload(), 400);
-        }
-      } catch {
-        /* private mode */
-      }
-    }
   }
 
   handleReload = () => {
+    clearChunkReloadGuard();
     try {
-      sessionStorage.removeItem('echocore-chunk-reload');
+      sessionStorage.removeItem('echocore-chunk-reload-at');
     } catch {
       /* ignore */
     }

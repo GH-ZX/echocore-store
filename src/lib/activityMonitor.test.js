@@ -21,6 +21,30 @@ describe('summarizeAdminActivity', () => {
     expect(s.errors24h).toBe(1);
     expect(s.health).toBe('degraded');
   });
+
+  it('does not mark health degraded for stale chunk / deploy noise', () => {
+    const logs = [
+      {
+        created_at: '2026-07-24T11:00:00Z',
+        category: 'error',
+        event_type: 'react_error_boundary',
+        severity: 'danger',
+        metadata: {
+          message: 'Failed to fetch dynamically imported module: https://www.echocore412.com/assets/AdminView-xxx.js',
+        },
+      },
+      {
+        created_at: '2026-07-24T11:05:00Z',
+        category: 'error',
+        event_type: 'chunk_load_failed',
+        severity: 'warning',
+        metadata: { message: 'Failed to fetch dynamically imported module' },
+      },
+    ];
+    const s = summarizeAdminActivity(logs, { now });
+    expect(s.criticalOpen).toBe(0);
+    expect(s.health).toBe('ok');
+  });
 });
 
 describe('buildCustomerActivityFeed', () => {

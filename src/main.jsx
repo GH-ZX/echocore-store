@@ -6,6 +6,7 @@ import './components/ui/BorderGlow.css'
 import { applyCachedTheme, bootstrapThemeFromStorage } from './lib/theme'
 import { installGlobalErrorLogging } from './lib/siteLogs'
 import { enforceCanonicalHost } from './lib/siteDomain'
+import { clearChunkReloadGuard } from './lib/lazyRetry'
 import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 
@@ -13,6 +14,8 @@ import ErrorBoundary from './components/ErrorBoundary.jsx'
 if (enforceCanonicalHost()) {
   // Hard navigation in progress — do not mount React on the wrong host.
 } else {
+  // Successful boot after a stale-chunk reload — allow a future deploy to auto-reload again
+  clearChunkReloadGuard()
   bootstrapThemeFromStorage()
   applyCachedTheme()
   installGlobalErrorLogging()
