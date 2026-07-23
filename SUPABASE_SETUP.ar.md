@@ -115,7 +115,7 @@
 |------|--------|
 | `supabase_echocore_full.sql` | **الإعداد الأساسي** — المخطط الكامل (~3000 سطر) |
 | `supabase_charm_pricing_migration.sql` | ترقية تدريجية: تفعيل أسعار Charm (قواعد قديمة فقط) |
-| `supabase_*.sql` | ترقيات أخرى — راجع [ECHOCORE_STORE_GUIDE.md §13](./ECHOCORE_STORE_GUIDE.md#13-sql-migrations) |
+| `supabase_echocore_full.sql` | كل المخطط (ملف واحد) |
 | `scripts/*.sql` | تشخيص / عمليات اختيارية |
 
 ---

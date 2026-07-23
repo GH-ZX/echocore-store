@@ -3,27 +3,32 @@
 **المباشر:** https://www.echocore412.com  
 **الإصدار:** 0.5.0
 
-متجر شحن ألعاب وبطاقات رقمية (عربي / إنجليزي). React + Supabase + GitHub Pages.
+متجر شحن ألعاب وبطاقات رقمية (عربي / إنجليزي).  
+React + Supabase + GitHub Pages.
 
-**الترخيص:** ملكية خاصة — جميع الحقوق محفوظة. الكود منشور للعرض فقط وليس للاستخدام أو النسخ. راجع [LICENSE](./LICENSE).
+**الترخيص:** ملكية خاصة — جميع الحقوق محفوظة. الكود منشور للعرض فقط. راجع [LICENSE](./LICENSE).
 
-English: [README.md](./README.md)
+**English:** [README.md](./README.md)
+
+---
+
+## الوثائق (ببساطة)
+
+👉 **[docs/README.md](./docs/README.md)** — صفحة واحدة تشير لكل شيء  
+
+صاحب المتجر: [docs/for-owners.md](./docs/for-owners.md) · [تقرير المالك](./تقرير-تطوير-الموقع-للمالك.txt)
 
 ---
 
 ## الميزات
 
 - قاعدة بيانات Supabase (ألعاب، عروض، طلبات، مصادقة، رصيد)
-- لوحة إدارة (`/dashboard`) — كتالوج، دفع، ثيم، تخطيط الرئيسية، G2Bulk
-- مزامنة G2Bulk وتنفيذ تلقائي؛ أسعار Charm متدرجة (`.49` / `.89` / `.99`)
-- تكلفة المورد للمسؤول فقط على بطاقات العروض (`g2bulk_cost_usd`)
-- تسميات عملة الحزم ونصوص تسويقية لكل لعبة
+- لوحة إدارة (`/dashboard`)
+- مزامنة G2Bulk وتوريد تلقائي
 - شحن وشراء ShamCash / Sam API
-- **فواتير** للطلبات وشحن الرصيد (PNG/PDF) — `/invoice/:kind/:id`
-- ترجمة مركزية مع أوصاف افتراضية للألعاب والعروض (`translations.js` / `pageContent.js`)
+- فواتير طلبات ورصيد
+- عربي / إنجليزي
 - نطاق مخصص على GitHub Pages
-
-**إعداد قاعدة البيانات:** [SUPABASE_SETUP.ar.md](./SUPABASE_SETUP.ar.md)
 
 ---
 
@@ -39,62 +44,27 @@ npm run dev
 
 افتح http://localhost:5173
 
-### Supabase (ملف SQL واحد)
+### قاعدة البيانات (مشروع جديد)
 
-في **SQL Editor** شغّل:
+في Supabase **SQL Editor** شغّل **ملف واحد فقط**:
 
 👉 [supabase_echocore_full.sql](./supabase_echocore_full.sql)
 
-ثم عيّن `role = admin` في جدول `profiles`.
+ثم عيّن `role = admin` في `profiles`.
+
+كل المخطط في هذا الملف الواحد (تم دمج الترحيلات السابقة فيه).
 
 ---
 
 ## الأوامر
 
 | الأمر | الوصف |
-|-------|--------|
-| `npm run dev` | بيئة التطوير |
-| `npm run build` | بناء الإنتاج |
-| `npm run lint` | فحص ESLint |
+|------|--------|
+| `npm run dev` | تطوير |
+| `npm run build` | بناء للإنتاج |
+| `npm run lint` | فحص الكود |
 | `npm run preview` | معاينة البناء |
 
 ---
 
-## النشر
-
-الدفع إلى `main` يشغّل GitHub Actions (lint + build + نشر).
-
-**الأسرار المطلوبة:** `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_SITE_DOMAIN` (`www.echocore412.com`), `VITE_BASE_PATH` (`/`).
-
-التفاصيل: [RUNNING.md](./RUNNING.md) · [PROJECT_MAP.ar.md](./PROJECT_MAP.ar.md)
-
----
-
-## هيكل المشروع
-
-```
-src/
-├── App.jsx
-├── components/routing/     # AppRoutes والمسارات
-├── components/invoices/    # مكوّنات الفاتورة
-├── views/                  # الصفحات (OfferDetail، InvoiceView، …)
-├── data/                   # الترجمات وخطوات الشحن
-└── lib/                    # Supabase، السلة، الفواتير، i18n
-supabase_echocore_full.sql  # إعداد قاعدة البيانات — شغّل هذا
-```
-
----
-
-## الوثائق
-
-| الملف | اللغة |
-|------|--------|
-| [SUPABASE_SETUP.ar.md](./SUPABASE_SETUP.ar.md) | عربي |
-| [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) | إنجليزي |
-| [PROJECT_MAP.ar.md](./PROJECT_MAP.ar.md) | عربي |
-| [PROJECT_MAP.md](./PROJECT_MAP.md) | إنجليزي |
-| [RUNNING.md](./RUNNING.md) | عربي |
-
----
-
-© 2026 متجر ECHOCORE. جميع الحقوق محفوظة. · المطوّر: [أحمد غاوي](https://github.com/GH-ZX) · ahmedghuwu3@gmail.com
+© 2026 ECHOCORE Store. جميع الحقوق محفوظة.

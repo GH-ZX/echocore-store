@@ -1,6 +1,7 @@
 # ECHOCORE Store — Project Map
 
-> Read this first for full context in ~2 minutes.
+> Technical map of routes & layers (~2 minutes).  
+> **Docs hub:** [docs/README.md](./docs/README.md)
 
 ## What it is
 
@@ -127,7 +128,7 @@ views/
 
 ## Database
 
-**Database setup:** [supabase_echocore_full.sql](./supabase_echocore_full.sql) (single file, ~2,800 lines)
+**Database setup:** [supabase_echocore_full.sql](./supabase_echocore_full.sql) (single merged file)
 
 Setup guide: [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) · [SUPABASE_SETUP.ar.md](./SUPABASE_SETUP.ar.md)
 
@@ -170,4 +171,4 @@ Game/offer CRUD: `AdminGameEditModal` / `AdminOfferEditModal` only (no inline fo
 | http://localhost:5173 | Store |
 | http://localhost:5173/dev/receipt-preview | Invoice layout preview (no Supabase) |
 
-Arabic map: [PROJECT_MAP.ar.md](./PROJECT_MAP.ar.md)
+Owner guide (simple): [docs/for-owners.md](./docs/for-owners.md)

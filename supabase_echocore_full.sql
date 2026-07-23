@@ -1,7 +1,7 @@
 ﻿-- =============================================================================
 -- ECHOCORE STORE â€” COMPLETE SUPABASE SETUP (single file)
 -- =============================================================================
--- Version: 0.6.0 (single merged file, no duplicate RPC bodies)  |  Live site: https://www.echocore412.com
+-- Version: 0.7.1 — single file, functions deduped (last overload wins), dollar-quotes fixed
 --
 -- Run this ENTIRE file once in Supabase SQL Editor (new or existing project).
 -- Idempotent: IF NOT EXISTS, DROP POLICY IF EXISTS, CREATE OR REPLACE.
@@ -203,21 +203,8 @@ ALTER TABLE public.customer_reviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.contact_messages ENABLE ROW LEVEL SECURITY;
 
 -- Helper: admin check without RLS recursion inside policies
-CREATE OR REPLACE FUNCTION public.is_admin()
-RETURNS boolean
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-STABLE AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.profiles
-    WHERE id = auth.uid() AND role = 'admin'
-  );
-$$;
 
-REVOKE EXECUTE ON FUNCTION public.is_admin() FROM public;
-GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated, anon;
-
+-- (deduped: earlier is_admin)
 -- Profiles Policies
 DROP POLICY IF EXISTS "Profiles readable" ON public.profiles;
 DROP POLICY IF EXISTS "Users read own profile" ON public.profiles;
@@ -362,16 +349,9 @@ CREATE POLICY "Admins update contact messages" ON public.contact_messages
 -- =====================================================
 
 -- Auto-create profile row on auth user signup
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger 
-LANGUAGE plpgsql 
-SECURITY DEFINER SET search_path = public AS $$
-BEGIN
-  INSERT INTO public.profiles (id, role, name)
-  VALUES (new.id, 'user', new.raw_user_meta_data->>'name');
-  RETURN new;
-END;
-$$;
+
+-- (deduped: earlier handle_new_user)
+
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created 
@@ -382,36 +362,9 @@ REVOKE EXECUTE ON FUNCTION public.handle_new_user() FROM public;
 
 
 -- Prevent non-admins from changing role or balance on their own profile
-CREATE OR REPLACE FUNCTION public.protect_profile_sensitive_fields()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-DECLARE
-  caller_role text;
-BEGIN
-  IF current_setting('echocore.allow_balance_change', true) IN ('1', 'true') THEN
-    RETURN NEW;
-  END IF;
 
-  IF auth.uid() IS NULL THEN
-    RETURN NEW;
-  END IF;
+-- (deduped: earlier protect_profile_sensitive_fields)
 
-  SELECT role INTO caller_role FROM public.profiles WHERE id = auth.uid();
-
-  IF caller_role = 'admin' THEN
-    RETURN NEW;
-  END IF;
-
-  IF auth.uid() = OLD.id THEN
-    NEW.role := OLD.role;
-    NEW.balance := OLD.balance;
-  END IF;
-
-  RETURN NEW;
-END;
-$$;
 
 DROP TRIGGER IF EXISTS protect_profile_sensitive_fields ON public.profiles;
 CREATE TRIGGER protect_profile_sensitive_fields
@@ -472,8 +425,6 @@ GRANT EXECUTE ON FUNCTION public.deduct_user_balance(uuid, numeric, text, text) 
 
 
 -- RPC to fetch enabled payment flags safely without exposing tokens
-
-
 
 
 -- RPC to fetch public theme variables
@@ -769,51 +720,11 @@ CREATE POLICY "Admins manage recharge requests" ON public.recharge_requests
 -- 3. LOCK DOWN DIRECT BALANCE CREDIT â€” admin approval only
 -- ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION public.credit_user_balance(
-  p_user_id uuid,
-  p_amount numeric,
-  p_payment_method text,
-  p_reference text DEFAULT null
-)
-RETURNS numeric
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-DECLARE
-  new_balance numeric;
-BEGIN
-  IF NOT public.is_admin() THEN
-    RAISE EXCEPTION 'Unauthorized';
-  END IF;
 
-  IF p_amount <= 0 THEN
-    RAISE EXCEPTION 'Amount must be positive';
-  END IF;
-
-  UPDATE public.profiles
-    SET balance = COALESCE(balance, 0) + p_amount
-    WHERE id = p_user_id
-    RETURNING balance INTO new_balance;
-
-  IF new_balance IS NULL THEN
-    RAISE EXCEPTION 'Profile not found';
-  END IF;
-
-  INSERT INTO public.transactions (user_id, type, amount, balance_after, payment_method, reference, status)
-  VALUES (p_user_id, 'recharge', p_amount, new_balance, p_payment_method, p_reference, 'completed');
-
-  RETURN new_balance;
-END;
-$$;
-
-REVOKE EXECUTE ON FUNCTION public.credit_user_balance(uuid, numeric, text, text) FROM public;
-GRANT EXECUTE ON FUNCTION public.credit_user_balance(uuid, numeric, text, text) TO authenticated;
-
+-- (deduped: earlier credit_user_balance)
 -- ---------------------------------------------------------------------------
 -- 4. PUBLIC PAYMENT CONFIG (includes manual ShamCash QR fields)
 -- ---------------------------------------------------------------------------
-
-
 
 
 -- ---------------------------------------------------------------------------
@@ -827,45 +738,8 @@ REVOKE EXECUTE ON FUNCTION public.mark_recharge_payment_sent(uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.mark_recharge_payment_sent(uuid) TO authenticated;
 
 
-CREATE OR REPLACE FUNCTION public.get_my_active_recharge_request()
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-STABLE AS $$
-DECLARE
-  v_user_id uuid := auth.uid();
-  v_row recharge_requests%ROWTYPE;
-BEGIN
-  IF v_user_id IS NULL THEN
-    RETURN NULL;
-  END IF;
 
-  SELECT * INTO v_row
-  FROM recharge_requests
-  WHERE user_id = v_user_id
-    AND status IN ('pending', 'payment_sent')
-    AND created_at > now() - interval '30 minutes'
-  ORDER BY created_at DESC
-  LIMIT 1;
-
-  IF NOT FOUND THEN
-    RETURN NULL;
-  END IF;
-
-  RETURN jsonb_build_object(
-    'requestId', v_row.id,
-    'reference', v_row.reference,
-    'amount', v_row.amount,
-    'status', v_row.status,
-    'createdAt', v_row.created_at
-  );
-END;
-$$;
-
-REVOKE EXECUTE ON FUNCTION public.get_my_active_recharge_request() FROM public;
-GRANT EXECUTE ON FUNCTION public.get_my_active_recharge_request() TO authenticated;
-
+-- (deduped: earlier get_my_active_recharge_request)
 -- ---------------------------------------------------------------------------
 -- 6. ADMIN RECHARGE RPCs
 -- ---------------------------------------------------------------------------
@@ -1060,36 +934,8 @@ REVOKE EXECUTE ON FUNCTION public.notify_all_admins(text, jsonb, text) FROM publ
 -- 3. CLIENT RPCs
 -- ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION public.get_my_notifications(p_limit int DEFAULT 30)
-RETURNS json
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-STABLE AS $$
-DECLARE
-  v_user_id uuid := auth.uid();
-BEGIN
-  IF v_user_id IS NULL THEN
-    RETURN '[]'::json;
-  END IF;
 
-  RETURN COALESCE((
-    SELECT json_agg(row_to_json(q) ORDER BY q.created_at DESC)
-    FROM (
-      SELECT id, type, metadata, link, read_at, bell_hidden_at, created_at
-      FROM public.notifications
-      WHERE user_id = v_user_id
-      ORDER BY created_at DESC
-      LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 30), 100))
-    ) q
-  ), '[]'::json);
-END;
-$$;
-
-REVOKE EXECUTE ON FUNCTION public.get_my_notifications(int) FROM public;
-GRANT EXECUTE ON FUNCTION public.get_my_notifications(int) TO authenticated;
-
-
+-- (deduped: earlier get_my_notifications)
 CREATE OR REPLACE FUNCTION public.get_unread_notification_count()
 RETURNS int
 LANGUAGE plpgsql
@@ -1182,267 +1028,27 @@ GRANT EXECUTE ON FUNCTION public.mark_all_notifications_read() TO authenticated;
 -- ---------------------------------------------------------------------------
 
 
-CREATE OR REPLACE FUNCTION public.approve_recharge_request(p_request_id uuid)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-DECLARE
-  v_admin_id uuid := auth.uid();
-  v_row recharge_requests%ROWTYPE;
-  v_new_balance numeric;
-BEGIN
-  IF NOT public.is_admin() THEN
-    RAISE EXCEPTION 'Unauthorized';
-  END IF;
 
-  SELECT * INTO v_row
-  FROM recharge_requests
-  WHERE id = p_request_id
-  FOR UPDATE;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Recharge request not found';
-  END IF;
-
-  IF v_row.status NOT IN ('pending', 'payment_sent') THEN
-    RAISE EXCEPTION 'Request is not awaiting approval';
-  END IF;
-
-  v_new_balance := public.credit_user_balance(
-    v_row.user_id,
-    v_row.amount,
-    v_row.payment_method,
-    v_row.reference
-  );
-
-  UPDATE recharge_requests
-    SET status = 'approved',
-        reviewed_by = v_admin_id,
-        reviewed_at = now(),
-        updated_at = now()
-    WHERE id = p_request_id;
-
-  PERFORM public.notify_user(
-    v_row.user_id,
-    'recharge_approved',
-    jsonb_build_object(
-      'requestId', p_request_id,
-      'amount', v_row.amount,
-      'newBalance', v_new_balance
-    ),
-    '/profile'
-  );
-
-  RETURN jsonb_build_object(
-    'requestId', p_request_id,
-    'userId', v_row.user_id,
-    'amount', v_row.amount,
-    'newBalance', v_new_balance,
-    'status', 'approved'
-  );
-END;
-$$;
+-- (deduped: earlier approve_recharge_request)
 
 
-CREATE OR REPLACE FUNCTION public.reject_recharge_request(p_request_id uuid, p_note text DEFAULT null)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-DECLARE
-  v_admin_id uuid := auth.uid();
-  v_row recharge_requests%ROWTYPE;
-BEGIN
-  IF NOT public.is_admin() THEN
-    RAISE EXCEPTION 'Unauthorized';
-  END IF;
-
-  SELECT * INTO v_row
-  FROM recharge_requests
-  WHERE id = p_request_id
-  FOR UPDATE;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Recharge request not found';
-  END IF;
-
-  IF v_row.status NOT IN ('pending', 'payment_sent') THEN
-    RAISE EXCEPTION 'Request is not awaiting review';
-  END IF;
-
-  UPDATE recharge_requests
-    SET status = 'rejected',
-        admin_note = nullif(trim(p_note), ''),
-        reviewed_by = v_admin_id,
-        reviewed_at = now(),
-        updated_at = now()
-    WHERE id = p_request_id;
-
-  PERFORM public.notify_user(
-    v_row.user_id,
-    'recharge_rejected',
-    jsonb_build_object(
-      'requestId', p_request_id,
-      'amount', v_row.amount,
-      'note', nullif(trim(p_note), '')
-    ),
-    '/recharge'
-  );
-
-  RETURN jsonb_build_object(
-    'requestId', p_request_id,
-    'status', 'rejected'
-  );
-END;
-$$;
+-- (deduped: earlier reject_recharge_request)
 
 
-CREATE OR REPLACE FUNCTION public.confirm_order_payment(
-  p_order_id uuid,
-  p_reference text DEFAULT null
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-DECLARE
-  v_order public.orders%ROWTYPE;
-  v_ref text;
-  v_wallet_mode text;
-BEGIN
-  IF NOT public.is_admin() THEN
-    RAISE EXCEPTION 'Unauthorized';
-  END IF;
-
-  SELECT COALESCE(sam_wallet_mode, 'manual')
-  INTO v_wallet_mode
-  FROM store_settings
-  WHERE id = 1;
-
-  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id FOR UPDATE;
-
-  IF v_order.id IS NULL THEN
-    RAISE EXCEPTION 'Order not found';
-  END IF;
-
-  IF v_wallet_mode = 'api'
-    AND v_order.payment_method IN ('ShamCash', 'SyriatelCash') THEN
-    RAISE EXCEPTION 'Manual order approval is not used in Sam API wallet mode';
-  END IF;
-
-  IF v_order.status NOT IN ('pending_payment', 'payment_sent') THEN
-    RAISE EXCEPTION 'Order is not awaiting payment confirmation';
-  END IF;
-
-  v_ref := COALESCE(nullif(trim(p_reference), ''), v_order.payment_reference);
-
-  UPDATE public.orders
-    SET status = 'completed'
-    WHERE id = p_order_id;
-
-  INSERT INTO public.transactions (user_id, type, amount, balance_after, payment_method, reference, status)
-  SELECT
-    v_order.user_id,
-    'purchase',
-    -v_order.total,
-    p.balance,
-    v_order.payment_method,
-    v_ref,
-    'completed'
-  FROM public.profiles p
-  WHERE p.id = v_order.user_id;
-
-  PERFORM public.notify_user(
-    v_order.user_id,
-    'order_completed',
-    jsonb_build_object(
-      'orderId', p_order_id,
-      'total', v_order.total
-    ),
-    '/success?orderId=' || p_order_id::text
-  );
-
-  RETURN jsonb_build_object(
-    'orderId', p_order_id,
-    'status', 'completed'
-  );
-END;
-$$;
+-- (deduped: earlier confirm_order_payment)
 
 
-CREATE OR REPLACE FUNCTION public.reject_order_payment(
-  p_order_id uuid,
-  p_note text DEFAULT null
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-DECLARE
-  v_order public.orders%ROWTYPE;
-BEGIN
-  IF NOT public.is_admin() THEN
-    RAISE EXCEPTION 'Unauthorized';
-  END IF;
+-- (deduped: earlier reject_order_payment)
 
-  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id FOR UPDATE;
-
-  IF v_order.id IS NULL THEN
-    RAISE EXCEPTION 'Order not found';
-  END IF;
-
-  IF v_order.status NOT IN ('pending_payment', 'payment_sent') THEN
-    RAISE EXCEPTION 'Order is not awaiting review';
-  END IF;
-
-  UPDATE public.orders
-    SET status = 'cancelled'
-    WHERE id = p_order_id;
-
-  PERFORM public.notify_user(
-    v_order.user_id,
-    'order_rejected',
-    jsonb_build_object(
-      'orderId', p_order_id,
-      'total', v_order.total,
-      'note', nullif(trim(p_note), '')
-    ),
-    '/profile'
-  );
-
-  RETURN jsonb_build_object(
-    'orderId', p_order_id,
-    'status', 'cancelled',
-    'note', nullif(trim(p_note), '')
-  );
-END;
-$$;
 
 
 -- ---------------------------------------------------------------------------
 -- 5. CONTACT FORM â€” notify admins on new message
 -- ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION public.on_contact_message_insert()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-BEGIN
-  PERFORM public.notify_all_admins(
-    'admin_contact_message',
-    jsonb_build_object(
-      'messageId', NEW.id,
-      'name', NEW.name,
-      'email', NEW.email,
-      'message', left(coalesce(NEW.message, ''), 200)
-    ),
-    '/dashboard/contact'
-  );
-  RETURN NEW;
-END;
-$$;
+
+-- (deduped: earlier on_contact_message_insert)
+
 
 DROP TRIGGER IF EXISTS contact_message_notify_admins ON public.contact_messages;
 CREATE TRIGGER contact_message_notify_admins
@@ -1463,201 +1069,24 @@ CREATE TRIGGER contact_message_notify_admins
 -- 1. CLEAR NOTIFICATIONS
 -- ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION public.clear_all_notifications()
-RETURNS int
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-DECLARE
-  v_user_id uuid := auth.uid();
-  v_count int;
-BEGIN
-  IF v_user_id IS NULL THEN
-    RAISE EXCEPTION 'Not authenticated';
-  END IF;
 
-  UPDATE public.notifications
-  SET
-    bell_hidden_at = now(),
-    read_at = COALESCE(read_at, now())
-  WHERE user_id = v_user_id
-    AND bell_hidden_at IS NULL;
-
-  GET DIAGNOSTICS v_count = ROW_COUNT;
-  RETURN v_count;
-END;
-$$;
-
-REVOKE EXECUTE ON FUNCTION public.clear_all_notifications() FROM public;
-GRANT EXECUTE ON FUNCTION public.clear_all_notifications() TO authenticated;
-
-
+-- (deduped: earlier clear_all_notifications)
 -- ---------------------------------------------------------------------------
 -- 2. USER NOTIFICATION WHEN RECHARGE SENT TO ADMIN QUEUE
 -- ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION public.mark_recharge_payment_sent(p_request_id uuid)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-DECLARE
-  v_user_id uuid := auth.uid();
-  v_row recharge_requests%ROWTYPE;
-  v_user_name text;
-  v_current_balance numeric;
-  v_wallet_mode text;
-BEGIN
-  IF v_user_id IS NULL THEN
-    RAISE EXCEPTION 'Not authenticated';
-  END IF;
 
-  SELECT COALESCE(sam_wallet_mode, 'manual')
-  INTO v_wallet_mode
-  FROM store_settings
-  WHERE id = 1;
+-- (deduped: earlier mark_recharge_payment_sent)
 
-  IF v_wallet_mode = 'api' THEN
-    RAISE EXCEPTION 'Manual payment confirmation is not used in Sam API wallet mode';
-  END IF;
-
-  SELECT * INTO v_row
-  FROM recharge_requests
-  WHERE id = p_request_id AND user_id = v_user_id
-  FOR UPDATE;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Recharge request not found';
-  END IF;
-
-  IF v_row.status NOT IN ('pending', 'payment_sent') THEN
-    RAISE EXCEPTION 'This recharge request can no longer be updated';
-  END IF;
-
-  UPDATE recharge_requests
-    SET status = 'payment_sent', updated_at = now()
-    WHERE id = p_request_id;
-
-  SELECT name, balance INTO v_user_name, v_current_balance
-  FROM profiles WHERE id = v_row.user_id;
-
-  PERFORM public.notify_user(
-    v_row.user_id,
-    'recharge_payment_sent',
-    jsonb_build_object(
-      'requestId', p_request_id,
-      'amount', v_row.amount,
-      'reference', v_row.reference,
-      'currentBalance', v_current_balance
-    ),
-    '/recharge'
-  );
-
-  IF v_wallet_mode = 'manual' THEN
-    PERFORM public.notify_all_admins(
-      'admin_recharge_payment_sent',
-      jsonb_build_object(
-        'requestId', p_request_id,
-        'amount', v_row.amount,
-        'reference', v_row.reference,
-        'userName', COALESCE(v_user_name, 'Customer')
-      ),
-      '/dashboard'
-    );
-  END IF;
-
-  RETURN jsonb_build_object(
-    'requestId', p_request_id,
-    'reference', v_row.reference,
-    'amount', v_row.amount,
-    'status', 'payment_sent',
-    'currentBalance', v_current_balance
-  );
-END;
-$$;
 
 
 -- ---------------------------------------------------------------------------
 -- 3. USER NOTIFICATION WHEN ORDER PAYMENT SENT TO ADMIN QUEUE
 -- ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION public.mark_order_payment_sent(p_order_id uuid)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-DECLARE
-  v_user_id uuid := auth.uid();
-  v_order public.orders%ROWTYPE;
-  v_user_name text;
-  v_current_balance numeric;
-  v_wallet_mode text;
-BEGIN
-  IF v_user_id IS NULL THEN
-    RAISE EXCEPTION 'Not authenticated';
-  END IF;
 
-  SELECT COALESCE(sam_wallet_mode, 'manual')
-  INTO v_wallet_mode
-  FROM store_settings
-  WHERE id = 1;
+-- (deduped: earlier mark_order_payment_sent)
 
-  IF v_wallet_mode = 'api' THEN
-    RAISE EXCEPTION 'Manual payment confirmation is not used in Sam API wallet mode';
-  END IF;
-
-  SELECT * INTO v_order
-  FROM public.orders
-  WHERE id = p_order_id AND user_id = v_user_id
-  FOR UPDATE;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Order not found';
-  END IF;
-
-  IF v_order.status IS DISTINCT FROM 'pending_payment' THEN
-    RAISE EXCEPTION 'Order is not awaiting payment';
-  END IF;
-
-  UPDATE public.orders
-    SET status = 'payment_sent'
-    WHERE id = p_order_id;
-
-  SELECT name, balance INTO v_user_name, v_current_balance
-  FROM profiles WHERE id = v_order.user_id;
-
-  PERFORM public.notify_user(
-    v_order.user_id,
-    'order_payment_sent',
-    jsonb_build_object(
-      'orderId', p_order_id,
-      'total', v_order.total,
-      'reference', v_order.payment_reference,
-      'currentBalance', v_current_balance
-    ),
-    '/profile'
-  );
-
-  PERFORM public.notify_all_admins(
-    'admin_order_payment_sent',
-    jsonb_build_object(
-      'orderId', p_order_id,
-      'total', v_order.total,
-      'reference', v_order.payment_reference,
-      'userName', COALESCE(v_user_name, 'Customer')
-    ),
-    '/dashboard'
-  );
-
-  RETURN jsonb_build_object(
-    'orderId', p_order_id,
-    'reference', v_order.payment_reference,
-    'total', v_order.total,
-    'status', 'payment_sent',
-    'currentBalance', v_current_balance
-  );
-END;
-$$;
 
 
 -- ---------------------------------------------------------------------------
@@ -1753,56 +1182,8 @@ ALTER TABLE public.profiles
 -- 2. NOTIFY USER â€” retention (in-site inbox only, no external email)
 -- ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION public.notify_user(
-  p_user_id uuid,
-  p_type text,
-  p_metadata jsonb DEFAULT '{}'::jsonb,
-  p_link text DEFAULT null
-)
-RETURNS uuid
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-DECLARE
-  v_id uuid;
-BEGIN
-  IF p_user_id IS NULL OR p_type IS NULL OR length(trim(p_type)) = 0 THEN
-    RETURN NULL;
-  END IF;
 
-  INSERT INTO public.notifications (user_id, type, metadata, link)
-  VALUES (p_user_id, p_type, COALESCE(p_metadata, '{}'::jsonb), p_link)
-  RETURNING id INTO v_id;
-
-  -- Drop read notifications older than 14 days
-  DELETE FROM public.notifications
-  WHERE user_id = p_user_id
-    AND read_at IS NOT NULL
-    AND read_at < now() - interval '14 days';
-
-  -- Drop any notification older than 30 days
-  DELETE FROM public.notifications
-  WHERE user_id = p_user_id
-    AND created_at < now() - interval '30 days';
-
-  -- Keep only the latest 40 notifications per user
-  DELETE FROM public.notifications
-  WHERE user_id = p_user_id
-    AND id IN (
-      SELECT id
-      FROM public.notifications
-      WHERE user_id = p_user_id
-      ORDER BY created_at DESC
-      OFFSET 40
-    );
-
-  RETURN v_id;
-END;
-$$;
-
-REVOKE EXECUTE ON FUNCTION public.notify_user(uuid, text, jsonb, text) FROM public;
-
-
+-- (deduped: earlier notify_user)
 -- ---------------------------------------------------------------------------
 -- 4. BALANCE PURCHASES — see §27 canonical create_order_atomic
 -- ---------------------------------------------------------------------------
@@ -1946,78 +1327,8 @@ REVOKE EXECUTE ON FUNCTION public.admin_clear_test_balance() FROM public;
 GRANT EXECUTE ON FUNCTION public.admin_clear_test_balance() TO authenticated;
 
 
-CREATE OR REPLACE FUNCTION public.admin_run_mock_purchase(
-  p_offer_id uuid,
-  p_mock_code text DEFAULT null
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-DECLARE
-  v_admin_id uuid := auth.uid();
-  v_offer public.offers%ROWTYPE;
-  v_balance numeric;
-  v_dev_test numeric;
-  v_needed numeric;
-  v_order_result jsonb;
-  v_order_id uuid;
-  v_fulfill jsonb;
-  v_items jsonb;
-BEGIN
-  IF NOT public.is_admin() THEN
-    RAISE EXCEPTION 'Unauthorized';
-  END IF;
 
-  SELECT * INTO v_offer FROM public.offers WHERE id = p_offer_id;
-  IF v_offer.id IS NULL THEN
-    RAISE EXCEPTION 'Offer not found';
-  END IF;
-
-  SELECT balance, dev_test_balance
-  INTO v_balance, v_dev_test
-  FROM public.profiles WHERE id = v_admin_id FOR UPDATE;
-
-  IF v_balance < v_offer.price THEN
-    v_needed := ceil((v_offer.price - v_balance) * 100) / 100;
-    PERFORM public.admin_credit_test_balance(v_needed);
-  END IF;
-
-  v_items := jsonb_build_array(
-    jsonb_build_object(
-      'offer_id', v_offer.id,
-      'name_snapshot', COALESCE(v_offer.name_en, v_offer.name_ar, 'Test offer'),
-      'price', v_offer.price,
-      'quantity', 1
-    )
-  );
-
-  v_order_result := public.create_order_atomic(
-    v_admin_id,
-    v_offer.price,
-    'balance',
-    v_items
-  );
-
-  v_order_id := (v_order_result->>'orderId')::uuid;
-  v_fulfill := public.admin_mock_fulfill_order(v_order_id, p_mock_code);
-
-  RETURN jsonb_build_object(
-    'orderId', v_order_id,
-    'offerId', v_offer.id,
-    'offerName', COALESCE(v_offer.name_en, v_offer.name_ar),
-    'total', v_offer.price,
-    'newBalance', v_order_result->'newBalance',
-    'devTestBalance', v_order_result->'devTestBalance',
-    'fulfillment', v_fulfill,
-    'receiptPath', '/success?orderId=' || v_order_id::text
-  );
-END;
-$$;
-
-REVOKE EXECUTE ON FUNCTION public.admin_run_mock_purchase(uuid, text) FROM public;
-GRANT EXECUTE ON FUNCTION public.admin_run_mock_purchase(uuid, text) TO authenticated;
-
+-- (deduped: earlier admin_run_mock_purchase)
 -- =============================================================================
 -- Â§07  G2Bulk fulfillment
 -- =============================================================================
@@ -2112,154 +1423,8 @@ GRANT EXECUTE ON FUNCTION public.save_g2bulk_settings(boolean, numeric, text) TO
 -- 8. Persist fulfillment result (edge function uses service role)
 -- ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION public.apply_g2bulk_fulfillment(
-  p_order_id uuid,
-  p_fulfillment_status text,
-  p_g2bulk_order_id text DEFAULT null,
-  p_delivery_items jsonb DEFAULT null,
-  p_metadata jsonb DEFAULT '{}'::jsonb,
-  p_error text DEFAULT null
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-DECLARE
-  v_order public.orders%ROWTYPE;
-  v_prev_status text;
-  v_meta jsonb;
-  v_has_uid boolean := false;
-  v_has_codes boolean := false;
-  v_codes jsonb := '[]'::jsonb;
-  v_link text;
-BEGIN
-  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id FOR UPDATE;
 
-  IF v_order.id IS NULL THEN
-    RAISE EXCEPTION 'Order not found';
-  END IF;
-
-  IF v_order.status IS DISTINCT FROM 'completed' THEN
-    RAISE EXCEPTION 'Order is not paid';
-  END IF;
-
-  v_prev_status := v_order.fulfillment_status;
-  v_meta := COALESCE(v_order.g2bulk_metadata, '{}'::jsonb) || COALESCE(p_metadata, '{}'::jsonb);
-
-  IF p_error IS NOT NULL THEN
-    v_meta := v_meta || jsonb_build_object('last_error', p_error, 'failed_at', now());
-  END IF;
-
-  UPDATE public.orders
-  SET
-    fulfillment_status = p_fulfillment_status,
-    g2bulk_order_id = COALESCE(p_g2bulk_order_id, g2bulk_order_id),
-    g2bulk_metadata = v_meta
-  WHERE id = p_order_id;
-
-  UPDATE public.order_items
-  SET
-    fulfillment_status = p_fulfillment_status,
-    delivery_items = COALESCE(p_delivery_items, delivery_items)
-  WHERE order_id = p_order_id;
-
-  v_link := '/success?orderId=' || p_order_id::text;
-
-  IF p_fulfillment_status = 'fulfilled'
-    AND v_prev_status IS DISTINCT FROM 'fulfilled'
-    AND v_order.user_id IS NOT NULL
-  THEN
-    SELECT EXISTS (
-      SELECT 1 FROM public.order_items
-      WHERE order_id = p_order_id
-        AND player_uid IS NOT NULL
-        AND length(trim(player_uid)) > 0
-    ) INTO v_has_uid;
-
-    IF p_delivery_items IS NOT NULL AND jsonb_typeof(p_delivery_items) = 'array' THEN
-      v_codes := p_delivery_items;
-      v_has_codes := jsonb_array_length(v_codes) > 0;
-    END IF;
-
-    IF NOT v_has_codes THEN
-      SELECT COALESCE(jsonb_agg(to_jsonb(di) ORDER BY oi.created_at), '[]'::jsonb)
-      INTO v_codes
-      FROM public.order_items oi
-      CROSS JOIN LATERAL jsonb_array_elements(
-        CASE
-          WHEN oi.delivery_items IS NULL THEN '[]'::jsonb
-          WHEN jsonb_typeof(oi.delivery_items) = 'array' THEN oi.delivery_items
-          ELSE jsonb_build_array(oi.delivery_items)
-        END
-      ) AS di
-      WHERE oi.order_id = p_order_id;
-
-      v_has_codes := COALESCE(jsonb_array_length(v_codes), 0) > 0;
-    END IF;
-
-    IF v_has_uid AND NOT v_has_codes THEN
-      PERFORM public.notify_user(
-        v_order.user_id,
-        'topup_delivered',
-        jsonb_build_object(
-          'orderId', p_order_id,
-          'amount', v_order.total,
-          'giftMessage', v_order.gift_message
-        ),
-        v_link
-      );
-    ELSIF v_has_codes THEN
-      PERFORM public.notify_user(
-        v_order.user_id,
-        'delivery_ready',
-        jsonb_build_object(
-          'orderId', p_order_id,
-          'amount', v_order.total,
-          'codes', v_codes,
-          'giftMessage', v_order.gift_message
-        ),
-        v_link
-      );
-    ELSE
-      PERFORM public.notify_user(
-        v_order.user_id,
-        'order_fulfilled',
-        jsonb_build_object(
-          'orderId', p_order_id,
-          'amount', v_order.total,
-          'giftMessage', v_order.gift_message
-        ),
-        v_link
-      );
-    END IF;
-  ELSIF p_fulfillment_status = 'failed'
-    AND v_prev_status IS DISTINCT FROM 'failed'
-    AND v_order.user_id IS NOT NULL
-  THEN
-    PERFORM public.notify_user(
-      v_order.user_id,
-      'fulfillment_failed',
-      jsonb_build_object(
-        'orderId', p_order_id,
-        'amount', v_order.total,
-        'error', COALESCE(p_error, v_meta->>'last_error')
-      ),
-      v_link
-    );
-  END IF;
-
-  RETURN jsonb_build_object(
-    'orderId', p_order_id,
-    'fulfillmentStatus', p_fulfillment_status,
-    'g2bulkOrderId', p_g2bulk_order_id,
-    'deliveryItems', p_delivery_items
-  );
-END;
-$$;
-
-REVOKE EXECUTE ON FUNCTION public.apply_g2bulk_fulfillment(uuid, text, text, jsonb, jsonb, text) FROM public;
-GRANT EXECUTE ON FUNCTION public.apply_g2bulk_fulfillment(uuid, text, text, jsonb, jsonb, text) TO service_role;
-
+-- (deduped: earlier apply_g2bulk_fulfillment)
 -- =============================================================================
 -- Â§08  G2Bulk catalog sync columns
 -- =============================================================================
@@ -2378,7 +1543,7 @@ EXCEPTION
   WHEN OTHERS THEN
     RAISE NOTICE 'Could not schedule g2bulk auto-sync cron: %', SQLERRM;
 END;
-$cron$;
+$cron$$;
 
 -- =============================================================================
 -- Â§10  G2Bulk catalog health check
@@ -2405,9 +1570,6 @@ ALTER TABLE public.store_settings
     CHECK (g2bulk_catalog_mode IN ('sync', 'live'));
 
 
-
-
-
 DROP FUNCTION IF EXISTS public.save_g2bulk_settings(boolean, numeric, text, boolean, boolean, smallint, text);
 
 DROP FUNCTION IF EXISTS public.save_g2bulk_settings(boolean, numeric, text, boolean, boolean, smallint, text);
@@ -2428,7 +1590,7 @@ CREATE OR REPLACE FUNCTION public.save_g2bulk_settings(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public AS $
+SET search_path = public AS $$
 DECLARE
   v_trim_key text;
 BEGIN
@@ -2458,7 +1620,7 @@ BEGIN
 
   RETURN public.get_g2bulk_settings();
 END;
-$;
+$$;
 
 REVOKE EXECUTE ON FUNCTION public.save_g2bulk_settings(boolean, numeric, text, boolean, boolean, smallint, text, text, boolean, boolean) FROM public;
 GRANT EXECUTE ON FUNCTION public.save_g2bulk_settings(boolean, numeric, text, boolean, boolean, smallint, text, text, boolean, boolean) TO authenticated;
@@ -2535,56 +1697,8 @@ ALTER TABLE public.store_settings
   ADD CONSTRAINT store_settings_g2bulk_catalog_mode_check
   CHECK (g2bulk_catalog_mode IN ('sync', 'live', 'hybrid'));
 
-CREATE OR REPLACE FUNCTION public.get_payment_methods()
-RETURNS json
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-STABLE AS $$
-  SELECT json_build_object(
-    'shamcash', COALESCE((SELECT shamcash_enabled FROM store_settings WHERE id = 1), false),
-    'binance', COALESCE((SELECT binance_enabled FROM store_settings WHERE id = 1), false),
-    'mastercard', COALESCE((SELECT mastercard_enabled FROM store_settings WHERE id = 1), false),
-    'shamcashMerchantName', COALESCE((SELECT shamcash_merchant_name FROM store_settings WHERE id = 1), 'ECHOCORE Store'),
-    'shamcashQrImageUrl', (SELECT shamcash_qr_image_url FROM store_settings WHERE id = 1),
-    'shamcashPayCode', (SELECT shamcash_pay_code FROM store_settings WHERE id = 1),
-    'shamcashManualReady', COALESCE((
-      SELECT shamcash_enabled
-        AND shamcash_qr_image_url IS NOT NULL
-        AND length(trim(shamcash_qr_image_url)) > 0
-        AND shamcash_pay_code IS NOT NULL
-        AND length(trim(shamcash_pay_code)) > 0
-      FROM store_settings WHERE id = 1
-    ), false),
-    'rechargeMin', 1,
-    'rechargeMax', 500,
-    'shamcashConfigured', COALESCE((
-      SELECT shamcash_enabled
-        AND shamcash_api_token IS NOT NULL
-        AND length(trim(shamcash_api_token)) > 0
-      FROM store_settings WHERE id = 1
-    ), false),
-    'walletMode', COALESCE((SELECT sam_wallet_mode FROM store_settings WHERE id = 1), 'manual'),
-    'samApiReady', COALESCE((
-      SELECT sam_api_enabled
-        AND sam_wallet_mode = 'api'
-        AND sam_api_key IS NOT NULL
-        AND length(trim(sam_api_key)) > 0
-        AND sam_wallet_identifier IS NOT NULL
-        AND length(trim(sam_wallet_identifier)) > 0
-        AND sam_webhook_secret IS NOT NULL
-        AND length(trim(sam_webhook_secret)) > 0
-      FROM store_settings WHERE id = 1
-    ), false),
-    'samInvoiceMethod', COALESCE((SELECT sam_invoice_method FROM store_settings WHERE id = 1), 'shamcash'),
-    'samInvoiceCurrency', COALESCE((SELECT sam_invoice_currency FROM store_settings WHERE id = 1), 'USD'),
-    'g2bulkCatalogOnly', COALESCE((SELECT g2bulk_catalog_only FROM store_settings WHERE id = 1), true),
-    'g2bulkCatalogMode', COALESCE((SELECT g2bulk_catalog_mode FROM store_settings WHERE id = 1), 'sync'),
-    'g2bulkAutoApprove', COALESCE((SELECT g2bulk_auto_approve FROM store_settings WHERE id = 1), true),
-    'g2bulkPullSelection', COALESCE((SELECT g2bulk_pull_selection FROM store_settings WHERE id = 1), '{}'::jsonb)
-  );
-$$;
 
+-- (deduped: earlier get_payment_methods)
 
 
 -- =============================================================================
@@ -2933,29 +2047,8 @@ REVOKE EXECUTE ON FUNCTION public.assert_user_not_banned(uuid) FROM public;
 -- 3. SITE STATUS (public)
 -- ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION public.get_site_status()
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-STABLE AS $$
-DECLARE
-  v_row public.store_settings%ROWTYPE;
-BEGIN
-  SELECT * INTO v_row FROM public.store_settings WHERE id = 1;
 
-  RETURN jsonb_build_object(
-    'maintenanceEnabled', COALESCE(v_row.maintenance_enabled, false),
-    'maintenanceMessageAr', COALESCE(v_row.maintenance_message_ar, ''),
-    'maintenanceMessageEn', COALESCE(v_row.maintenance_message_en, ''),
-    'maintenanceAllowAdmins', COALESCE(v_row.maintenance_allow_admins, true)
-  );
-END;
-$$;
-
-GRANT EXECUTE ON FUNCTION public.get_site_status() TO anon, authenticated;
-
-
+-- (deduped: earlier get_site_status)
 CREATE OR REPLACE FUNCTION public.admin_save_maintenance_settings(
   p_enabled boolean,
   p_message_ar text DEFAULT '',
@@ -3126,54 +2219,8 @@ GRANT EXECUTE ON FUNCTION public.admin_notify_user(uuid, text, text, text, text)
 -- 5. USER MODERATION RPCs
 -- ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION public.admin_list_users(
-  p_search text DEFAULT '',
-  p_limit int DEFAULT 50
-)
-RETURNS json
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-STABLE AS $$
-DECLARE
-  v_search text := lower(trim(COALESCE(p_search, '')));
-BEGIN
-  IF NOT public.is_admin() THEN
-    RAISE EXCEPTION 'Unauthorized';
-  END IF;
 
-  RETURN COALESCE((
-    SELECT json_agg(row_to_json(q) ORDER BY q.created_at DESC)
-    FROM (
-      SELECT
-        p.id,
-        p.name,
-        p.role,
-        p.balance,
-        p.banned_at,
-        p.ban_expires_at,
-        p.ban_reason,
-        p.created_at,
-        u.email
-      FROM public.profiles p
-      JOIN auth.users u ON u.id = p.id
-      WHERE p.role = 'user'
-        AND (
-          v_search = ''
-          OR lower(COALESCE(p.name, '')) LIKE '%' || v_search || '%'
-          OR lower(COALESCE(u.email, '')) LIKE '%' || v_search || '%'
-        )
-      ORDER BY p.created_at DESC
-      LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 50), 100))
-    ) q
-  ), '[]'::json);
-END;
-$$;
-
-REVOKE EXECUTE ON FUNCTION public.admin_list_users(text, int) FROM public;
-GRANT EXECUTE ON FUNCTION public.admin_list_users(text, int) TO authenticated;
-
-
+-- (deduped: earlier admin_list_users)
 CREATE OR REPLACE FUNCTION public.admin_ban_user(
   p_user_id uuid,
   p_reason text,
@@ -3372,52 +2419,9 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.assert_user_verified_if_required(uuid) FROM public;
 
 
-CREATE OR REPLACE FUNCTION public.admin_list_users(
-  p_search text DEFAULT '',
-  p_limit int DEFAULT 50
-)
-RETURNS json
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-STABLE AS $$
-DECLARE
-  v_search text := lower(trim(COALESCE(p_search, '')));
-BEGIN
-  IF NOT public.is_admin() THEN
-    RAISE EXCEPTION 'Unauthorized';
-  END IF;
 
-  RETURN COALESCE((
-    SELECT json_agg(row_to_json(q) ORDER BY q.created_at DESC)
-    FROM (
-      SELECT
-        p.id,
-        p.name,
-        p.role,
-        p.balance,
-        p.banned_at,
-        p.ban_expires_at,
-        p.ban_reason,
-        p.verified_at,
-        p.phone,
-        p.country,
-        p.created_at,
-        u.email
-      FROM public.profiles p
-      JOIN auth.users u ON u.id = p.id
-      WHERE p.role = 'user'
-        AND (
-          v_search = ''
-          OR lower(COALESCE(p.name, '')) LIKE '%' || v_search || '%'
-          OR lower(COALESCE(u.email, '')) LIKE '%' || v_search || '%'
-        )
-      ORDER BY p.created_at DESC
-      LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 50), 100))
-    ) q
-  ), '[]'::json);
-END;
-$$;
+-- (deduped: earlier admin_list_users)
+
 
 
 -- (removed older admin_get_user_profile; see later definition)
@@ -3427,32 +2431,8 @@ REVOKE EXECUTE ON FUNCTION public.admin_get_user_profile(uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.admin_get_user_profile(uuid) TO authenticated;
 
 
-CREATE OR REPLACE FUNCTION public.admin_verify_user(p_user_id uuid)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-BEGIN
-  IF NOT public.is_admin() THEN
-    RAISE EXCEPTION 'Unauthorized';
-  END IF;
 
-  UPDATE public.profiles
-    SET verified_at = now()
-    WHERE id = p_user_id AND role = 'user';
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'User not found';
-  END IF;
-
-  RETURN jsonb_build_object('userId', p_user_id, 'verified', true);
-END;
-$$;
-
-REVOKE EXECUTE ON FUNCTION public.admin_verify_user(uuid) FROM public;
-GRANT EXECUTE ON FUNCTION public.admin_verify_user(uuid) TO authenticated;
-
-
+-- (deduped: earlier admin_verify_user)
 CREATE OR REPLACE FUNCTION public.admin_unverify_user(p_user_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -3531,23 +2511,9 @@ UPDATE public.profiles
 SET username = public.generate_default_username()
 WHERE username IS NULL OR trim(username) = '';
 
-CREATE OR REPLACE FUNCTION public.profiles_set_defaults()
-RETURNS trigger
-LANGUAGE plpgsql
-SET search_path = public
-AS $$
-BEGIN
-  IF NEW.username IS NULL OR trim(NEW.username) = '' THEN
-    NEW.username := public.generate_default_username();
-  END IF;
 
-  IF NEW.name IS NULL OR trim(NEW.name) = '' THEN
-    NEW.name := NEW.username;
-  END IF;
+-- (deduped: earlier profiles_set_defaults)
 
-  RETURN NEW;
-END;
-$$;
 
 DROP TRIGGER IF EXISTS profiles_before_insert_defaults ON public.profiles;
 CREATE TRIGGER profiles_before_insert_defaults
@@ -3555,55 +2521,13 @@ CREATE TRIGGER profiles_before_insert_defaults
   FOR EACH ROW
   EXECUTE FUNCTION public.profiles_set_defaults();
 
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  INSERT INTO public.profiles (id, role, name)
-  VALUES (
-    new.id,
-    'user',
-    NULLIF(trim(new.raw_user_meta_data->>'name'), '')
-  );
-  RETURN new;
-END;
-$$;
 
-CREATE OR REPLACE FUNCTION public.protect_profile_sensitive_fields()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  caller_role text;
-BEGIN
-  IF current_setting('echocore.allow_balance_change', true) IN ('1', 'true') THEN
-    RETURN NEW;
-  END IF;
+-- (deduped: earlier handle_new_user)
 
-  IF auth.uid() IS NULL THEN
-    RETURN NEW;
-  END IF;
 
-  SELECT role INTO caller_role FROM public.profiles WHERE id = auth.uid();
 
-  IF caller_role = 'admin' THEN
-    RETURN NEW;
-  END IF;
+-- (deduped: earlier protect_profile_sensitive_fields)
 
-  IF auth.uid() = OLD.id THEN
-    NEW.role := OLD.role;
-    NEW.balance := OLD.balance;
-    NEW.username := OLD.username;
-  END IF;
-
-  RETURN NEW;
-END;
-$$;
 
 CREATE OR REPLACE FUNCTION public.admin_list_users(
   p_search text DEFAULT '',
@@ -3873,35 +2797,8 @@ CREATE TRIGGER orders_assign_ref
 -- APPEND: inbox_dismiss
 -- =============================================================================
 
-CREATE OR REPLACE FUNCTION public.dismiss_notification(p_notification_id uuid)
-RETURNS boolean
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-DECLARE
-  v_user_id uuid := auth.uid();
-  v_deleted int;
-BEGIN
-  IF v_user_id IS NULL THEN
-    RAISE EXCEPTION 'Not authenticated';
-  END IF;
 
-  UPDATE public.notifications
-  SET
-    bell_hidden_at = now(),
-    read_at = COALESCE(read_at, now())
-  WHERE id = p_notification_id
-    AND user_id = v_user_id
-    AND bell_hidden_at IS NULL;
-
-  GET DIAGNOSTICS v_deleted = ROW_COUNT;
-  RETURN v_deleted > 0;
-END;
-$$;
-
-REVOKE EXECUTE ON FUNCTION public.dismiss_notification(uuid) FROM public;
-GRANT EXECUTE ON FUNCTION public.dismiss_notification(uuid) TO authenticated;
-
+-- (deduped: earlier dismiss_notification)
 -- =============================================================================
 -- APPEND: game_player_uids
 -- =============================================================================
@@ -4073,6 +2970,2583 @@ REVOKE EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb
 GRANT EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text) TO authenticated;
 
 -- 2. Admin gifts a product to a user (no charge)
+
+-- (deduped: earlier admin_gift_order)
+-- 3. Dev mock purchase — bypass create_order_atomic admin block
+CREATE OR REPLACE FUNCTION public.admin_run_mock_purchase(
+  p_offer_id uuid,
+  p_mock_code text DEFAULT null
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_admin_id uuid := auth.uid();
+  v_offer public.offers%ROWTYPE;
+  v_balance numeric;
+  v_dev_test numeric;
+  v_needed numeric;
+  v_order_id uuid;
+  v_fulfill jsonb;
+  v_new_balance numeric;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  SELECT * INTO v_offer FROM public.offers WHERE id = p_offer_id;
+  IF v_offer.id IS NULL THEN
+    RAISE EXCEPTION 'Offer not found';
+  END IF;
+
+  SELECT balance, dev_test_balance
+  INTO v_balance, v_dev_test
+  FROM public.profiles WHERE id = v_admin_id FOR UPDATE;
+
+  IF v_balance < v_offer.price THEN
+    v_needed := ceil((v_offer.price - v_balance) * 100) / 100;
+    PERFORM public.admin_credit_test_balance(v_needed);
+    SELECT balance INTO v_balance FROM public.profiles WHERE id = v_admin_id;
+  END IF;
+
+  UPDATE public.profiles
+  SET
+    balance = balance - v_offer.price,
+    dev_test_balance = GREATEST(0, dev_test_balance - v_offer.price)
+  WHERE id = v_admin_id AND balance >= v_offer.price
+  RETURNING balance INTO v_new_balance;
+
+  IF v_new_balance IS NULL THEN
+    RAISE EXCEPTION 'Insufficient balance';
+  END IF;
+
+  INSERT INTO public.orders (user_id, total, payment_method, status)
+  VALUES (v_admin_id, v_offer.price, 'balance', 'completed')
+  RETURNING id INTO v_order_id;
+
+  INSERT INTO public.order_items (order_id, offer_id, name_snapshot, price, quantity)
+  VALUES (
+    v_order_id,
+    v_offer.id,
+    COALESCE(v_offer.name_en, v_offer.name_ar, 'Test offer'),
+    v_offer.price,
+    1
+  );
+
+  INSERT INTO public.transactions (user_id, type, amount, balance_after, payment_method, reference, status)
+  VALUES (v_admin_id, 'purchase', -v_offer.price, v_new_balance, 'balance', NULL, 'completed');
+
+  v_fulfill := public.admin_mock_fulfill_order(v_order_id, p_mock_code);
+
+  RETURN jsonb_build_object(
+    'orderId', v_order_id,
+    'offerId', v_offer.id,
+    'offerName', COALESCE(v_offer.name_en, v_offer.name_ar),
+    'total', v_offer.price,
+    'newBalance', v_new_balance,
+    'devTestBalance', (SELECT dev_test_balance FROM public.profiles WHERE id = v_admin_id),
+    'fulfillment', v_fulfill,
+    'receiptPath', '/success?orderId=' || v_order_id::text
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_run_mock_purchase(uuid, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_run_mock_purchase(uuid, text) TO authenticated;
+
+-- =============================================================================
+-- APPEND: syriatel_payment
+-- =============================================================================
+
+-- 1. Syriatel manual columns
+ALTER TABLE public.store_settings
+  ADD COLUMN IF NOT EXISTS syriatel_enabled boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS syriatel_qr_image_url text,
+  ADD COLUMN IF NOT EXISTS syriatel_pay_code text;
+
+-- 2. Dual Sam API receiving wallets (store wallets where customers pay)
+ALTER TABLE public.store_settings
+  ADD COLUMN IF NOT EXISTS sam_shamcash_wallet_identifier text,
+  ADD COLUMN IF NOT EXISTS sam_syriatel_wallet_identifier text;
+
+-- Migrate legacy single wallet identifier
+UPDATE public.store_settings
+SET
+  sam_shamcash_wallet_identifier = COALESCE(
+    sam_shamcash_wallet_identifier,
+    CASE WHEN COALESCE(sam_invoice_method, 'shamcash') = 'shamcash' THEN sam_wallet_identifier END
+  ),
+  sam_syriatel_wallet_identifier = COALESCE(
+    sam_syriatel_wallet_identifier,
+    CASE WHEN sam_invoice_method = 'syriatel' THEN sam_wallet_identifier END
+  )
+WHERE id = 1;
+
+-- 3. Recharge RPC — accept ShamCash or SyriatelCash
+DROP FUNCTION IF EXISTS public.create_recharge_request(numeric);
+
+-- (removed older create_recharge_request; see later definition)
+
+
+DROP FUNCTION IF EXISTS public.create_recharge_request(numeric, text);
+
+REVOKE EXECUTE ON FUNCTION public.create_recharge_request(numeric, text, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.create_recharge_request(numeric, text, text) TO authenticated;
+
+-- 4. Order creation — SyriatelCash manual checkout
+-- (removed create_order_atomic; canonical definition appended later)
+
+
+-- 5. Sam API admin RPCs — dual receiving wallets
+
+-- (deduped: earlier get_sam_api_settings)
+
+
+DROP FUNCTION IF EXISTS public.save_sam_api_settings(boolean, text, text, text, text, text, boolean);
+DROP FUNCTION IF EXISTS public.save_sam_api_settings(boolean, text, text, text, text, text, boolean, boolean);
+DROP FUNCTION IF EXISTS public.save_sam_api_settings(boolean, text, text, text, text, text, boolean, boolean, numeric);
+
+
+-- (deduped: earlier save_sam_api_settings)
+-- 6. Public payment config
+
+-- (deduped: earlier get_payment_methods)
+-- =============================================================================
+-- APPEND: sam_invoice_recharge
+-- =============================================================================
+
+-- 1. create_recharge_request — manual QR or Sam API mode (admin toggle)
+
+-- (deduped: earlier create_recharge_request)
+
+
+DROP FUNCTION IF EXISTS public.create_recharge_request(numeric, text);
+
+REVOKE EXECUTE ON FUNCTION public.create_recharge_request(numeric, text, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.create_recharge_request(numeric, text, text) TO authenticated;
+
+-- 2. Active recharge — include pending Sam invoice for API resume
+
+-- (deduped: earlier get_my_active_recharge_request)
+-- 3. Complete recharge after Sam invoice paid (service role / edge only)
+
+-- (deduped: earlier complete_recharge_from_sam_invoice)
+-- 4. Cancel pending recharge when Sam invoice expires
+
+-- (deduped: earlier cancel_recharge_from_sam_invoice)
+-- 5. Cancel own pending recharge (client) — used by Sam invoice flow when creation
+--    fails (e.g. Sam NOT_FOUND), so the user is not stuck on "already pending" lock.
+
+-- (deduped: earlier cancel_my_recharge_request)
+-- =============================================================================
+-- APPEND: sam_invoice_orders
+-- =============================================================================
+
+-- 1. create_order_atomic — API wallet mode branch
+-- create_order_atomic: canonical copy in §27
+
+
+REVOKE EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text) TO authenticated;
+
+-- 2. Complete order after Sam invoice paid (service role / edge only)
+
+-- (deduped: earlier complete_order_from_sam_invoice)
+-- 3. Cancel pending order when Sam invoice expires
+CREATE OR REPLACE FUNCTION public.cancel_order_from_sam_invoice(p_sam_invoice_id text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_inv public.sam_invoices%ROWTYPE;
+  v_order public.orders%ROWTYPE;
+BEGIN
+  SELECT * INTO v_inv
+  FROM public.sam_invoices
+  WHERE sam_invoice_id = p_sam_invoice_id
+  FOR UPDATE;
+
+  IF v_inv.id IS NULL THEN
+    RAISE EXCEPTION 'Invoice not found';
+  END IF;
+
+  IF v_inv.entity_type IS DISTINCT FROM 'order' OR v_inv.entity_id IS NULL THEN
+    RETURN jsonb_build_object('skipped', true, 'reason', 'not_an_order');
+  END IF;
+
+  SELECT * INTO v_order
+  FROM public.orders
+  WHERE id = v_inv.entity_id
+  FOR UPDATE;
+
+  IF v_order.id IS NULL THEN
+    RETURN jsonb_build_object('skipped', true, 'reason', 'order_not_found');
+  END IF;
+
+  IF v_order.status = 'completed' THEN
+    RETURN jsonb_build_object('orderId', v_order.id, 'status', 'completed', 'skipped', true);
+  END IF;
+
+  IF v_order.status IN ('pending_payment', 'payment_sent') THEN
+    UPDATE public.orders SET status = 'cancelled' WHERE id = v_order.id;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'orderId', v_order.id,
+    'status', 'cancelled'
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.cancel_order_from_sam_invoice(text) FROM public;
+GRANT EXECUTE ON FUNCTION public.cancel_order_from_sam_invoice(text) TO service_role;
+
+-- =============================================================================
+-- §26b Owner-only order receipt (success page / no IDOR)
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION public.get_my_order_receipt(p_order_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+STABLE AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_order jsonb;
+  v_items jsonb;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  SELECT to_jsonb(o.*) INTO v_order
+  FROM public.orders o
+  WHERE o.id = p_order_id
+    AND o.user_id = v_user_id;
+
+  IF v_order IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT COALESCE(jsonb_agg(to_jsonb(oi.*) ORDER BY oi.created_at), '[]'::jsonb)
+  INTO v_items
+  FROM public.order_items oi
+  WHERE oi.order_id = p_order_id;
+
+  RETURN jsonb_build_object('order', v_order, 'items', v_items);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_my_order_receipt(uuid) FROM public;
+GRANT EXECUTE ON FUNCTION public.get_my_order_receipt(uuid) TO authenticated;
+
+-- =============================================================================
+-- §27 Canonical create_order_atomic
+-- =============================================================================
+
+
+-- (deduped: earlier create_order_atomic)
+-- =============================================================================
+-- §28 Site logs (admin activity feed)
+-- Apply scripts/site-logs-migration.sql on existing projects (table + RPCs + hooks).
+-- =============================================================================
+
+-- =============================================================================
+-- §29 SYP recharge + security hardening (also inlined above for fresh installs)
+-- Existing projects: scripts/sam-recharge-syp-currency-migration.sql
+--   fix-concurrent-balance-purchase.sql, fix-url-order-receipt-security.sql,
+--   disable-manual-order-approval-api-mode.sql
+-- =============================================================================
+
+
+-- =============================================================================
+-- §30  Post-0.6.0 patches merged from scripts/*.sql (2026-07-24)
+-- Idempotent: IF NOT EXISTS / CREATE OR REPLACE / DROP POLICY IF EXISTS
+-- Source scripts deleted after merge — do not re-run old script files.
+-- =============================================================================
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/partner-tiers-migration.sql
+-- -----------------------------------------------------------------------------
+-- =============================================================================
+-- Partner / reseller tiers (cost + markup %) + 15-minute invite links
+-- Plan B: partner always pays max(cost + tier%, tiny floor) — not public fixed price
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS public.partner_tiers (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug text NOT NULL UNIQUE,
+  name_en text NOT NULL,
+  name_ar text NOT NULL,
+  markup_percent numeric(8,3) NOT NULL CHECK (markup_percent >= 0 AND markup_percent <= 500),
+  is_active boolean NOT NULL DEFAULT true,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.partner_invites (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  token text NOT NULL UNIQUE,
+  tier_id uuid NOT NULL REFERENCES public.partner_tiers(id) ON DELETE CASCADE,
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  note text,
+  expires_at timestamptz NOT NULL,
+  used_at timestamptz,
+  used_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS partner_invites_token_idx ON public.partner_invites (token);
+CREATE INDEX IF NOT EXISTS partner_invites_expires_idx ON public.partner_invites (expires_at DESC);
+
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS partner_tier_id uuid REFERENCES public.partner_tiers(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS profiles_partner_tier_idx ON public.profiles (partner_tier_id)
+  WHERE partner_tier_id IS NOT NULL;
+
+ALTER TABLE public.partner_tiers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.partner_invites ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Authenticated read active partner tiers" ON public.partner_tiers;
+CREATE POLICY "Authenticated read active partner tiers" ON public.partner_tiers
+  FOR SELECT TO authenticated
+  USING (is_active = true OR public.is_admin());
+
+DROP POLICY IF EXISTS "Admins manage partner tiers" ON public.partner_tiers;
+CREATE POLICY "Admins manage partner tiers" ON public.partner_tiers
+  FOR ALL TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "Admins manage partner invites" ON public.partner_invites;
+CREATE POLICY "Admins manage partner invites" ON public.partner_invites
+  FOR ALL TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+-- Seed default tiers (safe re-run)
+INSERT INTO public.partner_tiers (slug, name_en, name_ar, markup_percent, sort_order)
+VALUES
+  ('reseller', 'Reseller', 'تاجر / محل', 8, 10),
+  ('super', 'Super partner', 'شريك سوبر', 1, 20)
+ON CONFLICT (slug) DO UPDATE SET
+  name_en = EXCLUDED.name_en,
+  name_ar = EXCLUDED.name_ar,
+  markup_percent = EXCLUDED.markup_percent,
+  sort_order = EXCLUDED.sort_order,
+  updated_at = now();
+
+-- ---------------------------------------------------------------------------
+-- Partner price helper (ceil to cents)
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.partner_price_from_cost(p_cost numeric, p_markup_percent numeric)
+RETURNS numeric
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+DECLARE
+  v_cost numeric := COALESCE(p_cost, 0);
+  v_pct numeric := COALESCE(p_markup_percent, 0);
+  v_marked numeric;
+BEGIN
+  IF v_cost <= 0 THEN
+    RETURN NULL;
+  END IF;
+  v_marked := v_cost * (1 + v_pct / 100.0);
+  RETURN ceil(v_marked * 100) / 100.0;
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- get_my_partner_tier
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.get_my_partner_tier()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_tier public.partner_tiers%ROWTYPE;
+BEGIN
+  IF v_uid IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT t.* INTO v_tier
+  FROM public.profiles p
+  JOIN public.partner_tiers t ON t.id = p.partner_tier_id
+  WHERE p.id = v_uid
+    AND t.is_active = true;
+
+  IF NOT FOUND THEN
+    RETURN NULL;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'id', v_tier.id,
+    'slug', v_tier.slug,
+    'nameEn', v_tier.name_en,
+    'nameAr', v_tier.name_ar,
+    'markupPercent', v_tier.markup_percent
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_my_partner_tier() FROM public;
+GRANT EXECUTE ON FUNCTION public.get_my_partner_tier() TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Admin: set user partner tier
+-- ---------------------------------------------------------------------------
+
+-- (deduped: earlier admin_set_user_partner_tier)
+-- ---------------------------------------------------------------------------
+-- Admin: upsert tier
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.admin_upsert_partner_tier(
+  p_id uuid DEFAULT NULL,
+  p_slug text DEFAULT NULL,
+  p_name_en text DEFAULT NULL,
+  p_name_ar text DEFAULT NULL,
+  p_markup_percent numeric DEFAULT NULL,
+  p_is_active boolean DEFAULT true,
+  p_sort_order integer DEFAULT 0
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_id uuid;
+  v_slug text;
+  v_row public.partner_tiers%ROWTYPE;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  v_slug := lower(trim(COALESCE(p_slug, '')));
+  IF v_slug = '' OR v_slug !~ '^[a-z][a-z0-9_-]{1,31} THEN
+    RAISE EXCEPTION 'Invalid tier slug';
+  END IF;
+
+  IF p_markup_percent IS NULL OR p_markup_percent < 0 OR p_markup_percent > 500 THEN
+    RAISE EXCEPTION 'Invalid markup percent';
+  END IF;
+
+  IF p_id IS NULL THEN
+    INSERT INTO public.partner_tiers (slug, name_en, name_ar, markup_percent, is_active, sort_order)
+    VALUES (
+      v_slug,
+      COALESCE(nullif(trim(p_name_en), ''), v_slug),
+      COALESCE(nullif(trim(p_name_ar), ''), v_slug),
+      p_markup_percent,
+      COALESCE(p_is_active, true),
+      COALESCE(p_sort_order, 0)
+    )
+    RETURNING * INTO v_row;
+  ELSE
+    UPDATE public.partner_tiers
+    SET
+      slug = v_slug,
+      name_en = COALESCE(nullif(trim(p_name_en), ''), name_en),
+      name_ar = COALESCE(nullif(trim(p_name_ar), ''), name_ar),
+      markup_percent = p_markup_percent,
+      is_active = COALESCE(p_is_active, is_active),
+      sort_order = COALESCE(p_sort_order, sort_order),
+      updated_at = now()
+    WHERE id = p_id
+    RETURNING * INTO v_row;
+
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Tier not found';
+    END IF;
+  END IF;
+
+  RETURN to_jsonb(v_row);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_upsert_partner_tier(uuid, text, text, text, numeric, boolean, integer) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_upsert_partner_tier(uuid, text, text, text, numeric, boolean, integer) TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Admin: create invite (default 15 minutes)
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.admin_create_partner_invite(
+  p_tier_id uuid,
+  p_minutes integer DEFAULT 15,
+  p_note text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_token text;
+  v_mins integer;
+  v_row public.partner_invites%ROWTYPE;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM public.partner_tiers WHERE id = p_tier_id AND is_active = true) THEN
+    RAISE EXCEPTION 'Invalid partner tier';
+  END IF;
+
+  v_mins := GREATEST(5, LEAST(24 * 60, COALESCE(p_minutes, 15)));
+  v_token := replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '');
+
+  INSERT INTO public.partner_invites (token, tier_id, created_by, note, expires_at)
+  VALUES (
+    v_token,
+    p_tier_id,
+    auth.uid(),
+    nullif(trim(p_note), ''),
+    now() + make_interval(mins => v_mins)
+  )
+  RETURNING * INTO v_row;
+
+  RETURN jsonb_build_object(
+    'id', v_row.id,
+    'token', v_row.token,
+    'tierId', v_row.tier_id,
+    'expiresAt', v_row.expires_at,
+    'path', '/partner/join?token=' || v_row.token
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_create_partner_invite(uuid, integer, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_create_partner_invite(uuid, integer, text) TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Accept invite (logged-in user)
+-- ---------------------------------------------------------------------------
+
+-- (deduped: earlier accept_partner_invite)
+-- ---------------------------------------------------------------------------
+-- create_order_atomic: partner pays cost + tier markup (plan B)
+-- ---------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.create_order_atomic(uuid, numeric, text, jsonb, text, text);
+DROP FUNCTION IF EXISTS public.create_order_atomic(uuid, numeric, text, jsonb, text, text, text);
+
+
+-- (deduped: earlier create_order_atomic)
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/influencer-referral-coupons-migration.sql
+-- -----------------------------------------------------------------------------
+-- =============================================================================
+-- Influencer referral codes: % off public price for buyers + % commission to
+-- influencer wallet. Replaces fixed wallet-credit coupons.
+-- Apply: supabase db query --linked -f scripts/influencer-referral-coupons-migration.sql
+-- =============================================================================
+
+-- Coupon columns for referral model
+ALTER TABLE public.influencer_coupons
+  ADD COLUMN IF NOT EXISTS discount_percent numeric(8,3),
+  ADD COLUMN IF NOT EXISTS influencer_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+
+-- amount_usd was required for old model — relax for referral codes
+ALTER TABLE public.influencer_coupons
+  ALTER COLUMN amount_usd DROP NOT NULL;
+
+UPDATE public.influencer_coupons
+SET discount_percent = 3
+WHERE discount_percent IS NULL;
+
+ALTER TABLE public.influencer_coupons
+  ALTER COLUMN discount_percent SET DEFAULT 3;
+
+DO $
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'influencer_coupons_discount_percent_check'
+  ) THEN
+    ALTER TABLE public.influencer_coupons
+      ADD CONSTRAINT influencer_coupons_discount_percent_check
+      CHECK (discount_percent IS NULL OR (discount_percent >= 0 AND discount_percent <= 50));
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS influencer_coupons_influencer_idx
+  ON public.influencer_coupons (influencer_user_id)
+  WHERE influencer_user_id IS NOT NULL;
+
+-- Buyer binds a code on their profile
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS influencer_coupon_id uuid REFERENCES public.influencer_coupons(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS profiles_influencer_coupon_idx
+  ON public.profiles (influencer_coupon_id)
+  WHERE influencer_coupon_id IS NOT NULL;
+
+-- Track commission per order (idempotent)
+ALTER TABLE public.orders
+  ADD COLUMN IF NOT EXISTS influencer_coupon_id uuid REFERENCES public.influencer_coupons(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS influencer_commission_usd numeric(12,2),
+  ADD COLUMN IF NOT EXISTS influencer_commission_paid_at timestamptz;
+
+-- ---------------------------------------------------------------------------
+-- Price helper: public * (1 - pct/100), never below supplier cost, never above public
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.influencer_price_from_public(
+  p_public numeric,
+  p_discount_percent numeric,
+  p_cost numeric DEFAULT NULL
+)
+RETURNS numeric
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+DECLARE
+  v_public numeric := COALESCE(p_public, 0);
+  v_pct numeric := COALESCE(p_discount_percent, 0);
+  v_cost numeric := COALESCE(p_cost, 0);
+  v_price numeric;
+BEGIN
+  IF v_public <= 0 THEN
+    RETURN NULL;
+  END IF;
+  IF v_pct <= 0 THEN
+    RETURN ceil(v_public * 100) / 100.0;
+  END IF;
+  v_price := v_public * (1 - v_pct / 100.0);
+  v_price := ceil(v_price * 100) / 100.0;
+  IF v_cost > 0 AND v_price < v_cost THEN
+    v_price := ceil(v_cost * 100) / 100.0;
+  END IF;
+  IF v_price > v_public THEN
+    v_price := ceil(v_public * 100) / 100.0;
+  END IF;
+  IF v_price < 0.01 THEN
+    v_price := 0.01;
+  END IF;
+  RETURN v_price;
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Admin create / update coupon
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.admin_create_influencer_coupon(
+  p_code text,
+  p_discount_percent numeric DEFAULT 3,
+  p_influencer_user_id uuid DEFAULT NULL,
+  p_note text DEFAULT NULL,
+  p_expires_at timestamptz DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_code text;
+  v_row public.influencer_coupons%ROWTYPE;
+  v_role text;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  v_code := upper(trim(COALESCE(p_code, '')));
+  v_code := regexp_replace(v_code, '\s+', '', 'g');
+
+  IF v_code = '' OR length(v_code) < 3 OR length(v_code) > 32 OR v_code !~ '^[A-Z0-9_-]+ THEN
+    RAISE EXCEPTION 'Invalid coupon code';
+  END IF;
+
+  IF p_discount_percent IS NULL OR p_discount_percent < 0 OR p_discount_percent > 50 THEN
+    RAISE EXCEPTION 'Discount percent must be between 0 and 50';
+  END IF;
+
+  IF p_influencer_user_id IS NULL THEN
+    RAISE EXCEPTION 'Influencer user is required';
+  END IF;
+
+  SELECT role INTO v_role FROM public.profiles WHERE id = p_influencer_user_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Influencer user not found';
+  END IF;
+  IF v_role = 'admin' THEN
+    RAISE EXCEPTION 'Cannot assign admin as influencer';
+  END IF;
+
+  INSERT INTO public.influencer_coupons (
+    code, discount_percent, influencer_user_id, note, expires_at, amount_usd, created_by, is_active
+  ) VALUES (
+    v_code,
+    round(p_discount_percent, 3),
+    p_influencer_user_id,
+    nullif(trim(p_note), ''),
+    p_expires_at,
+    NULL,
+    auth.uid(),
+    true
+  )
+  RETURNING * INTO v_row;
+
+  RETURN to_jsonb(v_row);
+EXCEPTION
+  WHEN unique_violation THEN
+    RAISE EXCEPTION 'Coupon code already exists';
+END;
+$$;
+
+-- Drop old signature if present (amount-based)
+DROP FUNCTION IF EXISTS public.admin_create_influencer_coupon(text, numeric, integer, integer, timestamptz, text);
+
+REVOKE EXECUTE ON FUNCTION public.admin_create_influencer_coupon(text, numeric, uuid, text, timestamptz) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_create_influencer_coupon(text, numeric, uuid, text, timestamptz) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.admin_update_influencer_coupon(
+  p_coupon_id uuid,
+  p_discount_percent numeric DEFAULT NULL,
+  p_influencer_user_id uuid DEFAULT NULL,
+  p_note text DEFAULT NULL,
+  p_expires_at timestamptz DEFAULT NULL,
+  p_is_active boolean DEFAULT NULL,
+  p_clear_expires boolean DEFAULT false
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_row public.influencer_coupons%ROWTYPE;
+  v_role text;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  IF p_discount_percent IS NOT NULL AND (p_discount_percent < 0 OR p_discount_percent > 50) THEN
+    RAISE EXCEPTION 'Discount percent must be between 0 and 50';
+  END IF;
+
+  IF p_influencer_user_id IS NOT NULL THEN
+    SELECT role INTO v_role FROM public.profiles WHERE id = p_influencer_user_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Influencer user not found';
+    END IF;
+    IF v_role = 'admin' THEN
+      RAISE EXCEPTION 'Cannot assign admin as influencer';
+    END IF;
+  END IF;
+
+  UPDATE public.influencer_coupons
+  SET
+    discount_percent = COALESCE(p_discount_percent, discount_percent),
+    influencer_user_id = COALESCE(p_influencer_user_id, influencer_user_id),
+    note = CASE WHEN p_note IS NULL THEN note ELSE nullif(trim(p_note), '') END,
+    expires_at = CASE
+      WHEN p_clear_expires THEN NULL
+      WHEN p_expires_at IS NOT NULL THEN p_expires_at
+      ELSE expires_at
+    END,
+    is_active = COALESCE(p_is_active, is_active),
+    updated_at = now()
+  WHERE id = p_coupon_id
+  RETURNING * INTO v_row;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Coupon not found';
+  END IF;
+
+  RETURN to_jsonb(v_row);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_update_influencer_coupon(uuid, numeric, uuid, text, timestamptz, boolean, boolean) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_update_influencer_coupon(uuid, numeric, uuid, text, timestamptz, boolean, boolean) TO authenticated;
+
+
+-- (deduped: earlier admin_list_influencer_coupons)
+-- ---------------------------------------------------------------------------
+-- Customer applies code (binds to profile — not wallet top-up)
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.apply_influencer_coupon(p_code text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_code text;
+  v_coupon public.influencer_coupons%ROWTYPE;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  v_code := upper(trim(COALESCE(p_code, '')));
+  v_code := regexp_replace(v_code, '\s+', '', 'g');
+  IF v_code = '' THEN
+    RAISE EXCEPTION 'coupon_invalid';
+  END IF;
+
+  SELECT * INTO v_coupon
+  FROM public.influencer_coupons
+  WHERE upper(code) = v_code;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'coupon_invalid';
+  END IF;
+
+  IF v_coupon.is_active IS NOT TRUE THEN
+    RAISE EXCEPTION 'coupon_inactive';
+  END IF;
+
+  IF v_coupon.expires_at IS NOT NULL AND v_coupon.expires_at < now() THEN
+    RAISE EXCEPTION 'coupon_expired';
+  END IF;
+
+  IF v_coupon.influencer_user_id IS NULL THEN
+    RAISE EXCEPTION 'coupon_invalid';
+  END IF;
+
+  -- Influencer cannot use their own code
+  IF v_coupon.influencer_user_id = v_uid THEN
+    RAISE EXCEPTION 'coupon_own_code';
+  END IF;
+
+  -- Partners already have plan-B pricing; still allow bind for commission path only if not partner?
+  -- Prefer partner pricing over influencer; bind is still ok for when they lose partner status.
+
+  UPDATE public.profiles
+  SET influencer_coupon_id = v_coupon.id
+  WHERE id = v_uid;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'code', v_coupon.code,
+    'discountPercent', v_coupon.discount_percent,
+    'couponId', v_coupon.id
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.apply_influencer_coupon(text) FROM public;
+GRANT EXECUTE ON FUNCTION public.apply_influencer_coupon(text) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.clear_my_influencer_coupon()
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+  UPDATE public.profiles SET influencer_coupon_id = NULL WHERE id = auth.uid();
+  RETURN true;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.clear_my_influencer_coupon() FROM public;
+GRANT EXECUTE ON FUNCTION public.clear_my_influencer_coupon() TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.get_my_influencer_coupon()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+STABLE AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_coupon public.influencer_coupons%ROWTYPE;
+BEGIN
+  IF v_uid IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT c.* INTO v_coupon
+  FROM public.profiles p
+  JOIN public.influencer_coupons c ON c.id = p.influencer_coupon_id
+  WHERE p.id = v_uid
+    AND c.is_active = true
+    AND (c.expires_at IS NULL OR c.expires_at >= now())
+    AND c.influencer_user_id IS DISTINCT FROM v_uid
+    AND c.discount_percent IS NOT NULL
+    AND c.discount_percent > 0;
+
+  IF NOT FOUND THEN
+    RETURN NULL;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'id', v_coupon.id,
+    'code', v_coupon.code,
+    'discountPercent', v_coupon.discount_percent,
+    'note', v_coupon.note
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_my_influencer_coupon() FROM public;
+GRANT EXECUTE ON FUNCTION public.get_my_influencer_coupon() TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Pay influencer commission once per completed order
+-- ---------------------------------------------------------------------------
+
+-- (deduped: earlier pay_influencer_commission_for_order)
+-- ---------------------------------------------------------------------------
+-- create_order_atomic: partner OR influencer pricing + commission on balance buy
+-- ---------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.create_order_atomic(uuid, numeric, text, jsonb, text, text);
+DROP FUNCTION IF EXISTS public.create_order_atomic(uuid, numeric, text, jsonb, text, text, text);
+
+
+-- (deduped: earlier create_order_atomic)
+-- Patch confirm_order_payment to pay commission when manual/API completes order
+
+-- (deduped: earlier confirm_order_payment)
+-- Old wallet-credit redeem no longer used
+DROP FUNCTION IF EXISTS public.redeem_influencer_coupon(text);
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/influencer-margin-model-migration.sql
+-- -----------------------------------------------------------------------------
+-- =============================================================================
+-- Influencer codes: buyer pays cost + buyer_markup%; influencer gets % of margin
+-- (public - cost). Applied at purchase (code on buy page), not wallet top-up.
+-- Apply: supabase db query --linked -f scripts/influencer-margin-model-migration.sql
+-- =============================================================================
+
+ALTER TABLE public.influencer_coupons
+  ADD COLUMN IF NOT EXISTS buyer_markup_percent numeric(8,3),
+  ADD COLUMN IF NOT EXISTS influencer_margin_percent numeric(8,3);
+
+-- Migrate from old discount_percent if present
+UPDATE public.influencer_coupons
+SET
+  buyer_markup_percent = COALESCE(buyer_markup_percent, 10),
+  influencer_margin_percent = COALESCE(
+    influencer_margin_percent,
+    LEAST(50, GREATEST(0, COALESCE(discount_percent, 3)))
+  )
+WHERE buyer_markup_percent IS NULL OR influencer_margin_percent IS NULL;
+
+ALTER TABLE public.influencer_coupons
+  ALTER COLUMN buyer_markup_percent SET DEFAULT 10,
+  ALTER COLUMN influencer_margin_percent SET DEFAULT 3;
+
+DO $
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'influencer_coupons_buyer_markup_check'
+  ) THEN
+    ALTER TABLE public.influencer_coupons
+      ADD CONSTRAINT influencer_coupons_buyer_markup_check
+      CHECK (buyer_markup_percent IS NULL OR (buyer_markup_percent >= 0 AND buyer_markup_percent <= 500));
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'influencer_coupons_inf_margin_check'
+  ) THEN
+    ALTER TABLE public.influencer_coupons
+      ADD CONSTRAINT influencer_coupons_inf_margin_check
+      CHECK (influencer_margin_percent IS NULL OR (influencer_margin_percent >= 0 AND influencer_margin_percent <= 100));
+  END IF;
+END $$;
+
+-- Buyer price: cost * (1 + buyer_markup/100), never above public, never below cost
+CREATE OR REPLACE FUNCTION public.influencer_buyer_price(
+  p_public numeric,
+  p_cost numeric,
+  p_buyer_markup_percent numeric
+)
+RETURNS numeric
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+DECLARE
+  v_public numeric := COALESCE(p_public, 0);
+  v_cost numeric := COALESCE(p_cost, 0);
+  v_pct numeric := COALESCE(p_buyer_markup_percent, 0);
+  v_price numeric;
+BEGIN
+  IF v_public <= 0 THEN
+    RETURN NULL;
+  END IF;
+  -- No supplier cost → cannot compute margin pricing safely
+  IF v_cost <= 0 THEN
+    RETURN ceil(v_public * 100) / 100.0;
+  END IF;
+
+  v_price := v_cost * (1 + v_pct / 100.0);
+  v_price := ceil(v_price * 100) / 100.0;
+
+  IF v_price < v_cost THEN
+    v_price := ceil(v_cost * 100) / 100.0;
+  END IF;
+  IF v_price > v_public THEN
+    v_price := ceil(v_public * 100) / 100.0;
+  END IF;
+  IF v_price < 0.01 THEN
+    v_price := 0.01;
+  END IF;
+  RETURN v_price;
+END;
+$$;
+
+-- Commission per unit: % of margin (public - cost).
+-- Example: public $1.12 cost $1 → margin $0.12; 16.67% ≈ $0.02 to influencer.
+-- Capped so store residual (buyer_price - cost - commission) never goes negative.
+CREATE OR REPLACE FUNCTION public.influencer_commission_per_unit(
+  p_public numeric,
+  p_cost numeric,
+  p_buyer_price numeric,
+  p_influencer_margin_percent numeric
+)
+RETURNS numeric
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+DECLARE
+  v_public numeric := COALESCE(p_public, 0);
+  v_cost numeric := COALESCE(p_cost, 0);
+  v_buyer numeric := COALESCE(p_buyer_price, 0);
+  v_pct numeric := COALESCE(p_influencer_margin_percent, 0);
+  v_margin numeric;
+  v_comm numeric;
+  v_store_room numeric;
+BEGIN
+  IF v_cost <= 0 OR v_public <= v_cost OR v_pct <= 0 THEN
+    RETURN 0;
+  END IF;
+  v_margin := v_public - v_cost;
+  -- % of the store's full public margin (what user meant by “of the margin”)
+  v_comm := round(v_margin * (v_pct / 100.0), 2);
+  -- Cannot take more than what remains after buyer discount
+  v_store_room := GREATEST(0, v_buyer - v_cost);
+  IF v_comm > v_store_room THEN
+    v_comm := v_store_room;
+  END IF;
+  IF v_comm < 0.01 THEN
+    RETURN 0;
+  END IF;
+  RETURN v_comm;
+END;
+$$;
+
+-- Validate code for buy-page apply (no bind required)
+CREATE OR REPLACE FUNCTION public.validate_influencer_coupon(p_code text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+STABLE AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_code text;
+  v_coupon public.influencer_coupons%ROWTYPE;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  v_code := upper(trim(COALESCE(p_code, '')));
+  v_code := regexp_replace(v_code, '\s+', '', 'g');
+  IF v_code = '' THEN
+    RAISE EXCEPTION 'coupon_invalid';
+  END IF;
+
+  SELECT * INTO v_coupon
+  FROM public.influencer_coupons
+  WHERE upper(code) = v_code;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'coupon_invalid';
+  END IF;
+  IF v_coupon.is_active IS NOT TRUE THEN
+    RAISE EXCEPTION 'coupon_inactive';
+  END IF;
+  IF v_coupon.expires_at IS NOT NULL AND v_coupon.expires_at < now() THEN
+    RAISE EXCEPTION 'coupon_expired';
+  END IF;
+  IF v_coupon.influencer_user_id IS NULL THEN
+    RAISE EXCEPTION 'coupon_invalid';
+  END IF;
+  IF v_coupon.influencer_user_id = v_uid THEN
+    RAISE EXCEPTION 'coupon_own_code';
+  END IF;
+  IF v_coupon.buyer_markup_percent IS NULL THEN
+    RAISE EXCEPTION 'coupon_invalid';
+  END IF;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'id', v_coupon.id,
+    'code', v_coupon.code,
+    'buyerMarkupPercent', v_coupon.buyer_markup_percent,
+    'influencerMarginPercent', v_coupon.influencer_margin_percent,
+    'note', v_coupon.note
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.validate_influencer_coupon(text) FROM public;
+GRANT EXECUTE ON FUNCTION public.validate_influencer_coupon(text) TO authenticated;
+
+-- Admin create with two % fields
+DROP FUNCTION IF EXISTS public.admin_create_influencer_coupon(text, numeric, uuid, text, timestamptz);
+DROP FUNCTION IF EXISTS public.admin_create_influencer_coupon(text, numeric, numeric, uuid, text, timestamptz);
+
+CREATE OR REPLACE FUNCTION public.admin_create_influencer_coupon(
+  p_code text,
+  p_buyer_markup_percent numeric DEFAULT 10,
+  p_influencer_margin_percent numeric DEFAULT 3,
+  p_influencer_user_id uuid DEFAULT NULL,
+  p_note text DEFAULT NULL,
+  p_expires_at timestamptz DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_code text;
+  v_row public.influencer_coupons%ROWTYPE;
+  v_role text;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  v_code := upper(trim(COALESCE(p_code, '')));
+  v_code := regexp_replace(v_code, '\s+', '', 'g');
+  IF v_code = '' OR length(v_code) < 3 OR length(v_code) > 32 OR v_code !~ '^[A-Z0-9_-]+ THEN
+    RAISE EXCEPTION 'Invalid coupon code';
+  END IF;
+
+  IF p_buyer_markup_percent IS NULL OR p_buyer_markup_percent < 0 OR p_buyer_markup_percent > 500 THEN
+    RAISE EXCEPTION 'Buyer markup percent invalid';
+  END IF;
+  IF p_influencer_margin_percent IS NULL OR p_influencer_margin_percent < 0 OR p_influencer_margin_percent > 100 THEN
+    RAISE EXCEPTION 'Influencer margin percent invalid';
+  END IF;
+  IF p_influencer_user_id IS NULL THEN
+    RAISE EXCEPTION 'Influencer user is required';
+  END IF;
+
+  SELECT role INTO v_role FROM public.profiles WHERE id = p_influencer_user_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Influencer user not found';
+  END IF;
+  IF v_role = 'admin' THEN
+    RAISE EXCEPTION 'Cannot assign admin as influencer';
+  END IF;
+
+  INSERT INTO public.influencer_coupons (
+    code, buyer_markup_percent, influencer_margin_percent,
+    influencer_user_id, note, expires_at, amount_usd, discount_percent, created_by, is_active
+  ) VALUES (
+    v_code,
+    round(p_buyer_markup_percent, 3),
+    round(p_influencer_margin_percent, 3),
+    p_influencer_user_id,
+    nullif(trim(p_note), ''),
+    p_expires_at,
+    NULL,
+    NULL,
+    auth.uid(),
+    true
+  )
+  RETURNING * INTO v_row;
+
+  RETURN to_jsonb(v_row);
+EXCEPTION
+  WHEN unique_violation THEN
+    RAISE EXCEPTION 'Coupon code already exists';
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_create_influencer_coupon(text, numeric, numeric, uuid, text, timestamptz) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_create_influencer_coupon(text, numeric, numeric, uuid, text, timestamptz) TO authenticated;
+
+DROP FUNCTION IF EXISTS public.admin_update_influencer_coupon(uuid, numeric, uuid, text, timestamptz, boolean, boolean);
+
+CREATE OR REPLACE FUNCTION public.admin_update_influencer_coupon(
+  p_coupon_id uuid,
+  p_buyer_markup_percent numeric DEFAULT NULL,
+  p_influencer_margin_percent numeric DEFAULT NULL,
+  p_influencer_user_id uuid DEFAULT NULL,
+  p_note text DEFAULT NULL,
+  p_expires_at timestamptz DEFAULT NULL,
+  p_is_active boolean DEFAULT NULL,
+  p_clear_expires boolean DEFAULT false
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_row public.influencer_coupons%ROWTYPE;
+  v_role text;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  IF p_buyer_markup_percent IS NOT NULL AND (p_buyer_markup_percent < 0 OR p_buyer_markup_percent > 500) THEN
+    RAISE EXCEPTION 'Buyer markup percent invalid';
+  END IF;
+  IF p_influencer_margin_percent IS NOT NULL AND (p_influencer_margin_percent < 0 OR p_influencer_margin_percent > 100) THEN
+    RAISE EXCEPTION 'Influencer margin percent invalid';
+  END IF;
+
+  IF p_influencer_user_id IS NOT NULL THEN
+    SELECT role INTO v_role FROM public.profiles WHERE id = p_influencer_user_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Influencer user not found';
+    END IF;
+    IF v_role = 'admin' THEN
+      RAISE EXCEPTION 'Cannot assign admin as influencer';
+    END IF;
+  END IF;
+
+  UPDATE public.influencer_coupons
+  SET
+    buyer_markup_percent = COALESCE(p_buyer_markup_percent, buyer_markup_percent),
+    influencer_margin_percent = COALESCE(p_influencer_margin_percent, influencer_margin_percent),
+    influencer_user_id = COALESCE(p_influencer_user_id, influencer_user_id),
+    note = CASE WHEN p_note IS NULL THEN note ELSE nullif(trim(p_note), '') END,
+    expires_at = CASE
+      WHEN p_clear_expires THEN NULL
+      WHEN p_expires_at IS NOT NULL THEN p_expires_at
+      ELSE expires_at
+    END,
+    is_active = COALESCE(p_is_active, is_active),
+    updated_at = now()
+  WHERE id = p_coupon_id
+  RETURNING * INTO v_row;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Coupon not found';
+  END IF;
+
+  RETURN to_jsonb(v_row);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_update_influencer_coupon(uuid, numeric, numeric, uuid, text, timestamptz, boolean, boolean) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_update_influencer_coupon(uuid, numeric, numeric, uuid, text, timestamptz, boolean, boolean) TO authenticated;
+
+
+-- (deduped: earlier admin_list_influencer_coupons)
+-- Commission pay from order line public vs cost
+CREATE OR REPLACE FUNCTION public.pay_influencer_commission_for_order(p_order_id uuid)
+RETURNS numeric
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_order public.orders%ROWTYPE;
+  v_coupon public.influencer_coupons%ROWTYPE;
+  v_commission numeric := 0;
+  v_new_bal numeric;
+  v_item record;
+  v_buyer numeric;
+  v_unit_comm numeric;
+BEGIN
+  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN 0;
+  END IF;
+  IF v_order.status IS DISTINCT FROM 'completed' THEN
+    RETURN 0;
+  END IF;
+  IF v_order.influencer_commission_paid_at IS NOT NULL THEN
+    RETURN COALESCE(v_order.influencer_commission_usd, 0);
+  END IF;
+  IF v_order.influencer_coupon_id IS NULL THEN
+    RETURN 0;
+  END IF;
+
+  SELECT * INTO v_coupon
+  FROM public.influencer_coupons
+  WHERE id = v_order.influencer_coupon_id
+  FOR UPDATE;
+
+  IF NOT FOUND OR v_coupon.influencer_user_id IS NULL THEN
+    RETURN 0;
+  END IF;
+  IF v_coupon.influencer_user_id = v_order.user_id THEN
+    RETURN 0;
+  END IF;
+
+  FOR v_item IN
+    SELECT
+      oi.quantity,
+      oi.price AS paid_price,
+      o.price AS public_price,
+      o.g2bulk_cost_usd AS cost
+    FROM public.order_items oi
+    JOIN public.offers o ON o.id = oi.offer_id
+    WHERE oi.order_id = p_order_id
+  LOOP
+    v_buyer := COALESCE(v_item.paid_price, 0);
+    v_unit_comm := public.influencer_commission_per_unit(
+      v_item.public_price,
+      v_item.cost,
+      v_buyer,
+      v_coupon.influencer_margin_percent
+    );
+    v_commission := v_commission
+      + (v_unit_comm * GREATEST(1, COALESCE(v_item.quantity, 1)));
+  END LOOP;
+
+  v_commission := round(v_commission, 2);
+  IF v_commission < 0.01 THEN
+    UPDATE public.orders
+    SET influencer_commission_usd = 0, influencer_commission_paid_at = now()
+    WHERE id = p_order_id;
+    RETURN 0;
+  END IF;
+
+  PERFORM set_config('echocore.allow_balance_change', '1', true);
+
+  UPDATE public.profiles
+  SET balance = COALESCE(balance, 0) + v_commission
+  WHERE id = v_coupon.influencer_user_id
+  RETURNING balance INTO v_new_bal;
+
+  IF v_new_bal IS NULL THEN
+    RETURN 0;
+  END IF;
+
+  INSERT INTO public.transactions (
+    user_id, type, amount, balance_after, payment_method, reference, status
+  ) VALUES (
+    v_coupon.influencer_user_id,
+    'adjustment',
+    v_commission,
+    v_new_bal,
+    'influencer_commission',
+    'INF-' || v_coupon.code || '-' || left(p_order_id::text, 8),
+    'completed'
+  );
+
+  UPDATE public.orders
+  SET
+    influencer_commission_usd = v_commission,
+    influencer_commission_paid_at = now()
+  WHERE id = p_order_id;
+
+  UPDATE public.influencer_coupons
+  SET redemption_count = COALESCE(redemption_count, 0) + 1, updated_at = now()
+  WHERE id = v_coupon.id;
+
+  PERFORM public.notify_user(
+    v_coupon.influencer_user_id,
+    'influencer_commission',
+    jsonb_build_object(
+      'amount', v_commission,
+      'code', v_coupon.code,
+      'orderId', p_order_id,
+      'newBalance', v_new_bal,
+      'marginPercent', v_coupon.influencer_margin_percent
+    ),
+    '/profile'
+  );
+
+  RETURN v_commission;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.pay_influencer_commission_for_order(uuid) FROM public;
+
+-- create_order_atomic with optional p_influencer_code (buy-page apply)
+DROP FUNCTION IF EXISTS public.create_order_atomic(uuid, numeric, text, jsonb, text, text);
+DROP FUNCTION IF EXISTS public.create_order_atomic(uuid, numeric, text, jsonb, text, text, text);
+DROP FUNCTION IF EXISTS public.create_order_atomic(uuid, numeric, text, jsonb, text, text, text, text);
+
+
+-- (deduped: earlier create_order_atomic)
+-- Keep 7-arg overload for older clients (no code)
+
+-- (deduped: earlier create_order_atomic)
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/influencer-self-read-migration.sql
+-- -----------------------------------------------------------------------------
+-- Allow influencers to detect their own active codes (for profile/header badge)
+-- Apply: supabase db query --linked -f scripts/influencer-self-read-migration.sql
+
+DROP POLICY IF EXISTS "Influencers read own coupons" ON public.influencer_coupons;
+CREATE POLICY "Influencers read own coupons" ON public.influencer_coupons
+  FOR SELECT TO authenticated
+  USING (
+    public.is_admin()
+    OR influencer_user_id = auth.uid()
+  );
+
+CREATE OR REPLACE FUNCTION public.get_my_influencer_status()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_code text;
+  v_count int;
+BEGIN
+  IF v_uid IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT count(*)::int, min(code)
+  INTO v_count, v_code
+  FROM public.influencer_coupons
+  WHERE influencer_user_id = v_uid
+    AND is_active = true
+    AND (expires_at IS NULL OR expires_at >= now());
+
+  IF v_count IS NULL OR v_count < 1 THEN
+    RETURN jsonb_build_object('isInfluencer', false);
+  END IF;
+
+  RETURN jsonb_build_object(
+    'isInfluencer', true,
+    'codeCount', v_count,
+    'primaryCode', v_code
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_my_influencer_status() FROM public;
+GRANT EXECUTE ON FUNCTION public.get_my_influencer_status() TO authenticated;
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/partner-notifs-coupons-migration.sql
+-- -----------------------------------------------------------------------------
+-- =============================================================================
+-- Partner/verify notifications + thanks to verified users + influencer coupons
+-- Apply: supabase db query --linked -f scripts/partner-notifs-coupons-migration.sql
+-- =============================================================================
+
+-- ---------------------------------------------------------------------------
+-- 1) Notify when admin verifies a user
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.admin_verify_user(p_user_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_was timestamptz;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  SELECT verified_at INTO v_was
+  FROM public.profiles
+  WHERE id = p_user_id AND role = 'user'
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'User not found';
+  END IF;
+
+  UPDATE public.profiles
+  SET verified_at = now()
+  WHERE id = p_user_id AND role = 'user';
+
+  -- Only notify on first verification (or re-verify after unverify)
+  IF v_was IS NULL THEN
+    PERFORM public.notify_user(
+      p_user_id,
+      'account_verified',
+      jsonb_build_object('verified', true),
+      '/profile'
+    );
+  END IF;
+
+  RETURN jsonb_build_object('userId', p_user_id, 'verified', true);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_verify_user(uuid) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_verify_user(uuid) TO authenticated;
+
+-- Auto-verify after recharge: also notify when first verified
+
+-- (deduped: earlier mark_user_verified_after_recharge)
+-- ---------------------------------------------------------------------------
+-- 2) Notify when partner tier assigned / removed
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.admin_set_user_partner_tier(
+  p_user_id uuid,
+  p_tier_id uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_prev uuid;
+  v_tier public.partner_tiers%ROWTYPE;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  IF p_tier_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.partner_tiers WHERE id = p_tier_id AND is_active = true
+  ) THEN
+    RAISE EXCEPTION 'Invalid partner tier';
+  END IF;
+
+  SELECT partner_tier_id INTO v_prev
+  FROM public.profiles
+  WHERE id = p_user_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'User not found';
+  END IF;
+
+  UPDATE public.profiles
+  SET partner_tier_id = p_tier_id
+  WHERE id = p_user_id;
+
+  IF p_tier_id IS NOT NULL THEN
+    SELECT * INTO v_tier FROM public.partner_tiers WHERE id = p_tier_id;
+    PERFORM public.notify_user(
+      p_user_id,
+      'partner_assigned',
+      jsonb_build_object(
+        'tierId', v_tier.id,
+        'tierSlug', v_tier.slug,
+        'tierNameEn', v_tier.name_en,
+        'tierNameAr', v_tier.name_ar,
+        'markupPercent', v_tier.markup_percent
+      ),
+      '/catalog'
+    );
+  ELSIF v_prev IS NOT NULL THEN
+    PERFORM public.notify_user(
+      p_user_id,
+      'partner_removed',
+      jsonb_build_object('removed', true),
+      '/catalog'
+    );
+  END IF;
+
+  RETURN jsonb_build_object('ok', true, 'userId', p_user_id, 'tierId', p_tier_id);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_set_user_partner_tier(uuid, uuid) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_set_user_partner_tier(uuid, uuid) TO authenticated;
+
+-- Invite accept also notifies
+CREATE OR REPLACE FUNCTION public.accept_partner_invite(p_token text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_inv public.partner_invites%ROWTYPE;
+  v_tier public.partner_tiers%ROWTYPE;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  SELECT * INTO v_inv
+  FROM public.partner_invites
+  WHERE token = trim(p_token)
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'invite_invalid';
+  END IF;
+
+  IF v_inv.used_at IS NOT NULL THEN
+    RAISE EXCEPTION 'invite_used';
+  END IF;
+
+  IF v_inv.expires_at < now() THEN
+    RAISE EXCEPTION 'invite_expired';
+  END IF;
+
+  SELECT * INTO v_tier FROM public.partner_tiers WHERE id = v_inv.tier_id AND is_active = true;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'invite_invalid';
+  END IF;
+
+  UPDATE public.profiles
+  SET partner_tier_id = v_tier.id
+  WHERE id = v_uid;
+
+  UPDATE public.partner_invites
+  SET used_at = now(), used_by = v_uid
+  WHERE id = v_inv.id;
+
+  PERFORM public.notify_user(
+    v_uid,
+    'partner_assigned',
+    jsonb_build_object(
+      'tierId', v_tier.id,
+      'tierSlug', v_tier.slug,
+      'tierNameEn', v_tier.name_en,
+      'tierNameAr', v_tier.name_ar,
+      'markupPercent', v_tier.markup_percent,
+      'source', 'invite'
+    ),
+    '/catalog'
+  );
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'tier', jsonb_build_object(
+      'id', v_tier.id,
+      'slug', v_tier.slug,
+      'nameEn', v_tier.name_en,
+      'nameAr', v_tier.name_ar,
+      'markupPercent', v_tier.markup_percent
+    )
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.accept_partner_invite(text) FROM public;
+GRANT EXECUTE ON FUNCTION public.accept_partner_invite(text) TO authenticated;
+
+-- Soft-remove tier (deactivate); clear assignments optional stays on users until reassigned
+CREATE OR REPLACE FUNCTION public.admin_delete_partner_tier(p_tier_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_users int;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  IF p_tier_id IS NULL THEN
+    RAISE EXCEPTION 'Tier is required';
+  END IF;
+
+  SELECT count(*)::int INTO v_users
+  FROM public.profiles
+  WHERE partner_tier_id = p_tier_id;
+
+  -- Soft delete: deactivate so new assigns/invites cannot use it
+  UPDATE public.partner_tiers
+  SET is_active = false, updated_at = now()
+  WHERE id = p_tier_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Tier not found';
+  END IF;
+
+  RETURN jsonb_build_object('ok', true, 'tierId', p_tier_id, 'usersOnTier', v_users, 'deactivated', true);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_delete_partner_tier(uuid) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_delete_partner_tier(uuid) TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 3) Thanks message to all verified users
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.admin_notify_verified_users(
+  p_title text,
+  p_body text,
+  p_link text DEFAULT '/profile'
+)
+RETURNS int
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user record;
+  v_count int := 0;
+  v_title text := trim(COALESCE(p_title, ''));
+  v_body text := trim(COALESCE(p_body, ''));
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  IF v_title = '' OR v_body = '' THEN
+    RAISE EXCEPTION 'Title and body are required';
+  END IF;
+
+  FOR v_user IN
+    SELECT id FROM public.profiles
+    WHERE role = 'user' AND verified_at IS NOT NULL
+  LOOP
+    PERFORM public.notify_user(
+      v_user.id,
+      'verified_thanks',
+      jsonb_build_object(
+        'title', v_title,
+        'body', v_body
+      ),
+      nullif(trim(p_link), '')
+    );
+    v_count := v_count + 1;
+  END LOOP;
+
+  RETURN v_count;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_notify_verified_users(text, text, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_notify_verified_users(text, text, text) TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 4) Influencer coupons (wallet credit on redeem)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.influencer_coupons (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  code text NOT NULL,
+  amount_usd numeric(12,2) NOT NULL CHECK (amount_usd > 0 AND amount_usd <= 500),
+  max_redemptions integer CHECK (max_redemptions IS NULL OR max_redemptions > 0),
+  redemption_count integer NOT NULL DEFAULT 0 CHECK (redemption_count >= 0),
+  per_user_limit integer NOT NULL DEFAULT 1 CHECK (per_user_limit > 0 AND per_user_limit <= 20),
+  expires_at timestamptz,
+  note text,
+  is_active boolean NOT NULL DEFAULT true,
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS influencer_coupons_code_uidx
+  ON public.influencer_coupons (upper(code));
+
+CREATE TABLE IF NOT EXISTS public.influencer_coupon_redemptions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  coupon_id uuid NOT NULL REFERENCES public.influencer_coupons(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  amount_usd numeric(12,2) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS influencer_coupon_redemptions_coupon_idx
+  ON public.influencer_coupon_redemptions (coupon_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS influencer_coupon_redemptions_user_idx
+  ON public.influencer_coupon_redemptions (user_id, created_at DESC);
+
+ALTER TABLE public.influencer_coupons ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.influencer_coupon_redemptions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Admins manage influencer coupons" ON public.influencer_coupons;
+CREATE POLICY "Admins manage influencer coupons" ON public.influencer_coupons
+  FOR ALL TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "Admins read coupon redemptions" ON public.influencer_coupon_redemptions;
+CREATE POLICY "Admins read coupon redemptions" ON public.influencer_coupon_redemptions
+  FOR SELECT TO authenticated
+  USING (public.is_admin());
+
+DROP POLICY IF EXISTS "Users read own coupon redemptions" ON public.influencer_coupon_redemptions;
+CREATE POLICY "Users read own coupon redemptions" ON public.influencer_coupon_redemptions
+  FOR SELECT TO authenticated
+  USING (user_id = auth.uid());
+
+CREATE OR REPLACE FUNCTION public.admin_create_influencer_coupon(
+  p_code text,
+  p_amount_usd numeric,
+  p_max_redemptions integer DEFAULT NULL,
+  p_per_user_limit integer DEFAULT 1,
+  p_expires_at timestamptz DEFAULT NULL,
+  p_note text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_code text;
+  v_row public.influencer_coupons%ROWTYPE;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  v_code := upper(trim(COALESCE(p_code, '')));
+  v_code := regexp_replace(v_code, '\s+', '', 'g');
+
+  IF v_code = '' OR length(v_code) < 3 OR length(v_code) > 32 OR v_code !~ '^[A-Z0-9_-]+ THEN
+    RAISE EXCEPTION 'Invalid coupon code';
+  END IF;
+
+  IF p_amount_usd IS NULL OR p_amount_usd < 0.01 OR p_amount_usd > 500 THEN
+    RAISE EXCEPTION 'Amount must be between $0.01 and $500';
+  END IF;
+
+  IF p_max_redemptions IS NOT NULL AND p_max_redemptions < 1 THEN
+    RAISE EXCEPTION 'Max redemptions invalid';
+  END IF;
+
+  IF p_per_user_limit IS NULL OR p_per_user_limit < 1 OR p_per_user_limit > 20 THEN
+    RAISE EXCEPTION 'Per-user limit invalid';
+  END IF;
+
+  INSERT INTO public.influencer_coupons (
+    code, amount_usd, max_redemptions, per_user_limit, expires_at, note, created_by
+  ) VALUES (
+    v_code,
+    round(p_amount_usd, 2),
+    p_max_redemptions,
+    COALESCE(p_per_user_limit, 1),
+    p_expires_at,
+    nullif(trim(p_note), ''),
+    auth.uid()
+  )
+  RETURNING * INTO v_row;
+
+  RETURN to_jsonb(v_row);
+EXCEPTION
+  WHEN unique_violation THEN
+    RAISE EXCEPTION 'Coupon code already exists';
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_create_influencer_coupon(text, numeric, integer, integer, timestamptz, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_create_influencer_coupon(text, numeric, integer, integer, timestamptz, text) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.admin_set_influencer_coupon_active(
+  p_coupon_id uuid,
+  p_is_active boolean
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_row public.influencer_coupons%ROWTYPE;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  UPDATE public.influencer_coupons
+  SET is_active = COALESCE(p_is_active, false), updated_at = now()
+  WHERE id = p_coupon_id
+  RETURNING * INTO v_row;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Coupon not found';
+  END IF;
+
+  RETURN to_jsonb(v_row);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_set_influencer_coupon_active(uuid, boolean) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_set_influencer_coupon_active(uuid, boolean) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.admin_list_influencer_coupons(p_limit integer DEFAULT 50)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+STABLE AS $$
+DECLARE
+  v_lim integer := GREATEST(1, LEAST(200, COALESCE(p_limit, 50)));
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  RETURN COALESCE((
+    SELECT jsonb_agg(to_jsonb(c) ORDER BY c.created_at DESC)
+    FROM (
+      SELECT *
+      FROM public.influencer_coupons
+      ORDER BY created_at DESC
+      LIMIT v_lim
+    ) c
+  ), '[]'::jsonb);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_list_influencer_coupons(integer) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_list_influencer_coupons(integer) TO authenticated;
+
+-- Customer redeems coupon → wallet credit
+CREATE OR REPLACE FUNCTION public.redeem_influencer_coupon(p_code text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_code text;
+  v_coupon public.influencer_coupons%ROWTYPE;
+  v_user_uses int;
+  v_new_balance numeric;
+  v_old_balance numeric;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  IF public.is_admin() AND auth.uid() = v_uid THEN
+    -- Admins have no customer wallet use; still allow for testing if role is user only
+    NULL;
+  END IF;
+
+  v_code := upper(trim(COALESCE(p_code, '')));
+  v_code := regexp_replace(v_code, '\s+', '', 'g');
+  IF v_code = '' THEN
+    RAISE EXCEPTION 'coupon_invalid';
+  END IF;
+
+  -- Serialize per code
+  PERFORM pg_advisory_xact_lock(hashtext('coupon:' || v_code));
+
+  SELECT * INTO v_coupon
+  FROM public.influencer_coupons
+  WHERE upper(code) = v_code
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'coupon_invalid';
+  END IF;
+
+  IF v_coupon.is_active IS NOT TRUE THEN
+    RAISE EXCEPTION 'coupon_inactive';
+  END IF;
+
+  IF v_coupon.expires_at IS NOT NULL AND v_coupon.expires_at < now() THEN
+    RAISE EXCEPTION 'coupon_expired';
+  END IF;
+
+  IF v_coupon.max_redemptions IS NOT NULL AND v_coupon.redemption_count >= v_coupon.max_redemptions THEN
+    RAISE EXCEPTION 'coupon_exhausted';
+  END IF;
+
+  SELECT count(*)::int INTO v_user_uses
+  FROM public.influencer_coupon_redemptions
+  WHERE coupon_id = v_coupon.id AND user_id = v_uid;
+
+  IF v_user_uses >= v_coupon.per_user_limit THEN
+    RAISE EXCEPTION 'coupon_already_used';
+  END IF;
+
+  SELECT COALESCE(balance, 0) INTO v_old_balance
+  FROM public.profiles
+  WHERE id = v_uid
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'User not found';
+  END IF;
+
+  PERFORM set_config('echocore.allow_balance_change', '1', true);
+
+  UPDATE public.profiles
+  SET balance = COALESCE(balance, 0) + v_coupon.amount_usd
+  WHERE id = v_uid
+  RETURNING balance INTO v_new_balance;
+
+  UPDATE public.influencer_coupons
+  SET redemption_count = redemption_count + 1, updated_at = now()
+  WHERE id = v_coupon.id;
+
+  INSERT INTO public.influencer_coupon_redemptions (coupon_id, user_id, amount_usd)
+  VALUES (v_coupon.id, v_uid, v_coupon.amount_usd);
+
+  INSERT INTO public.transactions (
+    user_id, type, amount, balance_after, payment_method, reference, status
+  ) VALUES (
+    v_uid,
+    'adjustment',
+    v_coupon.amount_usd,
+    v_new_balance,
+    'coupon',
+    'COUPON-' || v_coupon.code,
+    'completed'
+  );
+
+  PERFORM public.notify_user(
+    v_uid,
+    'coupon_redeemed',
+    jsonb_build_object(
+      'amount', v_coupon.amount_usd,
+      'code', v_coupon.code,
+      'newBalance', v_new_balance,
+      'note', v_coupon.note
+    ),
+    '/profile'
+  );
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'amount', v_coupon.amount_usd,
+    'code', v_coupon.code,
+    'newBalance', v_new_balance
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.redeem_influencer_coupon(text) FROM public;
+GRANT EXECUTE ON FUNCTION public.redeem_influencer_coupon(text) TO authenticated;
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/cart-purchase-security-migration.sql
+-- -----------------------------------------------------------------------------
+-- =============================================================================
+-- Cart multi-buy + purchase security hardening
+-- Run in Supabase SQL Editor on existing projects.
+-- - Active offer checks + quantity in totals
+-- - Max line items
+-- - Idempotency key (safe client retries / double-submit)
+-- - Keeps per-user advisory lock + balance FOR UPDATE
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS public.purchase_idempotency (
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  key text NOT NULL,
+  order_id uuid NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, key)
+);
+
+CREATE INDEX IF NOT EXISTS purchase_idempotency_created_idx
+  ON public.purchase_idempotency (created_at DESC);
+
+ALTER TABLE public.purchase_idempotency ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users read own purchase_idempotency" ON public.purchase_idempotency;
+CREATE POLICY "Users read own purchase_idempotency" ON public.purchase_idempotency
+  FOR SELECT TO authenticated
+  USING (user_id = (SELECT auth.uid()));
+
+-- No direct client inserts — SECURITY DEFINER RPC only
+
+-- Drop prior overloads so PostgREST binds a single function
+DROP FUNCTION IF EXISTS public.create_order_atomic(uuid, numeric, text, jsonb, text, text);
+DROP FUNCTION IF EXISTS public.create_order_atomic(uuid, numeric, text, jsonb, text, text, text);
+
+
+-- (deduped: earlier create_order_atomic)
+-- Keep 6-arg overload compatible if PostgREST still binds older form
+-- (Postgres allows both if defaults differ — we only expose the 7-arg form above)
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/no-refund-on-soft-timeout.sql
+-- -----------------------------------------------------------------------------
+-- =============================================================================
+-- CRITICAL: Never auto-refund balance when fulfillment "fails" due to poll timeout.
+-- G2Bulk often completes AFTER our poll window → refund + user retry = FREE multi-topup.
+-- Soft errors → keep/fulfill as "fulfilling" (retryable). Terminal supplier fails only refund.
+-- Apply: supabase db query --linked -f scripts/no-refund-on-soft-timeout.sql
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION public.is_soft_fulfillment_error(p_error text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT p_error IS NOT NULL AND (
+    p_error ILIKE '%timed out%'
+    OR p_error ILIKE '%timeout%'
+    OR p_error ILIKE '%still processing%'
+    OR p_error ILIKE '%aborted%'
+    OR p_error ILIKE '%abort%'
+    OR p_error ILIKE '%deadline%'
+    OR p_error ILIKE '%network%'
+    OR p_error ILIKE '%ECONNRESET%'
+    OR p_error ILIKE '%fetch failed%'
+  );
+$$;
+
+
+-- (deduped: earlier apply_g2bulk_fulfillment)
+-- Block double-buy while a same-player+offer order is still open (paid, not terminal)
+CREATE OR REPLACE FUNCTION public.has_open_duplicate_topup(
+  p_user_id uuid,
+  p_offer_id uuid,
+  p_player_uid text,
+  p_within_minutes int DEFAULT 20
+)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_uid text := nullif(trim(COALESCE(p_player_uid, '')), '');
+  v_found boolean := false;
+BEGIN
+  IF p_user_id IS NULL OR p_offer_id IS NULL OR v_uid IS NULL THEN
+    RETURN false;
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.orders o
+    JOIN public.order_items oi ON oi.order_id = o.id
+    WHERE o.user_id = p_user_id
+      AND o.status = 'completed'
+      AND o.fulfillment_status IN ('pending', 'fulfilling')
+      AND o.created_at > now() - make_interval(mins => GREATEST(5, LEAST(COALESCE(p_within_minutes, 20), 120)))
+      AND oi.offer_id = p_offer_id
+      AND nullif(trim(COALESCE(oi.player_uid, '')), '') = v_uid
+  ) INTO v_found;
+
+  RETURN COALESCE(v_found, false);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.has_open_duplicate_topup(uuid, uuid, text, int) FROM public;
+GRANT EXECUTE ON FUNCTION public.has_open_duplicate_topup(uuid, uuid, text, int) TO authenticated;
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/fix-expire-never-kill-supplier-orders.sql
+-- -----------------------------------------------------------------------------
+-- =============================================================================
+-- Never auto-fail orders that already have a G2Bulk supplier order id.
+-- Those must be recovered by re-polling delivery, not marked failed (codes lost!).
+-- Apply: supabase db query --linked -f scripts/fix-expire-never-kill-supplier-orders.sql
+-- =============================================================================
+
+
+-- (deduped: earlier expire_stale_pending_orders)
+-- Restore EC-style false fails that still have supplier order id (codes recoverable)
+UPDATE public.orders
+SET
+  fulfillment_status = 'fulfilling',
+  g2bulk_metadata = COALESCE(g2bulk_metadata, '{}'::jsonb)
+    || jsonb_build_object(
+      'restored_for_code_recovery', true,
+      'restored_at', now(),
+      'previous_error', g2bulk_metadata->>'last_error'
+    )
+    - 'last_error'
+    - 'failed_at'
+    - 'auto_expired'
+WHERE status = 'completed'
+  AND fulfillment_status = 'failed'
+  AND g2bulk_order_id IS NOT NULL
+  AND length(trim(g2bulk_order_id)) > 0
+  AND COALESCE((g2bulk_metadata->>'balance_refunded')::boolean, false) = false
+  AND (
+    g2bulk_metadata->>'last_error' ILIKE '%processing%'
+    OR g2bulk_metadata->>'last_error' ILIKE '%stuck%'
+    OR g2bulk_metadata->>'last_error' ILIKE '%timeout%'
+    OR g2bulk_metadata->>'last_error' ILIKE '%timed out%'
+    OR g2bulk_metadata->>'auto_expire_reason' = 'fulfillment_stuck_fulfilling'
+  );
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/fix-false-failed-orders-migration.sql
+-- -----------------------------------------------------------------------------
+-- 1) Stop marking successful legacy completed orders as failed.
+-- 2) Restore orders wrongly failed by fulfillment_over_15_minutes auto-expire.
+-- Run: supabase db query --linked -f scripts/fix-false-failed-orders-migration.sql
+
+
+-- (deduped: earlier expire_stale_pending_orders)
+-- Restore orders wrongly marked failed by the previous blanket pending→failed expire.
+UPDATE public.orders
+SET
+  fulfillment_status = 'fulfilled',
+  g2bulk_metadata = COALESCE(g2bulk_metadata, '{}'::jsonb) || jsonb_build_object(
+    'restored_from_false_expire', true,
+    'restored_at', now()
+  )
+WHERE status = 'completed'
+  AND fulfillment_status = 'failed'
+  AND (
+    g2bulk_metadata->>'auto_expire_reason' = 'fulfillment_over_15_minutes'
+    OR (
+      COALESCE((g2bulk_metadata->>'auto_expired')::boolean, false) = true
+      AND g2bulk_metadata->>'last_error' ILIKE '%timed out after 15 minutes%'
+    )
+  );
+
+-- Also clear false auto-failed when last_error is only the timeout message
+-- and order was completed long ago without a real supplier error trail.
+UPDATE public.orders
+SET
+  fulfillment_status = 'fulfilled',
+  g2bulk_metadata = COALESCE(g2bulk_metadata, '{}'::jsonb) || jsonb_build_object(
+    'restored_from_false_expire', true,
+    'restored_at', now()
+  )
+WHERE status = 'completed'
+  AND fulfillment_status = 'failed'
+  AND g2bulk_metadata->>'last_error' = 'Fulfillment timed out after 15 minutes';
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/expire-stale-orders-migration.sql
+-- -----------------------------------------------------------------------------
+-- Auto-close abandoned / stuck orders after 15 minutes.
+-- Run: supabase db query --linked -f scripts/expire-stale-orders-migration.sql
+
+CREATE OR REPLACE FUNCTION public.expire_stale_pending_orders(
+  p_max_age_minutes int DEFAULT 15
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_minutes int := GREATEST(5, LEAST(COALESCE(p_max_age_minutes, 15), 120));
+  v_cutoff timestamptz := now() - make_interval(mins => v_minutes);
+  v_cancelled int := 0;
+  v_fulfill_failed int := 0;
+BEGIN
+  -- Only admins or service role (edge) may run cleanup.
+  IF auth.uid() IS NOT NULL AND NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  -- 1) Unpaid / abandoned checkout attempts
+  UPDATE public.orders
+  SET
+    status = 'cancelled',
+    g2bulk_metadata = COALESCE(g2bulk_metadata, '{}'::jsonb) || jsonb_build_object(
+      'auto_expired', true,
+      'auto_expired_at', now(),
+      'auto_expire_reason', 'pending_over_15_minutes'
+    )
+  WHERE status IN ('pending_payment', 'payment_sent')
+    AND created_at < v_cutoff;
+
+  GET DIAGNOSTICS v_cancelled = ROW_COUNT;
+
+  -- Cancel related open Sam invoices for those orders (best-effort)
+  BEGIN
+    UPDATE public.sam_invoices si
+    SET status = 'expired'
+    WHERE si.entity_type = 'order'
+      AND si.entity_id IN (
+        SELECT id FROM public.orders
+        WHERE status = 'cancelled'
+          AND COALESCE((g2bulk_metadata->>'auto_expired')::boolean, false) = true
+          AND g2bulk_metadata->>'auto_expire_reason' = 'pending_over_15_minutes'
+          AND created_at < v_cutoff
+      )
+      AND COALESCE(si.status, '') NOT IN ('paid', 'completed', 'cancelled');
+  EXCEPTION
+    WHEN undefined_table THEN NULL;
+    WHEN undefined_column THEN NULL;
+    WHEN OTHERS THEN NULL;
+  END;
+
+  -- 2) Only fail actively stuck "fulfilling" — never bare pending/null
+  -- (those are often successful legacy completed sales without tracking).
+  UPDATE public.orders
+  SET
+    fulfillment_status = 'failed',
+    g2bulk_metadata = COALESCE(g2bulk_metadata, '{}'::jsonb) || jsonb_build_object(
+      'last_error', 'Fulfillment timed out after 15 minutes',
+      'auto_expired', true,
+      'auto_expired_at', now(),
+      'auto_expire_reason', 'fulfillment_stuck_fulfilling'
+    )
+  WHERE status = 'completed'
+    AND fulfillment_status = 'fulfilling'
+    AND COALESCE(updated_at, created_at) < v_cutoff;
+
+  GET DIAGNOSTICS v_fulfill_failed = ROW_COUNT;
+
+  RETURN jsonb_build_object(
+    'cancelledPending', v_cancelled,
+    'failedStuckFulfillment', v_fulfill_failed,
+    'maxAgeMinutes', v_minutes,
+    'cutoff', v_cutoff
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.expire_stale_pending_orders(int) FROM public;
+GRANT EXECUTE ON FUNCTION public.expire_stale_pending_orders(int) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.expire_stale_pending_orders(int) TO service_role;
+
+COMMENT ON FUNCTION public.expire_stale_pending_orders(int) IS
+  'Cancels unpaid orders older than N minutes and marks stuck fulfillments as failed.';
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/expire-stale-recharges-migration.sql
+-- -----------------------------------------------------------------------------
+-- Auto-cancel abandoned recharge requests (لم يكمل stuck for hours/days).
+-- Sam invoice webhooks should cancel on expiry; this is a safety net when
+-- webhooks miss or the user never finishes.
+-- Apply: supabase db query --linked -f scripts/expire-stale-recharges-migration.sql
+
+CREATE OR REPLACE FUNCTION public.expire_stale_pending_recharges(
+  p_max_age_minutes int DEFAULT 20
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_minutes int := GREATEST(10, LEAST(COALESCE(p_max_age_minutes, 20), 1440));
+  v_cutoff timestamptz := now() - make_interval(mins => v_minutes);
+  v_cancelled int := 0;
+  v_ids uuid[] := ARRAY[]::uuid[];
+BEGIN
+  -- Admins, service role, or authenticated users (cleanup on recharge page load)
+  IF auth.uid() IS NOT NULL AND NOT public.is_admin() THEN
+    -- Allow any signed-in user to run cleanup (idempotent, no data leak)
+    NULL;
+  END IF;
+
+  -- 1) pending/payment_sent with expired Sam invoice
+  WITH expired_inv AS (
+    SELECT DISTINCT r.id
+    FROM public.recharge_requests r
+    JOIN public.sam_invoices si
+      ON si.entity_type = 'recharge'
+     AND si.entity_id = r.id
+    WHERE r.status IN ('pending', 'payment_sent')
+      AND (
+        COALESCE(si.status, '') IN ('expired', 'failed', 'cancelled')
+        OR (si.expires_at IS NOT NULL AND si.expires_at <= now())
+      )
+  ),
+  upd AS (
+    UPDATE public.recharge_requests r
+    SET status = 'cancelled', updated_at = now()
+    FROM expired_inv e
+    WHERE r.id = e.id
+      AND r.status IN ('pending', 'payment_sent')
+    RETURNING r.id
+  )
+  SELECT coalesce(array_agg(id), ARRAY[]::uuid[]) INTO v_ids FROM upd;
+
+  v_cancelled := coalesce(array_length(v_ids, 1), 0);
+
+  -- 2) Abandoned pending without a paid path — older than cutoff
+  WITH stale AS (
+    UPDATE public.recharge_requests r
+    SET status = 'cancelled', updated_at = now()
+    WHERE r.status = 'pending'
+      AND r.created_at < v_cutoff
+      AND r.id <> ALL (v_ids)
+    RETURNING r.id
+  )
+  SELECT v_cancelled + coalesce((SELECT count(*)::int FROM stale), 0)
+  INTO v_cancelled;
+
+  -- Mark open Sam invoices as expired for cancelled recharges (best-effort)
+  BEGIN
+    UPDATE public.sam_invoices si
+    SET status = 'expired'
+    WHERE si.entity_type = 'recharge'
+      AND si.entity_id IN (
+        SELECT id FROM public.recharge_requests
+        WHERE status = 'cancelled'
+          AND updated_at > now() - interval '2 minutes'
+      )
+      AND COALESCE(si.status, '') NOT IN ('paid', 'completed', 'cancelled', 'expired');
+  EXCEPTION
+    WHEN undefined_table THEN NULL;
+    WHEN OTHERS THEN NULL;
+  END;
+
+  RETURN jsonb_build_object(
+    'cancelledPending', v_cancelled,
+    'maxAgeMinutes', v_minutes,
+    'cutoff', v_cutoff
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.expire_stale_pending_recharges(int) FROM public;
+GRANT EXECUTE ON FUNCTION public.expire_stale_pending_recharges(int) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.expire_stale_pending_recharges(int) TO service_role;
+
+COMMENT ON FUNCTION public.expire_stale_pending_recharges(int) IS
+  'Cancels abandoned pending recharges (expired Sam invoice or older than N minutes).';
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/game-custom-images-migration.sql
+-- -----------------------------------------------------------------------------
+-- =============================================================================
+-- Lock admin-uploaded game cover/logo so G2Bulk catalog sync does not overwrite them.
+-- Apply: supabase db query --linked -f scripts/game-custom-images-migration.sql
+-- =============================================================================
+
+ALTER TABLE public.games
+  ADD COLUMN IF NOT EXISTS image_custom boolean NOT NULL DEFAULT false;
+
+ALTER TABLE public.games
+  ADD COLUMN IF NOT EXISTS logo_custom boolean NOT NULL DEFAULT false;
+
+COMMENT ON COLUMN public.games.image_custom IS 'When true, admin set cover (image_url); catalog sync must not overwrite.';
+COMMENT ON COLUMN public.games.logo_custom IS 'When true, admin set logo_url; catalog sync must not overwrite.';
+
+-- Backfill: anything hosted on our Supabase storage (or non-G2Bulk CDN) is treated as custom
+UPDATE public.games
+SET image_custom = true
+WHERE image_custom = false
+  AND image_url IS NOT NULL
+  AND length(trim(image_url)) > 0
+  AND (
+    image_url ILIKE '%/storage/v1/object/%'
+    OR image_url ILIKE '%product-images%'
+    OR image_url ILIKE '%supabase.co%'
+  )
+  AND image_url NOT ILIKE '%g2bulk%';
+
+UPDATE public.games
+SET logo_custom = true
+WHERE logo_custom = false
+  AND logo_url IS NOT NULL
+  AND length(trim(logo_url)) > 0
+  AND (
+    logo_url ILIKE '%/storage/v1/object/%'
+    OR logo_url ILIKE '%product-images%'
+    OR logo_url ILIKE '%supabase.co%'
+  )
+  AND logo_url NOT ILIKE '%g2bulk%';
+
+-- Optional: offer sale/custom images (sale_image is already admin-only; keep flag for future)
+ALTER TABLE public.offers
+  ADD COLUMN IF NOT EXISTS image_custom boolean NOT NULL DEFAULT false;
+
+ALTER TABLE public.offers
+  ADD COLUMN IF NOT EXISTS sale_image_custom boolean NOT NULL DEFAULT false;
+
+UPDATE public.offers
+SET sale_image_custom = true
+WHERE sale_image_custom = false
+  AND sale_image_url IS NOT NULL
+  AND length(trim(sale_image_url)) > 0;
+
+UPDATE public.offers
+SET image_custom = true
+WHERE image_custom = false
+  AND image_url IS NOT NULL
+  AND length(trim(image_url)) > 0
+  AND (
+    image_url ILIKE '%/storage/v1/object/%'
+    OR image_url ILIKE '%product-images%'
+    OR image_url ILIKE '%supabase.co%'
+  )
+  AND image_url NOT ILIKE '%g2bulk%';
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/igdb-settings-migration.sql
+-- -----------------------------------------------------------------------------
+-- IGDB (Twitch) credentials for admin game image search.
+-- Stored in store_settings — not Vite env. Edge function `igdb` reads them.
+
+ALTER TABLE public.store_settings
+  ADD COLUMN IF NOT EXISTS igdb_client_id text;
+
+ALTER TABLE public.store_settings
+  ADD COLUMN IF NOT EXISTS igdb_client_secret text;
+
+COMMENT ON COLUMN public.store_settings.igdb_client_id IS
+  'Twitch/IGDB Client ID for game image search (admin UI).';
+COMMENT ON COLUMN public.store_settings.igdb_client_secret IS
+  'Twitch/IGDB Client Secret (admin UI only; never expose to anon).';
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/igdb-auto-cover-migration.sql
+-- -----------------------------------------------------------------------------
+-- Optional auto-cover from IGDB when G2Bulk syncs games (admin toggle).
+ALTER TABLE public.store_settings
+  ADD COLUMN IF NOT EXISTS igdb_auto_cover_on_sync boolean NOT NULL DEFAULT false;
+
+COMMENT ON COLUMN public.store_settings.igdb_auto_cover_on_sync IS
+  'When true and IGDB keys are set, G2Bulk sync fetches a cover via first name word and sets image_url (skips image_custom games).';
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/bestselling-offers-migration.sql
+-- -----------------------------------------------------------------------------
+-- Public bestsellers for home “Suggested offers” (top N by completed order qty)
+-- Apply: supabase db query --linked -f scripts/bestselling-offers-migration.sql
+
+CREATE OR REPLACE FUNCTION public.get_bestselling_offer_ids(p_limit integer DEFAULT 10)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+DECLARE
+  v_lim integer := GREATEST(1, LEAST(50, COALESCE(p_limit, 10)));
+BEGIN
+  RETURN COALESCE((
+    SELECT jsonb_agg(row_to_json(x)::jsonb ORDER BY x.units DESC, x.offer_id)
+    FROM (
+      SELECT
+        oi.offer_id,
+        SUM(GREATEST(1, COALESCE(oi.quantity, 1)))::bigint AS units
+      FROM public.order_items oi
+      JOIN public.orders o ON o.id = oi.order_id
+      JOIN public.offers off ON off.id = oi.offer_id
+      WHERE o.status = 'completed'
+        AND COALESCE(o.payment_method, '') IS DISTINCT FROM 'admin_gift'
+        AND oi.offer_id IS NOT NULL
+        AND off.active IS NOT FALSE
+      GROUP BY oi.offer_id
+      ORDER BY units DESC, oi.offer_id
+      LIMIT v_lim
+    ) x
+  ), '[]'::jsonb);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_bestselling_offer_ids(integer) FROM public;
+GRANT EXECUTE ON FUNCTION public.get_bestselling_offer_ids(integer) TO anon, authenticated;
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/player-charname-migration.sql
+-- -----------------------------------------------------------------------------
+-- Player charname for G2Bulk top-up games (order_items + RPCs).
+-- Run: supabase db query --linked -f scripts/player-charname-migration.sql
+
+ALTER TABLE public.order_items
+  ADD COLUMN IF NOT EXISTS player_charname text;
+
+COMMENT ON COLUMN public.order_items.player_charname IS
+  'In-game character name / extra identifier required by some G2Bulk top-up games.';
+
+
 CREATE OR REPLACE FUNCTION public.admin_gift_order(
   p_target_user_id uuid,
   p_offer_id uuid,
@@ -4208,10 +5682,1479 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.admin_gift_order(uuid, uuid, text, text, text, text, text) FROM public;
 GRANT EXECUTE ON FUNCTION public.admin_gift_order(uuid, uuid, text, text, text, text, text) TO authenticated;
 
--- 3. Dev mock purchase — bypass create_order_atomic admin block
-CREATE OR REPLACE FUNCTION public.admin_run_mock_purchase(
-  p_offer_id uuid,
-  p_mock_code text DEFAULT null
+-- §27 Canonical create_order_atomic
+-- =============================================================================
+
+
+-- (deduped: earlier create_order_atomic)
+-- =============================================================================
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/profile-gender-dob-username-signup.sql
+-- -----------------------------------------------------------------------------
+-- Profile: optional gender + date_of_birth; username availability check for signup
+-- Apply: supabase db query --linked -f scripts/profile-gender-dob-username-signup.sql
+-- Existing users stay NULL for new columns (no backfill required).
+
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS date_of_birth date;
+
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS gender text;
+
+DO $
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'profiles_gender_check'
+      AND conrelid = 'public.profiles'::regclass
+  ) THEN
+    ALTER TABLE public.profiles
+      ADD CONSTRAINT profiles_gender_check
+      CHECK (gender IS NULL OR gender IN ('male', 'female'));
+  END IF;
+END $$;
+
+-- Public username availability probe (signup + settings before claim)
+CREATE OR REPLACE FUNCTION public.check_username_available(p_username text DEFAULT '')
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+STABLE AS $$
+DECLARE
+  v_raw text := lower(trim(COALESCE(p_username, '')));
+  v_uid uuid := auth.uid();
+BEGIN
+  v_raw := regexp_replace(v_raw, '^@+', '');
+
+  IF v_raw = '' THEN
+    RETURN jsonb_build_object(
+      'available', true,
+      'empty', true,
+      'username', ''
+    );
+  END IF;
+
+  IF length(v_raw) < 4 OR length(v_raw) > 20 OR v_raw !~ '^[a-z][a-z0-9]* THEN
+    RETURN jsonb_build_object(
+      'available', false,
+      'reason', 'username_invalid',
+      'username', v_raw
+    );
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.profiles p
+    WHERE lower(p.username) = v_raw
+      AND (v_uid IS NULL OR p.id IS DISTINCT FROM v_uid)
+  ) THEN
+    RETURN jsonb_build_object(
+      'available', false,
+      'reason', 'username_taken',
+      'username', v_raw
+    );
+  END IF;
+
+  RETURN jsonb_build_object(
+    'available', true,
+    'empty', false,
+    'username', v_raw
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.check_username_available(text) FROM public;
+GRANT EXECUTE ON FUNCTION public.check_username_available(text) TO anon, authenticated;
+
+-- Prefer username / gender / DOB from auth signup metadata when present
+
+-- (deduped: earlier handle_new_user)
+
+
+-- Allow users to set gender + date_of_birth on their own profile (username still via change_username)
+-- No extra policy needed if "Users update own name" already allows column updates.
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/google-username-from-email-migration.sql
+-- -----------------------------------------------------------------------------
+-- =============================================================================
+-- Google / OAuth signup: default username from email local-part
+-- e.g. xxxxxx@gmail.com → username "xxxxxx" (sanitized + unique)
+--
+-- Run in Supabase SQL Editor.
+-- Rules match app: ^[a-z][a-z0-9]*$ length 4–20
+-- =============================================================================
+
+-- Build a valid username seed from an email address (or empty if unusable).
+CREATE OR REPLACE FUNCTION public.username_seed_from_email(p_email text)
+RETURNS text
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = public
+AS $$
+DECLARE
+  v_local text;
+  v_seed text;
+BEGIN
+  IF p_email IS NULL OR position('@' in p_email) < 2 THEN
+    RETURN NULL;
+  END IF;
+
+  -- Local part before @; drop Gmail +tag
+  v_local := split_part(lower(trim(p_email)), '@', 1);
+  v_local := split_part(v_local, '+', 1);
+
+  -- Keep only a-z0-9 (strip dots, underscores, etc.)
+  v_seed := regexp_replace(v_local, '[^a-z0-9]', '', 'g');
+
+  IF v_seed IS NULL OR v_seed = '' THEN
+    RETURN NULL;
+  END IF;
+
+  -- Must start with a letter
+  IF v_seed !~ '^[a-z]' THEN
+    v_seed := 'u' || v_seed;
+  END IF;
+
+  -- Max 20 before uniqueness suffixes
+  v_seed := left(v_seed, 20);
+
+  -- Min length 4: pad with digits from a stable hash of the seed
+  IF length(v_seed) < 4 THEN
+    v_seed := rpad(v_seed, 4, '0');
+  END IF;
+
+  RETURN v_seed;
+END;
+$$;
+
+-- Unique username: prefer email seed, else Echo_ random (legacy).
+CREATE OR REPLACE FUNCTION public.generate_default_username(p_email text DEFAULT NULL)
+RETURNS text
+LANGUAGE plpgsql
+VOLATILE
+SET search_path = public
+AS $$
+DECLARE
+  v_base text;
+  v_candidate text;
+  v_attempt int := 0;
+  v_suffix text;
+BEGIN
+  v_base := public.username_seed_from_email(p_email);
+
+  IF v_base IS NOT NULL AND v_base <> '' THEN
+    -- Try exact seed, then seed + 2..digits
+    LOOP
+      v_attempt := v_attempt + 1;
+      IF v_attempt = 1 THEN
+        v_candidate := v_base;
+      ELSE
+        v_suffix := (v_attempt - 1)::text;
+        v_candidate := left(v_base, greatest(1, 20 - length(v_suffix))) || v_suffix;
+      END IF;
+
+      EXIT WHEN NOT EXISTS (
+        SELECT 1 FROM public.profiles WHERE lower(username) = lower(v_candidate)
+      );
+
+      IF v_attempt >= 40 THEN
+        EXIT; -- fall through to random Echo_
+      END IF;
+    END LOOP;
+
+    IF v_attempt < 40 THEN
+      RETURN lower(v_candidate);
+    END IF;
+  END IF;
+
+  -- Fallback: Echo_ + random (same style as before)
+  v_attempt := 0;
+  LOOP
+    v_attempt := v_attempt + 1;
+    v_candidate := 'echo' || lower(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6));
+    -- Ensure pattern ^[a-z][a-z0-9]*$ (no underscore)
+    EXIT WHEN NOT EXISTS (
+      SELECT 1 FROM public.profiles WHERE lower(username) = lower(v_candidate)
+    );
+    IF v_attempt >= 24 THEN
+      v_candidate := 'echo' || lower(substr(replace(gen_random_uuid()::text, '-', ''), 1, 10));
+      EXIT;
+    END IF;
+  END LOOP;
+
+  RETURN v_candidate;
+END;
+$$;
+
+-- Before insert: if username empty, derive from email stored on profile... we don't
+-- have email on profiles. handle_new_user sets username explicitly. This trigger
+-- still fills gaps with random (no email available here).
+CREATE OR REPLACE FUNCTION public.profiles_set_defaults()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.username IS NULL OR trim(NEW.username) = '' THEN
+    NEW.username := public.generate_default_username(NULL);
+  END IF;
+
+  IF NEW.name IS NULL OR trim(NEW.name) = '' THEN
+    NEW.name := NEW.username;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+-- New auth users (Google + email signup): username from metadata or email local-part
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_name text;
+  v_username text;
+  v_gender text;
+  v_dob text;
+  v_date date;
+  v_email text;
+BEGIN
+  v_email := lower(trim(COALESCE(new.email, '')));
+  v_name := NULLIF(trim(COALESCE(
+    new.raw_user_meta_data->>'full_name',
+    new.raw_user_meta_data->>'name',
+    new.raw_user_meta_data->>'full name',
+    ''
+  )), '');
+
+  -- Prefer explicit signup username (email form)
+  v_username := lower(trim(COALESCE(new.raw_user_meta_data->>'username', '')));
+  v_username := regexp_replace(COALESCE(v_username, ''), '^@+', '');
+
+  IF v_username = '' THEN
+    -- Google / OTP / no username chosen → from email (xxxxxx@gmail.com → xxxxxx)
+    v_username := public.generate_default_username(v_email);
+  ELSIF length(v_username) < 4
+     OR length(v_username) > 20
+     OR v_username !~ '^[a-z][a-z0-9]* THEN
+    -- Invalid metadata: fall back to email-based instead of failing OAuth
+    v_username := public.generate_default_username(v_email);
+  ELSIF EXISTS (
+    SELECT 1 FROM public.profiles p WHERE lower(p.username) = v_username
+  ) THEN
+    v_username := public.generate_default_username(v_email);
+  END IF;
+
+  v_gender := lower(trim(COALESCE(new.raw_user_meta_data->>'gender', '')));
+  v_dob := nullif(trim(COALESCE(new.raw_user_meta_data->>'date_of_birth', '')), '');
+
+  IF v_gender NOT IN ('male', 'female') THEN
+    v_gender := NULL;
+  END IF;
+
+  IF v_dob IS NOT NULL THEN
+    BEGIN
+      v_date := v_dob::date;
+      IF v_date > CURRENT_DATE OR v_date < (CURRENT_DATE - INTERVAL '120 years') THEN
+        v_date := NULL;
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      v_date := NULL;
+    END;
+  END IF;
+
+  -- Display name: Google full name, else email local-part, else username
+  IF v_name IS NULL OR v_name = '' THEN
+    v_name := NULLIF(public.username_seed_from_email(v_email), '');
+  END IF;
+  IF v_name IS NULL OR v_name = '' THEN
+    v_name := v_username;
+  END IF;
+
+  INSERT INTO public.profiles (id, role, name, username, gender, date_of_birth)
+  VALUES (
+    new.id,
+    'user',
+    v_name,
+    v_username,
+    v_gender,
+    v_date
+  )
+  ON CONFLICT (id) DO NOTHING;
+
+  RETURN new;
+END;
+$$;
+
+-- Optional: backfill Google users who still have Echo_ random or empty username
+-- and whose email local-part is free. Safe to re-run.
+DO $
+DECLARE
+  r record;
+  v_seed text;
+  v_next text;
+BEGIN
+  FOR r IN
+    SELECT p.id, u.email, p.username
+    FROM public.profiles p
+    JOIN auth.users u ON u.id = p.id
+    WHERE u.email IS NOT NULL
+      AND (
+        p.username IS NULL
+        OR trim(p.username) = ''
+        OR p.username ~* '^echo[0-9a-f]{6,}
+        OR p.username ~* '^echo_'
+      )
+  LOOP
+    v_seed := public.username_seed_from_email(r.email);
+    IF v_seed IS NULL THEN
+      CONTINUE;
+    END IF;
+    v_next := public.generate_default_username(r.email);
+    IF v_next IS NOT NULL AND v_next <> '' THEN
+      UPDATE public.profiles
+      SET username = v_next
+      WHERE id = r.id
+        AND (username IS DISTINCT FROM v_next);
+    END IF;
+  END LOOP;
+END $$;
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/inbox-bell-hide-migration.sql
+-- -----------------------------------------------------------------------------
+-- Bell "clear/dismiss" hides notifications from the header dropdown only.
+-- Main /notifications inbox keeps every item (invoices, receipts, history).
+-- Run: supabase db query --linked -f scripts/inbox-bell-hide-migration.sql
+
+ALTER TABLE public.notifications
+  ADD COLUMN IF NOT EXISTS bell_hidden_at timestamptz;
+
+CREATE INDEX IF NOT EXISTS notifications_user_bell_visible_idx
+  ON public.notifications (user_id, created_at DESC)
+  WHERE bell_hidden_at IS NULL;
+
+
+-- (deduped: earlier get_my_notifications)
+
+
+CREATE OR REPLACE FUNCTION public.clear_all_notifications()
+RETURNS int
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_count int;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  UPDATE public.notifications
+  SET
+    bell_hidden_at = now(),
+    read_at = COALESCE(read_at, now())
+  WHERE user_id = v_user_id
+    AND bell_hidden_at IS NULL;
+
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.dismiss_notification(p_notification_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_updated int;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  UPDATE public.notifications
+  SET
+    bell_hidden_at = now(),
+    read_at = COALESCE(read_at, now())
+  WHERE id = p_notification_id
+    AND user_id = v_user_id
+    AND bell_hidden_at IS NULL;
+
+  GET DIAGNOSTICS v_updated = ROW_COUNT;
+  RETURN v_updated > 0;
+END;
+$$;
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/customer-review-admin-notify-migration.sql
+-- -----------------------------------------------------------------------------
+-- Customer reviews: optional order link + notify admins on new pending review.
+-- Run in Supabase SQL Editor (admin).
+
+-- 1) Optional order_id for post-purchase reviews
+ALTER TABLE public.customer_reviews
+  ADD COLUMN IF NOT EXISTS order_id uuid REFERENCES public.orders(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS customer_reviews_order_id_idx
+  ON public.customer_reviews (order_id)
+  WHERE order_id IS NOT NULL;
+
+-- 2) Notify all admins when a customer submits a pending review
+CREATE OR REPLACE FUNCTION public.on_customer_review_insert()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+BEGIN
+  IF NEW.is_seed IS TRUE THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.status IS DISTINCT FROM 'pending' THEN
+    RETURN NEW;
+  END IF;
+
+  PERFORM public.notify_all_admins(
+    'admin_customer_review',
+    jsonb_build_object(
+      'reviewId', NEW.id,
+      'authorName', NEW.author_name,
+      'userName', NEW.author_name,
+      'rating', NEW.rating,
+      'message', left(coalesce(NEW.content, ''), 200),
+      'orderId', NEW.order_id
+    ),
+    '/dashboard/reviews'
+  );
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS customer_review_notify_admins ON public.customer_reviews;
+CREATE TRIGGER customer_review_notify_admins
+  AFTER INSERT ON public.customer_reviews
+  FOR EACH ROW
+  EXECUTE FUNCTION public.on_customer_review_insert();
+
+COMMENT ON FUNCTION public.on_customer_review_insert() IS
+  'Notifies admins of new pending customer reviews for homepage moderation.';
+
+-- 3) Remove seed/mock reviews (real storefront should start empty)
+DELETE FROM public.customer_reviews WHERE is_seed = true;
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/contact-replies-migration.sql
+-- -----------------------------------------------------------------------------
+-- =============================================================================
+-- Contact message in-app conversation (admin ↔ customer)
+-- Apply: supabase db query --linked -f scripts/contact-replies-migration.sql
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS public.contact_message_replies (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  contact_message_id uuid NOT NULL REFERENCES public.contact_messages(id) ON DELETE CASCADE,
+  sender_role text NOT NULL CHECK (sender_role IN ('admin', 'user')),
+  sender_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  body text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS contact_message_replies_thread_idx
+  ON public.contact_message_replies (contact_message_id, created_at ASC);
+
+ALTER TABLE public.contact_message_replies ENABLE ROW LEVEL SECURITY;
+
+-- Users may read their own contact form rows (registered submitters)
+DROP POLICY IF EXISTS "Users read own contact messages" ON public.contact_messages;
+CREATE POLICY "Users read own contact messages" ON public.contact_messages
+  FOR SELECT
+  TO authenticated
+  USING (user_id = auth.uid() OR public.is_admin());
+
+-- Replies: admin full access; users read/write only on their threads
+DROP POLICY IF EXISTS "Admins manage contact replies" ON public.contact_message_replies;
+CREATE POLICY "Admins manage contact replies" ON public.contact_message_replies
+  FOR ALL
+  TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "Users read own contact replies" ON public.contact_message_replies;
+CREATE POLICY "Users read own contact replies" ON public.contact_message_replies
+  FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.contact_messages cm
+      WHERE cm.id = contact_message_id
+        AND cm.user_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS "Users insert own contact replies" ON public.contact_message_replies;
+CREATE POLICY "Users insert own contact replies" ON public.contact_message_replies
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    sender_role = 'user'
+    AND sender_user_id = auth.uid()
+    AND EXISTS (
+      SELECT 1
+      FROM public.contact_messages cm
+      WHERE cm.id = contact_message_id
+        AND cm.user_id = auth.uid()
+        AND cm.status <> 'archived'
+    )
+  );
+
+-- ---------------------------------------------------------------------------
+-- Fetch thread (message + replies) for admin or owning user
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.get_contact_thread(p_message_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_msg public.contact_messages%ROWTYPE;
+  v_replies jsonb;
+BEGIN
+  IF p_message_id IS NULL THEN
+    RAISE EXCEPTION 'Message id required';
+  END IF;
+
+  SELECT * INTO v_msg
+  FROM public.contact_messages
+  WHERE id = p_message_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Message not found';
+  END IF;
+
+  IF NOT public.is_admin() AND (v_msg.user_id IS NULL OR v_msg.user_id <> auth.uid()) THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  SELECT COALESCE(jsonb_agg(row_to_json(r)::jsonb ORDER BY r.created_at ASC), '[]'::jsonb)
+  INTO v_replies
+  FROM (
+    SELECT
+      id,
+      contact_message_id,
+      sender_role,
+      sender_user_id,
+      body,
+      created_at
+    FROM public.contact_message_replies
+    WHERE contact_message_id = p_message_id
+    ORDER BY created_at ASC
+  ) r;
+
+  RETURN jsonb_build_object(
+    'message', jsonb_build_object(
+      'id', v_msg.id,
+      'user_id', v_msg.user_id,
+      'name', v_msg.name,
+      'email', v_msg.email,
+      'message', v_msg.message,
+      'status', v_msg.status,
+      'created_at', v_msg.created_at
+    ),
+    'replies', v_replies
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_contact_thread(uuid) FROM public;
+GRANT EXECUTE ON FUNCTION public.get_contact_thread(uuid) TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Send reply (admin or owning registered user)
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.send_contact_reply(
+  p_message_id uuid,
+  p_body text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_msg public.contact_messages%ROWTYPE;
+  v_body text := trim(COALESCE(p_body, ''));
+  v_role text;
+  v_reply public.contact_message_replies%ROWTYPE;
+  v_admin_name text;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+  IF p_message_id IS NULL THEN
+    RAISE EXCEPTION 'Message id required';
+  END IF;
+  IF length(v_body) = 0 THEN
+    RAISE EXCEPTION 'Reply body required';
+  END IF;
+  IF length(v_body) > 4000 THEN
+    RAISE EXCEPTION 'Reply too long';
+  END IF;
+
+  SELECT * INTO v_msg
+  FROM public.contact_messages
+  WHERE id = p_message_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Message not found';
+  END IF;
+
+  IF public.is_admin() THEN
+    v_role := 'admin';
+  ELSIF v_msg.user_id IS NOT NULL AND v_msg.user_id = auth.uid() THEN
+    v_role := 'user';
+  ELSE
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  IF v_role = 'user' AND v_msg.status = 'archived' THEN
+    RAISE EXCEPTION 'Conversation is closed';
+  END IF;
+
+  INSERT INTO public.contact_message_replies (
+    contact_message_id,
+    sender_role,
+    sender_user_id,
+    body
+  )
+  VALUES (
+    p_message_id,
+    v_role,
+    auth.uid(),
+    v_body
+  )
+  RETURNING * INTO v_reply;
+
+  -- Mark thread active for admin when customer replies
+  IF v_role = 'user' AND v_msg.status = 'read' THEN
+    UPDATE public.contact_messages
+    SET status = 'new'
+    WHERE id = p_message_id;
+  ELSIF v_role = 'admin' AND v_msg.status = 'new' THEN
+    UPDATE public.contact_messages
+    SET status = 'read'
+    WHERE id = p_message_id;
+  END IF;
+
+  -- Notify the other party
+  IF v_role = 'admin' AND v_msg.user_id IS NOT NULL THEN
+    SELECT nullif(trim(COALESCE(p.name, p.username, '')), '') INTO v_admin_name
+    FROM public.profiles p
+    WHERE p.id = auth.uid();
+
+    PERFORM public.notify_user(
+      v_msg.user_id,
+      'contact_reply',
+      jsonb_build_object(
+        'messageId', v_msg.id,
+        'name', COALESCE(v_admin_name, 'ECHOCORE'),
+        'preview', left(v_body, 160)
+      ),
+      '/support?message=' || v_msg.id::text
+    );
+  ELSIF v_role = 'user' THEN
+    PERFORM public.notify_all_admins(
+      'admin_contact_reply',
+      jsonb_build_object(
+        'messageId', v_msg.id,
+        'name', COALESCE(v_msg.name, ''),
+        'email', COALESCE(v_msg.email, ''),
+        'preview', left(v_body, 160),
+        'userId', auth.uid()
+      ),
+      '/dashboard/contact?message=' || v_msg.id::text
+    );
+  END IF;
+
+  RETURN jsonb_build_object(
+    'id', v_reply.id,
+    'contact_message_id', v_reply.contact_message_id,
+    'sender_role', v_reply.sender_role,
+    'sender_user_id', v_reply.sender_user_id,
+    'body', v_reply.body,
+    'created_at', v_reply.created_at
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.send_contact_reply(uuid, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.send_contact_reply(uuid, text) TO authenticated;
+
+-- List contact threads for the current registered user
+CREATE OR REPLACE FUNCTION public.get_my_contact_threads(p_limit int DEFAULT 50)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_limit int := LEAST(GREATEST(COALESCE(p_limit, 50), 1), 100);
+  v_rows jsonb;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  SELECT COALESCE(jsonb_agg(to_jsonb(q) ORDER BY q.sort_at DESC), '[]'::jsonb)
+  INTO v_rows
+  FROM (
+    SELECT
+      s.id,
+      s.name,
+      s.email,
+      s.message,
+      s.status,
+      s.created_at,
+      s.last_reply_at,
+      s.reply_count,
+      s.sort_at
+    FROM (
+      SELECT
+        cm.id,
+        cm.name,
+        cm.email,
+        cm.message,
+        cm.status,
+        cm.created_at,
+        (
+          SELECT max(r.created_at)
+          FROM public.contact_message_replies r
+          WHERE r.contact_message_id = cm.id
+        ) AS last_reply_at,
+        (
+          SELECT count(*)::int
+          FROM public.contact_message_replies r
+          WHERE r.contact_message_id = cm.id
+        ) AS reply_count,
+        COALESCE(
+          (
+            SELECT max(r.created_at)
+            FROM public.contact_message_replies r
+            WHERE r.contact_message_id = cm.id
+          ),
+          cm.created_at
+        ) AS sort_at
+      FROM public.contact_messages cm
+      WHERE cm.user_id = auth.uid()
+    ) s
+    ORDER BY s.sort_at DESC
+    LIMIT v_limit
+  ) q;
+
+  RETURN COALESCE(v_rows, '[]'::jsonb);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_my_contact_threads(int) FROM public;
+GRANT EXECUTE ON FUNCTION public.get_my_contact_threads(int) TO authenticated;
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/contact-rate-limit-migration.sql
+-- -----------------------------------------------------------------------------
+-- =============================================================================
+-- Contact form hardening: submit only via RPC (honeypot + rate limits)
+-- Apply: supabase db query --linked -f scripts/contact-rate-limit-migration.sql
+-- =============================================================================
+
+-- Index for rate-limit lookups by email
+CREATE INDEX IF NOT EXISTS contact_messages_email_created_idx
+  ON public.contact_messages (lower(email), created_at DESC);
+
+CREATE INDEX IF NOT EXISTS contact_messages_user_created_idx
+  ON public.contact_messages (user_id, created_at DESC)
+  WHERE user_id IS NOT NULL;
+
+-- Block direct client inserts (bots used the open INSERT policy)
+DROP POLICY IF EXISTS "Anyone can submit contact messages" ON public.contact_messages;
+
+-- Optional: keep zero-row insert policy disabled — SECURITY DEFINER RPC only
+
+CREATE OR REPLACE FUNCTION public.submit_contact_message(
+  p_name text DEFAULT NULL,
+  p_email text DEFAULT NULL,
+  p_message text DEFAULT NULL,
+  p_honeypot text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_email text := lower(trim(COALESCE(p_email, '')));
+  v_message text := trim(COALESCE(p_message, ''));
+  v_name text := nullif(trim(COALESCE(p_name, '')), '');
+  v_uid uuid := auth.uid();
+  v_count int;
+  v_id uuid;
+BEGIN
+  -- Honeypot: bots fill hidden fields — pretend success
+  IF p_honeypot IS NOT NULL AND length(trim(p_honeypot)) > 0 THEN
+    RETURN jsonb_build_object('ok', true, 'ignored', true);
+  END IF;
+
+  IF v_email = '' OR v_message = '' THEN
+    RAISE EXCEPTION 'contact_required';
+  END IF;
+
+  IF char_length(v_email) < 4 OR char_length(v_email) > 255
+     OR v_email !~* '^[^@\s]+@[^@\s]+\.[^@\s]+ THEN
+    RAISE EXCEPTION 'contact_invalid_email';
+  END IF;
+
+  IF char_length(v_message) < 10 OR char_length(v_message) > 5000 THEN
+    RAISE EXCEPTION 'contact_invalid_message';
+  END IF;
+
+  IF v_name IS NOT NULL AND char_length(v_name) > 120 THEN
+    RAISE EXCEPTION 'contact_invalid_name';
+  END IF;
+
+  -- Rate limit: max 3 messages per email per rolling hour
+  SELECT count(*)::int INTO v_count
+  FROM public.contact_messages
+  WHERE lower(email) = v_email
+    AND created_at > now() - interval '1 hour';
+
+  IF v_count >= 3 THEN
+    RAISE EXCEPTION 'contact_rate_limited';
+  END IF;
+
+  -- Rate limit: max 5 messages per logged-in user per hour
+  IF v_uid IS NOT NULL THEN
+    SELECT count(*)::int INTO v_count
+    FROM public.contact_messages
+    WHERE user_id = v_uid
+      AND created_at > now() - interval '1 hour';
+
+    IF v_count >= 5 THEN
+      RAISE EXCEPTION 'contact_rate_limited';
+    END IF;
+  END IF;
+
+  INSERT INTO public.contact_messages (user_id, name, email, message, status)
+  VALUES (v_uid, v_name, v_email, v_message, 'new')
+  RETURNING id INTO v_id;
+
+  RETURN jsonb_build_object('ok', true, 'id', v_id);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.submit_contact_message(text, text, text, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.submit_contact_message(text, text, text, text) TO anon, authenticated;
+
+COMMENT ON FUNCTION public.submit_contact_message(text, text, text, text) IS
+  'Public contact form submit with honeypot + per-email/user rate limits. Direct table INSERT is not allowed for clients.';
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/site-logs-migration.sql
+-- -----------------------------------------------------------------------------
+-- =============================================================================
+-- Site logs — admin activity feed (auth, payments, recharges, orders, contact)
+-- Apply: supabase db query --linked -f scripts/site-logs-migration.sql
+-- =============================================================================
+
+-- 1. Table
+CREATE TABLE IF NOT EXISTS public.site_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  category text NOT NULL,
+  event_type text NOT NULL,
+  severity text NOT NULL DEFAULT 'info',
+  actor_user_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
+  subject_user_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS site_logs_created_at_idx ON public.site_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS site_logs_category_idx ON public.site_logs (category);
+CREATE INDEX IF NOT EXISTS site_logs_event_type_idx ON public.site_logs (event_type);
+
+ALTER TABLE public.site_logs ENABLE ROW LEVEL SECURITY;
+
+-- 2. Internal append helper
+
+-- (deduped: earlier append_site_log)
+-- 3. Client auth logging (anon + authenticated)
+-- NOTE: Keep in sync with scripts/site-logs-auth-all-users.sql
+-- FK-safe: only set actor/subject when profiles row exists; enrich all users.
+
+-- (deduped: earlier log_auth_event)
+
+-- (deduped: earlier log_profile_signup_event)
+
+
+DROP TRIGGER IF EXISTS profiles_log_signup ON public.profiles;
+CREATE TRIGGER profiles_log_signup
+  AFTER INSERT ON public.profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION public.log_profile_signup_event();
+
+REVOKE EXECUTE ON FUNCTION public.log_profile_signup_event() FROM public;
+
+-- 4. Admin fetch
+
+-- (deduped: earlier get_admin_site_logs)
+-- 5. Contact form hook
+
+-- (deduped: earlier on_contact_message_insert)
+
+
+-- 6. Recharge flows
+CREATE OR REPLACE FUNCTION public.create_recharge_request(
+  p_amount numeric,
+  p_payment_method text DEFAULT 'ShamCash'
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_amount numeric(10,2);
+  v_reference text;
+  v_request_id uuid;
+  v_method_ready boolean;
+  v_active_count int;
+  v_method text := COALESCE(nullif(trim(p_payment_method), ''), 'ShamCash');
+  v_wallet_mode text;
+  v_user_name text;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  IF public.is_admin() THEN
+    RAISE EXCEPTION 'Admin accounts cannot recharge store balance from the storefront';
+  END IF;
+
+  BEGIN
+    PERFORM public.assert_user_not_banned(v_user_id);
+    PERFORM public.assert_user_verified_if_required(v_user_id);
+  EXCEPTION
+    WHEN undefined_function THEN
+      NULL;
+  END;
+
+  IF v_method NOT IN ('ShamCash', 'SyriatelCash') THEN
+    RAISE EXCEPTION 'Invalid payment method';
+  END IF;
+
+  v_amount := round(p_amount::numeric, 2);
+
+  IF v_amount < 1 OR v_amount > 500 THEN
+    RAISE EXCEPTION 'Amount must be between $1 and $500';
+  END IF;
+
+  SELECT COALESCE(sam_wallet_mode, 'manual')
+  INTO v_wallet_mode
+  FROM store_settings
+  WHERE id = 1;
+
+  IF v_wallet_mode = 'api' THEN
+    IF v_method = 'ShamCash' THEN
+      SELECT COALESCE((
+        SELECT sam_api_enabled
+          AND sam_wallet_mode = 'api'
+          AND sam_shamcash_wallet_identifier IS NOT NULL
+          AND length(trim(sam_shamcash_wallet_identifier)) > 0
+          AND sam_webhook_secret IS NOT NULL
+          AND length(trim(sam_webhook_secret)) > 0
+        FROM store_settings WHERE id = 1
+      ), false) INTO v_method_ready;
+      IF NOT v_method_ready THEN
+        RAISE EXCEPTION 'Sam API ShamCash recharge is not configured yet';
+      END IF;
+    ELSE
+      SELECT COALESCE((
+        SELECT sam_api_enabled
+          AND sam_wallet_mode = 'api'
+          AND sam_syriatel_wallet_identifier IS NOT NULL
+          AND length(trim(sam_syriatel_wallet_identifier)) > 0
+          AND sam_webhook_secret IS NOT NULL
+          AND length(trim(sam_webhook_secret)) > 0
+        FROM store_settings WHERE id = 1
+      ), false) INTO v_method_ready;
+      IF NOT v_method_ready THEN
+        RAISE EXCEPTION 'Sam API Syriatel Cash recharge is not configured yet';
+      END IF;
+    END IF;
+  ELSE
+    IF v_method = 'ShamCash' THEN
+      SELECT COALESCE((
+        SELECT shamcash_enabled
+          AND shamcash_qr_image_url IS NOT NULL
+          AND length(trim(shamcash_qr_image_url)) > 0
+          AND shamcash_pay_code IS NOT NULL
+          AND length(trim(shamcash_pay_code)) > 0
+        FROM store_settings WHERE id = 1
+      ), false) INTO v_method_ready;
+      IF NOT v_method_ready THEN
+        RAISE EXCEPTION 'Manual ShamCash recharge is not configured yet';
+      END IF;
+    ELSE
+      SELECT COALESCE((
+        SELECT syriatel_enabled
+          AND syriatel_qr_image_url IS NOT NULL
+          AND length(trim(syriatel_qr_image_url)) > 0
+          AND syriatel_pay_code IS NOT NULL
+          AND length(trim(syriatel_pay_code)) > 0
+        FROM store_settings WHERE id = 1
+      ), false) INTO v_method_ready;
+      IF NOT v_method_ready THEN
+        RAISE EXCEPTION 'Manual Syriatel Cash recharge is not configured yet';
+      END IF;
+    END IF;
+  END IF;
+
+  SELECT count(*)::int INTO v_active_count
+  FROM recharge_requests
+  WHERE user_id = v_user_id
+    AND status IN ('pending', 'payment_sent');
+
+  IF v_active_count >= 1 THEN
+    RAISE EXCEPTION 'You already have a pending recharge request';
+  END IF;
+
+  v_reference := 'ECHOCORE-' || upper(substr(replace(v_user_id::text, '-', ''), 1, 6))
+    || '-' || to_char(now(), 'YYMMDD') || '-' || upper(substr(gen_random_uuid()::text, 1, 4));
+
+  INSERT INTO recharge_requests (user_id, amount, reference, status, payment_method)
+  VALUES (v_user_id, v_amount, v_reference, 'pending', v_method)
+  RETURNING id INTO v_request_id;
+
+  SELECT COALESCE(name, 'Customer') INTO v_user_name FROM profiles WHERE id = v_user_id;
+
+  PERFORM public.append_site_log(
+    'recharge',
+    'requested',
+    'info',
+    v_user_id,
+    v_user_id,
+    jsonb_build_object(
+      'requestId', v_request_id,
+      'amount', v_amount,
+      'reference', v_reference,
+      'paymentMethod', v_method,
+      'walletMode', v_wallet_mode,
+      'userName', v_user_name
+    )
+  );
+
+  RETURN jsonb_build_object(
+    'requestId', v_request_id,
+    'reference', v_reference,
+    'amount', v_amount,
+    'status', 'pending',
+    'paymentMethod', v_method
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.mark_recharge_payment_sent(p_request_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_row recharge_requests%ROWTYPE;
+  v_user_name text;
+  v_current_balance numeric;
+  v_wallet_mode text;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  SELECT COALESCE(sam_wallet_mode, 'manual')
+  INTO v_wallet_mode
+  FROM store_settings
+  WHERE id = 1;
+
+  IF v_wallet_mode = 'api' THEN
+    RAISE EXCEPTION 'Manual payment confirmation is not used in Sam API wallet mode';
+  END IF;
+
+  SELECT * INTO v_row
+  FROM recharge_requests
+  WHERE id = p_request_id AND user_id = v_user_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Recharge request not found';
+  END IF;
+
+  IF v_row.status NOT IN ('pending', 'payment_sent') THEN
+    RAISE EXCEPTION 'This recharge request can no longer be updated';
+  END IF;
+
+  UPDATE recharge_requests
+    SET status = 'payment_sent', updated_at = now()
+    WHERE id = p_request_id;
+
+  SELECT name, balance INTO v_user_name, v_current_balance
+  FROM profiles WHERE id = v_row.user_id;
+
+  PERFORM public.notify_user(
+    v_row.user_id,
+    'recharge_payment_sent',
+    jsonb_build_object(
+      'requestId', p_request_id,
+      'amount', v_row.amount,
+      'reference', v_row.reference,
+      'currentBalance', v_current_balance
+    ),
+    '/recharge'
+  );
+
+  PERFORM public.notify_all_admins(
+    'admin_recharge_payment_sent',
+    jsonb_build_object(
+      'requestId', p_request_id,
+      'amount', v_row.amount,
+      'reference', v_row.reference,
+      'userName', COALESCE(v_user_name, 'Customer')
+    ),
+    '/dashboard'
+  );
+
+  PERFORM public.append_site_log(
+    'recharge',
+    'payment_sent',
+    'warning',
+    v_user_id,
+    v_row.user_id,
+    jsonb_build_object(
+      'requestId', p_request_id,
+      'amount', v_row.amount,
+      'reference', v_row.reference,
+      'paymentMethod', v_row.payment_method,
+      'userName', COALESCE(v_user_name, 'Customer')
+    )
+  );
+
+  RETURN jsonb_build_object(
+    'requestId', p_request_id,
+    'reference', v_row.reference,
+    'amount', v_row.amount,
+    'status', 'payment_sent',
+    'currentBalance', v_current_balance
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.approve_recharge_request(p_request_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_admin_id uuid := auth.uid();
+  v_row recharge_requests%ROWTYPE;
+  v_new_balance numeric;
+  v_user_name text;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  SELECT * INTO v_row
+  FROM recharge_requests
+  WHERE id = p_request_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Recharge request not found';
+  END IF;
+
+  IF v_row.status NOT IN ('pending', 'payment_sent') THEN
+    RAISE EXCEPTION 'Request is not awaiting approval';
+  END IF;
+
+  v_new_balance := public.credit_user_balance(
+    v_row.user_id,
+    v_row.amount,
+    v_row.payment_method,
+    v_row.reference
+  );
+
+  UPDATE recharge_requests
+    SET status = 'approved',
+        reviewed_by = v_admin_id,
+        reviewed_at = now(),
+        updated_at = now()
+    WHERE id = p_request_id;
+
+  SELECT COALESCE(name, 'Customer') INTO v_user_name FROM profiles WHERE id = v_row.user_id;
+
+  PERFORM public.notify_user(
+    v_row.user_id,
+    'recharge_approved',
+    jsonb_build_object(
+      'requestId', p_request_id,
+      'amount', v_row.amount,
+      'newBalance', v_new_balance
+    ),
+    '/profile'
+  );
+
+  PERFORM public.append_site_log(
+    'recharge',
+    'approved',
+    'success',
+    v_admin_id,
+    v_row.user_id,
+    jsonb_build_object(
+      'requestId', p_request_id,
+      'amount', v_row.amount,
+      'newBalance', v_new_balance,
+      'paymentMethod', v_row.payment_method,
+      'userName', v_user_name
+    )
+  );
+
+  RETURN jsonb_build_object(
+    'requestId', p_request_id,
+    'userId', v_row.user_id,
+    'amount', v_row.amount,
+    'newBalance', v_new_balance,
+    'status', 'approved'
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.reject_recharge_request(p_request_id uuid, p_note text DEFAULT null)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_admin_id uuid := auth.uid();
+  v_row recharge_requests%ROWTYPE;
+  v_user_name text;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  SELECT * INTO v_row
+  FROM recharge_requests
+  WHERE id = p_request_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Recharge request not found';
+  END IF;
+
+  IF v_row.status NOT IN ('pending', 'payment_sent') THEN
+    RAISE EXCEPTION 'Request is not awaiting review';
+  END IF;
+
+  UPDATE recharge_requests
+    SET status = 'rejected',
+        admin_note = nullif(trim(p_note), ''),
+        reviewed_by = v_admin_id,
+        reviewed_at = now(),
+        updated_at = now()
+    WHERE id = p_request_id;
+
+  SELECT COALESCE(name, 'Customer') INTO v_user_name FROM profiles WHERE id = v_row.user_id;
+
+  PERFORM public.notify_user(
+    v_row.user_id,
+    'recharge_rejected',
+    jsonb_build_object(
+      'requestId', p_request_id,
+      'amount', v_row.amount,
+      'note', nullif(trim(p_note), '')
+    ),
+    '/recharge'
+  );
+
+  PERFORM public.append_site_log(
+    'recharge',
+    'rejected',
+    'danger',
+    v_admin_id,
+    v_row.user_id,
+    jsonb_build_object(
+      'requestId', p_request_id,
+      'amount', v_row.amount,
+      'note', nullif(trim(p_note), ''),
+      'userName', v_user_name
+    )
+  );
+
+  RETURN jsonb_build_object(
+    'requestId', p_request_id,
+    'status', 'rejected'
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.cancel_my_recharge_request(p_request_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_row public.recharge_requests%ROWTYPE;
+  v_user_name text;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  SELECT * INTO v_row
+  FROM public.recharge_requests
+  WHERE id = p_request_id AND user_id = v_user_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Recharge request not found';
+  END IF;
+
+  IF v_row.status NOT IN ('pending', 'payment_sent') THEN
+    RAISE EXCEPTION 'This recharge request can no longer be cancelled';
+  END IF;
+
+  UPDATE public.recharge_requests
+  SET status = 'cancelled', updated_at = now()
+  WHERE id = p_request_id;
+
+  SELECT COALESCE(name, 'Customer') INTO v_user_name FROM profiles WHERE id = v_user_id;
+
+  PERFORM public.append_site_log(
+    'recharge',
+    'cancelled',
+    'info',
+    v_user_id,
+    v_user_id,
+    jsonb_build_object(
+      'requestId', p_request_id,
+      'amount', v_row.amount,
+      'userName', v_user_name
+    )
+  );
+
+  RETURN jsonb_build_object(
+    'requestId', p_request_id,
+    'status', 'cancelled'
+  );
+END;
+$$;
+
+
+-- (deduped: earlier complete_recharge_from_sam_invoice)
+
+
+CREATE OR REPLACE FUNCTION public.cancel_recharge_from_sam_invoice(p_sam_invoice_id text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_inv public.sam_invoices%ROWTYPE;
+  v_row public.recharge_requests%ROWTYPE;
+  v_user_name text;
+BEGIN
+  SELECT * INTO v_inv
+  FROM public.sam_invoices
+  WHERE sam_invoice_id = p_sam_invoice_id
+  FOR UPDATE;
+
+  IF v_inv.id IS NULL THEN
+    RAISE EXCEPTION 'Invoice not found';
+  END IF;
+
+  IF v_inv.entity_type IS DISTINCT FROM 'recharge' OR v_inv.entity_id IS NULL THEN
+    RETURN jsonb_build_object('skipped', true, 'reason', 'not_a_recharge');
+  END IF;
+
+  SELECT * INTO v_row
+  FROM public.recharge_requests
+  WHERE id = v_inv.entity_id
+  FOR UPDATE;
+
+  IF v_row.id IS NULL THEN
+    RAISE EXCEPTION 'Recharge request not found';
+  END IF;
+
+  IF v_row.status IN ('approved', 'rejected', 'cancelled') THEN
+    RETURN jsonb_build_object(
+      'requestId', v_row.id,
+      'status', v_row.status,
+      'skipped', true
+    );
+  END IF;
+
+  UPDATE public.recharge_requests
+  SET
+    status = 'cancelled',
+    updated_at = now()
+  WHERE id = v_row.id;
+
+  SELECT COALESCE(name, 'Customer') INTO v_user_name FROM public.profiles WHERE id = v_row.user_id;
+
+  PERFORM public.append_site_log(
+    'recharge',
+    'cancelled',
+    'info',
+    NULL,
+    v_row.user_id,
+    jsonb_build_object(
+      'requestId', v_row.id,
+      'amount', v_row.amount,
+      'samInvoiceId', p_sam_invoice_id,
+      'reason', 'sam_invoice_expired',
+      'userName', v_user_name
+    )
+  );
+
+  RETURN jsonb_build_object(
+    'requestId', v_row.id,
+    'status', 'cancelled'
+  );
+END;
+$$;
+
+-- 7. Order flows
+
+-- (deduped: earlier mark_order_payment_sent)
+
+
+CREATE OR REPLACE FUNCTION public.confirm_order_payment(
+  p_order_id uuid,
+  p_reference text DEFAULT null
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -4219,122 +7162,2305 @@ SECURITY DEFINER
 SET search_path = public AS $$
 DECLARE
   v_admin_id uuid := auth.uid();
-  v_offer public.offers%ROWTYPE;
-  v_balance numeric;
-  v_dev_test numeric;
-  v_needed numeric;
-  v_order_id uuid;
-  v_fulfill jsonb;
-  v_new_balance numeric;
+  v_order public.orders%ROWTYPE;
+  v_ref text;
+  v_user_name text;
 BEGIN
   IF NOT public.is_admin() THEN
     RAISE EXCEPTION 'Unauthorized';
   END IF;
 
-  SELECT * INTO v_offer FROM public.offers WHERE id = p_offer_id;
-  IF v_offer.id IS NULL THEN
-    RAISE EXCEPTION 'Offer not found';
+  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id FOR UPDATE;
+
+  IF v_order.id IS NULL THEN
+    RAISE EXCEPTION 'Order not found';
   END IF;
 
-  SELECT balance, dev_test_balance
-  INTO v_balance, v_dev_test
-  FROM public.profiles WHERE id = v_admin_id FOR UPDATE;
-
-  IF v_balance < v_offer.price THEN
-    v_needed := ceil((v_offer.price - v_balance) * 100) / 100;
-    PERFORM public.admin_credit_test_balance(v_needed);
-    SELECT balance INTO v_balance FROM public.profiles WHERE id = v_admin_id;
+  IF v_order.status NOT IN ('pending_payment', 'payment_sent') THEN
+    RAISE EXCEPTION 'Order is not awaiting payment confirmation';
   END IF;
 
-  UPDATE public.profiles
-  SET
-    balance = balance - v_offer.price,
-    dev_test_balance = GREATEST(0, dev_test_balance - v_offer.price)
-  WHERE id = v_admin_id AND balance >= v_offer.price
-  RETURNING balance INTO v_new_balance;
+  v_ref := COALESCE(nullif(trim(p_reference), ''), v_order.payment_reference);
 
-  IF v_new_balance IS NULL THEN
-    RAISE EXCEPTION 'Insufficient balance';
-  END IF;
-
-  INSERT INTO public.orders (user_id, total, payment_method, status)
-  VALUES (v_admin_id, v_offer.price, 'balance', 'completed')
-  RETURNING id INTO v_order_id;
-
-  INSERT INTO public.order_items (order_id, offer_id, name_snapshot, price, quantity)
-  VALUES (
-    v_order_id,
-    v_offer.id,
-    COALESCE(v_offer.name_en, v_offer.name_ar, 'Test offer'),
-    v_offer.price,
-    1
-  );
+  UPDATE public.orders
+    SET status = 'completed'
+    WHERE id = p_order_id;
 
   INSERT INTO public.transactions (user_id, type, amount, balance_after, payment_method, reference, status)
-  VALUES (v_admin_id, 'purchase', -v_offer.price, v_new_balance, 'balance', NULL, 'completed');
+  SELECT
+    v_order.user_id,
+    'purchase',
+    -v_order.total,
+    p.balance,
+    v_order.payment_method,
+    v_ref,
+    'completed'
+  FROM public.profiles p
+  WHERE p.id = v_order.user_id;
 
-  v_fulfill := public.admin_mock_fulfill_order(v_order_id, p_mock_code);
+  SELECT COALESCE(name, 'Customer') INTO v_user_name FROM profiles WHERE id = v_order.user_id;
+
+  PERFORM public.notify_user(
+    v_order.user_id,
+    'order_completed',
+    jsonb_build_object(
+      'orderId', p_order_id,
+      'total', v_order.total
+    ),
+    '/success?orderId=' || p_order_id::text
+  );
+
+  PERFORM public.append_site_log(
+    'order',
+    'completed',
+    'success',
+    v_admin_id,
+    v_order.user_id,
+    jsonb_build_object(
+      'orderId', p_order_id,
+      'total', v_order.total,
+      'reference', v_ref,
+      'paymentMethod', v_order.payment_method,
+      'userName', v_user_name
+    )
+  );
 
   RETURN jsonb_build_object(
-    'orderId', v_order_id,
-    'offerId', v_offer.id,
-    'offerName', COALESCE(v_offer.name_en, v_offer.name_ar),
-    'total', v_offer.price,
-    'newBalance', v_new_balance,
-    'devTestBalance', (SELECT dev_test_balance FROM public.profiles WHERE id = v_admin_id),
-    'fulfillment', v_fulfill,
-    'receiptPath', '/success?orderId=' || v_order_id::text
+    'orderId', p_order_id,
+    'status', 'completed'
   );
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.admin_run_mock_purchase(uuid, text) FROM public;
-GRANT EXECUTE ON FUNCTION public.admin_run_mock_purchase(uuid, text) TO authenticated;
+CREATE OR REPLACE FUNCTION public.reject_order_payment(
+  p_order_id uuid,
+  p_note text DEFAULT null
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_admin_id uuid := auth.uid();
+  v_order public.orders%ROWTYPE;
+  v_user_name text;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
 
--- =============================================================================
--- APPEND: syriatel_payment
--- =============================================================================
+  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id FOR UPDATE;
 
--- 1. Syriatel manual columns
-ALTER TABLE public.store_settings
-  ADD COLUMN IF NOT EXISTS syriatel_enabled boolean NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS syriatel_qr_image_url text,
-  ADD COLUMN IF NOT EXISTS syriatel_pay_code text;
+  IF v_order.id IS NULL THEN
+    RAISE EXCEPTION 'Order not found';
+  END IF;
 
--- 2. Dual Sam API receiving wallets (store wallets where customers pay)
-ALTER TABLE public.store_settings
-  ADD COLUMN IF NOT EXISTS sam_shamcash_wallet_identifier text,
-  ADD COLUMN IF NOT EXISTS sam_syriatel_wallet_identifier text;
+  IF v_order.status NOT IN ('pending_payment', 'payment_sent') THEN
+    RAISE EXCEPTION 'Order is not awaiting review';
+  END IF;
 
--- Migrate legacy single wallet identifier
-UPDATE public.store_settings
-SET
-  sam_shamcash_wallet_identifier = COALESCE(
-    sam_shamcash_wallet_identifier,
-    CASE WHEN COALESCE(sam_invoice_method, 'shamcash') = 'shamcash' THEN sam_wallet_identifier END
-  ),
-  sam_syriatel_wallet_identifier = COALESCE(
-    sam_syriatel_wallet_identifier,
-    CASE WHEN sam_invoice_method = 'syriatel' THEN sam_wallet_identifier END
+  UPDATE public.orders
+    SET status = 'cancelled'
+    WHERE id = p_order_id;
+
+  SELECT COALESCE(name, 'Customer') INTO v_user_name FROM profiles WHERE id = v_order.user_id;
+
+  PERFORM public.notify_user(
+    v_order.user_id,
+    'order_rejected',
+    jsonb_build_object(
+      'orderId', p_order_id,
+      'total', v_order.total,
+      'note', nullif(trim(p_note), '')
+    ),
+    '/profile'
+  );
+
+  PERFORM public.append_site_log(
+    'order',
+    'rejected',
+    'danger',
+    v_admin_id,
+    v_order.user_id,
+    jsonb_build_object(
+      'orderId', p_order_id,
+      'total', v_order.total,
+      'note', nullif(trim(p_note), ''),
+      'userName', v_user_name
+    )
+  );
+
+  RETURN jsonb_build_object(
+    'orderId', p_order_id,
+    'status', 'cancelled',
+    'note', nullif(trim(p_note), '')
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.complete_order_from_sam_invoice(p_sam_invoice_id text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_inv public.sam_invoices%ROWTYPE;
+  v_order public.orders%ROWTYPE;
+  v_ref text;
+  v_user_name text;
+BEGIN
+  SELECT * INTO v_inv
+  FROM public.sam_invoices
+  WHERE sam_invoice_id = p_sam_invoice_id
+  FOR UPDATE;
+
+  IF v_inv.id IS NULL THEN
+    RAISE EXCEPTION 'Invoice not found';
+  END IF;
+
+  IF v_inv.entity_type IS DISTINCT FROM 'order' OR v_inv.entity_id IS NULL THEN
+    RETURN jsonb_build_object('skipped', true, 'reason', 'not_an_order');
+  END IF;
+
+  SELECT * INTO v_order
+  FROM public.orders
+  WHERE id = v_inv.entity_id
+  FOR UPDATE;
+
+  IF v_order.id IS NULL THEN
+    RAISE EXCEPTION 'Order not found';
+  END IF;
+
+  IF v_order.status = 'completed' THEN
+    RETURN jsonb_build_object(
+      'orderId', v_order.id,
+      'status', 'completed',
+      'skipped', true
+    );
+  END IF;
+
+  IF v_order.status NOT IN ('pending_payment', 'payment_sent') THEN
+    RAISE EXCEPTION 'Order is not awaiting payment confirmation';
+  END IF;
+
+  v_ref := COALESCE(
+    nullif(trim(v_inv.transaction_ref), ''),
+    nullif(trim(v_order.payment_reference), ''),
+    v_inv.sam_invoice_id
+  );
+
+  UPDATE public.orders
+  SET
+    status = 'completed',
+    payment_reference = COALESCE(nullif(trim(payment_reference), ''), v_ref)
+  WHERE id = v_order.id;
+
+  INSERT INTO public.transactions (user_id, type, amount, balance_after, payment_method, reference, status)
+  SELECT
+    v_order.user_id,
+    'purchase',
+    -v_order.total,
+    p.balance,
+    v_order.payment_method,
+    v_ref,
+    'completed'
+  FROM public.profiles p
+  WHERE p.id = v_order.user_id;
+
+  SELECT COALESCE(name, 'Customer') INTO v_user_name FROM public.profiles WHERE id = v_order.user_id;
+
+  PERFORM public.notify_user(
+    v_order.user_id,
+    'order_completed',
+    jsonb_build_object(
+      'orderId', v_order.id,
+      'total', v_order.total
+    ),
+    '/success?orderId=' || v_order.id::text
+  );
+
+  PERFORM public.append_site_log(
+    'order',
+    'sam_paid',
+    'success',
+    NULL,
+    v_order.user_id,
+    jsonb_build_object(
+      'orderId', v_order.id,
+      'total', v_order.total,
+      'reference', v_ref,
+      'paymentMethod', v_order.payment_method,
+      'samInvoiceId', p_sam_invoice_id,
+      'userName', v_user_name
+    )
+  );
+
+  RETURN jsonb_build_object(
+    'orderId', v_order.id,
+    'status', 'completed'
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.create_order_atomic(
+  p_user_id uuid,
+  p_total numeric,
+  p_payment_method text,
+  p_items jsonb,
+  p_player_uid text DEFAULT null,
+  p_player_server text DEFAULT null
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_new_balance numeric;
+  v_order_id uuid;
+  v_item jsonb;
+  v_offer_price numeric;
+  v_server_total numeric := 0;
+  v_order_status text;
+  v_reference text := null;
+  v_method_ready boolean := false;
+  v_dev_test_balance numeric := 0;
+  v_wallet_mode text := 'manual';
+  v_user_name text;
+BEGIN
+  IF auth.uid() IS NULL OR auth.uid() IS DISTINCT FROM p_user_id THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  IF public.is_admin() AND auth.uid() = p_user_id THEN
+    RAISE EXCEPTION 'Admins cannot purchase for themselves';
+  END IF;
+
+  BEGIN
+    PERFORM public.assert_user_not_banned(p_user_id);
+  EXCEPTION
+    WHEN undefined_function THEN
+      NULL;
+  END;
+
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
+  LOOP
+    SELECT price INTO v_offer_price
+    FROM offers
+    WHERE id = (v_item->>'offer_id')::uuid;
+
+    IF v_offer_price IS NULL THEN
+      RAISE EXCEPTION 'Offer not found: %', v_item->>'offer_id';
+    END IF;
+
+    IF ABS(v_offer_price - (v_item->>'price')::numeric) > 0.001 THEN
+      RAISE EXCEPTION 'Price mismatch for offer %: expected %, got %',
+        v_item->>'offer_id', v_offer_price, (v_item->>'price')::numeric;
+    END IF;
+
+    v_server_total := v_server_total + v_offer_price;
+  END LOOP;
+
+  IF ABS(v_server_total - p_total) > 0.001 THEN
+    RAISE EXCEPTION 'Total mismatch: expected %, got %', v_server_total, p_total;
+  END IF;
+
+  IF p_payment_method = 'balance' THEN
+    v_order_status := 'completed';
+
+    UPDATE profiles
+    SET
+      balance = balance - p_total,
+      dev_test_balance = GREATEST(0, dev_test_balance - p_total)
+    WHERE id = p_user_id AND balance >= p_total
+    RETURNING balance, dev_test_balance INTO v_new_balance, v_dev_test_balance;
+
+    IF v_new_balance IS NULL THEN
+      RAISE EXCEPTION 'Insufficient balance';
+    END IF;
+
+    INSERT INTO transactions (user_id, type, amount, balance_after, payment_method, reference, status)
+    VALUES (p_user_id, 'purchase', -p_total, v_new_balance, 'balance', NULL, 'completed');
+  ELSE
+    v_order_status := 'pending_payment';
+    SELECT balance, dev_test_balance
+    INTO v_new_balance, v_dev_test_balance
+    FROM profiles WHERE id = p_user_id;
+
+    SELECT COALESCE(sam_wallet_mode, 'manual') INTO v_wallet_mode
+    FROM store_settings WHERE id = 1;
+
+    IF p_payment_method = 'ShamCash' THEN
+      IF v_wallet_mode = 'api' THEN
+        SELECT COALESCE((
+          SELECT sam_api_enabled
+            AND sam_wallet_mode = 'api'
+            AND sam_shamcash_wallet_identifier IS NOT NULL
+            AND length(trim(sam_shamcash_wallet_identifier)) > 0
+            AND sam_webhook_secret IS NOT NULL
+            AND length(trim(sam_webhook_secret)) > 0
+          FROM store_settings WHERE id = 1
+        ), false) INTO v_method_ready;
+
+        IF NOT v_method_ready THEN
+          RAISE EXCEPTION 'Sam API ShamCash payment is not configured yet';
+        END IF;
+      ELSE
+        SELECT COALESCE((
+          SELECT shamcash_enabled
+            AND shamcash_qr_image_url IS NOT NULL
+            AND length(trim(shamcash_qr_image_url)) > 0
+            AND shamcash_pay_code IS NOT NULL
+            AND length(trim(shamcash_pay_code)) > 0
+          FROM store_settings WHERE id = 1
+        ), false) INTO v_method_ready;
+
+        IF NOT v_method_ready THEN
+          RAISE EXCEPTION 'Manual ShamCash payment is not configured yet';
+        END IF;
+
+        v_reference := 'ECHOCORE-ORD-' || upper(substr(replace(p_user_id::text, '-', ''), 1, 6))
+          || '-' || to_char(now(), 'YYMMDD') || '-' || upper(substr(gen_random_uuid()::text, 1, 4));
+      END IF;
+    ELSIF p_payment_method = 'SyriatelCash' THEN
+      IF v_wallet_mode = 'api' THEN
+        SELECT COALESCE((
+          SELECT sam_api_enabled
+            AND sam_wallet_mode = 'api'
+            AND sam_syriatel_wallet_identifier IS NOT NULL
+            AND length(trim(sam_syriatel_wallet_identifier)) > 0
+            AND sam_webhook_secret IS NOT NULL
+            AND length(trim(sam_webhook_secret)) > 0
+          FROM store_settings WHERE id = 1
+        ), false) INTO v_method_ready;
+
+        IF NOT v_method_ready THEN
+          RAISE EXCEPTION 'Sam API Syriatel Cash payment is not configured yet';
+        END IF;
+      ELSE
+        SELECT COALESCE((
+          SELECT syriatel_enabled
+            AND syriatel_qr_image_url IS NOT NULL
+            AND length(trim(syriatel_qr_image_url)) > 0
+            AND syriatel_pay_code IS NOT NULL
+            AND length(trim(syriatel_pay_code)) > 0
+          FROM store_settings WHERE id = 1
+        ), false) INTO v_method_ready;
+
+        IF NOT v_method_ready THEN
+          RAISE EXCEPTION 'Manual Syriatel Cash payment is not configured yet';
+        END IF;
+
+        v_reference := 'ECHOCORE-ORD-' || upper(substr(replace(p_user_id::text, '-', ''), 1, 6))
+          || '-' || to_char(now(), 'YYMMDD') || '-' || upper(substr(gen_random_uuid()::text, 1, 4));
+      END IF;
+    END IF;
+  END IF;
+
+  INSERT INTO orders (user_id, total, payment_method, status, payment_reference)
+  VALUES (p_user_id, p_total, p_payment_method, v_order_status, v_reference)
+  RETURNING id INTO v_order_id;
+
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
+  LOOP
+    INSERT INTO order_items (order_id, offer_id, name_snapshot, price, quantity, player_uid, player_server)
+    VALUES (
+      v_order_id,
+      (v_item->>'offer_id')::uuid,
+      v_item->>'name_snapshot',
+      (v_item->>'price')::numeric,
+      COALESCE((v_item->>'quantity')::integer, 1),
+      COALESCE(NULLIF(v_item->>'player_uid', ''), NULLIF(p_player_uid, '')),
+      COALESCE(NULLIF(v_item->>'player_server', ''), NULLIF(p_player_server, ''))
+    );
+  END LOOP;
+
+  SELECT COALESCE(name, 'Customer') INTO v_user_name FROM profiles WHERE id = p_user_id;
+
+  IF p_payment_method = 'balance' AND v_order_status = 'completed' THEN
+    PERFORM public.notify_user(
+      p_user_id,
+      'purchase_completed',
+      jsonb_build_object(
+        'orderId', v_order_id,
+        'total', p_total,
+        'newBalance', v_new_balance
+      ),
+      '/success?orderId=' || v_order_id::text
+    );
+
+    PERFORM public.append_site_log(
+      'order',
+      'balance_paid',
+      'success',
+      p_user_id,
+      p_user_id,
+      jsonb_build_object(
+        'orderId', v_order_id,
+        'total', p_total,
+        'newBalance', v_new_balance,
+        'userName', v_user_name
+      )
+    );
+  ELSIF v_order_status = 'pending_payment' THEN
+    PERFORM public.append_site_log(
+      'order',
+      'placed',
+      'info',
+      p_user_id,
+      p_user_id,
+      jsonb_build_object(
+        'orderId', v_order_id,
+        'total', p_total,
+        'paymentMethod', p_payment_method,
+        'reference', v_reference,
+        'walletMode', v_wallet_mode,
+        'userName', v_user_name
+      )
+    );
+  END IF;
+
+  RETURN jsonb_build_object(
+    'orderId', v_order_id,
+    'newBalance', v_new_balance,
+    'devTestBalance', v_dev_test_balance,
+    'status', v_order_status,
+    'reference', v_reference
+  );
+END;
+$$;
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/site-logs-wallet-errors-migration.sql
+-- -----------------------------------------------------------------------------
+-- Site logs: wallet ledger events + client critical errors + severity filter
+-- Apply: supabase db query --linked -f scripts/site-logs-wallet-errors-migration.sql
+-- Requires: scripts/site-logs-migration.sql (append_site_log, site_logs table)
+
+-- 1) Normalize severity on append (error → danger)
+CREATE OR REPLACE FUNCTION public.append_site_log(
+  p_category text,
+  p_event_type text,
+  p_severity text DEFAULT 'info',
+  p_actor_user_id uuid DEFAULT NULL,
+  p_subject_user_id uuid DEFAULT NULL,
+  p_metadata jsonb DEFAULT '{}'::jsonb
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_id uuid;
+  v_severity text := lower(trim(COALESCE(p_severity, 'info')));
+BEGIN
+  IF p_category IS NULL OR length(trim(p_category)) = 0 THEN
+    RETURN NULL;
+  END IF;
+  IF p_event_type IS NULL OR length(trim(p_event_type)) = 0 THEN
+    RETURN NULL;
+  END IF;
+
+  IF v_severity IN ('error', 'err', 'critical', 'fatal') THEN
+    v_severity := 'danger';
+  ELSIF v_severity IN ('warn') THEN
+    v_severity := 'warning';
+  ELSIF v_severity IN ('ok', 'ok ') THEN
+    v_severity := 'success';
+  ELSIF v_severity NOT IN ('info', 'success', 'warning', 'danger') THEN
+    v_severity := 'info';
+  END IF;
+
+  INSERT INTO public.site_logs (
+    category,
+    event_type,
+    severity,
+    actor_user_id,
+    subject_user_id,
+    metadata
   )
-WHERE id = 1;
+  VALUES (
+    trim(p_category),
+    trim(p_event_type),
+    v_severity,
+    p_actor_user_id,
+    p_subject_user_id,
+    COALESCE(p_metadata, '{}'::jsonb)
+  )
+  RETURNING id INTO v_id;
 
--- 3. Recharge RPC — accept ShamCash or SyriatelCash
-DROP FUNCTION IF EXISTS public.create_recharge_request(numeric);
+  RETURN v_id;
+END;
+$$;
 
--- (removed older create_recharge_request; see later definition)
+REVOKE EXECUTE ON FUNCTION public.append_site_log(text, text, text, uuid, uuid, jsonb) FROM public;
+
+-- 2) Wallet movement log on every transactions row
+CREATE OR REPLACE FUNCTION public.log_wallet_transaction_event()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user_name text;
+  v_severity text := 'info';
+  v_event text;
+  v_amount numeric;
+BEGIN
+  v_event := lower(trim(COALESCE(NEW.type, 'movement')));
+  v_amount := COALESCE(NEW.amount, 0);
+
+  IF v_event = 'recharge' OR (v_event = 'adjustment' AND v_amount > 0) THEN
+    v_severity := 'success';
+  ELSIF v_event = 'purchase' THEN
+    v_severity := 'info';
+  ELSIF v_event = 'refund' THEN
+    v_severity := 'warning';
+  ELSIF v_event = 'adjustment' AND v_amount < 0 THEN
+    v_severity := 'warning';
+  ELSE
+    v_severity := 'info';
+  END IF;
+
+  SELECT nullif(trim(COALESCE(p.name, p.username, '')), '')
+  INTO v_user_name
+  FROM public.profiles p
+  WHERE p.id = NEW.user_id;
+
+  PERFORM public.append_site_log(
+    'wallet',
+    v_event,
+    v_severity,
+    NEW.user_id,
+    NEW.user_id,
+    jsonb_build_object(
+      'transactionId', NEW.id,
+      'amount', NEW.amount,
+      'balanceAfter', NEW.balance_after,
+      'paymentMethod', NEW.payment_method,
+      'reference', NEW.reference,
+      'status', NEW.status,
+      'userName', COALESCE(v_user_name, ''),
+      'type', NEW.type
+    )
+  );
+
+  RETURN NEW;
+EXCEPTION
+  WHEN OTHERS THEN
+    -- Never block wallet writes because of logging
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS transactions_log_wallet ON public.transactions;
+CREATE TRIGGER transactions_log_wallet
+  AFTER INSERT ON public.transactions
+  FOR EACH ROW
+  EXECUTE FUNCTION public.log_wallet_transaction_event();
+
+REVOKE EXECUTE ON FUNCTION public.log_wallet_transaction_event() FROM public;
+
+-- 3) Client / storefront critical errors (any authenticated user; rate-limited)
+CREATE OR REPLACE FUNCTION public.log_client_error(
+  p_event_type text,
+  p_severity text DEFAULT 'danger',
+  p_metadata jsonb DEFAULT '{}'::jsonb
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_severity text := lower(trim(COALESCE(p_severity, 'danger')));
+  v_event text := left(trim(COALESCE(p_event_type, 'client_error')), 80);
+  v_meta jsonb := COALESCE(p_metadata, '{}'::jsonb);
+  v_recent int := 0;
+BEGIN
+  IF v_event = '' THEN
+    v_event := 'client_error';
+  END IF;
+
+  IF v_severity IN ('error', 'err', 'critical', 'fatal') THEN
+    v_severity := 'danger';
+  ELSIF v_severity = 'warn' THEN
+    v_severity := 'warning';
+  END IF;
+
+  -- Only warning / danger (no spam info from clients)
+  IF v_severity NOT IN ('warning', 'danger') THEN
+    v_severity := 'danger';
+  END IF;
+
+  -- Rate limit: 12 per user (or anon fingerprint) per minute
+  IF v_uid IS NOT NULL THEN
+    SELECT count(*)::int INTO v_recent
+    FROM public.site_logs
+    WHERE category = 'error'
+      AND actor_user_id = v_uid
+      AND created_at > now() - interval '1 minute';
+  ELSE
+    SELECT count(*)::int INTO v_recent
+    FROM public.site_logs
+    WHERE category = 'error'
+      AND actor_user_id IS NULL
+      AND created_at > now() - interval '1 minute'
+      AND metadata->>'sessionKey' IS NOT DISTINCT FROM (v_meta->>'sessionKey');
+  END IF;
+
+  IF v_recent >= 12 THEN
+    RETURN;
+  END IF;
+
+  -- Cap huge console dumps
+  IF v_meta ? 'consoleLog' AND length(v_meta->>'consoleLog') > 12000 THEN
+    v_meta := v_meta || jsonb_build_object(
+      'consoleLog', left(v_meta->>'consoleLog', 12000) || E'\n…[truncated]'
+    );
+  END IF;
+  IF v_meta ? 'stack' AND length(v_meta->>'stack') > 8000 THEN
+    v_meta := v_meta || jsonb_build_object(
+      'stack', left(v_meta->>'stack', 8000) || E'\n…[truncated]'
+    );
+  END IF;
+
+  IF v_uid IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = v_uid) THEN
+    v_uid := NULL;
+  END IF;
+
+  PERFORM public.append_site_log(
+    'error',
+    v_event,
+    v_severity,
+    v_uid,
+    v_uid,
+    v_meta
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.log_client_error(text, text, jsonb) FROM public;
+GRANT EXECUTE ON FUNCTION public.log_client_error(text, text, jsonb) TO anon, authenticated;
+
+-- 4) Admin fetch: category + optional severity bucket (critical = warn/danger)
+CREATE OR REPLACE FUNCTION public.get_admin_site_logs(
+  p_limit int DEFAULT 50,
+  p_offset int DEFAULT 0,
+  p_category text DEFAULT NULL,
+  p_severity text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_limit int := LEAST(GREATEST(COALESCE(p_limit, 50), 1), 200);
+  v_offset int := GREATEST(COALESCE(p_offset, 0), 0);
+  v_category text := nullif(trim(p_category), '');
+  v_severity text := lower(nullif(trim(p_severity), ''));
+  v_total bigint;
+  v_logs jsonb;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  IF v_severity IN ('error', 'err', 'critical', 'fatal') THEN
+    v_severity := 'critical';
+  ELSIF v_severity = 'warn' THEN
+    v_severity := 'warning';
+  END IF;
+
+  SELECT count(*)::bigint INTO v_total
+  FROM public.site_logs sl
+  WHERE (v_category IS NULL OR sl.category = v_category)
+    AND (
+      v_severity IS NULL
+      OR (v_severity = 'critical' AND sl.severity IN ('warning', 'danger', 'error'))
+      OR (v_severity IS DISTINCT FROM 'critical' AND sl.severity = v_severity)
+    );
+
+  SELECT COALESCE(jsonb_agg(row_to_json(q)::jsonb ORDER BY q.created_at DESC), '[]'::jsonb)
+  INTO v_logs
+  FROM (
+    SELECT
+      sl.id,
+      sl.category,
+      sl.event_type,
+      CASE
+        WHEN sl.severity IN ('error', 'err') THEN 'danger'
+        ELSE sl.severity
+      END AS severity,
+      sl.actor_user_id,
+      sl.subject_user_id,
+      sl.metadata,
+      sl.created_at,
+      COALESCE(ap.name, ap.username, au.email, '') AS actor_name,
+      COALESCE(sp.name, sp.username, su.email, '') AS subject_name
+    FROM public.site_logs sl
+    LEFT JOIN public.profiles ap ON ap.id = sl.actor_user_id
+    LEFT JOIN auth.users au ON au.id = sl.actor_user_id
+    LEFT JOIN public.profiles sp ON sp.id = sl.subject_user_id
+    LEFT JOIN auth.users su ON su.id = sl.subject_user_id
+    WHERE (v_category IS NULL OR sl.category = v_category)
+      AND (
+        v_severity IS NULL
+        OR (v_severity = 'critical' AND sl.severity IN ('warning', 'danger', 'error'))
+        OR (v_severity IS DISTINCT FROM 'critical' AND sl.severity = v_severity)
+      )
+    ORDER BY sl.created_at DESC
+    LIMIT v_limit
+    OFFSET v_offset
+  ) q;
+
+  RETURN jsonb_build_object(
+    'logs', v_logs,
+    'total', v_total,
+    'limit', v_limit,
+    'offset', v_offset
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_admin_site_logs(int, int, text, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.get_admin_site_logs(int, int, text, text) TO authenticated;
+
+-- Keep 3-arg overload for older clients
+
+-- (deduped: earlier get_admin_site_logs)
+-- 5) Admin-only dev events: allow larger console payloads (already admin-gated)
+
+-- (deduped: earlier log_dev_event)
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/site-logs-auth-all-users.sql
+-- -----------------------------------------------------------------------------
+-- =============================================================================
+-- Site logs: log sign-in / sign-up for EVERY user (not only admins)
+-- Apply: supabase db query --linked -f scripts/site-logs-auth-all-users.sql
+--
+-- Root cause: log_auth_event always set actor/subject = auth.uid(). If that
+-- user has no profiles row yet (race on first login / OAuth), the INSERT into
+-- site_logs fails on FK (actor_user_id → profiles.id) and the event is lost.
+-- Admin accounts always have a profile, so only their logins appeared.
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION public.log_auth_event(
+  p_event_type text,
+  p_email text DEFAULT NULL,
+  p_metadata jsonb DEFAULT '{}'::jsonb
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_allowed text[] := ARRAY[
+    'login_success', 'login_failed', 'logout', 'signup_success', 'signup_failed'
+  ];
+  v_severity text := 'info';
+  v_meta jsonb;
+  v_email text;
+  v_name text;
+  v_meta_user_id uuid;
+BEGIN
+  IF p_event_type IS NULL OR NOT (p_event_type = ANY(v_allowed)) THEN
+    RETURN;
+  END IF;
+
+  v_email := lower(trim(COALESCE(p_email, '')));
+  IF v_email = '' THEN
+    v_email := NULL;
+  END IF;
+
+  v_meta := COALESCE(p_metadata, '{}'::jsonb);
+
+  -- Optional client-supplied user id (when session JWT not ready yet)
+  IF v_user_id IS NULL AND v_meta ? 'userId' AND nullif(trim(v_meta->>'userId'), '') IS NOT NULL THEN
+    BEGIN
+      v_meta_user_id := (trim(v_meta->>'userId'))::uuid;
+      v_user_id := v_meta_user_id;
+    EXCEPTION WHEN OTHERS THEN
+      v_user_id := NULL;
+    END;
+  END IF;
+
+  -- Resolve by email via auth.users when uid still unknown
+  IF v_user_id IS NULL AND v_email IS NOT NULL THEN
+    SELECT u.id INTO v_user_id
+    FROM auth.users u
+    WHERE lower(u.email) = v_email
+    ORDER BY u.created_at DESC
+    LIMIT 1;
+  END IF;
+
+  -- Email from auth.users when missing
+  IF v_email IS NULL AND v_user_id IS NOT NULL THEN
+    SELECT lower(u.email) INTO v_email
+    FROM auth.users u
+    WHERE u.id = v_user_id;
+  END IF;
+
+  -- Display name from profiles / metadata
+  v_name := nullif(trim(COALESCE(v_meta->>'userName', v_meta->>'name', '')), '');
+  IF v_name IS NULL AND v_user_id IS NOT NULL THEN
+    SELECT nullif(trim(COALESCE(p.name, p.username, '')), '') INTO v_name
+    FROM public.profiles p
+    WHERE p.id = v_user_id;
+  END IF;
+  IF v_name IS NULL AND v_email IS NOT NULL THEN
+    v_name := split_part(v_email, '@', 1);
+  END IF;
+
+  -- CRITICAL: only set actor/subject when a profiles row exists (FK on site_logs)
+  IF v_user_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.profiles p WHERE p.id = v_user_id
+  ) THEN
+    v_user_id := NULL;
+  END IF;
+
+  -- Soft dedupe: same successful login within 30s (tab focus / double handlers)
+  IF p_event_type = 'login_success' AND (v_user_id IS NOT NULL OR v_email IS NOT NULL) THEN
+    IF EXISTS (
+      SELECT 1
+      FROM public.site_logs
+      WHERE event_type = 'login_success'
+        AND created_at > now() - interval '30 seconds'
+        AND (
+          (v_user_id IS NOT NULL AND actor_user_id = v_user_id)
+          OR (v_email IS NOT NULL AND metadata->>'email' = v_email)
+        )
+    ) THEN
+      RETURN;
+    END IF;
+  END IF;
+
+  IF p_event_type = 'login_failed' AND v_email IS NOT NULL THEN
+    IF EXISTS (
+      SELECT 1
+      FROM public.site_logs
+      WHERE event_type = 'login_failed'
+        AND metadata->>'email' = v_email
+        AND created_at > now() - interval '60 seconds'
+    ) THEN
+      RETURN;
+    END IF;
+  END IF;
+
+  -- Soft dedupe signups (client + DB trigger may both fire)
+  IF p_event_type = 'signup_success' AND (v_user_id IS NOT NULL OR v_email IS NOT NULL) THEN
+    IF EXISTS (
+      SELECT 1
+      FROM public.site_logs
+      WHERE event_type = 'signup_success'
+        AND created_at > now() - interval '5 minutes'
+        AND (
+          (v_user_id IS NOT NULL AND actor_user_id = v_user_id)
+          OR (v_email IS NOT NULL AND metadata->>'email' = v_email)
+        )
+    ) THEN
+      RETURN;
+    END IF;
+  END IF;
+
+  IF v_email IS NOT NULL THEN
+    v_meta := v_meta || jsonb_build_object('email', v_email);
+  END IF;
+  IF v_name IS NOT NULL THEN
+    v_meta := v_meta || jsonb_build_object('userName', v_name);
+  END IF;
+  IF v_user_id IS NOT NULL THEN
+    v_meta := v_meta || jsonb_build_object('userId', v_user_id::text);
+  END IF;
+  -- Drop empty helper keys that confuse the log UI
+  v_meta := v_meta - 'name';
+
+  CASE p_event_type
+    WHEN 'login_failed', 'signup_failed' THEN v_severity := 'warning';
+    WHEN 'login_success', 'signup_success' THEN v_severity := 'success';
+    ELSE v_severity := 'info';
+  END CASE;
+
+  BEGIN
+    PERFORM public.append_site_log(
+      'auth',
+      p_event_type,
+      v_severity,
+      v_user_id,
+      v_user_id,
+      v_meta
+    );
+  EXCEPTION
+    WHEN foreign_key_violation THEN
+      -- Never lose the event if profile row is briefly missing
+      PERFORM public.append_site_log(
+        'auth',
+        p_event_type,
+        v_severity,
+        NULL,
+        NULL,
+        v_meta
+      );
+    WHEN OTHERS THEN
+      RAISE;
+  END;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.log_auth_event(text, text, jsonb) FROM public;
+GRANT EXECUTE ON FUNCTION public.log_auth_event(text, text, jsonb) TO anon, authenticated;
+
+-- Backup: log signup when a profile is created (covers OAuth / email confirm)
+CREATE OR REPLACE FUNCTION public.log_profile_signup_event()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_email text;
+  v_name text;
+BEGIN
+  SELECT lower(u.email) INTO v_email
+  FROM auth.users u
+  WHERE u.id = NEW.id;
+
+  v_name := nullif(trim(COALESCE(NEW.name, NEW.username, '')), '');
+  IF v_name IS NULL AND v_email IS NOT NULL THEN
+    v_name := split_part(v_email, '@', 1);
+  END IF;
+
+  -- Reuse log_auth_event so dedupe + FK safety apply
+  PERFORM public.log_auth_event(
+    'signup_success',
+    v_email,
+    jsonb_build_object(
+      'userId', NEW.id::text,
+      'userName', COALESCE(v_name, ''),
+      'source', 'profile_insert'
+    )
+  );
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS profiles_log_signup ON public.profiles;
+CREATE TRIGGER profiles_log_signup
+  AFTER INSERT ON public.profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION public.log_profile_signup_event();
+
+REVOKE EXECUTE ON FUNCTION public.log_profile_signup_event() FROM public;
 
 
-DROP FUNCTION IF EXISTS public.create_recharge_request(numeric, text);
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/site-logs-fix-email.sql
+-- -----------------------------------------------------------------------------
+-- Fix get_admin_site_logs: profiles has no email column (lives on auth.users)
+-- Apply: supabase db query --linked -f scripts/site-logs-fix-email.sql
 
-REVOKE EXECUTE ON FUNCTION public.create_recharge_request(numeric, text, text) FROM public;
-GRANT EXECUTE ON FUNCTION public.create_recharge_request(numeric, text, text) TO authenticated;
+CREATE OR REPLACE FUNCTION public.get_admin_site_logs(
+  p_limit int DEFAULT 50,
+  p_offset int DEFAULT 0,
+  p_category text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_limit int := LEAST(GREATEST(COALESCE(p_limit, 50), 1), 200);
+  v_offset int := GREATEST(COALESCE(p_offset, 0), 0);
+  v_category text := nullif(trim(p_category), '');
+  v_total bigint;
+  v_logs jsonb;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
 
--- 4. Order creation — SyriatelCash manual checkout
--- (removed create_order_atomic; canonical definition appended later)
+  SELECT count(*)::bigint INTO v_total
+  FROM public.site_logs sl
+  WHERE v_category IS NULL OR sl.category = v_category;
+
+  SELECT COALESCE(jsonb_agg(row_to_json(q)::jsonb ORDER BY q.created_at DESC), '[]'::jsonb)
+  INTO v_logs
+  FROM (
+    SELECT
+      sl.id,
+      sl.category,
+      sl.event_type,
+      sl.severity,
+      sl.actor_user_id,
+      sl.subject_user_id,
+      sl.metadata,
+      sl.created_at,
+      COALESCE(ap.name, ap.username, au.email, '') AS actor_name,
+      COALESCE(sp.name, sp.username, su.email, '') AS subject_name
+    FROM public.site_logs sl
+    LEFT JOIN public.profiles ap ON ap.id = sl.actor_user_id
+    LEFT JOIN auth.users au ON au.id = sl.actor_user_id
+    LEFT JOIN public.profiles sp ON sp.id = sl.subject_user_id
+    LEFT JOIN auth.users su ON su.id = sl.subject_user_id
+    WHERE v_category IS NULL OR sl.category = v_category
+    ORDER BY sl.created_at DESC
+    LIMIT v_limit
+    OFFSET v_offset
+  ) q;
+
+  RETURN jsonb_build_object(
+    'logs', v_logs,
+    'total', v_total,
+    'limit', v_limit,
+    'offset', v_offset
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_admin_site_logs(int, int, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.get_admin_site_logs(int, int, text) TO authenticated;
 
 
--- 5. Sam API admin RPCs — dual receiving wallets
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/dev-logs-rpc.sql
+-- -----------------------------------------------------------------------------
+-- Dev logs RPC — admin technical events (API, webhooks, client errors)
+-- Apply: supabase db query --linked -f scripts/dev-logs-rpc.sql
+-- Requires: scripts/site-logs-migration.sql
+
+CREATE OR REPLACE FUNCTION public.log_dev_event(
+  p_event_type text,
+  p_severity text DEFAULT 'info',
+  p_metadata jsonb DEFAULT '{}'::jsonb
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_severity text := COALESCE(nullif(trim(p_severity), ''), 'info');
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN;
+  END IF;
+
+  IF NOT public.is_admin() THEN
+    RETURN;
+  END IF;
+
+  IF p_event_type IS NULL OR length(trim(p_event_type)) = 0 THEN
+    RETURN;
+  END IF;
+
+  IF v_severity NOT IN ('info', 'success', 'warning', 'danger') THEN
+    v_severity := 'info';
+  END IF;
+
+  PERFORM public.append_site_log(
+    'dev',
+    trim(p_event_type),
+    v_severity,
+    auth.uid(),
+    NULL,
+    COALESCE(p_metadata, '{}'::jsonb)
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.log_dev_event(text, text, jsonb) FROM public;
+GRANT EXECUTE ON FUNCTION public.log_dev_event(text, text, jsonb) TO authenticated;
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/admin-manual-balance-credit-migration.sql
+-- -----------------------------------------------------------------------------
+-- =============================================================================
+-- Admin manual balance credit — recover failed/expired ShamCash recharges
+-- Apply: supabase db query --linked -f scripts/admin-manual-balance-credit-migration.sql
+-- Requires: site-logs-migration.sql (append_site_log)
+-- =============================================================================
+
+
+-- (deduped: earlier admin_manual_balance_credit)
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/admin-balance-adjust-migration.sql
+-- -----------------------------------------------------------------------------
+-- =============================================================================
+-- Admin wallet adjust: ADD or DEDUCT customer store balance + edit profile fields
+-- Apply: supabase db query --linked -f scripts/admin-balance-adjust-migration.sql
+-- =============================================================================
+
+-- Signed adjust: positive = credit, negative = debit (cannot go below 0)
+CREATE OR REPLACE FUNCTION public.admin_adjust_user_balance(
+  p_user_id uuid,
+  p_amount numeric,
+  p_direction text, -- 'credit' | 'debit'
+  p_reason text,
+  p_transaction_ref text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_admin_id uuid := auth.uid();
+  v_user_name text;
+  v_admin_name text;
+  v_new_balance numeric;
+  v_old_balance numeric;
+  v_reason text := trim(COALESCE(p_reason, ''));
+  v_tx_ref text := trim(COALESCE(p_transaction_ref, ''));
+  v_dir text := lower(trim(COALESCE(p_direction, 'credit')));
+  v_delta numeric;
+  v_reference text;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  IF p_user_id IS NULL THEN
+    RAISE EXCEPTION 'User is required';
+  END IF;
+
+  IF v_dir NOT IN ('credit', 'debit') THEN
+    RAISE EXCEPTION 'Direction must be credit or debit';
+  END IF;
+
+  IF p_amount IS NULL OR p_amount <= 0 OR p_amount > 500 THEN
+    RAISE EXCEPTION 'Amount must be between $0.01 and $500';
+  END IF;
+
+  -- Allow cents
+  IF round(p_amount, 2) <> p_amount THEN
+    RAISE EXCEPTION 'Amount may have at most 2 decimal places';
+  END IF;
+
+  IF length(v_reason) < 5 THEN
+    RAISE EXCEPTION 'Reason is required (at least 5 characters)';
+  END IF;
+
+  IF v_tx_ref <> '' AND v_tx_ref !~ '^#[0-9]+ THEN
+    RAISE EXCEPTION 'Transaction reference must start with # followed by digits only';
+  END IF;
+
+  SELECT COALESCE(name, username, 'Customer'), COALESCE(balance, 0)
+  INTO v_user_name, v_old_balance
+  FROM public.profiles
+  WHERE id = p_user_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'User not found';
+  END IF;
+
+  SELECT COALESCE(name, username, 'Admin') INTO v_admin_name
+  FROM public.profiles
+  WHERE id = v_admin_id;
+
+  v_delta := CASE WHEN v_dir = 'debit' THEN -p_amount ELSE p_amount END;
+
+  IF v_dir = 'debit' AND v_old_balance < p_amount THEN
+    RAISE EXCEPTION 'Insufficient balance (current $%)', to_char(v_old_balance, 'FM999990.00');
+  END IF;
+
+  -- Allow admin balance writes
+  PERFORM set_config('echocore.allow_balance_change', '1', true);
+
+  UPDATE public.profiles
+  SET balance = GREATEST(0, COALESCE(balance, 0) + v_delta)
+  WHERE id = p_user_id
+  RETURNING balance INTO v_new_balance;
+
+  v_reference := COALESCE(
+    NULLIF(v_tx_ref, ''),
+    upper(v_dir) || '-' || to_char(now(), 'YYYYMMDDHH24MISS')
+  );
+
+  INSERT INTO public.transactions (
+    user_id, type, amount, balance_after, payment_method, reference, status
+  )
+  VALUES (
+    p_user_id,
+    'adjustment', -- signed amount: +credit / -debit (allowed by transactions_type_check)
+    v_delta,
+    v_new_balance,
+    'admin_manual',
+    v_reference,
+    'completed'
+  );
+
+  PERFORM public.notify_user(
+    p_user_id,
+    CASE WHEN v_dir = 'debit' THEN 'admin_balance_debit' ELSE 'recharge_approved' END,
+    jsonb_build_object(
+      'amount', p_amount,
+      'direction', v_dir,
+      'newBalance', v_new_balance,
+      'manualCredit', v_dir = 'credit',
+      'manualDebit', v_dir = 'debit',
+      'reason', v_reason
+    ),
+    '/profile'
+  );
+
+  BEGIN
+    PERFORM public.append_site_log(
+      'recharge',
+      CASE WHEN v_dir = 'debit' THEN 'manual_debit' ELSE 'manual_credit' END,
+      'success',
+      v_admin_id,
+      p_user_id,
+      jsonb_build_object(
+        'amount', p_amount,
+        'delta', v_delta,
+        'oldBalance', v_old_balance,
+        'newBalance', v_new_balance,
+        'reason', v_reason,
+        'transactionRef', NULLIF(v_tx_ref, ''),
+        'reference', v_reference,
+        'userName', v_user_name,
+        'adminName', v_admin_name,
+        'direction', v_dir
+      )
+    );
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+
+  RETURN jsonb_build_object(
+    'userId', p_user_id,
+    'userName', v_user_name,
+    'amount', p_amount,
+    'direction', v_dir,
+    'delta', v_delta,
+    'oldBalance', v_old_balance,
+    'newBalance', v_new_balance,
+    'reference', v_reference,
+    'status', CASE WHEN v_dir = 'debit' THEN 'debited' ELSE 'credited' END
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_adjust_user_balance(uuid, numeric, text, text, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_adjust_user_balance(uuid, numeric, text, text, text) TO authenticated;
+
+-- Keep legacy credit RPC working by delegating to adjust
+CREATE OR REPLACE FUNCTION public.admin_manual_balance_credit(
+  p_user_id uuid,
+  p_amount numeric,
+  p_reason text,
+  p_transaction_ref text DEFAULT NULL,
+  p_recharge_request_id uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_result jsonb;
+  v_admin_id uuid := auth.uid();
+  v_req public.recharge_requests%ROWTYPE;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  -- Optional link to recharge request (legacy recovery flow)
+  IF p_recharge_request_id IS NOT NULL THEN
+    SELECT * INTO v_req
+    FROM public.recharge_requests
+    WHERE id = p_recharge_request_id
+    FOR UPDATE;
+
+    IF v_req.id IS NULL THEN
+      RAISE EXCEPTION 'Recharge request not found';
+    END IF;
+    IF v_req.user_id IS DISTINCT FROM p_user_id THEN
+      RAISE EXCEPTION 'Recharge request does not belong to this user';
+    END IF;
+    IF v_req.status = 'approved' THEN
+      RAISE EXCEPTION 'This recharge request is already approved';
+    END IF;
+  END IF;
+
+  v_result := public.admin_adjust_user_balance(
+    p_user_id,
+    p_amount,
+    'credit',
+    p_reason,
+    p_transaction_ref
+  );
+
+  IF p_recharge_request_id IS NOT NULL THEN
+    UPDATE public.recharge_requests
+    SET
+      status = 'approved',
+      reviewed_by = v_admin_id,
+      reviewed_at = now(),
+      admin_note = trim(COALESCE(p_reason, '')),
+      updated_at = now()
+    WHERE id = p_recharge_request_id;
+
+    v_result := v_result || jsonb_build_object('requestId', p_recharge_request_id);
+  END IF;
+
+  RETURN v_result;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_manual_balance_credit(uuid, numeric, text, text, uuid) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_manual_balance_credit(uuid, numeric, text, text, uuid) TO authenticated;
+
+-- Admin edit customer profile fields (not role/balance — use adjust for wallet)
+CREATE OR REPLACE FUNCTION public.admin_update_user_profile(
+  p_user_id uuid,
+  p_name text DEFAULT NULL,
+  p_phone text DEFAULT NULL,
+  p_country text DEFAULT NULL,
+  p_bio text DEFAULT NULL,
+  p_discord_username text DEFAULT NULL,
+  p_favorite_game text DEFAULT NULL,
+  p_default_player_uid text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_row public.profiles%ROWTYPE;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  IF p_user_id IS NULL THEN
+    RAISE EXCEPTION 'User is required';
+  END IF;
+
+  UPDATE public.profiles
+  SET
+    name = CASE WHEN p_name IS NULL THEN name ELSE nullif(trim(p_name), '') END,
+    phone = CASE WHEN p_phone IS NULL THEN phone ELSE nullif(trim(p_phone), '') END,
+    country = CASE WHEN p_country IS NULL THEN country ELSE nullif(trim(p_country), '') END,
+    bio = CASE WHEN p_bio IS NULL THEN bio ELSE nullif(trim(p_bio), '') END,
+    discord_username = CASE WHEN p_discord_username IS NULL THEN discord_username ELSE nullif(trim(p_discord_username), '') END,
+    favorite_game = CASE WHEN p_favorite_game IS NULL THEN favorite_game ELSE nullif(trim(p_favorite_game), '') END,
+    default_player_uid = CASE WHEN p_default_player_uid IS NULL THEN default_player_uid ELSE nullif(trim(p_default_player_uid), '') END
+  WHERE id = p_user_id
+  RETURNING * INTO v_row;
+
+  IF v_row.id IS NULL THEN
+    RAISE EXCEPTION 'User not found';
+  END IF;
+
+  RETURN jsonb_build_object(
+    'id', v_row.id,
+    'name', v_row.name,
+    'phone', v_row.phone,
+    'country', v_row.country,
+    'bio', v_row.bio,
+    'discord_username', v_row.discord_username,
+    'favorite_game', v_row.favorite_game,
+    'default_player_uid', v_row.default_player_uid,
+    'username', v_row.username,
+    'balance', v_row.balance
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_update_user_profile(uuid, text, text, text, text, text, text, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_update_user_profile(uuid, text, text, text, text, text, text, text) TO authenticated;
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/admin-inbox-activity-migration.sql
+-- -----------------------------------------------------------------------------
+-- Admin inbox: notify on purchases / fulfillment / recharges, raise retention, fix limits.
+-- Run: supabase db query --linked -f scripts/admin-inbox-activity-migration.sql
+
+-- =============================================================================
+-- 1) Retention + fetch limits
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION public.notify_user(
+  p_user_id uuid,
+  p_type text,
+  p_metadata jsonb DEFAULT '{}'::jsonb,
+  p_link text DEFAULT null
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_id uuid;
+BEGIN
+  IF p_user_id IS NULL OR p_type IS NULL OR length(trim(p_type)) = 0 THEN
+    RETURN NULL;
+  END IF;
+
+  INSERT INTO public.notifications (user_id, type, metadata, link)
+  VALUES (p_user_id, p_type, COALESCE(p_metadata, '{}'::jsonb), p_link)
+  RETURNING id INTO v_id;
+
+  -- Drop read notifications older than 90 days
+  DELETE FROM public.notifications
+  WHERE user_id = p_user_id
+    AND read_at IS NOT NULL
+    AND read_at < now() - interval '90 days';
+
+  -- Drop any notification older than 120 days
+  DELETE FROM public.notifications
+  WHERE user_id = p_user_id
+    AND created_at < now() - interval '120 days';
+
+  -- Keep latest 250 per user (admins get more activity)
+  DELETE FROM public.notifications
+  WHERE user_id = p_user_id
+    AND id IN (
+      SELECT id
+      FROM public.notifications
+      WHERE user_id = p_user_id
+      ORDER BY created_at DESC
+      OFFSET 250
+    );
+
+  RETURN v_id;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.notify_user(uuid, text, jsonb, text) FROM public;
+
+CREATE OR REPLACE FUNCTION public.get_my_notifications(p_limit int DEFAULT 30)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+STABLE AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+BEGIN
+  IF v_user_id IS NULL THEN
+    RETURN '[]'::json;
+  END IF;
+
+  RETURN COALESCE((
+    SELECT json_agg(row_to_json(q) ORDER BY q.created_at DESC)
+    FROM (
+      SELECT id, type, metadata, link, read_at, bell_hidden_at, created_at
+      FROM public.notifications
+      WHERE user_id = v_user_id
+      ORDER BY created_at DESC
+      LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 30), 500))
+    ) q
+  ), '[]'::json);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_my_notifications(int) FROM public;
+GRANT EXECUTE ON FUNCTION public.get_my_notifications(int) TO authenticated;
+
+-- =============================================================================
+-- 2) Helper: safe site log (no-op if append_site_log missing)
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION public.try_append_site_log(
+  p_category text,
+  p_event_type text,
+  p_severity text,
+  p_subject_user_id uuid,
+  p_actor_user_id uuid,
+  p_metadata jsonb DEFAULT '{}'::jsonb
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+BEGIN
+  PERFORM public.append_site_log(
+    p_category,
+    p_event_type,
+    p_severity,
+    p_subject_user_id,
+    p_actor_user_id,
+    COALESCE(p_metadata, '{}'::jsonb)
+  );
+EXCEPTION
+  WHEN undefined_function THEN
+    NULL;
+  WHEN OTHERS THEN
+    NULL;
+END;
+$$;
+
+-- =============================================================================
+-- 3) Order completed → notify all admins (+ site log)
+-- =============================================================================
+
+
+-- (deduped: earlier on_order_completed_notify_admins)
+
+
+DROP TRIGGER IF EXISTS order_completed_notify_admins ON public.orders;
+CREATE TRIGGER order_completed_notify_admins
+  AFTER INSERT OR UPDATE OF status ON public.orders
+  FOR EACH ROW
+  EXECUTE FUNCTION public.on_order_completed_notify_admins();
+
+-- =============================================================================
+-- 4) Fulfillment status → notify admins (+ keep customer path as-is in apply_*)
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION public.on_order_fulfillment_notify_admins()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user_name text;
+  v_link text;
+  v_type text;
+  v_has_uid boolean := false;
+  v_has_codes boolean := false;
+BEGIN
+  IF TG_OP = 'UPDATE' AND NEW.fulfillment_status IS NOT DISTINCT FROM OLD.fulfillment_status THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.fulfillment_status NOT IN ('fulfilled', 'failed') THEN
+    RETURN NEW;
+  END IF;
+
+  -- Only fire on transition into these states
+  IF TG_OP = 'UPDATE'
+    AND OLD.fulfillment_status IS NOT DISTINCT FROM NEW.fulfillment_status
+  THEN
+    RETURN NEW;
+  END IF;
+
+  IF TG_OP = 'UPDATE'
+    AND OLD.fulfillment_status = NEW.fulfillment_status
+  THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT COALESCE(nullif(trim(name), ''), nullif(trim(username), ''), 'Customer')
+  INTO v_user_name
+  FROM public.profiles
+  WHERE id = NEW.user_id;
+
+  v_link := '/invoice/order/' || NEW.id::text;
+
+  IF NEW.fulfillment_status = 'failed' THEN
+    PERFORM public.notify_all_admins(
+      'admin_fulfillment_failed',
+      jsonb_build_object(
+        'orderId', NEW.id,
+        'total', NEW.total,
+        'amount', NEW.total,
+        'userName', COALESCE(v_user_name, 'Customer'),
+        'userId', NEW.user_id,
+        'error', COALESCE(NEW.g2bulk_metadata->>'last_error', 'fulfillment failed')
+      ),
+      v_link
+    );
+    PERFORM public.try_append_site_log(
+      'order',
+      'fulfillment_failed',
+      'error',
+      NEW.user_id,
+      NULL,
+      jsonb_build_object(
+        'orderId', NEW.id,
+        'total', NEW.total,
+        'amount', NEW.total,
+        'userName', COALESCE(v_user_name, 'Customer'),
+        'error', COALESCE(NEW.g2bulk_metadata->>'last_error', '')
+      )
+    );
+    RETURN NEW;
+  END IF;
+
+  -- fulfilled
+  SELECT EXISTS (
+    SELECT 1 FROM public.order_items
+    WHERE order_id = NEW.id
+      AND player_uid IS NOT NULL
+      AND length(trim(player_uid)) > 0
+  ) INTO v_has_uid;
+
+  SELECT EXISTS (
+    SELECT 1 FROM public.order_items
+    WHERE order_id = NEW.id
+      AND delivery_items IS NOT NULL
+      AND jsonb_typeof(delivery_items) = 'array'
+      AND jsonb_array_length(delivery_items) > 0
+  ) INTO v_has_codes;
+
+  v_type := CASE
+    WHEN v_has_codes THEN 'admin_delivery_ready'
+    WHEN v_has_uid THEN 'admin_topup_delivered'
+    ELSE 'admin_order_fulfilled'
+  END;
+
+  PERFORM public.notify_all_admins(
+    v_type,
+    jsonb_build_object(
+      'orderId', NEW.id,
+      'total', NEW.total,
+      'amount', NEW.total,
+      'userName', COALESCE(v_user_name, 'Customer'),
+      'userId', NEW.user_id,
+      'hasCodes', v_has_codes,
+      'hasUid', v_has_uid
+    ),
+    v_link
+  );
+
+  PERFORM public.try_append_site_log(
+    'order',
+    'fulfilled',
+    'success',
+    NEW.user_id,
+    NULL,
+    jsonb_build_object(
+      'orderId', NEW.id,
+      'total', NEW.total,
+      'amount', NEW.total,
+      'userName', COALESCE(v_user_name, 'Customer'),
+      'kind', v_type
+    )
+  );
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS order_fulfillment_notify_admins ON public.orders;
+CREATE TRIGGER order_fulfillment_notify_admins
+  AFTER UPDATE OF fulfillment_status ON public.orders
+  FOR EACH ROW
+  EXECUTE FUNCTION public.on_order_fulfillment_notify_admins();
+
+-- =============================================================================
+-- 5) Recharge approved → notify admins (manual + Sam API)
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION public.on_recharge_approved_notify_admins()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user_name text;
+  v_amount numeric;
+  v_link text;
+BEGIN
+  IF NEW.status IS DISTINCT FROM 'approved' THEN
+    RETURN NEW;
+  END IF;
+
+  IF TG_OP = 'UPDATE' AND OLD.status IS NOT DISTINCT FROM 'approved' THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT COALESCE(nullif(trim(name), ''), nullif(trim(username), ''), 'Customer')
+  INTO v_user_name
+  FROM public.profiles
+  WHERE id = NEW.user_id;
+
+  v_amount := COALESCE(NEW.credited_amount, NEW.amount);
+  v_link := '/invoice/recharge/' || NEW.id::text;
+
+  PERFORM public.notify_all_admins(
+    'admin_recharge_completed',
+    jsonb_build_object(
+      'requestId', NEW.id,
+      'amount', v_amount,
+      'reference', NEW.reference,
+      'paymentMethod', NEW.payment_method,
+      'userName', COALESCE(v_user_name, 'Customer'),
+      'userId', NEW.user_id
+    ),
+    v_link
+  );
+
+  PERFORM public.try_append_site_log(
+    'recharge',
+    'completed',
+    'success',
+    NEW.user_id,
+    NULL,
+    jsonb_build_object(
+      'requestId', NEW.id,
+      'amount', v_amount,
+      'reference', NEW.reference,
+      'paymentMethod', NEW.payment_method,
+      'userName', COALESCE(v_user_name, 'Customer')
+    )
+  );
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS recharge_approved_notify_admins ON public.recharge_requests;
+CREATE TRIGGER recharge_approved_notify_admins
+  AFTER INSERT OR UPDATE OF status ON public.recharge_requests
+  FOR EACH ROW
+  EXECUTE FUNCTION public.on_recharge_approved_notify_admins();
+
+-- =============================================================================
+-- 6) Contact notify: correct link + message preview + site log
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION public.on_contact_message_insert()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+BEGIN
+  PERFORM public.notify_all_admins(
+    'admin_contact_message',
+    jsonb_build_object(
+      'messageId', NEW.id,
+      'name', NEW.name,
+      'email', NEW.email,
+      'message', left(coalesce(NEW.message, ''), 200)
+    ),
+    '/dashboard/contact'
+  );
+
+  PERFORM public.try_append_site_log(
+    'contact',
+    'message_received',
+    'info',
+    NEW.user_id,
+    NULL,
+    jsonb_build_object(
+      'messageId', NEW.id,
+      'name', NEW.name,
+      'email', NEW.email
+    )
+  );
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS contact_message_notify_admins ON public.contact_messages;
+CREATE TRIGGER contact_message_notify_admins
+  AFTER INSERT ON public.contact_messages
+  FOR EACH ROW
+  EXECUTE FUNCTION public.on_contact_message_insert();
+
+-- =============================================================================
+-- 7) Manual payment-sent links → invoice / recharges
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION public.mark_order_payment_sent(p_order_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_order public.orders%ROWTYPE;
+  v_user_name text;
+  v_current_balance numeric;
+  v_wallet_mode text;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  SELECT COALESCE(sam_wallet_mode, 'manual')
+  INTO v_wallet_mode
+  FROM store_settings
+  WHERE id = 1;
+
+  IF v_wallet_mode = 'api' THEN
+    RAISE EXCEPTION 'Manual payment confirmation is not used in Sam API wallet mode';
+  END IF;
+
+  SELECT * INTO v_order
+  FROM public.orders
+  WHERE id = p_order_id AND user_id = v_user_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Order not found';
+  END IF;
+
+  IF v_order.status IS DISTINCT FROM 'pending_payment' THEN
+    RAISE EXCEPTION 'Order is not awaiting payment';
+  END IF;
+
+  UPDATE public.orders
+    SET status = 'payment_sent'
+    WHERE id = p_order_id;
+
+  SELECT name, balance INTO v_user_name, v_current_balance
+  FROM profiles WHERE id = v_order.user_id;
+
+  PERFORM public.notify_user(
+    v_order.user_id,
+    'order_payment_sent',
+    jsonb_build_object(
+      'orderId', p_order_id,
+      'total', v_order.total,
+      'amount', v_order.total,
+      'reference', v_order.payment_reference,
+      'currentBalance', v_current_balance
+    ),
+    '/invoice/order/' || p_order_id::text
+  );
+
+  PERFORM public.notify_all_admins(
+    'admin_order_payment_sent',
+    jsonb_build_object(
+      'orderId', p_order_id,
+      'total', v_order.total,
+      'amount', v_order.total,
+      'reference', v_order.payment_reference,
+      'userName', COALESCE(v_user_name, 'Customer'),
+      'userId', v_order.user_id
+    ),
+    '/invoice/order/' || p_order_id::text
+  );
+
+  RETURN jsonb_build_object(
+    'orderId', p_order_id,
+    'reference', v_order.payment_reference,
+    'total', v_order.total,
+    'status', 'payment_sent',
+    'currentBalance', v_current_balance
+  );
+END;
+$$;
+
+-- Customer fulfillment links → invoice (preserves balance refund guard from stock-guard migration)
+CREATE OR REPLACE FUNCTION public.apply_g2bulk_fulfillment(
+  p_order_id uuid,
+  p_fulfillment_status text,
+  p_g2bulk_order_id text DEFAULT null,
+  p_delivery_items jsonb DEFAULT null,
+  p_metadata jsonb DEFAULT '{}'::jsonb,
+  p_error text DEFAULT null
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_order public.orders%ROWTYPE;
+  v_prev_status text;
+  v_meta jsonb;
+  v_has_uid boolean := false;
+  v_has_codes boolean := false;
+  v_codes jsonb := '[]'::jsonb;
+  v_link text;
+  v_new_balance numeric;
+  v_refunded boolean := false;
+BEGIN
+  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id FOR UPDATE;
+
+  IF v_order.id IS NULL THEN
+    RAISE EXCEPTION 'Order not found';
+  END IF;
+
+  v_prev_status := v_order.fulfillment_status;
+  v_meta := COALESCE(v_order.g2bulk_metadata, '{}'::jsonb) || COALESCE(p_metadata, '{}'::jsonb);
+
+  IF p_error IS NOT NULL THEN
+    v_meta := v_meta || jsonb_build_object('last_error', p_error, 'failed_at', now());
+  END IF;
+
+  UPDATE public.orders
+  SET
+    fulfillment_status = p_fulfillment_status,
+    g2bulk_order_id = COALESCE(p_g2bulk_order_id, g2bulk_order_id),
+    g2bulk_metadata = v_meta
+  WHERE id = p_order_id;
+
+  UPDATE public.order_items
+  SET
+    fulfillment_status = p_fulfillment_status,
+    delivery_items = COALESCE(p_delivery_items, delivery_items)
+  WHERE order_id = p_order_id;
+
+  v_link := '/invoice/order/' || p_order_id::text;
+
+  IF p_fulfillment_status = 'fulfilled'
+    AND v_prev_status IS DISTINCT FROM 'fulfilled'
+    AND v_order.user_id IS NOT NULL
+  THEN
+    SELECT EXISTS (
+      SELECT 1 FROM public.order_items
+      WHERE order_id = p_order_id
+        AND player_uid IS NOT NULL
+        AND length(trim(player_uid)) > 0
+    ) INTO v_has_uid;
+
+    IF p_delivery_items IS NOT NULL AND jsonb_typeof(p_delivery_items) = 'array' THEN
+      v_codes := p_delivery_items;
+      v_has_codes := jsonb_array_length(v_codes) > 0;
+    END IF;
+
+    IF NOT v_has_codes THEN
+      SELECT COALESCE(jsonb_agg(to_jsonb(di) ORDER BY oi.created_at), '[]'::jsonb)
+      INTO v_codes
+      FROM public.order_items oi
+      CROSS JOIN LATERAL jsonb_array_elements(
+        CASE
+          WHEN oi.delivery_items IS NULL THEN '[]'::jsonb
+          WHEN jsonb_typeof(oi.delivery_items) = 'array' THEN oi.delivery_items
+          ELSE jsonb_build_array(oi.delivery_items)
+        END
+      ) AS di
+      WHERE oi.order_id = p_order_id;
+
+      v_has_codes := COALESCE(jsonb_array_length(v_codes), 0) > 0;
+    END IF;
+
+    IF v_has_uid AND NOT v_has_codes THEN
+      PERFORM public.notify_user(
+        v_order.user_id,
+        'topup_delivered',
+        jsonb_build_object(
+          'orderId', p_order_id,
+          'amount', v_order.total,
+          'giftMessage', v_order.gift_message
+        ),
+        v_link
+      );
+    ELSIF v_has_codes THEN
+      PERFORM public.notify_user(
+        v_order.user_id,
+        'delivery_ready',
+        jsonb_build_object(
+          'orderId', p_order_id,
+          'amount', v_order.total,
+          'codes', v_codes,
+          'giftMessage', v_order.gift_message
+        ),
+        v_link
+      );
+    ELSE
+      PERFORM public.notify_user(
+        v_order.user_id,
+        'order_fulfilled',
+        jsonb_build_object(
+          'orderId', p_order_id,
+          'amount', v_order.total,
+          'giftMessage', v_order.gift_message
+        ),
+        v_link
+      );
+    END IF;
+  ELSIF p_fulfillment_status = 'failed'
+    AND v_prev_status IS DISTINCT FROM 'failed'
+    AND v_order.user_id IS NOT NULL
+  THEN
+    IF v_order.payment_method = 'balance'
+       AND COALESCE((v_order.g2bulk_metadata->>'balance_refunded')::boolean, false) = false
+    THEN
+      UPDATE public.profiles
+      SET balance = COALESCE(balance, 0) + v_order.total
+      WHERE id = v_order.user_id
+      RETURNING balance INTO v_new_balance;
+
+      INSERT INTO public.transactions (
+        user_id, type, amount, balance_after, payment_method, reference, status
+      )
+      VALUES (
+        v_order.user_id,
+        'refund',
+        v_order.total,
+        v_new_balance,
+        'balance',
+        'FULFILL-REFUND-' || upper(left(replace(p_order_id::text, '-', ''), 8)),
+        'completed'
+      );
+
+      v_meta := v_meta || jsonb_build_object(
+        'balance_refunded', true,
+        'refunded_at', now(),
+        'refund_balance', v_new_balance
+      );
+
+      UPDATE public.orders
+      SET g2bulk_metadata = v_meta
+      WHERE id = p_order_id;
+
+      v_refunded := true;
+
+      PERFORM public.notify_user(
+        v_order.user_id,
+        'fulfillment_failed_refunded',
+        jsonb_build_object(
+          'orderId', p_order_id,
+          'amount', v_order.total,
+          'newBalance', v_new_balance,
+          'error', COALESCE(p_error, v_meta->>'last_error')
+        ),
+        v_link
+      );
+    ELSE
+      PERFORM public.notify_user(
+        v_order.user_id,
+        'fulfillment_failed',
+        jsonb_build_object(
+          'orderId', p_order_id,
+          'amount', v_order.total,
+          'error', COALESCE(p_error, v_meta->>'last_error')
+        ),
+        v_link
+      );
+    END IF;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'orderId', p_order_id,
+    'fulfillmentStatus', p_fulfillment_status,
+    'g2bulkOrderId', p_g2bulk_order_id,
+    'deliveryItems', p_delivery_items,
+    'balanceRefunded', v_refunded,
+    'newBalance', v_new_balance
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.apply_g2bulk_fulfillment(uuid, text, text, jsonb, jsonb, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.apply_g2bulk_fulfillment(uuid, text, text, jsonb, jsonb, text) TO service_role;
+
+COMMENT ON FUNCTION public.on_order_completed_notify_admins() IS
+  'Notifies all admins when any order becomes completed (balance / Sam / manual).';
+COMMENT ON FUNCTION public.on_order_fulfillment_notify_admins() IS
+  'Notifies all admins on fulfillment success/failure.';
+COMMENT ON FUNCTION public.on_recharge_approved_notify_admins() IS
+  'Notifies all admins when a recharge is approved (manual or Sam API).';
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/fix-purchase-notify-link-migration.sql
+-- -----------------------------------------------------------------------------
+-- =============================================================================
+-- Paid-order admin notification must NOT look like delivery success.
+-- Link to orders queue (not invoice). Invoice only after real fulfillment.
+-- Apply: supabase db query --linked -f scripts/fix-purchase-notify-link-migration.sql
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION public.on_order_completed_notify_admins()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user_name text;
+  v_link text;
+  v_event text;
+BEGIN
+  IF NEW.status IS DISTINCT FROM 'completed' THEN
+    RETURN NEW;
+  END IF;
+
+  IF TG_OP = 'UPDATE' AND OLD.status IS NOT DISTINCT FROM 'completed' THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT COALESCE(nullif(trim(name), ''), nullif(trim(username), ''), 'Customer')
+  INTO v_user_name
+  FROM public.profiles
+  WHERE id = NEW.user_id;
+
+  -- Orders tab with highlight — not invoice (invoice only after fulfillment success)
+  v_link := '/dashboard/orders?order=' || NEW.id::text;
+  v_event := CASE
+    WHEN NEW.payment_method = 'balance' THEN 'balance_paid'
+    WHEN NEW.payment_method IN ('ShamCash', 'SyriatelCash') THEN 'sam_paid'
+    ELSE 'completed'
+  END;
+
+  PERFORM public.notify_all_admins(
+    'admin_purchase_completed',
+    jsonb_build_object(
+      'orderId', NEW.id,
+      'orderRef', NEW.order_ref,
+      'total', NEW.total,
+      'amount', NEW.total,
+      'paymentMethod', NEW.payment_method,
+      'userName', COALESCE(v_user_name, 'Customer'),
+      'userId', NEW.user_id,
+      'phase', 'payment'  -- payment only; delivery is a separate notification
+    ),
+    v_link
+  );
+
+  PERFORM public.try_append_site_log(
+    'order',
+    v_event,
+    'info',
+    NEW.user_id,
+    NULL,
+    jsonb_build_object(
+      'orderId', NEW.id,
+      'orderRef', NEW.order_ref,
+      'total', NEW.total,
+      'amount', NEW.total,
+      'paymentMethod', NEW.payment_method,
+      'userName', COALESCE(v_user_name, 'Customer')
+    )
+  );
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS order_completed_notify_admins ON public.orders;
+CREATE TRIGGER order_completed_notify_admins
+  AFTER INSERT OR UPDATE OF status ON public.orders
+  FOR EACH ROW
+  EXECUTE FUNCTION public.on_order_completed_notify_admins();
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/auto-verify-on-recharge.sql
+-- -----------------------------------------------------------------------------
+-- Auto-verify (موثق) a customer when their wallet recharge succeeds.
+-- Safe: only sets verified_at when currently NULL — never un-verifies or overwrites.
+-- Apply: supabase db query --linked -f scripts/auto-verify-on-recharge.sql
+
+CREATE OR REPLACE FUNCTION public.mark_user_verified_after_recharge(p_user_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF p_user_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  -- Only promote role=user customers; leave admins alone.
+  UPDATE public.profiles
+  SET verified_at = now()
+  WHERE id = p_user_id
+    AND role = 'user'
+    AND verified_at IS NULL;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.mark_user_verified_after_recharge(uuid) FROM public;
+
+-- 1) Recharge request reaches approved (manual admin approve, Sam API, manual credit linked to request)
+CREATE OR REPLACE FUNCTION public.on_recharge_success_auto_verify()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.status IS DISTINCT FROM 'approved' THEN
+    RETURN NEW;
+  END IF;
+
+  IF TG_OP = 'UPDATE' AND OLD.status IS NOT DISTINCT FROM 'approved' THEN
+    RETURN NEW;
+  END IF;
+
+  PERFORM public.mark_user_verified_after_recharge(NEW.user_id);
+  RETURN NEW;
+EXCEPTION
+  WHEN OTHERS THEN
+    -- Never block the recharge if verify fails
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS recharge_success_auto_verify ON public.recharge_requests;
+CREATE TRIGGER recharge_success_auto_verify
+  AFTER INSERT OR UPDATE OF status ON public.recharge_requests
+  FOR EACH ROW
+  EXECUTE FUNCTION public.on_recharge_success_auto_verify();
+
+REVOKE EXECUTE ON FUNCTION public.on_recharge_success_auto_verify() FROM public;
+
+-- 2) Direct balance credit as type=recharge (credit_user_balance / Sam insert path)
+CREATE OR REPLACE FUNCTION public.on_recharge_transaction_auto_verify()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.type IS DISTINCT FROM 'recharge' THEN
+    RETURN NEW;
+  END IF;
+
+  IF COALESCE(NEW.amount, 0) <= 0 THEN
+    RETURN NEW;
+  END IF;
+
+  IF COALESCE(NEW.status, 'completed') IS DISTINCT FROM 'completed'
+     AND COALESCE(NEW.status, '') <> '' THEN
+    -- Allow NULL/completed; skip failed statuses if ever used
+    IF lower(NEW.status) IN ('failed', 'cancelled', 'pending') THEN
+      RETURN NEW;
+    END IF;
+  END IF;
+
+  PERFORM public.mark_user_verified_after_recharge(NEW.user_id);
+  RETURN NEW;
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS transactions_recharge_auto_verify ON public.transactions;
+CREATE TRIGGER transactions_recharge_auto_verify
+  AFTER INSERT ON public.transactions
+  FOR EACH ROW
+  EXECUTE FUNCTION public.on_recharge_transaction_auto_verify();
+
+REVOKE EXECUTE ON FUNCTION public.on_recharge_transaction_auto_verify() FROM public;
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/sam-recharge-syp-currency-migration.sql
+-- -----------------------------------------------------------------------------
+-- =============================================================================
+-- Sam API recharge: user picks USD or SYP; admin sets SYP/USD rate.
+-- Credits wallet from actual paidAmount (proportional for SYP / exact for USD).
+-- =============================================================================
+
+ALTER TABLE public.store_settings
+  ADD COLUMN IF NOT EXISTS sam_syp_per_usd numeric(12,2) DEFAULT 135,
+  ADD COLUMN IF NOT EXISTS sam_syp_rate_updated_at timestamptz;
+
+ALTER TABLE public.recharge_requests
+  ADD COLUMN IF NOT EXISTS pay_currency text NOT NULL DEFAULT 'USD',
+  ADD COLUMN IF NOT EXISTS syp_per_usd_snapshot numeric(12,2),
+  ADD COLUMN IF NOT EXISTS credited_amount numeric(10,2);
+
+ALTER TABLE public.recharge_requests
+  DROP CONSTRAINT IF EXISTS recharge_requests_pay_currency_check;
+
+ALTER TABLE public.recharge_requests
+  ADD CONSTRAINT recharge_requests_pay_currency_check
+  CHECK (pay_currency IN ('USD', 'SYP'));
+
+ALTER TABLE public.sam_invoices
+  ADD COLUMN IF NOT EXISTS requested_usd_amount numeric(10,2),
+  ADD COLUMN IF NOT EXISTS paid_amount numeric(12,2),
+  ADD COLUMN IF NOT EXISTS syp_per_usd_snapshot numeric(12,2);
+
+-- ---------------------------------------------------------------------------
+-- Admin Sam settings — include SYP rate
+-- ---------------------------------------------------------------------------
+
 CREATE OR REPLACE FUNCTION public.get_sam_api_settings()
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -4474,7 +9600,10 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.save_sam_api_settings(boolean, text, text, text, text, text, boolean, boolean, numeric) FROM public;
 GRANT EXECUTE ON FUNCTION public.save_sam_api_settings(boolean, text, text, text, text, text, boolean, boolean, numeric) TO authenticated;
 
--- 6. Public payment config
+-- ---------------------------------------------------------------------------
+-- Public payment config
+-- ---------------------------------------------------------------------------
+
 CREATE OR REPLACE FUNCTION public.get_payment_methods()
 RETURNS json
 LANGUAGE sql
@@ -4578,11 +9707,255 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.get_payment_methods() TO anon, authenticated;
 
+-- ---------------------------------------------------------------------------
+-- create_recharge_request — pay currency (API mode)
+-- ---------------------------------------------------------------------------
+
+
+-- (deduped: earlier create_recharge_request)
+
+
+DROP FUNCTION IF EXISTS public.create_recharge_request(numeric, text);
+
+REVOKE EXECUTE ON FUNCTION public.create_recharge_request(numeric, text, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.create_recharge_request(numeric, text, text) TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Active recharge — expose pay currency
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.get_my_active_recharge_request()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+STABLE AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_row recharge_requests%ROWTYPE;
+  v_invoice jsonb;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT * INTO v_row
+  FROM recharge_requests
+  WHERE user_id = v_user_id
+    AND status IN ('pending', 'payment_sent')
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  IF NOT FOUND THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT jsonb_build_object(
+    'samInvoiceId', si.sam_invoice_id,
+    'paymentUrl', si.payment_url,
+    'expiresAt', si.expires_at,
+    'amount', si.amount,
+    'currency', si.currency,
+    'status', si.status,
+    'requestedUsdAmount', si.requested_usd_amount
+  )
+  INTO v_invoice
+  FROM sam_invoices si
+  WHERE si.entity_type = 'recharge'
+    AND si.entity_id = v_row.id
+    AND si.status IN ('pending', 'paid')
+  ORDER BY si.created_at DESC
+  LIMIT 1;
+
+  RETURN jsonb_build_object(
+    'requestId', v_row.id,
+    'reference', v_row.reference,
+    'amount', v_row.amount,
+    'status', v_row.status,
+    'paymentMethod', v_row.payment_method,
+    'payCurrency', COALESCE(v_row.pay_currency, 'USD'),
+    'sypPerUsd', v_row.syp_per_usd_snapshot,
+    'createdAt', v_row.created_at,
+    'invoice', v_invoice
+  );
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Credit actual paid amount (USD exact / SYP proportional)
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.complete_recharge_from_sam_invoice(p_sam_invoice_id text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_inv public.sam_invoices%ROWTYPE;
+  v_row public.recharge_requests%ROWTYPE;
+  v_new_balance numeric;
+  v_ref text;
+  v_paid numeric(12,2);
+  v_credit numeric(10,2);
+  v_rate numeric(12,2);
+BEGIN
+  SELECT * INTO v_inv
+  FROM public.sam_invoices
+  WHERE sam_invoice_id = p_sam_invoice_id
+  FOR UPDATE;
+
+  IF v_inv.id IS NULL THEN
+    RAISE EXCEPTION 'Invoice not found';
+  END IF;
+
+  IF v_inv.entity_type IS DISTINCT FROM 'recharge' OR v_inv.entity_id IS NULL THEN
+    RETURN jsonb_build_object('skipped', true, 'reason', 'not_a_recharge');
+  END IF;
+
+  SELECT * INTO v_row
+  FROM public.recharge_requests
+  WHERE id = v_inv.entity_id
+  FOR UPDATE;
+
+  IF v_row.id IS NULL THEN
+    RAISE EXCEPTION 'Recharge request not found';
+  END IF;
+
+  IF v_row.status = 'approved' THEN
+    SELECT balance INTO v_new_balance
+    FROM public.profiles
+    WHERE id = v_row.user_id;
+
+    RETURN jsonb_build_object(
+      'requestId', v_row.id,
+      'userId', v_row.user_id,
+      'amount', COALESCE(v_row.credited_amount, v_row.amount),
+      'requestedAmount', v_row.amount,
+      'creditedAmount', COALESCE(v_row.credited_amount, v_row.amount),
+      'newBalance', v_new_balance,
+      'status', 'approved',
+      'skipped', true
+    );
+  END IF;
+
+  IF v_row.status NOT IN ('pending', 'payment_sent') THEN
+    RAISE EXCEPTION 'Recharge request is not awaiting payment confirmation';
+  END IF;
+
+  v_paid := round(COALESCE(v_inv.paid_amount, v_inv.amount)::numeric, 2);
+
+  IF v_paid IS NULL OR v_paid <= 0 THEN
+    RAISE EXCEPTION 'Paid amount is missing or invalid';
+  END IF;
+
+  IF v_inv.currency = 'SYP' THEN
+    v_rate := COALESCE(
+      v_inv.syp_per_usd_snapshot,
+      v_row.syp_per_usd_snapshot,
+      (SELECT sam_syp_per_usd FROM store_settings WHERE id = 1)
+    );
+    IF v_rate IS NULL OR v_rate <= 0 THEN
+      RAISE EXCEPTION 'SYP exchange rate is not configured';
+    END IF;
+    v_credit := round(v_paid / v_rate, 2);
+  ELSE
+    v_credit := round(v_paid, 2);
+  END IF;
+
+  IF v_credit < 0.01 THEN
+    RAISE EXCEPTION 'Paid amount too small to credit';
+  END IF;
+
+  v_ref := COALESCE(
+    nullif(trim(v_inv.transaction_ref), ''),
+    nullif(trim(v_row.reference), ''),
+    v_inv.sam_invoice_id
+  );
+
+  UPDATE public.profiles
+  SET balance = COALESCE(balance, 0) + v_credit
+  WHERE id = v_row.user_id
+  RETURNING balance INTO v_new_balance;
+
+  IF v_new_balance IS NULL THEN
+    RAISE EXCEPTION 'Profile not found';
+  END IF;
+
+  INSERT INTO public.transactions (user_id, type, amount, balance_after, payment_method, reference, status)
+  VALUES (v_row.user_id, 'recharge', v_credit, v_new_balance, v_row.payment_method, v_ref, 'completed');
+
+  UPDATE public.recharge_requests
+  SET
+    status = 'approved',
+    credited_amount = v_credit,
+    reviewed_at = now(),
+    updated_at = now()
+  WHERE id = v_row.id;
+
+  PERFORM public.notify_user(
+    v_row.user_id,
+    'recharge_approved',
+    jsonb_build_object(
+      'requestId', v_row.id,
+      'amount', v_credit,
+      'requestedAmount', v_row.amount,
+      'creditedAmount', v_credit,
+      'paidAmount', v_paid,
+      'payCurrency', v_inv.currency,
+      'newBalance', v_new_balance
+    ),
+    '/profile'
+  );
+
+  RETURN jsonb_build_object(
+    'requestId', v_row.id,
+    'userId', v_row.user_id,
+    'amount', v_credit,
+    'requestedAmount', v_row.amount,
+    'creditedAmount', v_credit,
+    'paidAmount', v_paid,
+    'payCurrency', v_inv.currency,
+    'newBalance', v_new_balance,
+    'status', 'approved'
+  );
+END;
+$$;
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/fix-create-recharge-request-syp.sql
+-- -----------------------------------------------------------------------------
 -- =============================================================================
--- APPEND: sam_invoice_recharge
+-- Hotfix: restore create_recharge_request(numeric, text, text) after a failed
+-- sam-recharge-syp-currency-migration run (old REVOKE-after-DROP bug).
+-- Safe to run multiple times.
 -- =============================================================================
 
--- 1. create_recharge_request — manual QR or Sam API mode (admin toggle)
+-- Ensure columns exist (no-op if migration already applied)
+ALTER TABLE public.store_settings
+  ADD COLUMN IF NOT EXISTS sam_syp_per_usd numeric(12,2) DEFAULT 135,
+  ADD COLUMN IF NOT EXISTS sam_syp_rate_updated_at timestamptz;
+
+ALTER TABLE public.recharge_requests
+  ADD COLUMN IF NOT EXISTS pay_currency text NOT NULL DEFAULT 'USD',
+  ADD COLUMN IF NOT EXISTS syp_per_usd_snapshot numeric(12,2),
+  ADD COLUMN IF NOT EXISTS credited_amount numeric(10,2);
+
+ALTER TABLE public.recharge_requests
+  DROP CONSTRAINT IF EXISTS recharge_requests_pay_currency_check;
+
+ALTER TABLE public.recharge_requests
+  ADD CONSTRAINT recharge_requests_pay_currency_check
+  CHECK (pay_currency IN ('USD', 'SYP'));
+
+ALTER TABLE public.sam_invoices
+  ADD COLUMN IF NOT EXISTS requested_usd_amount numeric(10,2),
+  ADD COLUMN IF NOT EXISTS paid_amount numeric(12,2),
+  ADD COLUMN IF NOT EXISTS syp_per_usd_snapshot numeric(12,2);
+
+DROP FUNCTION IF EXISTS public.create_recharge_request(numeric);
+DROP FUNCTION IF EXISTS public.create_recharge_request(numeric, text);
+
 CREATE OR REPLACE FUNCTION public.create_recharge_request(
   p_amount numeric,
   p_payment_method text DEFAULT 'ShamCash',
@@ -4742,506 +10115,548 @@ BEGIN
 END;
 $$;
 
-DROP FUNCTION IF EXISTS public.create_recharge_request(numeric, text);
-
 REVOKE EXECUTE ON FUNCTION public.create_recharge_request(numeric, text, text) FROM public;
 GRANT EXECUTE ON FUNCTION public.create_recharge_request(numeric, text, text) TO authenticated;
 
--- 2. Active recharge — include pending Sam invoice for API resume
-CREATE OR REPLACE FUNCTION public.get_my_active_recharge_request()
-RETURNS jsonb
-LANGUAGE plpgsql
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/lockdown-profiles-rls.sql
+-- -----------------------------------------------------------------------------
+-- =============================================================================
+-- LOCKDOWN: profiles + money tables (IDOR fix)
+-- Problem: anyone who knows a user UUID can read balance + full profile.
+-- Cause: RLS missing/disabled or old open policy on public.profiles.
+--
+-- RUN THIS in Supabase Dashboard → SQL Editor → Run
+-- Then re-test in Postman with a non-admin user JWT.
+-- =============================================================================
+
+-- ---------------------------------------------------------------------------
+-- 1) Admin helper (needed by policies)
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean
+LANGUAGE sql
 SECURITY DEFINER
 SET search_path = public
 STABLE AS $$
-DECLARE
-  v_user_id uuid := auth.uid();
-  v_row recharge_requests%ROWTYPE;
-  v_invoice jsonb;
-BEGIN
-  IF v_user_id IS NULL THEN
-    RETURN NULL;
-  END IF;
-
-  SELECT * INTO v_row
-  FROM recharge_requests
-  WHERE user_id = v_user_id
-    AND status IN ('pending', 'payment_sent')
-  ORDER BY created_at DESC
-  LIMIT 1;
-
-  IF NOT FOUND THEN
-    RETURN NULL;
-  END IF;
-
-  SELECT jsonb_build_object(
-    'samInvoiceId', si.sam_invoice_id,
-    'paymentUrl', si.payment_url,
-    'expiresAt', si.expires_at,
-    'amount', si.amount,
-    'currency', si.currency,
-    'status', si.status,
-    'requestedUsdAmount', si.requested_usd_amount
-  )
-  INTO v_invoice
-  FROM sam_invoices si
-  WHERE si.entity_type = 'recharge'
-    AND si.entity_id = v_row.id
-    AND si.status IN ('pending', 'paid')
-  ORDER BY si.created_at DESC
-  LIMIT 1;
-
-  RETURN jsonb_build_object(
-    'requestId', v_row.id,
-    'reference', v_row.reference,
-    'amount', v_row.amount,
-    'status', v_row.status,
-    'paymentMethod', v_row.payment_method,
-    'payCurrency', COALESCE(v_row.pay_currency, 'USD'),
-    'sypPerUsd', v_row.syp_per_usd_snapshot,
-    'createdAt', v_row.created_at,
-    'invoice', v_invoice
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND role = 'admin'
   );
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.is_admin() FROM public;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated, anon;
+
+-- ---------------------------------------------------------------------------
+-- 2) Force RLS on sensitive tables
+-- ---------------------------------------------------------------------------
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.profiles FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.orders FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.order_items FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.recharge_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.recharge_requests FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE IF EXISTS public.notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.notifications FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE IF EXISTS public.sam_invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.sam_invoices FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.store_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.store_settings FORCE ROW LEVEL SECURITY;
+
+-- ---------------------------------------------------------------------------
+-- 3) Drop EVERY policy on profiles, then recreate locked policies
+-- ---------------------------------------------------------------------------
+DO $
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT policyname
+    FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'profiles'
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.profiles', r.policyname);
+  END LOOP;
+END $$;
+
+-- Own row only (authenticated). Anon sees nothing.
+CREATE POLICY "Users read own profile" ON public.profiles
+  FOR SELECT TO authenticated
+  USING (auth.uid() = id);
+
+CREATE POLICY "Admins read all profiles" ON public.profiles
+  FOR SELECT TO authenticated
+  USING (public.is_admin());
+
+CREATE POLICY "Users insert own profile" ON public.profiles
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    auth.uid() = id
+    AND role = 'user'
+    AND COALESCE(balance, 0) = 0
+  );
+
+CREATE POLICY "Users update own profile" ON public.profiles
+  FOR UPDATE TO authenticated
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "Admins update profiles" ON public.profiles
+  FOR UPDATE TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+-- No DELETE for normal users
+CREATE POLICY "Admins delete profiles" ON public.profiles
+  FOR DELETE TO authenticated
+  USING (public.is_admin());
+
+-- ---------------------------------------------------------------------------
+-- 4) Block customers from changing balance / role / username via PATCH
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.protect_profile_sensitive_fields()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  caller_role text;
+BEGIN
+  -- Trusted RPCs set this for legitimate balance changes
+  IF current_setting('echocore.allow_balance_change', true) IN ('1', 'true') THEN
+    RETURN NEW;
+  END IF;
+
+  -- service_role / no JWT (backend only) — leave alone
+  IF auth.uid() IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT role INTO caller_role FROM public.profiles WHERE id = auth.uid();
+
+  IF caller_role = 'admin' THEN
+    RETURN NEW;
+  END IF;
+
+  -- Customer editing own profile: freeze money + role + username
+  IF auth.uid() = OLD.id THEN
+    NEW.role := OLD.role;
+    NEW.balance := OLD.balance;
+    NEW.username := OLD.username;
+    IF TG_OP = 'UPDATE' THEN
+      -- never let client set another user's id
+      NEW.id := OLD.id;
+    END IF;
+  END IF;
+
+  RETURN NEW;
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.get_my_active_recharge_request() FROM public;
-GRANT EXECUTE ON FUNCTION public.get_my_active_recharge_request() TO authenticated;
+DROP TRIGGER IF EXISTS protect_profile_sensitive_fields ON public.profiles;
+CREATE TRIGGER protect_profile_sensitive_fields
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION public.protect_profile_sensitive_fields();
 
--- 3. Complete recharge after Sam invoice paid (service role / edge only)
-CREATE OR REPLACE FUNCTION public.complete_recharge_from_sam_invoice(p_sam_invoice_id text)
-RETURNS jsonb
+-- ---------------------------------------------------------------------------
+-- 5) Orders / transactions / recharges — own rows only
+-- ---------------------------------------------------------------------------
+DO $
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT policyname FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'orders'
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.orders', r.policyname);
+  END LOOP;
+END $$;
+
+CREATE POLICY "Users read own orders" ON public.orders
+  FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Admins read all orders" ON public.orders
+  FOR SELECT TO authenticated
+  USING (public.is_admin());
+
+DO $
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT policyname FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'order_items'
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.order_items', r.policyname);
+  END LOOP;
+END $$;
+
+CREATE POLICY "Users read own order items" ON public.order_items
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.orders o
+      WHERE o.id = order_items.order_id AND o.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Admins read all order items" ON public.order_items
+  FOR SELECT TO authenticated
+  USING (public.is_admin());
+
+DO $
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT policyname FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'transactions'
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.transactions', r.policyname);
+  END LOOP;
+END $$;
+
+CREATE POLICY "Users read own transactions" ON public.transactions
+  FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Admins read all transactions" ON public.transactions
+  FOR SELECT TO authenticated
+  USING (public.is_admin());
+
+DO $
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT policyname FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'recharge_requests'
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.recharge_requests', r.policyname);
+  END LOOP;
+END $$;
+
+CREATE POLICY "Users read own recharge requests" ON public.recharge_requests
+  FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Admins manage recharge requests" ON public.recharge_requests
+  FOR ALL TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+-- store_settings: admin only (API keys live here)
+DO $
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT policyname FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'store_settings'
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.store_settings', r.policyname);
+  END LOOP;
+END $$;
+
+CREATE POLICY "Admins manage store settings" ON public.store_settings
+  FOR ALL TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+-- ---------------------------------------------------------------------------
+-- 6) credit_user_balance must stay admin-only
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.credit_user_balance(
+  p_user_id uuid,
+  p_amount numeric,
+  p_payment_method text,
+  p_reference text DEFAULT null
+)
+RETURNS numeric
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public AS $$
 DECLARE
-  v_inv public.sam_invoices%ROWTYPE;
-  v_row public.recharge_requests%ROWTYPE;
-  v_new_balance numeric;
-  v_ref text;
-  v_paid numeric(12,2);
-  v_credit numeric(10,2);
-  v_rate numeric(12,2);
+  new_balance numeric;
 BEGIN
-  SELECT * INTO v_inv
-  FROM public.sam_invoices
-  WHERE sam_invoice_id = p_sam_invoice_id
-  FOR UPDATE;
-
-  IF v_inv.id IS NULL THEN
-    RAISE EXCEPTION 'Invoice not found';
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
   END IF;
 
-  IF v_inv.entity_type IS DISTINCT FROM 'recharge' OR v_inv.entity_id IS NULL THEN
-    RETURN jsonb_build_object('skipped', true, 'reason', 'not_a_recharge');
+  IF p_amount <= 0 THEN
+    RAISE EXCEPTION 'Amount must be positive';
   END IF;
 
-  SELECT * INTO v_row
-  FROM public.recharge_requests
-  WHERE id = v_inv.entity_id
-  FOR UPDATE;
-
-  IF v_row.id IS NULL THEN
-    RAISE EXCEPTION 'Recharge request not found';
-  END IF;
-
-  IF v_row.status = 'approved' THEN
-    SELECT balance INTO v_new_balance
-    FROM public.profiles
-    WHERE id = v_row.user_id;
-
-    RETURN jsonb_build_object(
-      'requestId', v_row.id,
-      'userId', v_row.user_id,
-      'amount', COALESCE(v_row.credited_amount, v_row.amount),
-      'requestedAmount', v_row.amount,
-      'creditedAmount', COALESCE(v_row.credited_amount, v_row.amount),
-      'newBalance', v_new_balance,
-      'status', 'approved',
-      'skipped', true
-    );
-  END IF;
-
-  IF v_row.status NOT IN ('pending', 'payment_sent') THEN
-    RAISE EXCEPTION 'Recharge request is not awaiting payment confirmation';
-  END IF;
-
-  v_paid := round(COALESCE(v_inv.paid_amount, v_inv.amount)::numeric, 2);
-
-  IF v_paid IS NULL OR v_paid <= 0 THEN
-    RAISE EXCEPTION 'Paid amount is missing or invalid';
-  END IF;
-
-  IF v_inv.currency = 'SYP' THEN
-    v_rate := COALESCE(
-      v_inv.syp_per_usd_snapshot,
-      v_row.syp_per_usd_snapshot,
-      (SELECT sam_syp_per_usd FROM store_settings WHERE id = 1)
-    );
-    IF v_rate IS NULL OR v_rate <= 0 THEN
-      RAISE EXCEPTION 'SYP exchange rate is not configured';
-    END IF;
-    v_credit := round(v_paid / v_rate, 2);
-  ELSE
-    v_credit := round(v_paid, 2);
-  END IF;
-
-  IF v_credit < 0.01 THEN
-    RAISE EXCEPTION 'Paid amount too small to credit';
-  END IF;
-
-  v_ref := COALESCE(
-    nullif(trim(v_inv.transaction_ref), ''),
-    nullif(trim(v_row.reference), ''),
-    v_inv.sam_invoice_id
-  );
+  PERFORM set_config('echocore.allow_balance_change', '1', true);
 
   UPDATE public.profiles
-  SET balance = COALESCE(balance, 0) + v_credit
-  WHERE id = v_row.user_id
-  RETURNING balance INTO v_new_balance;
+    SET balance = COALESCE(balance, 0) + p_amount
+    WHERE id = p_user_id
+    RETURNING balance INTO new_balance;
 
-  IF v_new_balance IS NULL THEN
+  IF new_balance IS NULL THEN
     RAISE EXCEPTION 'Profile not found';
   END IF;
 
   INSERT INTO public.transactions (user_id, type, amount, balance_after, payment_method, reference, status)
-  VALUES (v_row.user_id, 'recharge', v_credit, v_new_balance, v_row.payment_method, v_ref, 'completed');
+  VALUES (p_user_id, 'recharge', p_amount, new_balance, p_payment_method, p_reference, 'completed');
 
-  UPDATE public.recharge_requests
-  SET
-    status = 'approved',
-    credited_amount = v_credit,
-    reviewed_at = now(),
-    updated_at = now()
-  WHERE id = v_row.id;
-
-  PERFORM public.notify_user(
-    v_row.user_id,
-    'recharge_approved',
-    jsonb_build_object(
-      'requestId', v_row.id,
-      'amount', v_credit,
-      'requestedAmount', v_row.amount,
-      'creditedAmount', v_credit,
-      'paidAmount', v_paid,
-      'payCurrency', v_inv.currency,
-      'newBalance', v_new_balance
-    ),
-    '/profile'
-  );
-
-  RETURN jsonb_build_object(
-    'requestId', v_row.id,
-    'userId', v_row.user_id,
-    'amount', v_credit,
-    'requestedAmount', v_row.amount,
-    'creditedAmount', v_credit,
-    'paidAmount', v_paid,
-    'payCurrency', v_inv.currency,
-    'newBalance', v_new_balance,
-    'status', 'approved'
-  );
+  RETURN new_balance;
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.complete_recharge_from_sam_invoice(text) FROM public;
-GRANT EXECUTE ON FUNCTION public.complete_recharge_from_sam_invoice(text) TO service_role;
+REVOKE EXECUTE ON FUNCTION public.credit_user_balance(uuid, numeric, text, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.credit_user_balance(uuid, numeric, text, text) TO authenticated;
 
--- 4. Cancel pending recharge when Sam invoice expires
-CREATE OR REPLACE FUNCTION public.cancel_recharge_from_sam_invoice(p_sam_invoice_id text)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-DECLARE
-  v_inv public.sam_invoices%ROWTYPE;
-  v_row public.recharge_requests%ROWTYPE;
-BEGIN
-  SELECT * INTO v_inv
-  FROM public.sam_invoices
-  WHERE sam_invoice_id = p_sam_invoice_id
-  FOR UPDATE;
+-- ---------------------------------------------------------------------------
+-- 7) Self-check (run after; should show rowsecurity = true)
+-- ---------------------------------------------------------------------------
+SELECT tablename, rowsecurity
+FROM pg_tables
+WHERE schemaname = 'public'
+  AND tablename IN (
+    'profiles', 'orders', 'order_items', 'transactions',
+    'recharge_requests', 'store_settings'
+  )
+ORDER BY tablename;
 
-  IF v_inv.id IS NULL THEN
-    RAISE EXCEPTION 'Invoice not found';
-  END IF;
+SELECT policyname, cmd, roles::text, qual
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'profiles'
+ORDER BY policyname;
 
-  IF v_inv.entity_type IS DISTINCT FROM 'recharge' OR v_inv.entity_id IS NULL THEN
-    RETURN jsonb_build_object('skipped', true, 'reason', 'not_a_recharge');
-  END IF;
 
-  SELECT * INTO v_row
-  FROM public.recharge_requests
-  WHERE id = v_inv.entity_id
-  FOR UPDATE;
-
-  IF v_row.id IS NULL THEN
-    RAISE EXCEPTION 'Recharge request not found';
-  END IF;
-
-  IF v_row.status IN ('approved', 'rejected', 'cancelled') THEN
-    RETURN jsonb_build_object(
-      'requestId', v_row.id,
-      'status', v_row.status,
-      'skipped', true
-    );
-  END IF;
-
-  UPDATE public.recharge_requests
-  SET
-    status = 'cancelled',
-    updated_at = now()
-  WHERE id = v_row.id;
-
-  RETURN jsonb_build_object(
-    'requestId', v_row.id,
-    'status', 'cancelled'
-  );
-END;
-$$;
-
-REVOKE EXECUTE ON FUNCTION public.cancel_recharge_from_sam_invoice(text) FROM public;
-GRANT EXECUTE ON FUNCTION public.cancel_recharge_from_sam_invoice(text) TO service_role;
-
--- 5. Cancel own pending recharge (client) — used by Sam invoice flow when creation
---    fails (e.g. Sam NOT_FOUND), so the user is not stuck on "already pending" lock.
-CREATE OR REPLACE FUNCTION public.cancel_my_recharge_request(p_request_id uuid)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-DECLARE
-  v_user_id uuid := auth.uid();
-  v_row public.recharge_requests%ROWTYPE;
-BEGIN
-  IF v_user_id IS NULL THEN
-    RAISE EXCEPTION 'Not authenticated';
-  END IF;
-
-  SELECT * INTO v_row
-  FROM public.recharge_requests
-  WHERE id = p_request_id AND user_id = v_user_id
-  FOR UPDATE;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Recharge request not found';
-  END IF;
-
-  IF v_row.status NOT IN ('pending', 'payment_sent') THEN
-    RAISE EXCEPTION 'This recharge request can no longer be cancelled';
-  END IF;
-
-  UPDATE public.recharge_requests
-  SET
-    status = 'cancelled',
-    updated_at = now()
-  WHERE id = p_request_id;
-
-  RETURN jsonb_build_object(
-    'requestId', p_request_id,
-    'userId', v_user_id,
-    'status', 'cancelled'
-  );
-END;
-$$;
-
-REVOKE EXECUTE ON FUNCTION public.cancel_my_recharge_request(uuid) FROM public;
-GRANT EXECUTE ON FUNCTION public.cancel_my_recharge_request(uuid) TO authenticated;
-
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/hide-offer-cost-from-public-migration.sql
+-- -----------------------------------------------------------------------------
 -- =============================================================================
--- APPEND: sam_invoice_orders
+-- Hide supplier wholesale cost from casual clients (SAFE for Supabase/PostgREST)
+--
+-- HISTORY: An earlier version REVOKE'd table SELECT and re-GRANTed columns only.
+-- That breaks PostgREST (401 permission denied → empty store). DO NOT do that.
+--
+-- Safe approach:
+-- 1) Keep GRANT SELECT on public.offers (required for REST catalog)
+-- 2) Admin costs via admin_get_offer_wholesale (SECURITY DEFINER)
+-- 3) Partner/influencer display prices via get_my_offer_unit_prices
+-- 4) Client strips g2bulk_cost_usd / pricing_margin_percent on storefront loads
+--
+-- True column lockdown without breaking REST needs a public VIEW + client switch
+-- (optional follow-up). Until then, never REVOKE SELECT ON public.offers.
+--
+-- Apply: supabase db query --linked -f scripts/hide-offer-cost-from-public-migration.sql
 -- =============================================================================
 
--- 1. create_order_atomic — API wallet mode branch
--- create_order_atomic: canonical copy in §27
+-- Ensure REST can always read offers (fixes empty store if broken earlier)
+GRANT SELECT ON TABLE public.offers TO anon, authenticated;
+GRANT INSERT, UPDATE, DELETE ON TABLE public.offers TO authenticated;
 
-
-REVOKE EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text) FROM public;
-GRANT EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text) TO authenticated;
-
--- 2. Complete order after Sam invoice paid (service role / edge only)
-CREATE OR REPLACE FUNCTION public.complete_order_from_sam_invoice(p_sam_invoice_id text)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-DECLARE
-  v_inv public.sam_invoices%ROWTYPE;
-  v_order public.orders%ROWTYPE;
-  v_ref text;
-BEGIN
-  SELECT * INTO v_inv
-  FROM public.sam_invoices
-  WHERE sam_invoice_id = p_sam_invoice_id
-  FOR UPDATE;
-
-  IF v_inv.id IS NULL THEN
-    RAISE EXCEPTION 'Invoice not found';
-  END IF;
-
-  IF v_inv.entity_type IS DISTINCT FROM 'order' OR v_inv.entity_id IS NULL THEN
-    RETURN jsonb_build_object('skipped', true, 'reason', 'not_an_order');
-  END IF;
-
-  SELECT * INTO v_order
-  FROM public.orders
-  WHERE id = v_inv.entity_id
-  FOR UPDATE;
-
-  IF v_order.id IS NULL THEN
-    RAISE EXCEPTION 'Order not found';
-  END IF;
-
-  IF v_order.status = 'completed' THEN
-    RETURN jsonb_build_object(
-      'orderId', v_order.id,
-      'status', 'completed',
-      'skipped', true
-    );
-  END IF;
-
-  IF v_order.status NOT IN ('pending_payment', 'payment_sent') THEN
-    RAISE EXCEPTION 'Order is not awaiting payment confirmation';
-  END IF;
-
-  v_ref := COALESCE(
-    nullif(trim(v_inv.transaction_ref), ''),
-    nullif(trim(v_order.payment_reference), ''),
-    v_inv.sam_invoice_id
-  );
-
-  UPDATE public.orders
-  SET
-    status = 'completed',
-    payment_reference = COALESCE(nullif(trim(payment_reference), ''), v_ref)
-  WHERE id = v_order.id;
-
-  INSERT INTO public.transactions (user_id, type, amount, balance_after, payment_method, reference, status)
-  SELECT
-    v_order.user_id,
-    'purchase',
-    -v_order.total,
-    p.balance,
-    v_order.payment_method,
-    v_ref,
-    'completed'
-  FROM public.profiles p
-  WHERE p.id = v_order.user_id;
-
-  PERFORM public.notify_user(
-    v_order.user_id,
-    'order_completed',
-    jsonb_build_object(
-      'orderId', v_order.id,
-      'total', v_order.total
-    ),
-    '/success?orderId=' || v_order.id::text
-  );
-
-  RETURN jsonb_build_object(
-    'orderId', v_order.id,
-    'status', 'completed'
-  );
-END;
-$$;
-
-REVOKE EXECUTE ON FUNCTION public.complete_order_from_sam_invoice(text) FROM public;
-GRANT EXECUTE ON FUNCTION public.complete_order_from_sam_invoice(text) TO service_role;
-
--- 3. Cancel pending order when Sam invoice expires
-CREATE OR REPLACE FUNCTION public.cancel_order_from_sam_invoice(p_sam_invoice_id text)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-DECLARE
-  v_inv public.sam_invoices%ROWTYPE;
-  v_order public.orders%ROWTYPE;
-BEGIN
-  SELECT * INTO v_inv
-  FROM public.sam_invoices
-  WHERE sam_invoice_id = p_sam_invoice_id
-  FOR UPDATE;
-
-  IF v_inv.id IS NULL THEN
-    RAISE EXCEPTION 'Invoice not found';
-  END IF;
-
-  IF v_inv.entity_type IS DISTINCT FROM 'order' OR v_inv.entity_id IS NULL THEN
-    RETURN jsonb_build_object('skipped', true, 'reason', 'not_an_order');
-  END IF;
-
-  SELECT * INTO v_order
-  FROM public.orders
-  WHERE id = v_inv.entity_id
-  FOR UPDATE;
-
-  IF v_order.id IS NULL THEN
-    RETURN jsonb_build_object('skipped', true, 'reason', 'order_not_found');
-  END IF;
-
-  IF v_order.status = 'completed' THEN
-    RETURN jsonb_build_object('orderId', v_order.id, 'status', 'completed', 'skipped', true);
-  END IF;
-
-  IF v_order.status IN ('pending_payment', 'payment_sent') THEN
-    UPDATE public.orders SET status = 'cancelled' WHERE id = v_order.id;
-  END IF;
-
-  RETURN jsonb_build_object(
-    'orderId', v_order.id,
-    'status', 'cancelled'
-  );
-END;
-$$;
-
-REVOKE EXECUTE ON FUNCTION public.cancel_order_from_sam_invoice(text) FROM public;
-GRANT EXECUTE ON FUNCTION public.cancel_order_from_sam_invoice(text) TO service_role;
-
--- =============================================================================
--- §26b Owner-only order receipt (success page / no IDOR)
--- =============================================================================
-
-CREATE OR REPLACE FUNCTION public.get_my_order_receipt(p_order_id uuid)
+-- ---------------------------------------------------------------------------
+-- Admin: wholesale map (SECURITY DEFINER — full row access as owner)
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.admin_get_offer_wholesale(p_ids uuid[] DEFAULT NULL)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-STABLE AS $$
+STABLE
+AS $$
 DECLARE
-  v_user_id uuid := auth.uid();
-  v_order jsonb;
-  v_items jsonb;
+  v_out jsonb;
 BEGIN
-  IF v_user_id IS NULL THEN
-    RAISE EXCEPTION 'Not authenticated';
+  IF auth.uid() IS NULL OR NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
   END IF;
 
-  SELECT to_jsonb(o.*) INTO v_order
-  FROM public.orders o
-  WHERE o.id = p_order_id
-    AND o.user_id = v_user_id;
+  SELECT COALESCE(
+    jsonb_object_agg(
+      o.id::text,
+      jsonb_build_object(
+        'g2bulk_cost_usd', o.g2bulk_cost_usd,
+        'pricing_mode', o.pricing_mode,
+        'pricing_margin_percent', o.pricing_margin_percent
+      )
+    ),
+    '{}'::jsonb
+  )
+  INTO v_out
+  FROM public.offers o
+  WHERE p_ids IS NULL
+     OR cardinality(p_ids) IS NULL
+     OR cardinality(p_ids) = 0
+     OR o.id = ANY (p_ids);
 
-  IF v_order IS NULL THEN
-    RETURN NULL;
-  END IF;
-
-  SELECT COALESCE(jsonb_agg(to_jsonb(oi.*) ORDER BY oi.created_at), '[]'::jsonb)
-  INTO v_items
-  FROM public.order_items oi
-  WHERE oi.order_id = p_order_id;
-
-  RETURN jsonb_build_object('order', v_order, 'items', v_items);
+  RETURN v_out;
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.get_my_order_receipt(uuid) FROM public;
-GRANT EXECUTE ON FUNCTION public.get_my_order_receipt(uuid) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.admin_get_offer_wholesale(uuid[]) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_get_offer_wholesale(uuid[]) TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Shopper unit prices (partner plan-B / influencer) without needing cost in UI
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.get_my_offer_unit_prices(
+  p_ids uuid[] DEFAULT NULL,
+  p_influencer_code text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_partner_markup numeric := NULL;
+  v_buyer_markup numeric := NULL;
+  v_inf_margin numeric := NULL;
+  v_code text := nullif(upper(trim(COALESCE(p_influencer_code, ''))), '');
+  v_out jsonb := '{}'::jsonb;
+  r record;
+  v_public numeric;
+  v_cost numeric;
+  v_unit numeric;
+  v_partner boolean;
+  v_influencer boolean;
+BEGIN
+  IF v_uid IS NOT NULL THEN
+    SELECT t.markup_percent INTO v_partner_markup
+    FROM public.profiles p
+    JOIN public.partner_tiers t ON t.id = p.partner_tier_id
+    WHERE p.id = v_uid
+      AND t.is_active = true;
+
+    IF v_partner_markup IS NULL AND v_code IS NOT NULL THEN
+      BEGIN
+        v_code := regexp_replace(v_code, '\s+', '', 'g');
+        SELECT c.buyer_markup_percent, c.influencer_margin_percent
+        INTO v_buyer_markup, v_inf_margin
+        FROM public.influencer_coupons c
+        WHERE upper(trim(c.code)) = v_code
+          AND COALESCE(c.is_active, true) = true
+          AND (c.expires_at IS NULL OR c.expires_at > now())
+        LIMIT 1;
+      EXCEPTION
+        WHEN undefined_table THEN
+          v_buyer_markup := NULL;
+          v_inf_margin := NULL;
+        WHEN undefined_column THEN
+          v_buyer_markup := NULL;
+          v_inf_margin := NULL;
+      END;
+    END IF;
+  END IF;
+
+  FOR r IN
+    SELECT o.id, o.price, o.g2bulk_cost_usd
+    FROM public.offers o
+    WHERE (p_ids IS NULL OR cardinality(p_ids) IS NULL OR cardinality(p_ids) = 0 OR o.id = ANY (p_ids))
+      AND COALESCE(o.active, true) = true
+  LOOP
+    v_public := COALESCE(r.price, 0);
+    v_cost := r.g2bulk_cost_usd;
+    v_unit := v_public;
+    v_partner := false;
+    v_influencer := false;
+
+    IF v_partner_markup IS NOT NULL AND v_cost IS NOT NULL AND v_cost > 0 THEN
+      BEGIN
+        v_unit := public.partner_price_from_cost(v_cost, v_partner_markup);
+      EXCEPTION
+        WHEN undefined_function THEN
+          v_unit := v_public;
+      END;
+      IF v_unit IS NULL OR v_unit > v_public THEN
+        v_unit := v_public;
+      END IF;
+      IF v_unit < v_public - 0.0001 THEN
+        v_partner := true;
+      END IF;
+    ELSIF v_buyer_markup IS NOT NULL AND v_cost IS NOT NULL AND v_cost > 0 THEN
+      BEGIN
+        v_unit := public.influencer_buyer_price(v_public, v_cost, v_buyer_markup);
+      EXCEPTION
+        WHEN undefined_function THEN
+          v_unit := v_public;
+      END;
+      IF v_unit IS NULL THEN
+        v_unit := v_public;
+      END IF;
+      IF v_unit < v_public - 0.0001 THEN
+        v_influencer := true;
+      END IF;
+    END IF;
+
+    v_out := v_out || jsonb_build_object(
+      r.id::text,
+      jsonb_build_object(
+        'unitPrice', v_unit,
+        'publicPrice', v_public,
+        'partnerPriced', v_partner,
+        'influencerPriced', v_influencer
+      )
+    );
+  END LOOP;
+
+  RETURN v_out;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_my_offer_unit_prices(uuid[], text) FROM public;
+GRANT EXECUTE ON FUNCTION public.get_my_offer_unit_prices(uuid[], text) TO authenticated;
+
+COMMENT ON FUNCTION public.admin_get_offer_wholesale(uuid[]) IS
+  'Admin-only map of offer id → g2bulk_cost_usd + pricing policy.';
+COMMENT ON FUNCTION public.get_my_offer_unit_prices(uuid[], text) IS
+  'Unit prices for current user (partner / influencer) without needing cost in the client UI.';
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/fix-offers-select-restore-migration.sql
+-- -----------------------------------------------------------------------------
+-- =============================================================================
+-- EMERGENCY FIX: restore public catalog reads on offers
+-- The hide-offer-cost migration used column-only GRANTs after REVOKE SELECT.
+-- Supabase/PostgREST needs table-level SELECT on offers or the whole table 401s
+-- and the storefront appears empty (games ok, offers denied).
+--
+-- Apply: supabase db query --linked -f scripts/fix-offers-select-restore-migration.sql
+-- =============================================================================
+
+GRANT SELECT ON TABLE public.offers TO anon, authenticated;
+GRANT INSERT, UPDATE, DELETE ON TABLE public.offers TO authenticated;
+
+-- Keep admin wholesale + unit-price RPCs (safe to re-run if already present)
+-- Cost is again readable via PostgREST; client still strips secrets in app code.
+-- Safer DB hide = view-based path (see hide-offer-cost-from-public-migration.sql notes).
+
+
 
 -- =============================================================================
--- §27 Canonical create_order_atomic
+-- §31 CANONICAL create_order_atomic (partner + influencer + idempotency)
+-- Must be last definition so CREATE OR REPLACE wins over older merges.
 -- =============================================================================
+DROP FUNCTION IF EXISTS public.create_order_atomic(uuid, numeric, text, jsonb, text, text);
+DROP FUNCTION IF EXISTS public.create_order_atomic(uuid, numeric, text, jsonb, text, text, text);
+DROP FUNCTION IF EXISTS public.create_order_atomic(uuid, numeric, text, jsonb, text, text, text, text);
 
 CREATE OR REPLACE FUNCTION public.create_order_atomic(
   p_user_id uuid,
@@ -5249,7 +10664,9 @@ CREATE OR REPLACE FUNCTION public.create_order_atomic(
   p_payment_method text,
   p_items jsonb,
   p_player_uid text DEFAULT null,
-  p_player_server text DEFAULT null
+  p_player_server text DEFAULT null,
+  p_idempotency_key text DEFAULT null,
+  p_influencer_code text DEFAULT null
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -5261,12 +10678,24 @@ DECLARE
   v_order_id uuid;
   v_item jsonb;
   v_offer_price numeric;
+  v_offer_active boolean;
+  v_offer_cost numeric;
+  v_qty integer;
+  v_expected numeric;
   v_server_total numeric := 0;
   v_order_status text;
   v_reference text := null;
   v_method_ready boolean := false;
   v_dev_test_balance numeric := 0;
   v_wallet_mode text := 'manual';
+  v_idem text := nullif(trim(coalesce(p_idempotency_key, '')), '');
+  v_replay_order uuid;
+  v_replay_status text;
+  v_replay_ref text;
+  v_partner_markup numeric := null;
+  v_inf_coupon_id uuid := null;
+  v_buyer_markup numeric := null;
+  v_code text;
 BEGIN
   IF auth.uid() IS NULL OR auth.uid() IS DISTINCT FROM p_user_id THEN
     RAISE EXCEPTION 'Unauthorized';
@@ -5283,30 +10712,98 @@ BEGIN
       NULL;
   END;
 
+  IF p_items IS NULL OR jsonb_typeof(p_items) <> 'array' OR jsonb_array_length(p_items) < 1 THEN
+    RAISE EXCEPTION 'Cart is empty';
+  END IF;
+
+  IF jsonb_array_length(p_items) > 20 THEN
+    RAISE EXCEPTION 'Too many items in cart (max 20)';
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(hashtext(p_user_id::text));
+
+  SELECT t.markup_percent INTO v_partner_markup
+  FROM public.profiles p
+  JOIN public.partner_tiers t ON t.id = p.partner_tier_id AND t.is_active = true
+  WHERE p.id = p_user_id;
+
+  -- Influencer code only when not a partner
+  IF v_partner_markup IS NULL THEN
+    v_code := upper(trim(COALESCE(p_influencer_code, '')));
+    v_code := regexp_replace(v_code, '\s+', '', 'g');
+    IF v_code <> '' THEN
+      SELECT c.id, c.buyer_markup_percent
+      INTO v_inf_coupon_id, v_buyer_markup
+      FROM public.influencer_coupons c
+      WHERE upper(c.code) = v_code
+        AND c.is_active = true
+        AND (c.expires_at IS NULL OR c.expires_at >= now())
+        AND c.influencer_user_id IS DISTINCT FROM p_user_id
+        AND c.buyer_markup_percent IS NOT NULL;
+    END IF;
+  END IF;
+
+  IF v_idem IS NOT NULL THEN
+    SELECT pi.order_id, o.status, o.payment_reference, p.balance, COALESCE(p.dev_test_balance, 0)
+    INTO v_replay_order, v_replay_status, v_replay_ref, v_new_balance, v_dev_test_balance
+    FROM public.purchase_idempotency pi
+    JOIN public.orders o ON o.id = pi.order_id
+    JOIN public.profiles p ON p.id = p_user_id
+    WHERE pi.user_id = p_user_id AND pi.key = v_idem;
+
+    IF v_replay_order IS NOT NULL THEN
+      RETURN jsonb_build_object(
+        'orderId', v_replay_order,
+        'newBalance', v_new_balance,
+        'devTestBalance', v_dev_test_balance,
+        'status', v_replay_status,
+        'reference', v_replay_ref,
+        'idempotentReplay', true
+      );
+    END IF;
+  END IF;
+
   FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
   LOOP
-    SELECT price INTO v_offer_price
+    v_qty := GREATEST(1, LEAST(99, COALESCE((v_item->>'quantity')::integer, 1)));
+
+    SELECT price, COALESCE(active, true), g2bulk_cost_usd
+    INTO v_offer_price, v_offer_active, v_offer_cost
     FROM offers
     WHERE id = (v_item->>'offer_id')::uuid;
 
     IF v_offer_price IS NULL THEN
       RAISE EXCEPTION 'Offer not found: %', v_item->>'offer_id';
     END IF;
-
-    IF ABS(v_offer_price - (v_item->>'price')::numeric) > 0.001 THEN
-      RAISE EXCEPTION 'Price mismatch for offer %: expected %, got %',
-        v_item->>'offer_id', v_offer_price, (v_item->>'price')::numeric;
+    IF v_offer_active IS NOT TRUE THEN
+      RAISE EXCEPTION 'Offer inactive: %', v_item->>'offer_id';
     END IF;
 
-    v_server_total := v_server_total + v_offer_price;
+    IF v_partner_markup IS NOT NULL AND v_offer_cost IS NOT NULL AND v_offer_cost > 0 THEN
+      v_expected := public.partner_price_from_cost(v_offer_cost, v_partner_markup);
+      IF v_expected IS NULL OR v_expected > v_offer_price THEN
+        v_expected := v_offer_price;
+      END IF;
+    ELSIF v_buyer_markup IS NOT NULL AND v_offer_cost IS NOT NULL AND v_offer_cost > 0 THEN
+      v_expected := public.influencer_buyer_price(v_offer_price, v_offer_cost, v_buyer_markup);
+      IF v_expected IS NULL THEN
+        v_expected := v_offer_price;
+      END IF;
+    ELSE
+      v_expected := v_offer_price;
+    END IF;
+
+    IF ABS(v_expected - (v_item->>'price')::numeric) > 0.001 THEN
+      RAISE EXCEPTION 'Price mismatch for offer %: expected %, got %',
+        v_item->>'offer_id', v_expected, v_item->>'price';
+    END IF;
+
+    v_server_total := v_server_total + (v_expected * v_qty);
   END LOOP;
 
   IF ABS(v_server_total - p_total) > 0.001 THEN
     RAISE EXCEPTION 'Total mismatch: expected %, got %', v_server_total, p_total;
   END IF;
-
-  -- One checkout at a time per user (double-tab / double-click).
-  PERFORM pg_advisory_xact_lock(hashtext(p_user_id::text));
 
   IF p_payment_method = 'balance' THEN
     v_order_status := 'completed';
@@ -5320,7 +10817,6 @@ BEGIN
     IF v_current_balance IS NULL THEN
       RAISE EXCEPTION 'User profile not found';
     END IF;
-
     IF v_current_balance < p_total THEN
       RAISE EXCEPTION 'Insufficient balance';
     END IF;
@@ -5331,9 +10827,7 @@ BEGIN
     PERFORM set_config('echocore.allow_balance_change', '1', true);
 
     UPDATE profiles
-    SET
-      balance = v_new_balance,
-      dev_test_balance = v_dev_test_balance
+    SET balance = v_new_balance, dev_test_balance = v_dev_test_balance
     WHERE id = p_user_id;
 
     INSERT INTO transactions (user_id, type, amount, balance_after, payment_method, reference, status)
@@ -5352,97 +10846,87 @@ BEGIN
     IF p_payment_method = 'ShamCash' THEN
       IF v_wallet_mode = 'api' THEN
         SELECT COALESCE((
-          SELECT sam_api_enabled
-            AND sam_wallet_mode = 'api'
+          SELECT sam_api_enabled AND sam_wallet_mode = 'api'
             AND sam_shamcash_wallet_identifier IS NOT NULL
             AND length(trim(sam_shamcash_wallet_identifier)) > 0
-            AND sam_webhook_secret IS NOT NULL
-            AND length(trim(sam_webhook_secret)) > 0
+            AND sam_webhook_secret IS NOT NULL AND length(trim(sam_webhook_secret)) > 0
           FROM store_settings WHERE id = 1
         ), false) INTO v_method_ready;
-
         IF NOT v_method_ready THEN
           RAISE EXCEPTION 'Sam API ShamCash payment is not configured yet';
         END IF;
       ELSE
         SELECT COALESCE((
           SELECT shamcash_enabled
-            AND shamcash_qr_image_url IS NOT NULL
-            AND length(trim(shamcash_qr_image_url)) > 0
-            AND shamcash_pay_code IS NOT NULL
-            AND length(trim(shamcash_pay_code)) > 0
+            AND shamcash_qr_image_url IS NOT NULL AND length(trim(shamcash_qr_image_url)) > 0
+            AND shamcash_pay_code IS NOT NULL AND length(trim(shamcash_pay_code)) > 0
           FROM store_settings WHERE id = 1
         ), false) INTO v_method_ready;
-
         IF NOT v_method_ready THEN
           RAISE EXCEPTION 'Manual ShamCash payment is not configured yet';
         END IF;
-
         v_reference := 'ECHOCORE-ORD-' || upper(substr(replace(p_user_id::text, '-', ''), 1, 6))
           || '-' || to_char(now(), 'YYMMDD') || '-' || upper(substr(gen_random_uuid()::text, 1, 4));
       END IF;
     ELSIF p_payment_method = 'SyriatelCash' THEN
       IF v_wallet_mode = 'api' THEN
         SELECT COALESCE((
-          SELECT sam_api_enabled
-            AND sam_wallet_mode = 'api'
+          SELECT sam_api_enabled AND sam_wallet_mode = 'api'
             AND sam_syriatel_wallet_identifier IS NOT NULL
             AND length(trim(sam_syriatel_wallet_identifier)) > 0
-            AND sam_webhook_secret IS NOT NULL
-            AND length(trim(sam_webhook_secret)) > 0
+            AND sam_webhook_secret IS NOT NULL AND length(trim(sam_webhook_secret)) > 0
           FROM store_settings WHERE id = 1
         ), false) INTO v_method_ready;
-
         IF NOT v_method_ready THEN
           RAISE EXCEPTION 'Sam API Syriatel Cash payment is not configured yet';
         END IF;
       ELSE
         SELECT COALESCE((
           SELECT syriatel_enabled
-            AND syriatel_qr_image_url IS NOT NULL
-            AND length(trim(syriatel_qr_image_url)) > 0
-            AND syriatel_pay_code IS NOT NULL
-            AND length(trim(syriatel_pay_code)) > 0
+            AND syriatel_qr_image_url IS NOT NULL AND length(trim(syriatel_qr_image_url)) > 0
+            AND syriatel_pay_code IS NOT NULL AND length(trim(syriatel_pay_code)) > 0
           FROM store_settings WHERE id = 1
         ), false) INTO v_method_ready;
-
         IF NOT v_method_ready THEN
           RAISE EXCEPTION 'Manual Syriatel Cash payment is not configured yet';
         END IF;
-
         v_reference := 'ECHOCORE-ORD-' || upper(substr(replace(p_user_id::text, '-', ''), 1, 6))
           || '-' || to_char(now(), 'YYMMDD') || '-' || upper(substr(gen_random_uuid()::text, 1, 4));
       END IF;
     END IF;
   END IF;
 
-  INSERT INTO orders (user_id, total, payment_method, status, payment_reference)
-  VALUES (p_user_id, p_total, p_payment_method, v_order_status, v_reference)
+  INSERT INTO orders (
+    user_id, total, payment_method, status, payment_reference, influencer_coupon_id
+  ) VALUES (
+    p_user_id, p_total, p_payment_method, v_order_status, v_reference,
+    CASE WHEN v_partner_markup IS NULL THEN v_inf_coupon_id ELSE NULL END
+  )
   RETURNING id INTO v_order_id;
 
   FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
   LOOP
+    v_qty := GREATEST(1, LEAST(99, COALESCE((v_item->>'quantity')::integer, 1)));
     INSERT INTO order_items (
-      order_id,
-      offer_id,
-      name_snapshot,
-      price,
-      quantity,
-      player_uid,
-      player_server,
-      player_charname
-    )
-    VALUES (
+      order_id, offer_id, name_snapshot, price, quantity,
+      player_uid, player_server, player_charname
+    ) VALUES (
       v_order_id,
       (v_item->>'offer_id')::uuid,
       v_item->>'name_snapshot',
       (v_item->>'price')::numeric,
-      COALESCE((v_item->>'quantity')::integer, 1),
+      v_qty,
       COALESCE(NULLIF(v_item->>'player_uid', ''), NULLIF(p_player_uid, '')),
       COALESCE(NULLIF(v_item->>'player_server', ''), NULLIF(p_player_server, '')),
       NULLIF(v_item->>'player_charname', '')
     );
   END LOOP;
+
+  IF v_idem IS NOT NULL THEN
+    INSERT INTO public.purchase_idempotency (user_id, key, order_id)
+    VALUES (p_user_id, v_idem, v_order_id)
+    ON CONFLICT (user_id, key) DO NOTHING;
+  END IF;
 
   IF p_payment_method = 'balance' AND v_order_status = 'completed' THEN
     PERFORM public.notify_user(
@@ -5455,6 +10939,12 @@ BEGIN
       ),
       '/success?orderId=' || v_order_id::text
     );
+    BEGIN
+      PERFORM public.pay_influencer_commission_for_order(v_order_id);
+    EXCEPTION
+      WHEN OTHERS THEN
+        NULL;
+    END;
   END IF;
 
   RETURN jsonb_build_object(
@@ -5467,20 +10957,60 @@ BEGIN
 END;
 $$;
 
+REVOKE EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text, text, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text, text, text) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.create_order_atomic(
+  p_user_id uuid,
+  p_total numeric,
+  p_payment_method text,
+  p_items jsonb,
+  p_player_uid text DEFAULT null,
+  p_player_server text DEFAULT null,
+  p_idempotency_key text DEFAULT null
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+BEGIN
+  RETURN public.create_order_atomic(
+    p_user_id, p_total, p_payment_method, p_items,
+    p_player_uid, p_player_server, p_idempotency_key, null
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text, text) TO authenticated;
+
+
+
+-- =============================================================================
+-- §32  create_order_atomic 6-arg wrapper → full 8-arg (partner + influencer)
+-- =============================================================================
+CREATE OR REPLACE FUNCTION public.create_order_atomic(
+  p_user_id uuid,
+  p_total numeric,
+  p_payment_method text,
+  p_items jsonb,
+  p_player_uid text DEFAULT null,
+  p_player_server text DEFAULT null
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+BEGIN
+  RETURN public.create_order_atomic(
+    p_user_id, p_total, p_payment_method, p_items,
+    p_player_uid, p_player_server, null, null
+  );
+END;
+$$;
 REVOKE EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text) FROM public;
 GRANT EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text) TO authenticated;
 
--- =============================================================================
--- §28 Site logs (admin activity feed)
--- Apply scripts/site-logs-migration.sql on existing projects (table + RPCs + hooks).
--- =============================================================================
-
--- =============================================================================
--- §29 SYP recharge + security hardening (also inlined above for fresh installs)
--- Existing projects: scripts/sam-recharge-syp-currency-migration.sql
---   fix-concurrent-balance-purchase.sql, fix-url-order-receipt-security.sql,
---   disable-manual-order-approval-api-mode.sql
--- =============================================================================
 
 -- END OF ECHOCORE SUPABASE SETUP
 -- =============================================================================

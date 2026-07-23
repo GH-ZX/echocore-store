@@ -3,6 +3,8 @@
 **Live site:** https://www.echocore412.com  
 **App version:** 0.5.0
 
+> Docs hub: [docs/README.md](./docs/README.md) · **Single SQL:** [supabase_echocore_full.sql](./supabase_echocore_full.sql)
+
 This guide configures Supabase for the ECHOCORE Store React app (auth, catalog, orders, balance, admin).
 
 ---
@@ -135,7 +137,7 @@ supabase functions deploy g2bulk-sync-cron   # optional scheduled sync
 
 Admin → **G2Bulk**: test connection, set markup %, enable charm pricing if desired, sync catalog, then **Apply charm prices** once.
 
-Full G2Bulk reference: [docs/g2bulk-api.md](./docs/g2bulk-api.md) · [ECHOCORE_STORE_GUIDE.md](./ECHOCORE_STORE_GUIDE.md)
+Full G2Bulk reference: [docs/g2bulk-api.md](./docs/g2bulk-api.md)
 
 ---
 

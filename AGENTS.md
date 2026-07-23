@@ -9,6 +9,7 @@
 3. Full routing table: `.grok/skills/echocore-orientation/references/playmap.md`
 4. Skill shortcut: `/echocore-orientation` (or auto-invoke when starting work here).
 5. Narrative overview (if still lost): `PROJECT_MAP.md` (~2 min read). Architecture notes: `CLAUDE.md`.
+6. Human docs: `docs/README.md`. Database: **only** `supabase_echocore_full.sql` (scripts/*.sql migrations were merged and removed).
 
 ## Stack (one line)
 

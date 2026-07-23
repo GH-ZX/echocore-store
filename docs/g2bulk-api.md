@@ -867,7 +867,7 @@ Before checkout, proxy `POST /v1/games/checkPlayerId` so buyer sees in-game name
 
 Periodic job: fetch catalogue/products, apply markup (+ charm if enabled), update `offers.price` and `g2bulk_cost_usd` in Supabase.
 
-SQL: `g2bulk_charm_pricing_enabled` column + `save_g2bulk_settings` — in `supabase_echocore_full.sql` or `supabase_charm_pricing_migration.sql` for existing DBs.
+SQL: `g2bulk_charm_pricing_enabled` column + `save_g2bulk_settings` — in `supabase_echocore_full.sql`.
 
 ---
 

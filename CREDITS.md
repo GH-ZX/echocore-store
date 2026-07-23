@@ -22,7 +22,7 @@ Terms of Service are governed by the laws of the Republic of Turkey. See `/terms
 
 **License:** Proprietary — see [LICENSE](./LICENSE). Contact: ahmedghuwu3@gmail.com
 
-Arabic: [CREDITS.ar.md](./CREDITS.ar.md)
+
 
 ---
 

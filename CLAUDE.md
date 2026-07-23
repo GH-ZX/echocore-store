@@ -127,6 +127,8 @@ The default Grok ignore list is appropriate for this Node/TypeScript project (se
 
 ## Resources
 
+- **docs/README.md** – human documentation hub (owners, setup, ops).
+- **supabase_echocore_full.sql** – single database bootstrap (all migrations merged).
 - **AGENTS.md** – always-on agent orientation (no full-repo scan).
 - **`.grok/skills/echocore-orientation/`** – task → files playmap skill.
 - **README.md** – high-level feature list and quick-start steps.

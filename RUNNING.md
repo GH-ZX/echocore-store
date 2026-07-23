@@ -2,6 +2,8 @@
 
 **الموقع المباشر:** https://www.echocore412.com
 
+**فهرس الوثائق:** [docs/README.md](./docs/README.md) · **لصاحب المتجر:** [docs/for-owners.md](./docs/for-owners.md)
+
 ## المتطلبات
 
 - Node.js 18+
@@ -100,4 +102,4 @@ npm run preview
 2. افتح `/dashboard`
 3. الصور تُرفع إلى bucket `product-images` في Supabase
 
-للتفاصيل: `vite.config.js` · `.github/workflows/deploy.yml` · [PROJECT_MAP.ar.md](./PROJECT_MAP.ar.md)
+للتفاصيل: `vite.config.js` · `.github/workflows/deploy.yml` · [PROJECT_MAP.md](./PROJECT_MAP.md)
