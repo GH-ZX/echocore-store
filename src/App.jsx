@@ -61,6 +61,7 @@ import {
 } from './lib/offerWholesale';
 import ScrollToTop from './components/routing/ScrollToTop';
 import AppRoutes from './components/routing/AppRoutes';
+import DocumentMeta from './components/routing/DocumentMeta';
 import LangSwitchOverlay from './components/routing/LangSwitchOverlay';
 import {
   ADMIN_SALE_DISCOUNTS_FOCUS_STATE,
@@ -2178,6 +2179,7 @@ export default function App() {
       </a>
       <LangSwitchOverlay t={translations[overlayLang] || t} active={langSwitching} />
       <ScrollToTop />
+      <DocumentMeta t={t} lang={lang} />
       <Header
         t={t}
         lang={lang}

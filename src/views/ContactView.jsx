@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { submitContactMessage } from '../lib/contact';
+import { contactErrorMessage, submitContactMessage } from '../lib/contact';
 
 export default function ContactView({ t = {}, user = null }) {
   const [formData, setFormData] = useState({
     name: user?.name || '',
     email: user?.email || '',
     message: '',
+    /** Honeypot — leave empty; bots often fill hidden fields */
+    company: '',
   });
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -34,6 +36,7 @@ export default function ContactView({ t = {}, user = null }) {
         email: formData.email,
         message: formData.message,
         userId: user?.id,
+        honeypot: formData.company,
       });
 
       setSubmitted(true);
@@ -42,11 +45,12 @@ export default function ContactView({ t = {}, user = null }) {
           name: user?.name || '',
           email: user?.email || '',
           message: '',
+          company: '',
         });
         setSubmitted(false);
       }, 4000);
     } catch (err) {
-      setError(t.contactSubmitFailed);
+      setError(contactErrorMessage(err, t));
       console.error('Contact form error:', err);
     } finally {
       setIsSubmitting(false);
@@ -76,7 +80,31 @@ export default function ContactView({ t = {}, user = null }) {
             </p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5" autoComplete="on">
+            {/* Honeypot: visually hidden, not tabbable */}
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                left: '-10000px',
+                top: 'auto',
+                width: '1px',
+                height: '1px',
+                overflow: 'hidden',
+              }}
+            >
+              <label htmlFor="contact-company">{t.contactHoneypotLabel || 'Company'}</label>
+              <input
+                id="contact-company"
+                type="text"
+                name="company"
+                value={formData.company}
+                onChange={handleChange}
+                tabIndex={-1}
+                autoComplete="off"
+              />
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-[var(--text-sec)] mb-1.5">
                 {t.nameOptional}

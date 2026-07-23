@@ -1,0 +1,17 @@
+# ECHOCORE Store — https://www.echocore412.com
+User-agent: *
+Allow: /
+
+# App / account surfaces — low value for search
+Disallow: /dashboard
+Disallow: /login
+Disallow: /checkout
+Disallow: /cart
+Disallow: /recharge
+Disallow: /profile
+Disallow: /notifications
+Disallow: /invoice
+Disallow: /banned
+Disallow: /success
+
+Sitemap: https://www.echocore412.com/sitemap.xml
