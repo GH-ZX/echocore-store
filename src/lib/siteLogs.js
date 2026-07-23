@@ -2,7 +2,7 @@ import { supabase } from './supabase';
 import { formatMessage } from './i18n';
 
 const RPC_SETUP_MSG =
-  'Site logs are not configured. Run scripts/site-logs-migration.sql in Supabase.';
+  'Site logs are not configured. Ensure supabase_echocore_full.sql (site_logs RPCs) is applied.';
 
 function isMissingRpc(error) {
   return error?.message?.includes('function') && error?.message?.includes('does not exist');
@@ -158,12 +158,44 @@ export function formatSiteLog(item, t = {}, lang = 'ar') {
       body: applyTemplate(t.siteLogContactBody, { name: m.name || user, email: m.email || '' }),
       tone: 'info',
     },
+    // Wallet ledger (transactions.type) — purchase = balance debit for an order
+    purchase: {
+      title: t.siteLogWalletPurchaseTitle || t.siteLogOrderBalanceTitle,
+      body: applyTemplate(
+        t.siteLogWalletPurchaseBody || t.siteLogOrderBalanceBody,
+        { user, amount: amount || formatMoney(m.amount), method },
+      ),
+      tone: 'info',
+    },
+    refund: {
+      title: t.siteLogWalletRefundTitle || t.siteLogUnknownTitle,
+      body: applyTemplate(t.siteLogWalletRefundBody || '{user} · {amount}', { user, amount }),
+      tone: 'warning',
+    },
+    adjustment: {
+      title: t.siteLogWalletAdjustTitle || t.siteLogManualCreditTitle,
+      body: applyTemplate(
+        t.siteLogWalletAdjustBody || t.siteLogManualCreditBody,
+        { user, amount, admin: m.adminName || '', reason: m.reason || '' },
+      ),
+      tone: Number(m.amount) < 0 ? 'warning' : 'success',
+    },
+    movement: {
+      title: t.siteLogWalletMoveTitle || t.siteLogUnknownTitle,
+      body: applyTemplate(t.siteLogWalletMoveBody || '{user} · {amount}', { user, amount }),
+      tone: 'info',
+    },
   };
 
   const key = item?.event_type;
   const fallback = {
     title: key || t.siteLogUnknownTitle,
-    body: key || '',
+    body: [
+      user && user !== 'User' && user !== 'مستخدم' ? user : '',
+      amount,
+      method,
+      m.reference || '',
+    ].filter(Boolean).join(' · ') || key || '',
     tone: item?.severity || 'info',
   };
 
@@ -236,6 +268,7 @@ export async function fetchAdminSiteLogs({
     total,
     limit: Number(data?.limit) || limit,
     offset: Number(data?.offset) || offset,
+    retentionDays: Number(data?.retentionDays) || 30,
   };
 }
 

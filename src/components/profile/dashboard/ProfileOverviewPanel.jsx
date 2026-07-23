@@ -12,12 +12,15 @@ import {
 } from 'lucide-react';
 import { formatMoney, getPendingOrders } from '../../../lib/userDashboard';
 import ProfileOrdersPanel from './ProfileOrdersPanel';
+import ProfileActivityFeed from './ProfileActivityFeed';
 
 export default function ProfileOverviewPanel({
   t = {},
   lang = 'ar',
   isAdmin = false,
   userOrders = [],
+  recharges = [],
+  transactions = [],
   totalSpent = 0,
   totalRecharges = 0,
   balance = 0,
@@ -107,6 +110,18 @@ export default function ProfileOverviewPanel({
           </button>
         ))}
       </div>
+
+      {!isAdmin && (
+        <ProfileActivityFeed
+          t={t}
+          lang={lang}
+          orders={userOrders}
+          recharges={recharges}
+          transactions={transactions}
+          navigate={navigate}
+          onGoTab={onGoTab}
+        />
+      )}
 
       <div className="card p-5 sm:p-6">
         <div className="flex items-center justify-between mb-4">

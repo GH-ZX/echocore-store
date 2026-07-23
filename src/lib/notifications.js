@@ -519,13 +519,15 @@ export async function dismissNotification(notificationId) {
   return data === true;
 }
 
-/** Customer types that should pop an on-site toast (not admin_*). */
+/**
+ * Customer types that pop an on-site toast.
+ * Payment "accepted" (purchase_completed / order_completed) stays in the inbox only —
+ * toast fires on delivery (or failure) so users don't see two "success" popups for one buy.
+ */
 export const LIVE_TOAST_NOTIFICATION_TYPES = new Set([
-  'purchase_completed',
   'delivery_ready',
   'topup_delivered',
   'order_fulfilled',
-  'order_completed',
   'order_gifted',
   'fulfillment_failed',
   'fulfillment_failed_refunded',

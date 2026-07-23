@@ -730,9 +730,11 @@ export default function App() {
     if (!dedupeKey) return;
 
     const now = Date.now();
+    // SIGNED_IN + handleLoginSuccess both fire — one log per user within 30s
+    const prev = loginLogDedupeRef.current;
     if (
-      loginLogDedupeRef.current.key === dedupeKey
-      && now - loginLogDedupeRef.current.at < 5000
+      (prev.key === dedupeKey || prev.key === normalizedEmail || (userId && prev.key === userId))
+      && now - prev.at < 30_000
     ) {
       return;
     }
@@ -1702,10 +1704,19 @@ export default function App() {
       if (event === 'SIGNED_IN' && session?.user) {
         const { email, id, user_metadata: meta } = session.user;
         const displayName = meta?.name || meta?.full_name || null;
-        // Brief delay so profiles row exists (handle_new_user / resolveUserData)
-        setTimeout(() => {
-          void recordLoginSuccessRef.current(email, id, displayName);
-        }, 150);
+        // Password login already logs via handleLoginSuccess — only log OAuth / magic-link here
+        const oauthIntent = (() => {
+          try {
+            return sessionStorage.getItem('echocore-oauth-intent');
+          } catch {
+            return null;
+          }
+        })();
+        if (oauthIntent) {
+          setTimeout(() => {
+            void recordLoginSuccessRef.current(email, id, displayName);
+          }, 200);
+        }
         // PKCE Google return often has no hash token — handle toast here
         notifyOAuthLoginResult(session.user);
       }

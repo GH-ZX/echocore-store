@@ -946,6 +946,8 @@ export default function ProfileView({
               lang={lang}
               isAdmin={isAdmin}
               userOrders={userOrders}
+              recharges={recharges}
+              transactions={transactions}
               totalSpent={totalSpent}
               totalRecharges={totalRecharges}
               balance={balance}
