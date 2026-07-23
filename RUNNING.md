@@ -66,6 +66,15 @@ npm run preview
 - Site URL: `https://www.echocore412.com`
 - Redirect: `https://www.echocore412.com/login` و `https://www.echocore412.com/**`
 
+### النطاق و DNS
+
+الدليل الكامل (GoDaddy cleanup + Cloudflare اختياري):
+
+👉 **[docs/domain-dns.md](./docs/domain-dns.md)**
+
+- النطاق الأساسي: **www.echocore412.com**
+- احذف سجلات A الزائدة على الـ apex (`15.197…` / `3.33…`) — تُفسد HTTPS على `echocore412.com`
+
 ---
 
 ## أوامر مفيدة

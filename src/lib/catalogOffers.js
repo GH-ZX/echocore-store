@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { fetchLiveGameGroup, isLiveCatalogId } from './liveCatalog';
 import { getGameBaseMeta } from './gameRegions';
+import { stripOffersSecrets } from './offerWholesale';
 
 function usesLiveCatalogForGame({ catalogMode = 'sync' } = {}) {
   return catalogMode === 'live';
@@ -29,5 +30,5 @@ export async function refreshGameRegionOffers({
     .eq('active', true);
 
   if (error) throw new Error(error.message);
-  return { offers: data || [] };
+  return { offers: stripOffersSecrets(data || []) };
 }

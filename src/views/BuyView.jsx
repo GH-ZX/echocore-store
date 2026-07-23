@@ -44,6 +44,7 @@ import {
   validateInfluencerCoupon,
 } from '../lib/coupons';
 import { resolveCustomerUnitPrice } from '../lib/partnerPricing';
+import { fetchMyOfferUnitPrices } from '../lib/offerWholesale';
 
 export default function BuyView({
   t = {},
@@ -98,15 +99,48 @@ export default function BuyView({
   const partnerMarkup = partnerTier?.markupPercent != null
     ? Number(partnerTier.markupPercent)
     : null;
-  const publicPrice = offer ? parseFloat(offer.price) : 0;
-  const price = offer
-    ? resolveCustomerUnitPrice(offer, {
-      partnerMarkupPercent: partnerMarkup,
-      influencerBuyerMarkupPercent: partnerMarkup == null && appliedCoupon
-        ? appliedCoupon.buyerMarkupPercent
-        : null,
-    })
+  // Shelf / partner price may already be adjusted on storefront offers (_publicPrice)
+  const publicPrice = offer
+    ? parseFloat(offer._publicPrice ?? offer.price)
     : 0;
+  const [influencerUnitPrice, setInfluencerUnitPrice] = useState(null);
+
+  // Influencer unit price from server (no client-side cost)
+  useEffect(() => {
+    if (!offer?.id || partnerMarkup != null || !appliedCoupon?.code) {
+      setInfluencerUnitPrice(null);
+      return undefined;
+    }
+    let cancelled = false;
+    fetchMyOfferUnitPrices([offer.id], appliedCoupon.code).then((map) => {
+      if (cancelled) return;
+      const row = map?.[offer.id] || map?.[String(offer.id)];
+      const unit = Number(row?.unitPrice ?? row?.unit_price);
+      setInfluencerUnitPrice(Number.isFinite(unit) && unit > 0 ? unit : null);
+    });
+    return () => { cancelled = true; };
+  }, [offer?.id, partnerMarkup, appliedCoupon?.code]);
+
+  const price = (() => {
+    if (!offer) return 0;
+    if (partnerMarkup != null) {
+      // Partner prices come pre-applied on storefront offers (RPC)
+      if (offer._partnerPriced && Number.isFinite(Number(offer.price))) {
+        return Number(offer.price);
+      }
+      return resolveCustomerUnitPrice(offer, { partnerMarkupPercent: partnerMarkup });
+    }
+    if (appliedCoupon && influencerUnitPrice != null) {
+      return influencerUnitPrice;
+    }
+    // Fallback if cost still present (pre-migration)
+    if (appliedCoupon) {
+      return resolveCustomerUnitPrice(offer, {
+        influencerBuyerMarkupPercent: appliedCoupon.buyerMarkupPercent,
+      });
+    }
+    return Number.isFinite(publicPrice) ? publicPrice : 0;
+  })();
   const total = price.toFixed(2);
   const hasEnough = currentBalance >= price;
   const showCouponField = isValidOffer && user?.role !== 'admin' && partnerMarkup == null;

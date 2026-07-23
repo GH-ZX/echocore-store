@@ -53,6 +53,12 @@ import {
 import { fetchMyPartnerTier } from './lib/partners';
 import { fetchMyInfluencerStatus } from './lib/coupons';
 import { mapOffersForCustomer, resolveCustomerUnitPrice } from './lib/partnerPricing';
+import {
+  stripOffersSecrets,
+  withAdminWholesale,
+  fetchMyOfferUnitPrices,
+  applyUnitPriceMap,
+} from './lib/offerWholesale';
 import ScrollToTop from './components/routing/ScrollToTop';
 import AppRoutes from './components/routing/AppRoutes';
 import LangSwitchOverlay from './components/routing/LangSwitchOverlay';
@@ -193,11 +199,54 @@ export default function App() {
   const partnerMarkup = partnerTier?.markupPercent != null
     ? Number(partnerTier.markupPercent)
     : null;
-  /** Offers: partner plan-B pricing; influencer codes apply only on buy page */
-  const storefrontOffers = useMemo(
-    () => (isAdmin ? offers : mapOffersForCustomer(offers, partnerMarkup, null)),
-    [offers, partnerMarkup, isAdmin],
+  /** Partner unit prices from RPC (no client-side cost). Influencer codes apply on buy page only. */
+  const [partnerUnitPriceMap, setPartnerUnitPriceMap] = useState(null);
+  /** Offers: partner plan-B via server prices; legacy cost-based map is fallback only */
+  const storefrontOffers = useMemo(() => {
+    if (isAdmin) return offers;
+    if (partnerUnitPriceMap && Object.keys(partnerUnitPriceMap).length > 0) {
+      return applyUnitPriceMap(offers, partnerUnitPriceMap);
+    }
+    return mapOffersForCustomer(offers, partnerMarkup, null);
+  }, [offers, partnerMarkup, isAdmin, partnerUnitPriceMap]);
+
+  const offerIdsKey = useMemo(
+    () => offers.map((o) => o.id).filter(Boolean).join(','),
+    [offers],
   );
+
+  // Partner display prices without g2bulk_cost_usd on the client
+  useEffect(() => {
+    if (isAdmin || partnerMarkup == null || !offerIdsKey) {
+      setPartnerUnitPriceMap(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const ids = offerIdsKey.split(',').filter(Boolean);
+    fetchMyOfferUnitPrices(ids).then((map) => {
+      if (!cancelled) setPartnerUnitPriceMap(map && Object.keys(map).length ? map : null);
+    });
+    return () => { cancelled = true; };
+  }, [isAdmin, partnerMarkup, offerIdsKey]);
+
+  // If admin signs in after catalog load, attach wholesale via RPC (once per catalog set)
+  const wholesaleAttachedKeyRef = useRef('');
+  useEffect(() => {
+    if (!isAdmin || !offerIdsKey) return undefined;
+    if (offers.some((o) => o.g2bulk_cost_usd != null)) {
+      wholesaleAttachedKeyRef.current = offerIdsKey;
+      return undefined;
+    }
+    if (wholesaleAttachedKeyRef.current === offerIdsKey) return undefined;
+    let cancelled = false;
+    withAdminWholesale(offers, { isAdmin: true }).then((next) => {
+      if (cancelled) return;
+      wholesaleAttachedKeyRef.current = offerIdsKey;
+      if (next?.length) setOffers(next);
+    });
+    return () => { cancelled = true; };
+  }, [isAdmin, offerIdsKey, offers]);
+
   const [homePreviewAsUser, setHomePreviewAsUser] = useState(false);
   const homeShowsAdminChrome = isAdmin && !homePreviewAsUser;
   const hasSaleOffers = offers.some((offer) => {
@@ -531,7 +580,9 @@ export default function App() {
         },
       );
 
-      setOffers(data || []);
+      const cleaned = stripOffersSecrets(data || []);
+      const withCost = await withAdminWholesale(cleaned, { isAdmin: user?.role === 'admin' });
+      setOffers(withCost);
     } catch (err) {
       console.error('Error fetching offers:', err);
       setOffers([]);
@@ -880,7 +931,12 @@ export default function App() {
     return await runWithPurchaseGuard(user.id, async (checkoutToken) => {
 
     const preparedCart = await resolveCheckoutOffers(currentCart);
-    const { items: syncedCart, removedCount } = syncCartWithOffers(preparedCart, offers.length ? offers : preparedCart);
+    // Prefer storefront offers (partner unit prices applied; no client cost)
+    const priceCatalog = storefrontOffers.length ? storefrontOffers : offers;
+    const { items: syncedCart, removedCount } = syncCartWithOffers(
+      preparedCart,
+      priceCatalog.length ? priceCatalog : preparedCart,
+    );
     if (syncedCart.length === 0) {
       throw new Error(t.cartEmptyOrUnavailable);
     }
@@ -899,12 +955,15 @@ export default function App() {
     setCart(syncedCart);
 
     const items = syncedCart.map((item) => {
-      const unit = resolveCustomerUnitPrice(item, {
-        partnerMarkupPercent: partnerMarkup,
-      });
+      const fromMap = partnerUnitPriceMap?.[item.id] || partnerUnitPriceMap?.[String(item.id)];
+      const unit = fromMap?.unitPrice != null
+        ? Number(fromMap.unitPrice)
+        : (item._partnerPriced
+          ? Number(item.price)
+          : resolveCustomerUnitPrice(item, { partnerMarkupPercent: partnerMarkup }));
       return {
         offer_id: item.id,
-        name_snapshot: getOfferOrderNameSnapshot(item, lang, games, offers),
+        name_snapshot: getOfferOrderNameSnapshot(item, lang, games, priceCatalog),
         price: unit,
         quantity: 1,
       };
@@ -1043,10 +1102,29 @@ export default function App() {
       && playerInfo?.influencer_buyer_markup != null
       ? Number(playerInfo.influencer_buyer_markup)
       : null;
-    const amount = resolveCustomerUnitPrice(offer, {
-      partnerMarkupPercent: partnerMarkup,
-      influencerBuyerMarkupPercent: influencerBuyerMarkup,
-    });
+
+    // Prefer server unit prices (no client cost). Fallback to legacy cost-based math.
+    let amount;
+    if (partnerMarkup != null) {
+      const fromMap = partnerUnitPriceMap?.[offer.id] || partnerUnitPriceMap?.[String(offer.id)];
+      if (fromMap?.unitPrice != null) {
+        amount = Number(fromMap.unitPrice);
+      } else if (offer._partnerPriced) {
+        amount = Number(offer.price);
+      } else {
+        amount = resolveCustomerUnitPrice(offer, { partnerMarkupPercent: partnerMarkup });
+      }
+    } else if (influencerCode) {
+      const map = await fetchMyOfferUnitPrices([offer.id], influencerCode);
+      const row = map?.[offer.id] || map?.[String(offer.id)];
+      amount = row?.unitPrice != null
+        ? Number(row.unitPrice)
+        : resolveCustomerUnitPrice(offer, {
+          influencerBuyerMarkupPercent: influencerBuyerMarkup,
+        });
+    } else {
+      amount = Number(offer._publicPrice ?? offer.price);
+    }
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new Error(t.cartEmptyOrUnavailable || 'Invalid price');
     }
@@ -1222,9 +1300,16 @@ export default function App() {
       throw new Error(`Failed to add offer: ${msg}. Make sure your profile has role='admin' and RLS policies allow inserts for admins on 'offers' table.`);
     }
 
-    setOffers((prev) => [data, ...prev]);
+    // Returning row omits secret columns after hide-cost migration — keep form values for admin UI
+    const merged = {
+      ...stripOffersSecrets([data])[0],
+      g2bulk_cost_usd: payload.g2bulk_cost_usd,
+      pricing_margin_percent: payload.pricing_margin_percent,
+      pricing_mode: data?.pricing_mode ?? payload.pricing_mode,
+    };
+    setOffers((prev) => [merged, ...prev]);
     showNotification(t.offerAddedSuccess || 'Offer added successfully');
-    return data;
+    return merged;
   };
 
   const deleteProduct = async (_productId) => {
@@ -1294,19 +1379,16 @@ export default function App() {
       throw new Error(t.failedToSaveOffer || 'Update returned no row — check admin permissions.');
     }
 
-    // Merge so pricing fields are never dropped if select is partial
-    setOffers((prev) => prev.map((p) => (
-      p.id === id
-        ? {
-          ...p,
-          ...data,
-          pricing_mode: data.pricing_mode ?? updateRow.pricing_mode,
-          pricing_margin_percent: data.pricing_margin_percent ?? updateRow.pricing_margin_percent,
-          price: data.price ?? updateRow.price,
-        }
-        : p
-    )));
-    return data;
+    // Secret columns are not returned to the client after hide-cost migration
+    const merged = {
+      ...stripOffersSecrets([data])[0],
+      pricing_mode: data.pricing_mode ?? updateRow.pricing_mode,
+      pricing_margin_percent: updateRow.pricing_margin_percent,
+      g2bulk_cost_usd: updateRow.g2bulk_cost_usd,
+      price: data.price ?? updateRow.price,
+    };
+    setOffers((prev) => prev.map((p) => (p.id === id ? { ...p, ...merged } : p)));
+    return merged;
   };
 
   /** Merge a DB-saved offer row into local catalog state (pricing fields included). */
@@ -1672,11 +1754,11 @@ export default function App() {
   const loadLiveCatalog = async (pullSelection = null) => {
     setLoadingGames(true);
     try {
-      const catalog = await fetchLiveCatalogForSelection(pull);
       const pull = normalizePullSelection(pullSelection || {});
+      const catalog = await fetchLiveCatalogForSelection(pull);
       const filtered = filterLiveCatalog(catalog, pull);
       setGames(filtered.games || []);
-      setOffers(filtered.offers || []);
+      setOffers(stripOffersSecrets(filtered.offers || []));
     } catch (err) {
       console.error('Live catalog load failed:', err);
       setGames([]);
@@ -1714,7 +1796,9 @@ export default function App() {
     const filteredGames = filterGamesByPullSelection(gamesData || [], pull);
     const filteredOffers = filterOffersByPullSelection(offersData || [], filteredGames, pull);
     setGames(sortGamesByCarousel(filteredGames));
-    setOffers(filteredOffers);
+    const cleaned = stripOffersSecrets(filteredOffers);
+    const withCost = await withAdminWholesale(cleaned, { isAdmin: user?.role === 'admin' });
+    setOffers(withCost);
   };
 
   /*

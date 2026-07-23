@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { ensureCatalogItems, isLiveCatalogId, mergeCatalogRows } from './liveCatalog';
+import { stripOfferSecrets } from './offerWholesale';
 
 /**
  * Resolve live-catalog offer IDs to persisted DB rows before checkout.
@@ -15,7 +16,7 @@ export async function resolveOffersForCheckout(items = [], { onOffersMerged } = 
     const dbId = idMap.get(item.id);
     if (!dbId) return item;
     const { data } = await supabase.from('offers').select('*').eq('id', dbId).maybeSingle();
-    return data || { ...item, id: dbId };
+    return data ? stripOfferSecrets(data) : { ...item, id: dbId };
   }));
 
   if (typeof onOffersMerged === 'function') {

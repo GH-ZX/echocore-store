@@ -1,6 +1,11 @@
 import { supabase } from './supabase';
 import { normalizePricingMode, priceFromCost, resolveOfferPrice } from './offerPricing';
 import { fetchG2bulkSettings } from './g2bulk';
+import {
+  fetchAdminOfferWholesale,
+  mergeWholesaleIntoOffers,
+  stripOfferSecrets,
+} from './offerWholesale';
 
 const PRICING_COLUMNS_HINT =
   'Database missing pricing columns. Run scripts/offer-pricing-modes-migration.sql in Supabase SQL Editor, then retry.';
@@ -61,12 +66,20 @@ export async function persistOfferPricing(offerId, {
     .from('offers')
     .update(patch)
     .eq('id', offerId)
-    .select('id, price, pricing_mode, pricing_margin_percent, g2bulk_cost_usd, is_sale, game_id, name_en, name_ar')
+    .select('id, price, pricing_mode, is_sale, game_id, name_en, name_ar')
     .single();
 
   if (error) throw mapPricingDbError(error);
   if (!data) throw new Error('Offer not found or update blocked (RLS).');
-  return data;
+
+  const wholesale = await fetchAdminOfferWholesale([offerId]);
+  const merged = mergeWholesaleIntoOffers([stripOfferSecrets(data)], wholesale)[0];
+  return {
+    ...merged,
+    pricing_mode: data.pricing_mode ?? patch.pricing_mode,
+    pricing_margin_percent: patch.pricing_margin_percent,
+    price: data.price ?? patch.price,
+  };
 }
 
 /**
@@ -82,12 +95,15 @@ export async function applyGameOffersPricing(gameId, action, {
 
   const { data: rows, error } = await supabase
     .from('offers')
-    .select('id, price, g2bulk_cost_usd, pricing_mode, pricing_margin_percent, is_sale')
+    .select('id, price, pricing_mode, is_sale')
     .eq('game_id', gameId);
 
   if (error) throw mapPricingDbError(error);
-  const offers = rows || [];
-  if (offers.length === 0) return { updated: 0, offers: [] };
+  const baseRows = rows || [];
+  if (baseRows.length === 0) return { updated: 0, offers: [] };
+
+  const wholesale = await fetchAdminOfferWholesale(baseRows.map((r) => r.id));
+  const offers = mergeWholesaleIntoOffers(baseRows.map(stripOfferSecrets), wholesale);
 
   const updatedRows = [];
   for (const offer of offers) {
@@ -129,11 +145,19 @@ export async function applyGameOffersPricing(gameId, action, {
       .from('offers')
       .update(patch)
       .eq('id', offer.id)
-      .select('id, price, pricing_mode, pricing_margin_percent, g2bulk_cost_usd, is_sale, game_id')
+      .select('id, price, pricing_mode, is_sale, game_id')
       .single();
 
     if (upErr) throw mapPricingDbError(upErr);
-    if (saved) updatedRows.push(saved);
+    if (saved) {
+      updatedRows.push({
+        ...stripOfferSecrets(saved),
+        pricing_mode: saved.pricing_mode ?? patch.pricing_mode,
+        pricing_margin_percent: patch.pricing_margin_percent ?? null,
+        g2bulk_cost_usd: offer.g2bulk_cost_usd ?? null,
+        price: saved.price ?? patch.price,
+      });
+    }
   }
 
   return { updated: updatedRows.length, offers: updatedRows };
