@@ -45,6 +45,36 @@ describe('summarizeAdminActivity', () => {
     expect(s.criticalOpen).toBe(0);
     expect(s.health).toBe('ok');
   });
+
+  it('ignores criticals at or before ackedAt for health (still counts errors24h)', () => {
+    const logs = [
+      {
+        created_at: '2026-07-24T10:00:00Z',
+        category: 'error',
+        event_type: 'client',
+        severity: 'danger',
+      },
+      {
+        created_at: '2026-07-24T11:30:00Z',
+        category: 'error',
+        event_type: 'client',
+        severity: 'danger',
+      },
+    ];
+    const ackedAt = Date.parse('2026-07-24T11:00:00Z');
+    const s = summarizeAdminActivity(logs, { now, ackedAt });
+    expect(s.errors24h).toBe(2);
+    expect(s.criticalOpen).toBe(1);
+    expect(s.health).toBe('degraded');
+
+    const allAcked = summarizeAdminActivity(logs, {
+      now,
+      ackedAt: Date.parse('2026-07-24T12:00:00Z'),
+    });
+    expect(allAcked.errors24h).toBe(2);
+    expect(allAcked.criticalOpen).toBe(0);
+    expect(allAcked.health).toBe('ok');
+  });
 });
 
 describe('buildCustomerActivityFeed', () => {

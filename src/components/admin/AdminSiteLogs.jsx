@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Activity,
+  CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -16,7 +17,11 @@ import {
   HeartPulse,
 } from 'lucide-react';
 import { fetchAdminSiteLogs, formatDevLogLine, formatSiteLogCount, formatSiteLog } from '../../lib/siteLogs';
-import { summarizeAdminActivity } from '../../lib/activityMonitor';
+import {
+  getHealthAckAt,
+  setHealthAckAt,
+  summarizeAdminActivity,
+} from '../../lib/activityMonitor';
 
 const FILTER_OPTIONS = [
   { id: null, labelKey: 'siteLogsFilterAll' },
@@ -81,6 +86,7 @@ export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
   const [live, setLive] = useState(true);
   const [lastOkAt, setLastOkAt] = useState(null);
   const [fetchError, setFetchError] = useState(false);
+  const [healthAckAt, setHealthAckAtState] = useState(() => getHealthAckAt());
   const loadInFlightRef = useRef(false);
 
   // Reset to first page when filter changes
@@ -141,7 +147,7 @@ export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
 
   const stats = useMemo(() => {
     try {
-      return summarizeAdminActivity(monitorLogs);
+      return summarizeAdminActivity(monitorLogs, { ackedAt: healthAckAt });
     } catch {
       return {
         orders24h: 0,
@@ -152,10 +158,16 @@ export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
         events1h: 0,
         criticalOpen: 0,
         health: 'ok',
+        ackedAt: healthAckAt || null,
         sampleSize: 0,
       };
     }
-  }, [monitorLogs]);
+  }, [monitorLogs, healthAckAt]);
+
+  const markHealthReviewed = useCallback(() => {
+    const ms = setHealthAckAt(Date.now());
+    setHealthAckAtState(ms);
+  }, []);
   const feedItems = useMemo(() => {
     return (monitorLogs || []).slice(0, 20).map((row, index) => {
       try {
@@ -193,9 +205,12 @@ export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
       ? 'activityHealthDegraded'
       : stats.health === 'busy'
         ? 'activityHealthBusy'
-        : 'activityHealthOk';
+        : healthAckAt
+          ? 'activityHealthOkAcked'
+          : 'activityHealthOk';
 
   const healthStyle = fetchError ? HEALTH_STYLE.degraded : (HEALTH_STYLE[stats.health] || HEALTH_STYLE.ok);
+  const canAckHealth = !fetchError && (stats.health === 'degraded' || stats.health === 'busy');
 
   const cards = [
     { key: 'orders', icon: ShoppingBag, label: t.activityCardOrders, value: stats.orders24h, hint: t.activityCardOrdersHint },
@@ -253,11 +268,22 @@ export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
 
         <div className={`rounded-xl border px-3 py-2.5 flex flex-wrap items-center gap-2 text-xs ${healthStyle}`}>
           <HeartPulse size={16} className="shrink-0" />
-          <span className="font-semibold">{t[healthKey]}</span>
+          <span className="font-semibold">{t[healthKey] || t.activityHealthOk}</span>
           {lastOkAt ? (
             <span className="opacity-80" dir="ltr">
               {t.activityLastCheck}: {new Date(lastOkAt).toLocaleTimeString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US')}
             </span>
+          ) : null}
+          {canAckHealth ? (
+            <button
+              type="button"
+              onClick={markHealthReviewed}
+              className="ms-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-current/30 bg-black/15 hover:bg-black/25 font-semibold transition-colors"
+              title={t.activityHealthAckHint}
+            >
+              <CheckCircle2 size={14} className="shrink-0" />
+              {t.activityHealthAck}
+            </button>
           ) : null}
         </div>
 

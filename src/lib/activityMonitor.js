@@ -5,6 +5,9 @@
 const MS_DAY = 24 * 60 * 60 * 1000;
 const MS_HOUR = 60 * 60 * 1000;
 
+/** localStorage key: ISO time when admin last dismissed health alerts */
+export const HEALTH_ACK_STORAGE_KEY = 'echocore-activity-health-acked-at';
+
 function parseTime(iso) {
   const t = new Date(iso).getTime();
   return Number.isFinite(t) ? t : 0;
@@ -35,13 +38,46 @@ function isBenignClientNoise(row) {
 }
 
 /**
+ * Read health-ack timestamp from localStorage (ms since epoch, or 0).
+ */
+export function getHealthAckAt() {
+  try {
+    if (typeof localStorage === 'undefined') return 0;
+    const raw = localStorage.getItem(HEALTH_ACK_STORAGE_KEY);
+    if (!raw) return 0;
+    const t = Date.parse(raw);
+    return Number.isFinite(t) ? t : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Persist health-ack timestamp (default: now). Returns the ms value stored.
+ */
+export function setHealthAckAt(when = Date.now()) {
+  const ms = typeof when === 'number' && Number.isFinite(when) ? when : Date.now();
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(HEALTH_ACK_STORAGE_KEY, new Date(ms).toISOString());
+    }
+  } catch {
+    /* private mode / quota */
+  }
+  return ms;
+}
+
+/**
  * Summarize admin site_logs rows for the monitor cards + feed.
  * @param {object[]} logs
- * @param {{ now?: number }} opts
+ * @param {{ now?: number, ackedAt?: number }} opts
+ *   ackedAt — criticals/errors at or before this time no longer drive health red/amber
+ *   (admin clicked "mark reviewed" after fixing issues).
  */
-export function summarizeAdminActivity(logs = [], { now = Date.now() } = {}) {
+export function summarizeAdminActivity(logs = [], { now = Date.now(), ackedAt = 0 } = {}) {
   const dayAgo = now - MS_DAY;
   const hourAgo = now - MS_HOUR;
+  const ackMs = typeof ackedAt === 'number' && Number.isFinite(ackedAt) ? ackedAt : 0;
   const list = Array.isArray(logs) ? logs : [];
 
   let orders24h = 0;
@@ -51,6 +87,8 @@ export function summarizeAdminActivity(logs = [], { now = Date.now() } = {}) {
   let contact24h = 0;
   let events1h = 0;
   let criticalOpen = 0;
+  /** Errors that still count toward busy/degraded after ack */
+  let openErrors24h = 0;
 
   for (const row of list) {
     const ts = parseTime(row?.created_at);
@@ -62,6 +100,7 @@ export function summarizeAdminActivity(logs = [], { now = Date.now() } = {}) {
     const type = String(row?.event_type || '').toLowerCase();
     const bad = isSeverityBad(row?.severity);
     const benign = isBenignClientNoise(row);
+    const afterAck = !ackMs || ts > ackMs;
 
     if (cat === 'order' || type.includes('order') || type === 'placed' || type === 'balance_paid' || type === 'fulfilled') {
       orders24h += 1;
@@ -78,13 +117,16 @@ export function summarizeAdminActivity(logs = [], { now = Date.now() } = {}) {
     // Count real errors for the card, but exclude deploy/chunk noise from "critical" health
     if ((bad || cat === 'error' || cat === 'dev') && !benign) {
       errors24h += 1;
-      if (['danger', 'error', 'critical', 'err'].includes(String(row?.severity || '').toLowerCase())) {
-        criticalOpen += 1;
+      if (afterAck) {
+        openErrors24h += 1;
+        if (['danger', 'error', 'critical', 'err'].includes(String(row?.severity || '').toLowerCase())) {
+          criticalOpen += 1;
+        }
       }
     }
   }
 
-  const health = criticalOpen > 0 ? 'degraded' : (errors24h > 8 ? 'busy' : 'ok');
+  const health = criticalOpen > 0 ? 'degraded' : (openErrors24h > 8 ? 'busy' : 'ok');
 
   return {
     orders24h,
@@ -95,6 +137,7 @@ export function summarizeAdminActivity(logs = [], { now = Date.now() } = {}) {
     events1h,
     criticalOpen,
     health,
+    ackedAt: ackMs || null,
     sampleSize: list.length,
   };
 }
