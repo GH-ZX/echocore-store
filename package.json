@@ -9,8 +9,8 @@
     "dev": "cross-env NODE_NO_WARNINGS=1 vite",
     "build": "vite build && node scripts/gh-pages-spa.mjs",
     "lint": "eslint .",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "cross-env NODE_NO_WARNINGS=1 vitest run",
+    "test:watch": "cross-env NODE_NO_WARNINGS=1 vitest",
     "preview": "vite preview",
     "upload:game-logos": "node scripts/upload-game-logos.mjs"
   },
