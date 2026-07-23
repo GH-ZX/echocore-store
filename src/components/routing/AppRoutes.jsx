@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { isApiWalletMode } from '../../lib/paymentMethods';
 import ProtectedRoute from './ProtectedRoute';
@@ -13,33 +13,34 @@ import GameDetail from '../../views/GameDetail';
 import OfferDetail from '../../views/OfferDetail';
 import BuyView from '../../views/BuyView';
 import HomeView from '../../views/home/HomeView';
+import { lazyRetry } from '../../lib/lazyRetry';
 
-const LoginView = lazy(() => import('../../views/auth/LoginView'));
-const CartView = lazy(() => import('../../views/CartView'));
-const CheckoutView = lazy(() => import('../../views/CheckoutView'));
-const SaleOffersView = lazy(() => import('../../views/SaleOffersView'));
-const SuggestedOffersView = lazy(() => import('../../views/SuggestedOffersView'));
-const FAQView = lazy(() => import('../../views/FAQView'));
-const HowItWorksView = lazy(() => import('../../views/HowItWorksView'));
-const ContactView = lazy(() => import('../../views/ContactView'));
-const SupportView = lazy(() => import('../../views/SupportView'));
-const LinksView = lazy(() => import('../../views/LinksView'));
-const DeveloperCreditsView = lazy(() => import('../../views/DeveloperCreditsView'));
-const RechargeView = lazy(() => import('../../views/RechargeView'));
-const ProfileView = lazy(() => import('../../views/profile/ProfileView'));
-const NotificationsView = lazy(() => import('../../views/NotificationsView'));
-const BannedView = lazy(() => import('../../views/BannedView'));
-const AdminView = lazy(() => import('../../views/admin/AdminView'));
-const AdminGiftView = lazy(() => import('../../views/admin/AdminGiftView'));
-const SuccessView = lazy(() => import('../../views/SuccessView'));
-const PartnerJoinView = lazy(() => import('../../views/PartnerJoinView'));
-const InvoiceView = lazy(() => import('../../views/InvoiceView'));
+const LoginView = lazyRetry(() => import('../../views/auth/LoginView'));
+const CartView = lazyRetry(() => import('../../views/CartView'));
+const CheckoutView = lazyRetry(() => import('../../views/CheckoutView'));
+const SaleOffersView = lazyRetry(() => import('../../views/SaleOffersView'));
+const SuggestedOffersView = lazyRetry(() => import('../../views/SuggestedOffersView'));
+const FAQView = lazyRetry(() => import('../../views/FAQView'));
+const HowItWorksView = lazyRetry(() => import('../../views/HowItWorksView'));
+const ContactView = lazyRetry(() => import('../../views/ContactView'));
+const SupportView = lazyRetry(() => import('../../views/SupportView'));
+const LinksView = lazyRetry(() => import('../../views/LinksView'));
+const DeveloperCreditsView = lazyRetry(() => import('../../views/DeveloperCreditsView'));
+const RechargeView = lazyRetry(() => import('../../views/RechargeView'));
+const ProfileView = lazyRetry(() => import('../../views/profile/ProfileView'));
+const NotificationsView = lazyRetry(() => import('../../views/NotificationsView'));
+const BannedView = lazyRetry(() => import('../../views/BannedView'));
+const AdminView = lazyRetry(() => import('../../views/admin/AdminView'));
+const AdminGiftView = lazyRetry(() => import('../../views/admin/AdminGiftView'));
+const SuccessView = lazyRetry(() => import('../../views/SuccessView'));
+const PartnerJoinView = lazyRetry(() => import('../../views/PartnerJoinView'));
+const InvoiceView = lazyRetry(() => import('../../views/InvoiceView'));
 const TestViewReceipt = import.meta.env.DEV
-  ? lazy(() => import('../../views/TestViewReceipt'))
+  ? lazyRetry(() => import('../../views/TestViewReceipt'))
   : null;
-const NotFoundView = lazy(() => import('../../views/NotFoundView'));
-const PrivacyView = lazy(() => import('../../views/PrivacyView'));
-const TermsView = lazy(() => import('../../views/TermsView'));
+const NotFoundView = lazyRetry(() => import('../../views/NotFoundView'));
+const PrivacyView = lazyRetry(() => import('../../views/PrivacyView'));
+const TermsView = lazyRetry(() => import('../../views/TermsView'));
 
 export default function AppRoutes({
   t,

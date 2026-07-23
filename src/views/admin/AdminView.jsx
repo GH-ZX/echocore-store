@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   getAdminApisPath,
@@ -20,19 +20,20 @@ import AdminExistingGamesList from '../../components/admin/AdminExistingGamesLis
 import AdminSaleDiscountsManager from '../../components/admin/AdminSaleDiscountsManager';
 import AdminGameEditModal from '../../components/admin/AdminGameEditModal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
-const AdminPaymentsSettings = lazy(() => import('../../components/admin/AdminPaymentsSettings'));
-const AdminThemeSettings = lazy(() => import('../../components/admin/AdminThemeSettings'));
-const AdminHomeLayoutSettings = lazy(() => import('../../components/admin/AdminHomeLayoutSettings'));
-const AdminReviewsManager = lazy(() => import('../../components/admin/AdminReviewsManager'));
-const AdminRechargeManager = lazy(() => import('../../components/admin/AdminRechargeManager'));
-const AdminUsersManager = lazy(() => import('../../components/admin/AdminUsersManager'));
-const AdminPartnersManager = lazy(() => import('../../components/admin/AdminPartnersManager'));
-const AdminInboxManager = lazy(() => import('../../components/admin/AdminInboxManager'));
-const AdminContactMessages = lazy(() => import('../../components/admin/AdminContactMessages'));
-const AdminOrdersManager = lazy(() => import('../../components/admin/AdminOrdersManager'));
-const AdminProfitStatsPage = lazy(() => import('../../components/admin/AdminProfitStatsPage'));
-const AdminSiteLogs = lazy(() => import('../../components/admin/AdminSiteLogs'));
-const AdminApisPage = lazy(() => import('../../components/admin/AdminApisPage'));
+import { lazyRetry } from '../../lib/lazyRetry';
+const AdminPaymentsSettings = lazyRetry(() => import('../../components/admin/AdminPaymentsSettings'));
+const AdminThemeSettings = lazyRetry(() => import('../../components/admin/AdminThemeSettings'));
+const AdminHomeLayoutSettings = lazyRetry(() => import('../../components/admin/AdminHomeLayoutSettings'));
+const AdminReviewsManager = lazyRetry(() => import('../../components/admin/AdminReviewsManager'));
+const AdminRechargeManager = lazyRetry(() => import('../../components/admin/AdminRechargeManager'));
+const AdminUsersManager = lazyRetry(() => import('../../components/admin/AdminUsersManager'));
+const AdminPartnersManager = lazyRetry(() => import('../../components/admin/AdminPartnersManager'));
+const AdminInboxManager = lazyRetry(() => import('../../components/admin/AdminInboxManager'));
+const AdminContactMessages = lazyRetry(() => import('../../components/admin/AdminContactMessages'));
+const AdminOrdersManager = lazyRetry(() => import('../../components/admin/AdminOrdersManager'));
+const AdminProfitStatsPage = lazyRetry(() => import('../../components/admin/AdminProfitStatsPage'));
+const AdminSiteLogs = lazyRetry(() => import('../../components/admin/AdminSiteLogs'));
+const AdminApisPage = lazyRetry(() => import('../../components/admin/AdminApisPage'));
 
 function AdminTabLoader({ label = 'Loading...' }) {
   return (

@@ -54,6 +54,19 @@ export function formatSiteLog(item, t = {}, lang = 'ar') {
       ),
       tone: 'danger',
     },
+    chunk_load_failed: {
+      title: t.errorChunkTitle || 'Page failed to load',
+      body: applyTemplate(
+        t.siteLogReactCrashBody || '{message}',
+        {
+          message: errMsg
+            || (lang === 'ar'
+              ? 'فشل تحميل جزء من الصفحة (حدّث بعد إعادة تشغيل npm run dev)'
+              : 'Failed to load a page chunk — refresh after dev server restart'),
+        },
+      ),
+      tone: 'warning',
+    },
     window_error: {
       title: t.siteLogWindowErrorTitle || 'Browser error',
       body: applyTemplate(t.siteLogWindowErrorBody || '{message}', { message: errMsg || m.message || '' }),
