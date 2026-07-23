@@ -139,17 +139,43 @@ export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
     return () => clearInterval(id);
   }, [live, load]);
 
-  const stats = useMemo(() => summarizeAdminActivity(monitorLogs), [monitorLogs]);
-  const feedItems = useMemo(() => {
-    return (monitorLogs || []).slice(0, 20).map((row) => {
-      const formatted = formatSiteLog(row, t, lang);
+  const stats = useMemo(() => {
+    try {
+      return summarizeAdminActivity(monitorLogs);
+    } catch {
       return {
-        id: row.id || `${row.created_at}-${row.event_type}`,
-        title: formatted.title || row.event_type,
-        body: formatted.body,
-        tone: formatted.tone || row.severity || 'info',
-        createdAt: row.created_at,
+        orders24h: 0,
+        recharges24h: 0,
+        auth24h: 0,
+        errors24h: 0,
+        contact24h: 0,
+        events1h: 0,
+        criticalOpen: 0,
+        health: 'ok',
+        sampleSize: 0,
       };
+    }
+  }, [monitorLogs]);
+  const feedItems = useMemo(() => {
+    return (monitorLogs || []).slice(0, 20).map((row, index) => {
+      try {
+        const formatted = formatSiteLog(row, t, lang);
+        return {
+          id: row?.id || `${row?.created_at}-${row?.event_type}-${index}`,
+          title: String(formatted.title || row?.event_type || 'event'),
+          body: String(formatted.body || ''),
+          tone: String(formatted.tone || row?.severity || 'info'),
+          createdAt: row?.created_at,
+        };
+      } catch {
+        return {
+          id: row?.id || `bad-${index}`,
+          title: String(row?.event_type || 'log'),
+          body: '',
+          tone: 'danger',
+          createdAt: row?.created_at,
+        };
+      }
     });
   }, [monitorLogs, t, lang]);
 

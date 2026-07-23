@@ -10,10 +10,8 @@ function isMissingRpc(error) {
 
 function applyTemplate(template, vars = {}) {
   if (!template) return '';
-  return Object.entries(vars).reduce(
-    (text, [key, value]) => text.replaceAll(`{${key}}`, String(value ?? '')),
-    template,
-  );
+  // Use shared formatMessage (no replaceAll — crashes older browsers → ErrorBoundary)
+  return formatMessage(template, vars);
 }
 
 function formatMoney(value) {
@@ -37,14 +35,40 @@ function resolvePaymentMethod(method, t = {}) {
 }
 
 export function formatSiteLog(item, t = {}, lang = 'ar') {
-  const m = item?.metadata || {};
+  const m = safeLogMetadata(item?.metadata);
   const user = resolveUserName(item, lang);
   const email = m.email || '';
   const amount = formatMoney(m.amount ?? m.total);
   const reference = m.reference || '';
   const method = resolvePaymentMethod(m.paymentMethod, t);
+  const errMsg = m.message || m.error || (typeof m.consoleLog === 'string'
+    ? m.consoleLog.split('\n')[0]
+    : '');
 
   const templates = {
+    react_error_boundary: {
+      title: t.siteLogReactCrashTitle || 'UI crash',
+      body: applyTemplate(
+        t.siteLogReactCrashBody || '{message}',
+        { message: errMsg || (lang === 'ar' ? 'انهار جزء من الواجهة' : 'A UI section crashed') },
+      ),
+      tone: 'danger',
+    },
+    window_error: {
+      title: t.siteLogWindowErrorTitle || 'Browser error',
+      body: applyTemplate(t.siteLogWindowErrorBody || '{message}', { message: errMsg || m.message || '' }),
+      tone: 'danger',
+    },
+    unhandled_rejection: {
+      title: t.siteLogPromiseErrorTitle || 'Promise error',
+      body: applyTemplate(t.siteLogPromiseErrorBody || '{message}', { message: errMsg || '' }),
+      tone: 'danger',
+    },
+    client_error: {
+      title: t.siteLogClientErrorTitle || 'Client error',
+      body: applyTemplate(t.siteLogClientErrorBody || '{message}', { message: errMsg || '' }),
+      tone: 'danger',
+    },
     login_success: {
       title: t.siteLogLoginSuccessTitle,
       body: applyTemplate(t.siteLogLoginSuccessBody, { user, email }),
@@ -406,8 +430,17 @@ function escapeDevLogValue(value) {
   return text;
 }
 
+function safeLogMetadata(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  try {
+    return { ...raw };
+  } catch {
+    return {};
+  }
+}
+
 function buildDevLogFields(item, lang = 'ar') {
-  const metadata = { ...(item?.metadata || {}) };
+  const metadata = safeLogMetadata(item?.metadata);
   const user = resolveUserName(item, lang);
   const genericUser = lang === 'ar' ? 'مستخدم' : 'User';
 
@@ -488,31 +521,46 @@ export function extractConsoleLogDump(item) {
 }
 
 export function formatDevLogLine(item, lang = 'ar') {
-  const severityKey = normalizeLogSeverity(item?.severity);
-  const severity = DEV_LOG_SEVERITY[severityKey] || DEV_LOG_SEVERITY.info;
-  const tag = `${item?.category || 'unknown'}.${item?.event_type || 'event'}`;
-  const fields = buildDevLogFields(item, lang);
-  const timestamp = formatDevLogTimestamp(item?.created_at);
-  const consoleLog = extractConsoleLogDump(item);
-  const isAlert = severityKey === 'warning' || severityKey === 'danger';
-  // Message first; timestamp last (easier to scan on mobile).
-  const body = fields
-    ? `${severity} | ${tag} | ${fields}`
-    : `${severity} | ${tag}`;
-  const text = `${body} · ${timestamp}`;
+  try {
+    const severityKey = normalizeLogSeverity(item?.severity);
+    const severity = DEV_LOG_SEVERITY[severityKey] || DEV_LOG_SEVERITY.info;
+    const tag = `${item?.category || 'unknown'}.${item?.event_type || 'event'}`;
+    const fields = buildDevLogFields(item, lang);
+    const timestamp = formatDevLogTimestamp(item?.created_at);
+    const consoleLog = extractConsoleLogDump(item);
+    const isAlert = severityKey === 'warning' || severityKey === 'danger';
+    const body = fields
+      ? `${severity} | ${tag} | ${fields}`
+      : `${severity} | ${tag}`;
+    const text = `${body} · ${timestamp}`;
 
-  return {
-    text,
-    body,
-    fields,
-    timestamp,
-    consoleLog,
-    isAlert,
-    severity: severityKey,
-    tag,
-    id: item?.id,
-    createdAt: item?.created_at,
-  };
+    return {
+      text,
+      body,
+      fields,
+      timestamp,
+      consoleLog,
+      isAlert,
+      severity: severityKey,
+      tag,
+      id: item?.id || `${tag}-${timestamp}`,
+      createdAt: item?.created_at,
+    };
+  } catch (err) {
+    const tag = `${item?.category || 'unknown'}.${item?.event_type || 'event'}`;
+    return {
+      text: `ERR  | ${tag} | (format failed)`,
+      body: `ERR  | ${tag} | (format failed: ${err?.message || err})`,
+      fields: '',
+      timestamp: formatDevLogTimestamp(item?.created_at),
+      consoleLog: String(err?.stack || err || ''),
+      isAlert: true,
+      severity: 'danger',
+      tag,
+      id: item?.id || `bad-${tag}`,
+      createdAt: item?.created_at,
+    };
+  }
 }
 
 function safeMetadata(metadata = {}) {

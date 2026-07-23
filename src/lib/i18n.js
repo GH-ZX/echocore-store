@@ -4,11 +4,18 @@ export function getT(lang = 'ar') {
   return translations[lang] || translations.ar;
 }
 
+/** Safe `{key}` substitution (no String.replaceAll — missing on some older WebViews). */
 export function formatMessage(template = '', vars = {}) {
-  return Object.entries(vars).reduce(
-    (text, [key, value]) => text.replaceAll(`{${key}}`, String(value ?? '')),
-    String(template),
-  );
+  let text = String(template ?? '');
+  for (const [key, value] of Object.entries(vars || {})) {
+    const token = `{${key}}`;
+    const replacement = String(value ?? '');
+    // split/join works everywhere; avoids replaceAll
+    if (text.includes(token)) {
+      text = text.split(token).join(replacement);
+    }
+  }
+  return text;
 }
 
 export function followUsOnLabel(lang, platform) {
