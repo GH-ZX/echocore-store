@@ -511,12 +511,12 @@ export default function AdminOrdersManager({
       </div>
 
       <form onSubmit={handleSearchSubmit} className="flex gap-2">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 start-3 text-[var(--text-muted)]" />
+        <div className="input flex items-center gap-2 flex-1 !py-0 !px-2.5">
+          <Search className="w-4 h-4 shrink-0 text-[var(--text-muted)] pointer-events-none" aria-hidden />
           <input
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
-            className="input w-full ps-9"
+            className="flex-1 min-w-0 bg-transparent border-0 outline-none shadow-none py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
             placeholder={t.adminOrdersSearchPlaceholder}
           />
         </div>

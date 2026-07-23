@@ -212,3 +212,41 @@ export async function updatePassword(newPassword) {
   const { error } = await supabase.auth.updateUser({ password: newPassword });
   if (error) throw error;
 }
+
+/**
+ * True if the user has an email/password identity (not Google-only).
+ * Used to show "Set password" vs "Change password" on profile.
+ */
+export function authUserHasEmailPassword(user) {
+  if (!user) return false;
+  const identities = Array.isArray(user.identities) ? user.identities : [];
+  if (identities.some((i) => i.provider === 'email')) return true;
+  // Some sessions omit identities; if only OAuth providers are listed, no password yet.
+  if (identities.length > 0 && identities.every((i) => i.provider !== 'email')) {
+    return false;
+  }
+  return false;
+}
+
+/** Load current auth user (includes identities) for password UI. */
+export async function getAuthUserWithIdentities() {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  return data?.user || null;
+}
+
+/**
+ * Set or change password while logged in (works for Google-first accounts too).
+ * After this, email + password login works with the same Gmail.
+ */
+export async function setOrUpdateAccountPassword(newPassword) {
+  const check = validatePasswordLength(newPassword);
+  if (!check.valid) {
+    const err = new Error(check.code === 'too_long' ? 'password_too_long' : 'password_too_short');
+    err.code = check.code === 'too_long' ? 'too_long' : 'too_short';
+    throw err;
+  }
+  const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
+  return data?.user || null;
+}

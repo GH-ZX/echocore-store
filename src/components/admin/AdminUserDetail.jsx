@@ -487,12 +487,21 @@ export default function AdminUserDetail({
               </button>
             )}
             {banned ? (
-              <button type="button" disabled={actionLoading} onClick={handleUnban} className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5">
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={handleUnban}
+                className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5"
+              >
                 <ShieldOff className="w-3.5 h-3.5" />
                 {t.adminUnbanUser}
               </button>
             ) : (
-              <button type="button" onClick={() => setBanOpen(true)} className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5 border-red-500/30 text-red-400">
+              <button
+                type="button"
+                onClick={() => setBanOpen(true)}
+                className="btn text-xs py-2 px-3 inline-flex items-center gap-1.5 bg-red-600/90 hover:bg-red-500 text-white border-red-600"
+              >
                 <Ban className="w-3.5 h-3.5" />
                 {t.adminBanUser}
               </button>

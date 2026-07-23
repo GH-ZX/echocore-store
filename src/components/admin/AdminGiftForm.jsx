@@ -326,15 +326,15 @@ export default function AdminGiftForm({
         ) : (
           <div className="space-y-2">
             <div className="flex gap-2">
-              <div className="relative flex-1 min-w-0">
-                <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)] pointer-events-none" />
+              <div className="input flex items-center gap-2 flex-1 min-w-0 !py-0 !px-2.5">
+                <Search className="w-4 h-4 shrink-0 text-[var(--text-muted)] pointer-events-none" aria-hidden />
                 <input
                   type="text"
                   value={recipientQuery}
                   onChange={(e) => setRecipientQuery(e.target.value)}
                   onKeyDown={handleRecipientQueryKeyDown}
                   placeholder={t.adminUsersSearchPlaceholder}
-                  className="input w-full ps-9"
+                  className="flex-1 min-w-0 bg-transparent border-0 outline-none shadow-none py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
                   autoComplete="off"
                 />
               </div>

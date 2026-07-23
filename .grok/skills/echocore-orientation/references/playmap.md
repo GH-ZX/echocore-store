@@ -100,7 +100,7 @@ Open **only** the row that matches the request. Paths are relative to repo root.
 | Task | Open |
 |------|------|
 | Login / signup | `src/views/auth/LoginView.jsx`, `src/lib/auth.js` |
-| Profile | `src/views/profile/ProfileView.jsx`, `src/lib/profile.js` |
+| Profile / user dashboard | `src/views/profile/ProfileView.jsx`, `src/lib/profile.js`, `src/lib/userDashboard.js`, `src/components/profile/dashboard/*` |
 | Avatar | `src/components/profile/ProfileAvatar.jsx` |
 | Username change | `src/lib/username.js`, `usernameChange.js` |
 | Ban flow | `src/views/BannedView.jsx`, `src/lib/userBan.js` |

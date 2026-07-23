@@ -53,20 +53,21 @@ function readSidebarCollapsed() {
 }
 
 function buildAdminNavItems(t) {
+  // Fixed default order (sidebar + mobile tabs)
   return [
     { id: 'overview', label: t.overview, shortLabel: t.tabOverviewShort, icon: BarChart3 },
-    { id: 'home', label: t.homeLayoutTab, shortLabel: t.tabHomeShort, icon: LayoutGrid },
-    { id: 'products', label: t.gamesAndOffers, shortLabel: t.tabGamesShort, icon: Package },
-    { id: 'orders', label: t.ordersTab, shortLabel: t.tabOrdersShort, icon: ShoppingCart },
-    { id: 'profits', label: t.profitsTab, shortLabel: t.tabProfitsShort, icon: TrendingUp },
-    { id: 'apis', label: t.apisTab, shortLabel: t.tabApisShort, icon: Cable },
-    { id: 'recharges', label: t.rechargesTab, shortLabel: t.tabRechargesShort, icon: CircleDollarSign },
-    { id: 'inbox', label: t.adminInboxTab, shortLabel: t.tabInboxShort, icon: Bell },
-    { id: 'contact', label: t.adminContactTab, shortLabel: t.tabContactShort, icon: Mail },
-    { id: 'payments', label: t.paymentsTab, shortLabel: t.tabPaymentsShort, icon: Wallet },
-    { id: 'theme', label: t.themeTab, shortLabel: t.tabThemeShort, icon: Palette },
-    { id: 'reviews', label: t.reviewsTab, shortLabel: t.tabReviewsShort, icon: MessageSquare },
     { id: 'users', label: t.usersTab, shortLabel: t.tabUsersShort, icon: Users },
+    { id: 'products', label: t.gamesAndOffers, shortLabel: t.tabGamesShort, icon: Package },
+    { id: 'home', label: t.homeLayoutTab, shortLabel: t.tabHomeShort, icon: LayoutGrid },
+    { id: 'profits', label: t.profitsTab, shortLabel: t.tabProfitsShort, icon: TrendingUp },
+    { id: 'theme', label: t.themeTab, shortLabel: t.tabThemeShort, icon: Palette },
+    { id: 'orders', label: t.ordersTab, shortLabel: t.tabOrdersShort, icon: ShoppingCart },
+    { id: 'inbox', label: t.adminInboxTab, shortLabel: t.tabInboxShort, icon: Bell },
+    { id: 'recharges', label: t.rechargesTab, shortLabel: t.tabRechargesShort, icon: CircleDollarSign },
+    { id: 'payments', label: t.paymentsTab, shortLabel: t.tabPaymentsShort, icon: Wallet },
+    { id: 'contact', label: t.adminContactTab, shortLabel: t.tabContactShort, icon: Mail },
+    { id: 'reviews', label: t.reviewsTab, shortLabel: t.tabReviewsShort, icon: MessageSquare },
+    { id: 'apis', label: t.apisTab, shortLabel: t.tabApisShort, icon: Cable },
     // Partners tab hidden in UI until public launch (~1 month). Route + manager stay wired.
     // { id: 'partners', label: t.partnersTab, shortLabel: t.tabPartnersShort, icon: Handshake },
     { id: 'logs', label: t.logsTab, shortLabel: t.tabLogsShort, icon: ScrollText },
@@ -108,6 +109,7 @@ export default function AdminView({
   onRefreshInbox,
   onNotificationMarkRead,
   onNotificationsMarkAllRead,
+  refreshSiteStatus,
 }) {
   const notifyError = (message) => onNotify?.(message, 'error');
   const notifySuccess = (message) => onNotify?.(message, 'success');
@@ -706,6 +708,7 @@ export default function AdminView({
             t={t}
             lang={lang}
             onNotify={onNotify}
+            onSiteStatusChanged={refreshSiteStatus}
           />
         </Suspense>
       )}

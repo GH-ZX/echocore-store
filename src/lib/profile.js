@@ -144,9 +144,16 @@ function buildProfilePayload(patch = {}) {
   }
 
   for (const key of EXTENDED_FIELD_KEYS) {
+    if (key === 'game_player_uids') continue;
     if (patch[key] != null) {
       payload[key] = trimField(patch[key], PROFILE_FIELD_LIMITS[key]) || null;
     }
+  }
+
+  // JSON map of per-game saved player UIDs (not a string field)
+  if (Object.prototype.hasOwnProperty.call(patch, 'game_player_uids')) {
+    const map = patch.game_player_uids;
+    payload.game_player_uids = map && typeof map === 'object' && !Array.isArray(map) ? map : {};
   }
 
   return payload;

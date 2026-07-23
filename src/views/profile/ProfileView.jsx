@@ -2,20 +2,13 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Wallet,
-  ShoppingBag,
-  Receipt,
   LogOut,
   ShieldCheck,
   Gamepad2,
-  ShoppingCart,
-  ArrowUpRight,
-  ArrowDownRight,
   Calendar,
   Mail,
   Loader2,
   Sparkles,
-  Inbox,
-  MessageSquare,
   Camera,
   UserRound,
   Save,
@@ -33,6 +26,13 @@ import AdminSupplierWalletsCard from '../../components/ui/AdminSupplierWalletsCa
 import { useAdminSupplierWallets } from '../../hooks/useAdminSupplierWallets';
 import { formatG2bulkAmount } from '../../lib/g2bulkWalletFormat';
 import ProfileAvatar from '../../components/profile/ProfileAvatar';
+import ProfileDashTabs from '../../components/profile/dashboard/ProfileDashTabs';
+import ProfileOverviewPanel from '../../components/profile/dashboard/ProfileOverviewPanel';
+import ProfileOrdersPanel from '../../components/profile/dashboard/ProfileOrdersPanel';
+import ProfileWalletPanel from '../../components/profile/dashboard/ProfileWalletPanel';
+import ProfileUidsPanel from '../../components/profile/dashboard/ProfileUidsPanel';
+import ProfileSecurityPanel from '../../components/profile/dashboard/ProfileSecurityPanel';
+import ProfileSupportPanel from '../../components/profile/dashboard/ProfileSupportPanel';
 import {
   uploadProfileAvatar,
   updateUserProfileRecord,
@@ -45,9 +45,6 @@ import {
   normalizeProfileGender,
   normalizeProfileDateOfBirth,
 } from '../../lib/profile';
-import { getOrderStatusLabel } from '../../lib/orderReceipt';
-import { isInvoiceReadyForOrder } from '../../lib/invoices';
-import { INVOICE_KIND } from '../../lib/invoiceBuilder';
 import {
   formatProfileUsername,
   getProfileUsername,
@@ -56,6 +53,18 @@ import {
   validateUsername,
 } from '../../lib/username';
 import { changeUsername, getUsernameErrorMessage } from '../../lib/usernameChange';
+import {
+  authUserHasEmailPassword,
+  getAuthUserWithIdentities,
+} from '../../lib/auth';
+import {
+  normalizeDashTab,
+  fetchUserOrders,
+  fetchUserTransactions,
+  fetchUserRecharges,
+  sumCompletedOrderSpend,
+  sumRechargeCredits,
+} from '../../lib/userDashboard';
 import UserRoleBadges from '../../components/ui/UserRoleBadges';
 
 
@@ -68,20 +77,11 @@ function formatDate(dateStr, lang) {
   });
 }
 
-function formatDateTime(dateStr, lang) {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 export default function ProfileView({
   t = {},
   lang = 'ar',
   user,
+  games = [],
   navigate,
   onLogout,
   onRecharge,
@@ -95,8 +95,10 @@ export default function ProfileView({
   const [profileMeta, setProfileMeta] = useState(null);
   const [userOrders, setUserOrders] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [recharges, setRecharges] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingProfile, setEditingProfile] = useState(searchParams.get('edit') === '1');
+  const activeTab = normalizeDashTab(searchParams.get('tab'));
 
   const [nameDraft, setNameDraft] = useState(user?.name || '');
   const [usernameDraft, setUsernameDraft] = useState(user?.username || '');
@@ -118,7 +120,19 @@ export default function ProfileView({
   const [profileSuccess, setProfileSuccess] = useState('');
   const notSetLabel = t.notSet;
 
+  const [hasPasswordLogin, setHasPasswordLogin] = useState(false);
+
   const isAdmin = user?.role === 'admin';
+
+  const setActiveTab = useCallback((tab) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      const id = normalizeDashTab(tab);
+      if (id === 'overview') next.delete('tab');
+      else next.set('tab', id);
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
   const {
     g2bulkWallet,
     g2bulkError,
@@ -154,6 +168,15 @@ export default function ProfileView({
   useEffect(() => {
     if (!user?.id) return;
 
+    const loadAuthPasswordState = async () => {
+      try {
+        const authUser = await getAuthUserWithIdentities();
+        setHasPasswordLogin(authUserHasEmailPassword(authUser));
+      } catch {
+        setHasPasswordLogin(false);
+      }
+    };
+
     const loadProfile = async () => {
       const full = await supabase
         .from('profiles')
@@ -183,28 +206,21 @@ export default function ProfileView({
     const load = async () => {
       setLoading(true);
       try {
-        const [profileRes, ordersRes, txRes] = await Promise.all([
+        const [profileRes, , orders, txs, rechargeRows] = await Promise.all([
           loadProfile(),
-          supabase
-            .from('orders')
-            .select('*, order_items(*)')
-            .eq('user_id', user.id)
-            .order('created_at', { ascending: false })
-            .limit(12),
-          supabase
-            .from('transactions')
-            .select('*')
-            .eq('user_id', user.id)
-            .order('created_at', { ascending: false })
-            .limit(15),
+          loadAuthPasswordState(),
+          fetchUserOrders(user.id, { limit: 100 }),
+          fetchUserTransactions(user.id, { limit: 100 }),
+          fetchUserRecharges(user.id, { limit: 50 }),
         ]);
 
         if (profileRes.data) {
           setProfileMeta(profileRes.data);
           syncFormFromProfile(profileRes.data, user);
         }
-        setUserOrders(ordersRes.data || []);
-        setTransactions(txRes.data || []);
+        setUserOrders(orders || []);
+        setTransactions(txs || []);
+        setRecharges(rechargeRows || []);
       } catch (err) {
         console.error('Profile load error:', err);
       } finally {
@@ -226,17 +242,8 @@ export default function ProfileView({
   }, [avatarPreview]);
 
   const balance = profileMeta?.balance ?? user?.balance ?? 0;
-  const totalSpent = useMemo(
-    () => userOrders
-      .filter((o) => o.status === 'completed')
-      .reduce((sum, o) => sum + parseFloat(o.total || 0), 0),
-    [userOrders],
-  );
-  const totalRecharges = useMemo(
-    () => transactions.filter((tx) => tx.type === 'recharge').reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0),
-    [transactions],
-  );
-
+  const totalSpent = useMemo(() => sumCompletedOrderSpend(userOrders), [userOrders]);
+  const totalRecharges = useMemo(() => sumRechargeCredits(transactions), [transactions]);
   const savedProfile = profileMeta || user || {};
   const savedName = savedProfile.name || user?.name || '';
   const savedUsername = getProfileUsername(savedProfile) || getProfileUsername(user);
@@ -505,15 +512,13 @@ export default function ProfileView({
     return method || '—';
   };
 
-  const orderStatusClass = (status) => {
-    if (status === 'completed') return 'text-emerald-400';
-    if (status === 'payment_sent') return 'text-amber-300';
-    if (status === 'pending_payment') return 'text-amber-400';
-    if (status === 'cancelled') return 'text-red-400';
-    return 'text-[var(--text-muted)]';
-  };
-
   if (!user) return null;
+
+  const supplierStatValue = supplierWalletsLoading
+    ? '…'
+    : (g2bulkWallet
+      ? formatG2bulkAmount(g2bulkWallet.balance)
+      : (g2bulkFetched && g2bulkError ? '!' : '—'));
 
   return (
     <div className="profile-page max-w-5xl mx-auto space-y-6 sm:space-y-8 animate-fade-in pb-4">
@@ -914,56 +919,18 @@ export default function ProfileView({
       </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {(isAdmin ? [
-          { icon: ShoppingBag, label: t.totalOrders, value: userOrders.length, color: 'text-blue-400' },
-          { icon: Receipt, label: t.totalSpent, value: `$${totalSpent.toFixed(2)}`, color: 'text-[var(--accent)]' },
-          {
-            icon: Wallet,
-            label: t.supplierWalletBalance,
-            value: supplierWalletsLoading
-              ? '…'
-              : (g2bulkWallet
-                ? formatG2bulkAmount(g2bulkWallet.balance)
-                : (g2bulkFetched && g2bulkError ? '!' : '—')),
-            color: 'text-emerald-400',
-          },
-          { icon: UserRound, label: t.accountType, value: t.profileRoleAdmin, color: 'text-violet-400' },
-        ] : [
-          { icon: ShoppingBag, label: t.totalOrders, value: userOrders.length, color: 'text-blue-400' },
-          { icon: Receipt, label: t.totalSpent, value: `$${totalSpent.toFixed(2)}`, color: 'text-[var(--accent)]' },
-          { icon: ArrowUpRight, label: t.totalRecharged, value: `$${totalRecharges.toFixed(2)}`, color: 'text-emerald-400' },
-          { icon: UserRound, label: t.accountType, value: t.profileGamer, color: 'text-violet-400' },
-        ]).map((stat) => (
-          <div key={stat.label} className="card p-4 sm:p-5">
-            <stat.icon className={`w-5 h-5 mb-2 ${stat.color}`} />
-            <p className="text-[10px] sm:text-xs text-[var(--text-muted)] uppercase tracking-wide">{stat.label}</p>
-            <p className="text-lg sm:text-xl font-black mt-0.5">{stat.value}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
-        {(isAdmin ? [
-          { icon: ShieldCheck, label: t.adminDash, path: '/dashboard' },
-          { icon: Inbox, label: t.siteInboxTitle, path: '/notifications' },
-          { icon: ShoppingCart, label: t.cart, path: '/cart' },
-        ] : [
-          { icon: Inbox, label: t.siteInboxTitle, path: '/notifications' },
-          { icon: MessageSquare, label: t.supportMenuLabel, path: '/support' },
-          { icon: ShoppingCart, label: t.cart, path: '/cart' },
-          { icon: Wallet, label: t.recharge, action: onRecharge },
-        ]).map((action) => (
-          <button
-            key={action.label}
-            type="button"
-            onClick={() => (action.action ? action.action() : navigate(action.path))}
-            className="action-chip w-full"
-          >
-            <action.icon className="w-4 h-4 flex-shrink-0" />
-            <span className="truncate">{action.label}</span>
-          </button>
-        ))}
+      {/* Customer dashboard tabs */}
+      <div className="card p-3 sm:p-4">
+        <ProfileDashTabs
+          t={t}
+          active={activeTab}
+          onChange={setActiveTab}
+          counts={{
+            orders: userOrders.length,
+            wallet: transactions.length,
+            uids: Object.keys(profileMeta?.game_player_uids || user?.game_player_uids || {}).length,
+          }}
+        />
       </div>
 
       {loading ? (
@@ -972,104 +939,71 @@ export default function ProfileView({
           {t.loadingProfile}
         </div>
       ) : (
-        <div className="grid lg:grid-cols-2 gap-4 sm:gap-6">
-          <div className="card p-5 sm:p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-lg flex items-center gap-2">
-                <ShoppingBag className="w-5 h-5 text-[var(--accent)]" />
-                {t.myOrders}
-              </h2>
-              <span className="text-xs text-[var(--text-muted)] font-mono">{userOrders.length}</span>
-            </div>
-            {userOrders.length === 0 ? (
-              <div className="text-center py-10 text-[var(--text-sec)]">
-                <ShoppingBag className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">{t.noOrdersYet}</p>
-                <button type="button" onClick={() => navigate('/games')} className="action-chip btn btn-secondary mt-4 !h-11">
-                  {t.shopNow}
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                {userOrders.map((order) => {
-                  const items = order.order_items || [];
-                  const preview = items.map((i) => i.name_snapshot).join(', ') || '—';
-                  const invoiceReady = isInvoiceReadyForOrder(order, {
-                    items: order.order_items || [],
-                  });
-                  const orderPath = invoiceReady
-                    ? `/invoice/${INVOICE_KIND.ORDER}/${order.id}`
-                    : `/success?orderId=${order.id}`;
-                  return (
-                    <button
-                      key={order.id}
-                      type="button"
-                      onClick={() => navigate(orderPath)}
-                      className="profile-list-item w-full text-left group"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-xs font-mono text-[var(--text-muted)]">#{order.id.slice(0, 8)}</p>
-                          <p className="text-sm font-semibold mt-0.5 truncate group-hover:text-[var(--accent)] transition-colors">{preview}</p>
-                          <p className="text-[10px] text-[var(--text-muted)] mt-1">{formatDateTime(order.created_at, lang)}</p>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="font-black text-[var(--accent)]">${parseFloat(order.total).toFixed(2)}</p>
-                          <p className={`text-[10px] mt-0.5 font-semibold ${orderStatusClass(order.status)}`}>
-                            {getOrderStatusLabel(order.status, t)}
-                          </p>
-                          <p className="text-[10px] text-[var(--text-muted)] mt-0.5">{paymentLabel(order.payment_method)}</p>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="card p-5 sm:p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-lg flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-[var(--accent)]" />
-                {t.transactionHistory}
-              </h2>
-            </div>
-            {transactions.length === 0 ? (
-              <div className="text-center py-10 text-[var(--text-sec)]">
-                <Receipt className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">{t.noTransactions}</p>
-                {!isAdmin && onRecharge ? (
-                  <button type="button" onClick={onRecharge} className="action-chip btn btn-secondary mt-4 !h-11">
-                    {t.rechargeNow}
-                  </button>
-                ) : null}
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                {transactions.map((tx) => {
-                  const amount = parseFloat(tx.amount || 0);
-                  const isCredit = amount > 0;
-                  return (
-                    <div key={tx.id} className="profile-list-item flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className={`p-2 rounded-lg ${isCredit ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-                          {isCredit ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold">{txLabel(tx.type)}</p>
-                          <p className="text-[10px] text-[var(--text-muted)] truncate">{paymentLabel(tx.payment_method)} · {formatDateTime(tx.created_at, lang)}</p>
-                        </div>
-                      </div>
-                      <p className={`font-mono font-bold flex-shrink-0 ${isCredit ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {isCredit ? '+' : ''}{amount.toFixed(2)}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+        <div className="card p-5 sm:p-6">
+          {activeTab === 'overview' && (
+            <ProfileOverviewPanel
+              t={t}
+              lang={lang}
+              isAdmin={isAdmin}
+              userOrders={userOrders}
+              totalSpent={totalSpent}
+              totalRecharges={totalRecharges}
+              balance={balance}
+              navigate={navigate}
+              onRecharge={onRecharge}
+              paymentLabel={paymentLabel}
+              onGoTab={setActiveTab}
+              supplierStats={{ value: supplierStatValue }}
+            />
+          )}
+          {activeTab === 'orders' && (
+            <ProfileOrdersPanel
+              t={t}
+              lang={lang}
+              orders={userOrders}
+              navigate={navigate}
+              paymentLabel={paymentLabel}
+            />
+          )}
+          {activeTab === 'wallet' && (
+            <ProfileWalletPanel
+              t={t}
+              lang={lang}
+              balance={balance}
+              transactions={transactions}
+              recharges={recharges}
+              onRecharge={isAdmin ? undefined : onRecharge}
+              navigate={navigate}
+              paymentLabel={paymentLabel}
+              txLabel={txLabel}
+            />
+          )}
+          {activeTab === 'uids' && (
+            <ProfileUidsPanel
+              t={t}
+              user={user}
+              games={games}
+              gamePlayerUids={profileMeta?.game_player_uids || user?.game_player_uids || {}}
+              onUpdated={(updated) => {
+                setProfileMeta((prev) => ({ ...prev, ...updated }));
+                onUpdateProfile?.({
+                  game_player_uids: updated.game_player_uids,
+                  default_player_uid: updated.default_player_uid,
+                });
+              }}
+            />
+          )}
+          {activeTab === 'security' && (
+            <ProfileSecurityPanel
+              t={t}
+              user={user}
+              hasPasswordLogin={hasPasswordLogin}
+              onPasswordStateChange={setHasPasswordLogin}
+            />
+          )}
+          {activeTab === 'support' && (
+            <ProfileSupportPanel t={t} navigate={navigate} />
+          )}
         </div>
       )}
 

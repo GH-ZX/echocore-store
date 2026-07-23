@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { countDisplayableReviews } from './customerReviews';
+import { fetchStoreSettings, saveStoreSettings } from './storeSettings';
 
 export const HOME_SECTION_TYPES = {
   carousel: {
@@ -84,6 +85,7 @@ export const HOME_SECTION_TYPES = {
 
 export const HOME_SECTION_LIMIT_MAX = 10;
 
+/** Recommended layout for ECHOCORE (game top-up storefront). */
 export const DEFAULT_HOME_LAYOUT = [
   {
     id: 'carousel',
@@ -94,43 +96,54 @@ export const DEFAULT_HOME_LAYOUT = [
     id: 'games',
     type: 'games',
     enabled: true,
-    title_en: 'Choose a Game',
-    title_ar: 'اختر لعبتك',
+    title_en: 'Game top-ups',
+    title_ar: 'شحن الألعاب',
   },
   {
     id: 'sale_offers',
     type: 'sale_offers',
     enabled: true,
-    title_en: 'Sale Offers',
-    title_ar: 'خصومات',
+    title_en: 'On sale',
+    title_ar: 'عروض وخصومات',
     limit: 8,
   },
   {
     id: 'suggested_offers',
     type: 'suggested_offers',
     enabled: true,
-    title_en: 'Suggested Offers',
-    title_ar: 'عروض مقترحة',
-    limit: 8,
+    title_en: 'Bestsellers',
+    title_ar: 'الأكثر طلباً',
+    limit: 10,
   },
   {
     id: 'gift_cards',
     type: 'gift_cards',
     enabled: true,
-    title_en: 'Gift Cards & Vouchers',
-    title_ar: 'بطاقات الهدايا والقسائم',
-    limit: 6,
+    title_en: 'Gift cards & codes',
+    title_ar: 'بطاقات الهدايا والأكواد',
+    limit: 8,
   },
   {
     id: 'customer_reviews',
     type: 'customer_reviews',
     enabled: true,
-    title_en: 'Customer Reviews',
+    title_en: 'What customers say',
     title_ar: 'آراء الزبائن',
     limit: 8,
     interval_seconds: 6,
     show_submit_form: true,
     review_ids: [],
+  },
+  {
+    id: 'social_links',
+    type: 'social_links',
+    enabled: true,
+    title_en: 'Follow us',
+    title_ar: 'تابعنا',
+    subtitle_en: 'YouTube, TikTok, and more',
+    subtitle_ar: 'يوتيوب، تيك توك، والمزيد',
+    button_text_en: 'All our links',
+    button_text_ar: 'كل روابطنا',
   },
 ];
 
@@ -228,13 +241,9 @@ export function normalizeHomeLayout(value) {
     const defaults = defaultSectionConfig(type, id);
     if (!defaults) return;
 
-    let limit = Number.isFinite(Number(raw.limit))
+    const limit = Number.isFinite(Number(raw.limit))
       ? Math.max(1, Math.min(HOME_SECTION_LIMIT_MAX, Number(raw.limit)))
       : defaults.limit;
-
-    if ((type === 'sale_offers' || type === 'suggested_offers') && limit < 8) {
-      limit = 8;
-    }
 
     normalized.push({
       ...defaults,
@@ -381,4 +390,22 @@ export async function fetchHomeLayout() {
   }
 
   return normalizeHomeLayout(data);
+}
+
+/**
+ * Persist home layout to store_settings (DB). Applied for all visitors.
+ * Merges with existing store_settings so payment/theme fields are not wiped.
+ */
+export async function saveHomeLayoutToDatabase(sections) {
+  const layout = normalizeHomeLayout(sections);
+  const current = await fetchStoreSettings();
+  await saveStoreSettings({ ...current, home_layout: layout });
+  return layout;
+}
+
+/** Types an admin can add from the layout editor (no deprecated junk). */
+export function getAddableHomeSectionTypes() {
+  return Object.entries(HOME_SECTION_TYPES)
+    .filter(([, meta]) => !meta.deprecated)
+    .map(([type, meta]) => ({ type, ...meta }));
 }

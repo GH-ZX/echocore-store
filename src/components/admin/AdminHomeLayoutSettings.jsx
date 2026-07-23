@@ -11,20 +11,17 @@ import {
   Trash2,
   ChevronUp,
   ChevronDown,
-  GripVertical,
   Images,
   Percent,
   Gamepad2,
   Gift,
-  UserCircle,
   Star,
   Tags,
   Sparkles,
   MessageSquare,
-  Info,
   Share2,
+  RotateCcw,
 } from 'lucide-react';
-import { fetchStoreSettings, saveStoreSettings } from '../../lib/storeSettings';
 import { getCarouselGames } from '../../lib/carouselUtils';
 import {
   countActiveOffers,
@@ -38,18 +35,21 @@ import { formatMessage } from '../../lib/i18n';
 import {
   DEFAULT_HOME_LAYOUT,
   HOME_SECTION_TYPES,
+  HOME_SECTION_LIMIT_MAX,
   createHomeSection,
   evaluateHomeSectionStatus,
-  isDeprecatedHomeSectionType,
+  fetchHomeLayout,
+  getAddableHomeSectionTypes,
   normalizeHomeLayout,
+  saveHomeLayoutToDatabase,
 } from '../../lib/homeLayout';
+import { fetchStoreSettings } from '../../lib/storeSettings';
 
 const SECTION_TYPE_ICONS = {
   carousel: Images,
   sale_offers: Percent,
   games: Gamepad2,
   gift_cards: Gift,
-  gaming_accounts: UserCircle,
   game_picks: Star,
   redeem_picks: Gift,
   offer_picks: Tags,
@@ -62,344 +62,276 @@ function sectionsEqual(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-function SectionStatusBadges({ status, t = {} }) {
-  if (!status.hidden && !status.empty) return null;
+function FieldLabel({ children }) {
+  return <label className="text-xs font-semibold text-[var(--text-muted)] block mb-1">{children}</label>;
+}
 
+function TextInput({ className = '', ...props }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5 mt-1">
-      {status.hidden && (
-        <span className="home-section-badge home-section-badge--hidden">
-          {t.homeSectionBadgeHidden}
-        </span>
-      )}
-      {status.empty && (
-        <span className="home-section-badge home-section-badge--empty">
-          {t.homeSectionBadgeEmpty}
-        </span>
-      )}
-    </div>
+    <input
+      {...props}
+      className={`w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2 text-sm outline-none ${className}`}
+    />
   );
 }
 
-function SectionEditor({
+/** Controlled section fields — parent holds the source of truth. */
+function SectionFields({
   section,
-  games,
-  offers,
+  onChange,
+  games = [],
+  offers = [],
   reviews = [],
-  lang,
+  lang = 'ar',
   t = {},
-  saving = false,
-  onSave,
 }) {
-  const meta = HOME_SECTION_TYPES[section.type];
-  const [draft, setDraft] = useState(section);
-  const isDirty = !sectionsEqual(draft, section);
+  const type = section.type;
+  const set = (patch) => onChange({ ...section, ...patch });
+  const meta = HOME_SECTION_TYPES[type];
 
-  useEffect(() => {
-    setDraft(section);
-  }, [section]);
+  const gameList = useMemo(() => (Array.isArray(games) ? games : []), [games]);
+  const offerList = useMemo(() => (Array.isArray(offers) ? offers.slice(0, 200) : []), [offers]);
 
   return (
-    <div className="mt-3 space-y-3 border-t border-[var(--border)] pt-3">
-      <div className="grid sm:grid-cols-2 gap-3">
-        <div>
-          <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-            {t.homeFieldTitleEnglish}
-          </label>
-          <input
-            type="text"
-            value={draft.title_en || ''}
-            onChange={(e) => setDraft((prev) => ({ ...prev, title_en: e.target.value }))}
-            className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
-          />
+    <div className="space-y-3 pt-3 border-t border-[var(--border)]">
+      {type !== 'carousel' && (
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <FieldLabel>{t.homeFieldTitleEnglish}</FieldLabel>
+            <TextInput
+              value={section.title_en || ''}
+              onChange={(e) => set({ title_en: e.target.value })}
+              maxLength={80}
+            />
+          </div>
+          <div>
+            <FieldLabel>{t.homeFieldTitleArabic}</FieldLabel>
+            <TextInput
+              value={section.title_ar || ''}
+              onChange={(e) => set({ title_ar: e.target.value })}
+              dir="rtl"
+              maxLength={80}
+            />
+          </div>
         </div>
-        <div>
-          <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-            {t.homeFieldTitleArabic}
-          </label>
-          <input
-            type="text"
-            value={draft.title_ar || ''}
-            onChange={(e) => setDraft((prev) => ({ ...prev, title_ar: e.target.value }))}
-            className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
-            dir="rtl"
-          />
-        </div>
-      </div>
+      )}
 
-      {section.type === 'social_links' && (
+      {type === 'carousel' && (
+        <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+          {t.homeCarouselHelp}
+        </p>
+      )}
+
+      {(type === 'sale_offers' || type === 'suggested_offers' || type === 'gift_cards') && (
+        <div>
+          <FieldLabel>{t.homeSectionCardLimit}</FieldLabel>
+          <TextInput
+            type="number"
+            min={1}
+            max={HOME_SECTION_LIMIT_MAX}
+            className="!w-28"
+            value={section.limit ?? 8}
+            onChange={(e) => set({
+              limit: Math.max(1, Math.min(HOME_SECTION_LIMIT_MAX, Number(e.target.value) || 8)),
+            })}
+          />
+          <p className="text-[10px] text-[var(--text-muted)] mt-1">{t.homeSectionCardLimitHelp}</p>
+        </div>
+      )}
+
+      {type === 'social_links' && (
         <>
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-                {t.homeFieldSubtitleEnglish}
-              </label>
-              <input
-                type="text"
-                value={draft.subtitle_en || ''}
-                onChange={(e) => setDraft((prev) => ({ ...prev, subtitle_en: e.target.value }))}
-                className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
+              <FieldLabel>{t.homeFieldSubtitleEnglish}</FieldLabel>
+              <TextInput
+                value={section.subtitle_en || ''}
+                onChange={(e) => set({ subtitle_en: e.target.value })}
+                maxLength={120}
               />
             </div>
             <div>
-              <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-                {t.homeFieldSubtitleArabic}
-              </label>
-              <input
-                type="text"
-                value={draft.subtitle_ar || ''}
-                onChange={(e) => setDraft((prev) => ({ ...prev, subtitle_ar: e.target.value }))}
-                className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
+              <FieldLabel>{t.homeFieldSubtitleArabic}</FieldLabel>
+              <TextInput
+                value={section.subtitle_ar || ''}
+                onChange={(e) => set({ subtitle_ar: e.target.value })}
                 dir="rtl"
+                maxLength={120}
               />
             </div>
           </div>
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-                {t.homeFieldButtonTextEnglish}
-              </label>
-              <input
-                type="text"
-                value={draft.button_text_en || ''}
-                onChange={(e) => setDraft((prev) => ({ ...prev, button_text_en: e.target.value }))}
-                className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
+              <FieldLabel>{t.homeFieldButtonTextEnglish}</FieldLabel>
+              <TextInput
+                value={section.button_text_en || ''}
+                onChange={(e) => set({ button_text_en: e.target.value })}
+                maxLength={40}
               />
             </div>
             <div>
-              <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-                {t.homeFieldButtonTextArabic}
-              </label>
-              <input
-                type="text"
-                value={draft.button_text_ar || ''}
-                onChange={(e) => setDraft((prev) => ({ ...prev, button_text_ar: e.target.value }))}
-                className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
+              <FieldLabel>{t.homeFieldButtonTextArabic}</FieldLabel>
+              <TextInput
+                value={section.button_text_ar || ''}
+                onChange={(e) => set({ button_text_ar: e.target.value })}
                 dir="rtl"
+                maxLength={40}
               />
             </div>
           </div>
         </>
       )}
 
-      {(section.type === 'sale_offers' || section.type === 'suggested_offers' || section.type === 'gift_cards' || section.type === 'gaming_accounts') && (
-        <div>
-          <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-            {t.homeSectionCardLimit}
-          </label>
-          <input
-            type="number"
-            min={1}
-            max={(section.type === 'gift_cards' || section.type === 'gaming_accounts') ? 12 : 10}
-            value={draft.limit ?? ((section.type === 'gift_cards' || section.type === 'gaming_accounts') ? 6 : 8)}
-            onChange={(e) => setDraft((prev) => ({
-              ...prev,
-              limit: Number(e.target.value) || ((section.type === 'gift_cards' || section.type === 'gaming_accounts') ? 6 : 8),
-            }))}
-            className="w-28 bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
-          />
-        </div>
+      {(type === 'game_picks' || type === 'redeem_picks') && (
+        <PickList
+          label={type === 'redeem_picks' ? (t.homePickRedeemCodes || t.homePickGames) : t.homePickGames}
+          empty={t.homeNoGames}
+          items={gameList.map((g) => ({
+            id: g.id,
+            label: g.name_en || g.name_ar || g.id,
+          }))}
+          selectedIds={section.game_ids || []}
+          onChangeIds={(game_ids) => set({ game_ids })}
+          t={t}
+        />
       )}
 
-      {(section.type === 'game_picks' || section.type === 'redeem_picks') && (
-        <div>
-          <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-            {section.type === 'redeem_picks'
-              ? (t.homePickRedeemCodes || t.homePickGames)
-              : t.homePickGames}
-          </label>
-          <div className="max-h-48 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-2 space-y-1">
-            {games.length === 0 ? (
-              <p className="text-xs text-[var(--text-muted)] p-2">
-                {section.type === 'redeem_picks'
-                  ? (t.homeNoRedeemCodes || t.homeNoGames)
-                  : t.homeNoGames}
-              </p>
-            ) : (
-              games.map((game) => {
-                const checked = (draft.game_ids || []).includes(game.id);
-                return (
-                  <label key={game.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-surface)] cursor-pointer text-sm">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => {
-                        const ids = new Set(draft.game_ids || []);
-                        if (e.target.checked) ids.add(game.id);
-                        else ids.delete(game.id);
-                        setDraft((prev) => ({ ...prev, game_ids: [...ids] }));
-                      }}
-                      className="accent-[var(--accent)]"
-                    />
-                    <span className="truncate">{game.name_en || game.name_ar}</span>
-                  </label>
-                );
-              })
-            )}
-          </div>
-        </div>
+      {type === 'offer_picks' && (
+        <PickList
+          label={t.homePickOffers}
+          empty={t.homeNoOffers}
+          items={offerList.map((o) => ({
+            id: o.id,
+            label: `${o.name_en || o.name_ar || o.id} — $${parseFloat(o.price || 0).toFixed(2)}`,
+          }))}
+          selectedIds={section.offer_ids || []}
+          onChangeIds={(offer_ids) => set({ offer_ids })}
+          t={t}
+        />
       )}
 
-      {section.type === 'offer_picks' && (
-        <div>
-          <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-            {t.homePickOffers}
-          </label>
-          <div className="max-h-40 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-2 space-y-1">
-            {offers.length === 0 ? (
-              <p className="text-xs text-[var(--text-muted)] p-2">{t.homeNoOffers}</p>
-            ) : (
-              offers.map((offer) => {
-                const checked = (draft.offer_ids || []).includes(offer.id);
-                return (
-                  <label key={offer.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-surface)] cursor-pointer text-sm">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => {
-                        const ids = new Set(draft.offer_ids || []);
-                        if (e.target.checked) ids.add(offer.id);
-                        else ids.delete(offer.id);
-                        setDraft((prev) => ({ ...prev, offer_ids: [...ids] }));
-                      }}
-                      className="accent-[var(--accent)]"
-                    />
-                    <span className="truncate">{offer.name_en} — ${parseFloat(offer.price).toFixed(2)}</span>
-                  </label>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
-
-      {section.type === 'customer_reviews' && (
+      {type === 'customer_reviews' && (
         <>
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-                {t.reviewsSectionLimit}
-              </label>
-              <input
+              <FieldLabel>{t.reviewsSectionLimit}</FieldLabel>
+              <TextInput
                 type="number"
                 min={1}
                 max={20}
-                value={draft.limit ?? 8}
-                onChange={(e) => setDraft((prev) => ({ ...prev, limit: Number(e.target.value) || 8 }))}
-                className="w-28 bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
+                className="!w-28"
+                value={section.limit ?? 8}
+                onChange={(e) => set({ limit: Number(e.target.value) || 8 })}
               />
             </div>
             <div>
-              <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-                {t.reviewsIntervalSeconds}
-              </label>
-              <input
+              <FieldLabel>{t.reviewsIntervalSeconds}</FieldLabel>
+              <TextInput
                 type="number"
                 min={3}
                 max={30}
-                value={draft.interval_seconds ?? 6}
-                onChange={(e) => setDraft((prev) => ({ ...prev, interval_seconds: Number(e.target.value) || 6 }))}
-                className="w-28 bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 text-sm outline-none"
+                className="!w-28"
+                value={section.interval_seconds ?? 6}
+                onChange={(e) => set({ interval_seconds: Number(e.target.value) || 6 })}
               />
             </div>
           </div>
-          <label className="flex items-center gap-2 text-sm py-1">
+          <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
-              checked={draft.show_submit_form !== false}
-              onChange={(e) => setDraft((prev) => ({ ...prev, show_submit_form: e.target.checked }))}
+              checked={section.show_submit_form !== false}
+              onChange={(e) => set({ show_submit_form: e.target.checked })}
               className="accent-[var(--accent)]"
             />
-            <span>{t.reviewsShowSubmitForm}</span>
+            {t.reviewsShowSubmitForm}
           </label>
-          <div>
-            <label className="text-xs text-[var(--text-muted)] block mb-1.5">
-              {t.reviewsPickOptional}
-            </label>
-            <div className="max-h-40 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-2 space-y-1">
-              {reviews.filter(isDisplayableReview).length === 0 ? (
-                <p className="text-xs text-[var(--text-muted)] p-2">{t.reviewsEmptyApproved}</p>
-              ) : (
-                reviews.filter(isDisplayableReview).map((review) => {
-                  const checked = (draft.review_ids || []).includes(review.id);
-                  return (
-                    <label key={review.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-surface)] cursor-pointer text-sm">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) => {
-                          const ids = new Set(draft.review_ids || []);
-                          if (e.target.checked) ids.add(review.id);
-                          else ids.delete(review.id);
-                          setDraft((prev) => ({ ...prev, review_ids: [...ids] }));
-                        }}
-                        className="accent-[var(--accent)]"
-                      />
-                      <span className="truncate">{review.author_name}</span>
-                    </label>
-                  );
-                })
-              )}
-            </div>
-            <p className="text-[10px] text-[var(--text-muted)] mt-1.5">{t.reviewsPickHelp}</p>
-          </div>
+          <PickList
+            label={t.reviewsPickOptional}
+            empty={t.reviewsEmptyApproved}
+            help={t.reviewsPickHelp}
+            items={reviews.filter(isDisplayableReview).map((r) => ({
+              id: r.id,
+              label: r.author_name || r.id,
+            }))}
+            selectedIds={section.review_ids || []}
+            onChangeIds={(review_ids) => set({ review_ids })}
+            t={t}
+          />
         </>
       )}
 
       {meta && (
-        <p className="text-[11px] text-[var(--text-muted)]">
+        <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
           {lang === 'ar' ? meta.descriptionAr : meta.descriptionEn}
         </p>
       )}
-
-      <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[var(--border)]">
-        <button
-          type="button"
-          onClick={() => onSave?.(draft)}
-          disabled={saving || !isDirty}
-          className="btn btn-primary action-chip gap-2 !border-0 text-sm disabled:opacity-50"
-        >
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          {t.save || t.saveHomeSection}
-        </button>
-        {isDirty && (
-          <span className="text-xs text-[var(--warning)]">
-            {t.homeSectionUnsaved}
-          </span>
-        )}
-      </div>
     </div>
   );
 }
 
-function getSectionContentHint(type, counts, t) {
-  switch (type) {
-    case 'carousel':
-      return formatMessage(t.homeHintCarousel, { count: counts.carouselCount });
-    case 'games':
-      return formatMessage(t.homeHintGames, { count: counts.gamesCount });
-    case 'gift_cards':
-      return formatMessage(t.homeHintGiftCards, { count: counts.voucherCount });
-    case 'gaming_accounts':
-      return t.homeSectionGamingAccountsDeprecated;
-    case 'sale_offers':
-      return formatMessage(t.homeHintSaleOffers, { count: counts.saleOfferCount });
-    case 'suggested_offers':
-    case 'offer_picks':
-      return formatMessage(t.homeHintOffersAvailable, { count: counts.offerCount });
-    case 'game_picks':
-      return formatMessage(t.homeHintGamePicks, { count: counts.gamesCount });
-    case 'redeem_picks':
-      return formatMessage(t.homeHintRedeemPicks || t.homeHintGiftCards, {
-        count: counts.voucherCount,
-      });
-    case 'customer_reviews':
-      return formatMessage(t.homeHintReviews, { count: counts.approvedReviewCount });
-    case 'social_links':
-      return t.homeHintSocialLinks;
-    default:
-      return '';
-  }
+function PickList({
+  label,
+  empty,
+  help,
+  items = [],
+  selectedIds = [],
+  onChangeIds,
+  t = {},
+}) {
+  const [filter, setFilter] = useState('');
+  const filtered = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((i) => String(i.label).toLowerCase().includes(q));
+  }, [items, filter]);
+
+  return (
+    <div>
+      <FieldLabel>{label}</FieldLabel>
+      {items.length > 8 && (
+        <TextInput
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder={t.search || 'Search…'}
+          className="mb-2"
+        />
+      )}
+      <div className="max-h-44 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-2 space-y-0.5">
+        {filtered.length === 0 ? (
+          <p className="text-xs text-[var(--text-muted)] p-2">{empty}</p>
+        ) : (
+          filtered.map((item) => {
+            const checked = selectedIds.includes(item.id);
+            return (
+              <label
+                key={item.id}
+                className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-surface)] cursor-pointer text-sm"
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) => {
+                    const next = new Set(selectedIds);
+                    if (e.target.checked) next.add(item.id);
+                    else next.delete(item.id);
+                    onChangeIds([...next]);
+                  }}
+                  className="accent-[var(--accent)]"
+                />
+                <span className="truncate">{item.label}</span>
+              </label>
+            );
+          })
+        )}
+      </div>
+      {help ? <p className="text-[10px] text-[var(--text-muted)] mt-1.5">{help}</p> : null}
+      {selectedIds.length > 0 && (
+        <p className="text-[10px] text-[var(--accent)] mt-1">
+          {formatMessage(t.homePickSelectedCount || '{count} selected', { count: selectedIds.length })}
+        </p>
+      )}
+    </div>
+  );
 }
 
 export default function AdminHomeLayoutSettings({
@@ -413,150 +345,107 @@ export default function AdminHomeLayoutSettings({
 }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [savingSectionId, setSavingSectionId] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [sections, setSections] = useState(DEFAULT_HOME_LAYOUT);
-  const [savedSections, setSavedSections] = useState(DEFAULT_HOME_LAYOUT);
+  const [sections, setSections] = useState(() => DEFAULT_HOME_LAYOUT.map((s) => ({ ...s })));
+  const [savedSnapshot, setSavedSnapshot] = useState(() => DEFAULT_HOME_LAYOUT.map((s) => ({ ...s })));
   const [expandedId, setExpandedId] = useState(null);
+  const [addType, setAddType] = useState('game_picks');
 
   const topupGames = useMemo(
     () => getVisibleTopupGames(games, offers, { isAdmin: true }),
     [games, offers],
   );
-
   const storefrontOffers = useMemo(
-    () => offers.filter((offer) => offerBelongsToStorefront(offer, games) && offer.active !== false),
+    () => offers.filter((o) => offerBelongsToStorefront(o, games) && o.active !== false),
     [offers, games],
+  );
+  const redeemGames = useMemo(
+    () => getCatalogVoucherGames(games)
+      .filter((g) => countActiveOffers(g.id, offers) > 0 || g.catalog_source === 'live' || g.active !== false),
+    [games, offers],
   );
 
   const statusContext = useMemo(() => ({
     carouselCount: getCarouselGames(games).length,
     gamesCount: topupGames.length,
-    voucherCount: getCatalogVoucherGames(games)
-      .filter((game) => countActiveOffers(game.id, offers) > 0 || game.catalog_source === 'live')
-      .length,
-    giftCardCount: 0,
-    gamingAccountCount: 0,
+    voucherCount: redeemGames.length,
+    giftCardCount: redeemGames.length,
     saleOfferCount: storefrontOffers.filter(isValidSaleOffer).length,
     offerCount: storefrontOffers.length,
     approvedReviewCount: reviews.filter(isDisplayableReview).length,
     games,
     offers: storefrontOffers,
     reviews,
-  }), [topupGames, games, offers, storefrontOffers, reviews]);
+  }), [games, topupGames, redeemGames, storefrontOffers, reviews]);
 
-  const layoutDirty = useMemo(
-    () => !sectionsEqual(sections, savedSections),
-    [sections, savedSections],
+  const dirty = useMemo(
+    () => !sectionsEqual(sections, savedSnapshot),
+    [sections, savedSnapshot],
   );
 
-  const pickableGames = useMemo(
-    () => topupGames,
-    [topupGames],
-  );
+  const addableTypes = useMemo(() => getAddableHomeSectionTypes(), []);
 
-  const pickableRedeemGames = useMemo(
-    () => getCatalogVoucherGames(games)
-      .filter((game) => countActiveOffers(game.id, offers) > 0 || game.catalog_source === 'live' || game.active !== false)
-      .sort((a, b) => String(a.name_en || a.name_ar || '').localeCompare(String(b.name_en || b.name_ar || ''))),
-    [games, offers],
-  );
-
-  const persistLayout = useCallback(async (nextSections, successMessage) => {
-    const layout = normalizeHomeLayout(nextSections);
-    const current = await fetchStoreSettings();
-    await saveStoreSettings({ ...current, home_layout: layout });
-    setSections([...layout]);
-    setSavedSections([...layout]);
-    onSaved?.(layout);
-    setSuccess(successMessage);
-    setTimeout(() => setSuccess(''), 3000);
-    return layout;
-  }, [onSaved]);
-
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await fetchStoreSettings();
-      const layout = normalizeHomeLayout(data.home_layout);
-      setSections(layout);
-      setSavedSections(layout);
+      let layout = await fetchHomeLayout();
+      if (!layout?.length) {
+        const data = await fetchStoreSettings();
+        layout = normalizeHomeLayout(data.home_layout);
+      }
+      setSections(layout.map((s) => ({ ...s })));
+      setSavedSnapshot(layout.map((s) => ({ ...s })));
     } catch (err) {
-      setError(err.message);
+      setError(err.message || t.saveFailed);
     } finally {
       setLoading(false);
     }
-  };
+  }, [t.saveFailed]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
-  const reorderSections = (fromIndex, toIndex) => {
-    if (fromIndex === toIndex) return;
-    if (fromIndex < 0 || toIndex < 0 || fromIndex >= sections.length || toIndex >= sections.length) return;
+  const updateSection = (id, nextSection) => {
+    setSections((prev) => prev.map((s) => (s.id === id ? nextSection : s)));
+  };
+
+  const moveSection = (index, dir) => {
+    const to = index + dir;
+    if (to < 0 || to >= sections.length) return;
     setSections((prev) => {
       const next = [...prev];
-      const [moved] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, moved);
+      const [row] = next.splice(index, 1);
+      next.splice(to, 0, row);
       return next;
     });
   };
 
-  const moveSection = (index, direction) => {
-    reorderSections(index, index + direction);
-  };
-
-  const removeSection = (id) => {
-    setSections((prev) => prev.filter((section) => section.id !== id));
-    if (expandedId === id) setExpandedId(null);
-  };
-
   const toggleEnabled = (id) => {
-    setSections((prev) => prev.map((section) => (
-      section.id === id ? { ...section, enabled: !section.enabled } : section
+    setSections((prev) => prev.map((s) => (
+      s.id === id ? { ...s, enabled: !s.enabled } : s
     )));
   };
 
-  const handleAddSection = (type) => {
-    const meta = HOME_SECTION_TYPES[type];
-    if (!meta) return;
-    if (meta.singleton && sections.some((section) => section.type === type)) {
+  const removeSection = (id) => {
+    setSections((prev) => prev.filter((s) => s.id !== id));
+    if (expandedId === id) setExpandedId(null);
+  };
+
+  const handleAdd = () => {
+    const meta = HOME_SECTION_TYPES[addType];
+    if (!meta || meta.deprecated) return;
+    if (meta.singleton && sections.some((s) => s.type === addType)) {
       setError(t.homeSectionAlreadyExists);
       return;
     }
-
-    const created = createHomeSection(type);
+    const created = createHomeSection(addType);
     if (!created) return;
     setSections((prev) => [...prev, created]);
     setExpandedId(created.id);
     setError('');
-    setSuccess(t.homeSectionAdded);
-    setTimeout(() => setSuccess(''), 4000);
-  };
-
-  const handleSaveSection = async (sectionId, draftSection) => {
-    setSavingSectionId(sectionId);
-    setError('');
-    setSuccess('');
-    try {
-      const nextSections = sections.map((section) => (
-        section.id === sectionId ? { ...section, ...draftSection, id: sectionId, type: section.type } : section
-      ));
-      await persistLayout(nextSections, t.homeSectionSaved);
-    } catch (err) {
-      setError(err.message || t.homeSectionSaveFailed);
-    } finally {
-      setSavingSectionId(null);
-    }
-  };
-
-  const handleReset = () => {
-    const defaults = DEFAULT_HOME_LAYOUT.map((section) => ({ ...section }));
-    setSections(defaults);
-    setExpandedId(null);
   };
 
   const handleSave = async () => {
@@ -564,12 +453,24 @@ export default function AdminHomeLayoutSettings({
     setError('');
     setSuccess('');
     try {
-      await persistLayout(sections, t.homeLayoutSaved);
+      const layout = await saveHomeLayoutToDatabase(sections);
+      setSections(layout.map((s) => ({ ...s })));
+      setSavedSnapshot(layout.map((s) => ({ ...s })));
+      onSaved?.(layout);
+      setSuccess(t.homeLayoutSaved);
+      setTimeout(() => setSuccess(''), 3500);
     } catch (err) {
-      setError(err.message || t.saveFailed);
+      setError(err.message || t.saveFailed || t.homeSectionSaveFailed);
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleResetRecommended = () => {
+    const defaults = DEFAULT_HOME_LAYOUT.map((s) => ({ ...s }));
+    setSections(defaults);
+    setExpandedId(null);
+    setError('');
   };
 
   if (loading) {
@@ -581,239 +482,208 @@ export default function AdminHomeLayoutSettings({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="card p-5 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-          <div>
-            <h2 className="text-xl font-black flex items-center gap-2">
+    <div className="space-y-4">
+      <div className="card p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+          <div className="min-w-0">
+            <h2 className="text-lg sm:text-xl font-black flex items-center gap-2">
               <LayoutGrid className="w-5 h-5 text-[var(--accent)]" />
               {t.homeLayoutSettings}
             </h2>
-            <p className="text-sm text-[var(--text-sec)] mt-1 max-w-2xl">
-              {t.homeLayoutHelp}
+            <p className="text-sm text-[var(--text-sec)] mt-1 max-w-2xl leading-relaxed">
+              {t.homeLayoutHelpV2}
             </p>
           </div>
-          {onPreviewHomepage && (
+          <div className="flex flex-wrap gap-2">
+            {onPreviewHomepage && (
+              <button
+                type="button"
+                onClick={onPreviewHomepage}
+                className="btn btn-secondary text-sm gap-1.5 py-2 px-3"
+              >
+                <Eye className="w-4 h-4" />
+                {t.homePreviewAsUser}
+              </button>
+            )}
             <button
               type="button"
-              onClick={onPreviewHomepage}
-              className="btn btn-secondary inline-flex items-center gap-2 text-sm py-2.5 px-4"
+              onClick={load}
+              className="btn btn-secondary text-sm gap-1.5 py-2 px-3"
+              title={t.refresh}
             >
-              <Eye className="w-4 h-4" strokeWidth={2} />
-              {t.homePreviewAsUser}
+              <RefreshCw className="w-4 h-4" />
             </button>
-          )}
+          </div>
         </div>
 
-        {layoutDirty && (
-          <div className="mb-4 flex items-start gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-200 text-sm">
-            <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+        <ul className="text-xs text-[var(--text-muted)] space-y-1 list-disc ps-4 mb-4 leading-relaxed">
+          <li>{t.homeLayoutBulletOrder}</li>
+          <li>{t.homeLayoutBulletSave}</li>
+          <li>{t.homeLayoutBulletCarousel}</li>
+        </ul>
+
+        {dirty && (
+          <div className="mb-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-100 text-sm">
             {t.homeLayoutUnsaved}
           </div>
         )}
-
-        <div className="space-y-3 mb-6">
-          {sections.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[var(--border)] p-6 text-center text-[var(--text-muted)] text-sm">
-              {t.homeNoSections}
-            </div>
-          ) : (
-            sections.map((section, index) => {
-              const meta = HOME_SECTION_TYPES[section.type];
-              const expanded = expandedId === section.id;
-              const status = evaluateHomeSectionStatus(section, statusContext);
-              const TypeIcon = SECTION_TYPE_ICONS[section.type] || LayoutGrid;
-              return (
-                <div
-                  key={section.id}
-                  className={`rounded-xl border transition-all ${
-                    section.enabled
-                      ? 'border-[var(--border)] bg-[var(--bg-primary)]'
-                      : 'border-[var(--border)]/70 bg-[var(--bg-primary)]/60 opacity-80'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 p-3 sm:p-4">
-                    <div className="flex flex-col items-center gap-0.5 flex-shrink-0 w-8">
-                      <GripVertical className="w-4 h-4 text-[var(--text-muted)]" />
-                      <span className="text-[10px] font-bold text-[var(--accent)] tabular-nums">
-                        {index + 1}
-                      </span>
-                    </div>
-                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--bg-surface)] border border-[var(--border)]">
-                      <TypeIcon className="w-4 h-4 text-[var(--accent)]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-sm sm:text-base truncate">
-                        {lang === 'ar' ? (section.title_ar || meta?.labelAr) : (section.title_en || meta?.labelEn)}
-                      </div>
-                      <div className="text-[11px] text-[var(--text-muted)] truncate">
-                        {lang === 'ar' ? meta?.labelAr : meta?.labelEn}
-                      </div>
-                      <SectionStatusBadges status={status} t={t} />
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => moveSection(index, -1)}
-                        disabled={index === 0}
-                        className="p-2 rounded-lg border border-[var(--border)] hover:border-[var(--accent)]/40 disabled:opacity-40"
-                        aria-label={t.homeSectionMoveUp}
-                        title={t.homeSectionMoveUp}
-                      >
-                        <ChevronUp className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => moveSection(index, 1)}
-                        disabled={index === sections.length - 1}
-                        className="p-2 rounded-lg border border-[var(--border)] hover:border-[var(--accent)]/40 disabled:opacity-40"
-                        aria-label={t.homeSectionMoveDown}
-                        title={t.homeSectionMoveDown}
-                      >
-                        <ChevronDown className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => toggleEnabled(section.id)}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${
-                          section.enabled
-                            ? 'border-[var(--accent)]/35 text-[var(--accent)]'
-                            : 'border-[var(--border)] text-[var(--text-muted)]'
-                        }`}
-                      >
-                        {section.enabled ? t.homeSectionVisible : t.homeSectionHiddenToggle}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setExpandedId(expanded ? null : section.id)}
-                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-[var(--border)] hover:border-[var(--accent)]/35"
-                      >
-                        {expanded ? t.homeSectionClose : t.homeSectionEdit}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeSection(section.id)}
-                        className="p-2 rounded-lg border border-red-500/25 text-red-400 hover:bg-red-500/10"
-                        aria-label={t.homeRemoveSection}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {expanded && (
-                    <div className="px-4 pb-4">
-                      <SectionEditor
-                        section={section}
-                        games={section.type === 'redeem_picks' ? pickableRedeemGames : pickableGames}
-                        offers={storefrontOffers}
-                        reviews={reviews}
-                        lang={lang}
-                        t={t}
-                        saving={savingSectionId === section.id}
-                        onSave={(draft) => handleSaveSection(section.id, draft)}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-4 sm:p-5">
-          <div className="text-sm font-semibold mb-1">
-            {t.addHomeSection}
-          </div>
-          <p className="text-xs text-[var(--text-muted)] mb-4 max-w-2xl">
-            {t.addHomeSectionHelp}
-          </p>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {Object.entries(HOME_SECTION_TYPES).filter(([type]) => !isDeprecatedHomeSectionType(type)).map(([type, meta]) => {
-              const Icon = SECTION_TYPE_ICONS[type] || LayoutGrid;
-              const alreadyAdded = meta.singleton && sections.some((section) => section.type === type);
-              const hint = getSectionContentHint(type, statusContext, t);
-              const disabled = alreadyAdded;
-
-              return (
-                <div
-                  key={type}
-                  className={`rounded-xl border p-4 transition-all ${
-                    disabled
-                      ? 'border-[var(--border)]/60 bg-[var(--bg-surface)]/40 opacity-60'
-                      : 'border-[var(--border)] bg-[var(--bg-surface)] hover:border-[var(--accent)]/35'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[var(--bg-primary)] border border-[var(--border)]">
-                      <Icon className="w-5 h-5 text-[var(--accent)]" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="font-semibold text-sm">
-                        {lang === 'ar' ? meta.labelAr : meta.labelEn}
-                      </div>
-                      <p className="text-[11px] text-[var(--text-muted)] mt-1 leading-snug">
-                        {lang === 'ar' ? meta.descriptionAr : meta.descriptionEn}
-                      </p>
-                      {hint && (
-                        <p className="text-[10px] text-[var(--accent)]/80 mt-2 font-medium">
-                          {hint}
-                        </p>
-                      )}
-                      {meta.singleton && (
-                        <span className="inline-block mt-2 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
-                          {t.homeOnePerPage}
-                        </span>
-                      )}
-                      {alreadyAdded && (
-                        <span className="home-section-badge home-section-badge--added ml-0 mt-2">
-                          {t.homeAlreadyAdded}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleAddSection(type)}
-                    disabled={disabled}
-                    className="mt-3 w-full action-chip gap-2 justify-center disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <Plus className="w-4 h-4" />
-                    {t.addSection}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2 mt-6 pt-4 border-t border-[var(--border)]">
-          <button type="button" onClick={handleSave} disabled={saving || !layoutDirty} className="btn btn-primary action-chip gap-2 !border-0 disabled:opacity-50">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {t.save || t.saveHomeLayout}
-          </button>
-          <button type="button" onClick={handleReset} className="action-chip gap-2" disabled={saving}>
-            <RefreshCw className="w-4 h-4" />
-            {t.resetHomeLayout}
-          </button>
-          <button type="button" onClick={load} className="action-chip gap-2" disabled={saving}>
-            <RefreshCw className="w-4 h-4" />
-            {t.refresh}
-          </button>
-        </div>
-
         {error && (
-          <div className="mt-4 flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 text-sm">
-            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <div className="mb-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm flex gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
             {error}
           </div>
         )}
         {success && (
-          <div className="mt-4 flex items-center gap-2 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-sm">
-            <CheckCircle className="w-4 h-4" />
+          <div className="mb-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm flex gap-2">
+            <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
             {success}
           </div>
         )}
+
+        <div className="space-y-2">
+          {sections.map((section, index) => {
+            const meta = HOME_SECTION_TYPES[section.type];
+            const TypeIcon = SECTION_TYPE_ICONS[section.type] || LayoutGrid;
+            const status = evaluateHomeSectionStatus(section, statusContext);
+            const expanded = expandedId === section.id;
+            const title = lang === 'ar'
+              ? (section.title_ar || meta?.labelAr || section.type)
+              : (section.title_en || meta?.labelEn || section.type);
+
+            const pickGames = section.type === 'redeem_picks' ? redeemGames : topupGames;
+
+            return (
+              <div
+                key={section.id}
+                className={`rounded-xl border transition-colors ${
+                  section.enabled
+                    ? 'border-[var(--border)] bg-[var(--bg-primary)]'
+                    : 'border-[var(--border)]/60 opacity-75'
+                }`}
+              >
+                <div className="flex items-center gap-2 p-2.5 sm:p-3">
+                  <span className="text-[10px] font-mono text-[var(--accent)] w-5 text-center shrink-0">
+                    {index + 1}
+                  </span>
+                  <div className="w-8 h-8 rounded-lg border border-[var(--border)] flex items-center justify-center shrink-0 bg-[var(--bg-surface)]">
+                    <TypeIcon className="w-4 h-4 text-[var(--accent)]" />
+                  </div>
+                  <button
+                    type="button"
+                    className="flex-1 min-w-0 text-start"
+                    onClick={() => setExpandedId(expanded ? null : section.id)}
+                  >
+                    <div className="font-semibold text-sm truncate">{title}</div>
+                    <div className="text-[10px] text-[var(--text-muted)] flex flex-wrap gap-1.5 mt-0.5">
+                      <span>{meta ? (lang === 'ar' ? meta.labelAr : meta.labelEn) : section.type}</span>
+                      {!section.enabled && (
+                        <span className="text-amber-300">{t.homeSectionBadgeHidden}</span>
+                      )}
+                      {status.empty && section.enabled && (
+                        <span className="text-amber-200/80">{t.homeSectionBadgeEmpty}</span>
+                      )}
+                    </div>
+                  </button>
+                  <label className="flex items-center gap-1 text-[11px] text-[var(--text-sec)] shrink-0 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={section.enabled !== false}
+                      onChange={() => toggleEnabled(section.id)}
+                      className="accent-[var(--accent)]"
+                    />
+                    {t.homeSectionVisible || t.show || 'ON'}
+                  </label>
+                  <div className="flex flex-col shrink-0">
+                    <button
+                      type="button"
+                      disabled={index === 0}
+                      onClick={() => moveSection(index, -1)}
+                      className="p-0.5 text-[var(--text-muted)] hover:text-[var(--accent)] disabled:opacity-30"
+                      aria-label={t.adminNavMoveUp || 'Up'}
+                    >
+                      <ChevronUp className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={index === sections.length - 1}
+                      onClick={() => moveSection(index, 1)}
+                      className="p-0.5 text-[var(--text-muted)] hover:text-[var(--accent)] disabled:opacity-30"
+                      aria-label={t.adminNavMoveDown || 'Down'}
+                    >
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
+                  </div>
+                  {section.type !== 'carousel' && section.type !== 'games' && (
+                    <button
+                      type="button"
+                      onClick={() => removeSection(section.id)}
+                      className="p-1.5 text-red-400/80 hover:text-red-300 shrink-0"
+                      title={t.delete}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {expanded && (
+                  <div className="px-3 pb-3 sm:px-4 sm:pb-4">
+                    <SectionFields
+                      section={section}
+                      onChange={(next) => updateSection(section.id, next)}
+                      games={pickGames}
+                      offers={storefrontOffers}
+                      reviews={reviews}
+                      lang={lang}
+                      t={t}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-[var(--border)] pt-4">
+          <div className="flex-1 min-w-[10rem]">
+            <FieldLabel>{t.homeAddSection}</FieldLabel>
+            <select
+              value={addType}
+              onChange={(e) => setAddType(e.target.value)}
+              className="input w-full text-sm !py-2"
+            >
+              {addableTypes.map((row) => (
+                <option key={row.type} value={row.type}>
+                  {lang === 'ar' ? row.labelAr : row.labelEn}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button type="button" onClick={handleAdd} className="btn btn-secondary gap-1.5 text-sm py-2">
+            <Plus className="w-4 h-4" />
+            {t.homeAddSectionBtn || t.add}
+          </button>
+          <button
+            type="button"
+            onClick={handleResetRecommended}
+            className="btn btn-secondary gap-1.5 text-sm py-2"
+            title={t.homeResetRecommended}
+          >
+            <RotateCcw className="w-4 h-4" />
+            {t.homeResetRecommended}
+          </button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || !dirty}
+            className="btn btn-primary gap-2 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {t.homeSaveToDatabase}
+          </button>
+        </div>
       </div>
     </div>
   );

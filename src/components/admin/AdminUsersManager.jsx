@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  Ban,
   Bell,
   BadgeCheck,
   ChevronLeft,
@@ -11,22 +10,17 @@ import {
   RefreshCw,
   Search,
   Settings2,
-  ShieldOff,
   UserRound,
   Wrench,
 } from 'lucide-react';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import Modal from '../ui/Modal';
-import BanDurationField from './BanDurationField';
 import AdminUserDetail from './AdminUserDetail';
 import {
-  adminBanUser,
   adminBroadcastMessage,
   adminNotifyUser,
-  adminNotifyVerifiedUsers,
   adminSaveMaintenanceSettings,
   adminSaveSiteModerationSettings,
-  adminUnbanUser,
   adminUnverifyUser,
   adminVerifyUser,
   fetchAdminUsers,
@@ -45,7 +39,7 @@ import { formatMessage } from '../../lib/i18n';
 import { getProfileAdminLabel, getProfileDisplayName, profileNamesDiffer } from '../../lib/username';
 
 const BROADCAST_KINDS = ['announcement', 'warning', 'maintenance'];
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 10;
 
 const STATUS_FILTERS = [
   { id: 'all', labelKey: 'adminUsersFilterAll' },
@@ -61,10 +55,28 @@ const BALANCE_FILTERS = [
   { id: 'zero', labelKey: 'adminCustomerBalancesFilterZero' },
 ];
 
+/** Order-by presets (maps to admin_list_users p_order_by). */
+const ORDER_OPTIONS = [
+  { id: 'created_at', labelKey: 'adminUsersOrderNewest' },
+  { id: 'balance', labelKey: 'adminUsersOrderTopWallet' },
+  { id: 'total_spent', labelKey: 'adminUsersOrderBestCustomer' },
+  { id: 'order_count', labelKey: 'adminUsersOrderMostOrders' },
+  { id: 'name', labelKey: 'adminUsersOrderName' },
+  { id: 'username', labelKey: 'adminUsersOrderUsername' },
+];
+
+function userInitials(row) {
+  const label = getProfileDisplayName(row) || row?.username || row?.email || '?';
+  const parts = String(label).trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return String(label).slice(0, 2).toUpperCase();
+}
+
 export default function AdminUsersManager({
   t = {},
   lang = 'ar',
   onNotify,
+  onSiteStatusChanged,
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -80,6 +92,7 @@ export default function AdminUsersManager({
   const [searchInput, setSearchInput] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [balanceFilter, setBalanceFilter] = useState('all');
+  const [orderBy, setOrderBy] = useState('created_at');
 
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -98,13 +111,6 @@ export default function AdminUsersManager({
   const [broadcastBody, setBroadcastBody] = useState('');
   const [broadcastLink, setBroadcastLink] = useState('');
   const [broadcastSending, setBroadcastSending] = useState(false);
-  const [thanksSending, setThanksSending] = useState(false);
-
-  const [banTarget, setBanTarget] = useState(null);
-  const [banReason, setBanReason] = useState('');
-  const [banDuration, setBanDuration] = useState('permanent');
-  const [banDays, setBanDays] = useState('7');
-  const [banLoading, setBanLoading] = useState(false);
 
   const [messageTarget, setMessageTarget] = useState(null);
   const [messageKind, setMessageKind] = useState('announcement');
@@ -112,10 +118,9 @@ export default function AdminUsersManager({
   const [messageBody, setMessageBody] = useState('');
   const [messageSending, setMessageSending] = useState(false);
 
-  const [unbanTarget, setUnbanTarget] = useState(null);
-  const [unbanLoading, setUnbanLoading] = useState(false);
   const [verifyTarget, setVerifyTarget] = useState(null);
   const [verifyLoading, setVerifyLoading] = useState(false);
+  const [maintenanceConfirmOpen, setMaintenanceConfirmOpen] = useState(false);
 
   const totalPages = Math.max(1, Math.ceil(totalUsers / PAGE_SIZE) || 1);
   const safePage = Math.min(page, totalPages - 1);
@@ -125,6 +130,7 @@ export default function AdminUsersManager({
     pageIndex = safePage,
     status = statusFilter,
     bal = balanceFilter,
+    order = orderBy,
   ) => {
     setUsersLoading(true);
     try {
@@ -133,7 +139,7 @@ export default function AdminUsersManager({
         PAGE_SIZE,
         pageIndex * PAGE_SIZE,
         {
-          orderBy: 'created_at',
+          orderBy: order,
           balanceFilter: bal,
           statusFilter: status,
         },
@@ -147,7 +153,7 @@ export default function AdminUsersManager({
     } finally {
       setUsersLoading(false);
     }
-  }, [notifyError, search, safePage, statusFilter, balanceFilter]);
+  }, [notifyError, search, safePage, statusFilter, balanceFilter, orderBy]);
 
   const loadSettings = useCallback(async () => {
     setSettingsLoading(true);
@@ -169,9 +175,9 @@ export default function AdminUsersManager({
 
   useEffect(() => {
     if (!routeUserParam) {
-      loadUsers(search, safePage, statusFilter, balanceFilter);
+      loadUsers(search, safePage, statusFilter, balanceFilter, orderBy);
     }
-  }, [routeUserParam, loadUsers, search, safePage, statusFilter, balanceFilter]);
+  }, [routeUserParam, loadUsers, search, safePage, statusFilter, balanceFilter, orderBy]);
 
   useEffect(() => {
     loadSettings();
@@ -199,17 +205,26 @@ export default function AdminUsersManager({
     setPage(0);
   };
 
+  const setOrder = (id) => {
+    setOrderBy(id);
+    setPage(0);
+  };
+
   const clearFilters = () => {
     setSearchInput('');
     setSearch('');
     setStatusFilter('all');
     setBalanceFilter('all');
+    setOrderBy('created_at');
     setPage(0);
   };
 
   const rangeStart = totalUsers === 0 ? 0 : safePage * PAGE_SIZE + 1;
   const rangeEnd = Math.min(totalUsers, (safePage + 1) * PAGE_SIZE);
-  const hasActiveFilters = search || statusFilter !== 'all' || balanceFilter !== 'all';
+  const hasActiveFilters = search
+    || statusFilter !== 'all'
+    || balanceFilter !== 'all'
+    || orderBy !== 'created_at';
 
   const handleSaveSiteSettings = async () => {
     setSettingsSaving(true);
@@ -231,15 +246,28 @@ export default function AdminUsersManager({
         messageAr: maintenanceMessageAr,
         messageEn: maintenanceMessageEn,
         allowAdmins: maintenanceAllowAdmins,
-        broadcastNotice: maintenanceBroadcast,
+        broadcastNotice: maintenanceEnabled && maintenanceBroadcast,
       });
-      notifySuccess(t.adminMaintenanceSaved);
+      notifySuccess(
+        maintenanceEnabled ? t.adminMaintenanceSavedOn : t.adminMaintenanceSavedOff,
+      );
       setMaintenanceBroadcast(false);
+      setMaintenanceConfirmOpen(false);
+      await onSiteStatusChanged?.();
     } catch (err) {
       notifyError(err.message);
     } finally {
       setMaintenanceSaving(false);
     }
+  };
+
+  const requestSaveMaintenance = () => {
+    // Confirm only when turning ON (avoid accidental lockout of shoppers).
+    if (maintenanceEnabled) {
+      setMaintenanceConfirmOpen(true);
+      return;
+    }
+    void handleSaveMaintenance();
   };
 
   const handleBroadcast = async (event) => {
@@ -264,61 +292,6 @@ export default function AdminUsersManager({
       notifyError(err.message);
     } finally {
       setBroadcastSending(false);
-    }
-  };
-
-  const handleThanksVerified = async () => {
-    setThanksSending(true);
-    try {
-      const count = await adminNotifyVerifiedUsers({
-        title: t.verifiedThanksDefaultTitle,
-        body: t.verifiedThanksDefaultBody,
-        link: '/profile',
-      });
-      notifySuccess(formatMessage(t.adminThanksVerifiedSent, { count }));
-    } catch (err) {
-      notifyError(err.message);
-    } finally {
-      setThanksSending(false);
-    }
-  };
-
-  const handleBanConfirm = async () => {
-    if (!banTarget?.id || !banReason.trim()) {
-      notifyError(t.adminBanReasonRequired);
-      return;
-    }
-    setBanLoading(true);
-    try {
-      let expiresAt = null;
-      if (banDuration === 'temporary') {
-        const days = Math.max(1, Math.min(365, parseInt(banDays, 10) || 1));
-        expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
-      }
-      await adminBanUser(banTarget.id, banReason.trim(), expiresAt);
-      notifySuccess(formatMessage(t.adminBanSuccess, { name: banTarget.name || banTarget.email }));
-      setBanTarget(null);
-      setBanReason('');
-      await loadUsers();
-    } catch (err) {
-      notifyError(err.message);
-    } finally {
-      setBanLoading(false);
-    }
-  };
-
-  const handleUnbanConfirm = async () => {
-    if (!unbanTarget?.id) return;
-    setUnbanLoading(true);
-    try {
-      await adminUnbanUser(unbanTarget.id);
-      notifySuccess(formatMessage(t.adminUnbanSuccess, { name: unbanTarget.name || unbanTarget.email }));
-      setUnbanTarget(null);
-      await loadUsers();
-    } catch (err) {
-      notifyError(err.message);
-    } finally {
-      setUnbanLoading(false);
     }
   };
 
@@ -406,77 +379,97 @@ export default function AdminUsersManager({
           </div>
         </div>
 
-        <div className="p-4 sm:p-5 border-b border-[var(--border)] space-y-3">
-          <div className="flex flex-wrap gap-2">
+        <div className="p-3 sm:p-4 border-b border-[var(--border)] space-y-2.5">
+          <form onSubmit={handleSearch} className="flex flex-wrap gap-2">
+            <div className="input flex items-center gap-2 flex-1 min-w-[10rem] !py-0 !px-2.5">
+              <Search className="w-3.5 h-3.5 shrink-0 text-[var(--text-muted)] pointer-events-none" aria-hidden />
+              <input
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                className="flex-1 min-w-0 bg-transparent border-0 outline-none shadow-none py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+                placeholder={t.adminUsersSearchPlaceholder}
+              />
+            </div>
+            <label className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+              <span className="whitespace-nowrap">{t.adminUsersOrderBy}</span>
+              <select
+                value={orderBy}
+                onChange={(e) => setOrder(e.target.value)}
+                className="input !py-2 text-xs min-w-[9rem]"
+              >
+                {ORDER_OPTIONS.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {t[opt.labelKey] || opt.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="submit" className="action-chip !h-9 text-xs gap-1.5">
+              <Search className="w-3.5 h-3.5" />
+              {t.adminUsersSearch}
+            </button>
+            <button
+              type="button"
+              onClick={() => loadUsers(search, safePage, statusFilter, balanceFilter, orderBy)}
+              className="action-chip !h-9 text-xs gap-1.5"
+              title={t.refresh}
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+            {hasActiveFilters && (
+              <button type="button" onClick={clearFilters} className="action-chip !h-9 text-xs">
+                {t.clearSearch}
+              </button>
+            )}
+          </form>
+          <div className="flex flex-wrap gap-1.5">
             {STATUS_FILTERS.map((f) => (
               <button
                 key={f.id}
                 type="button"
                 onClick={() => setStatus(f.id)}
-                className={`action-chip text-xs ${
-                  statusFilter === f.id ? 'border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10' : ''
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors ${
+                  statusFilter === f.id
+                    ? 'border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10'
+                    : 'border-[var(--border)] text-[var(--text-sec)] hover:text-[var(--text)]'
                 }`}
               >
                 {t[f.labelKey] || f.id}
               </button>
             ))}
-          </div>
-          <div className="flex flex-wrap gap-2">
+            <span className="w-px self-stretch bg-[var(--border)] mx-0.5 hidden sm:block" aria-hidden />
             {BALANCE_FILTERS.map((f) => (
               <button
                 key={f.id}
                 type="button"
                 onClick={() => setBalance(f.id)}
-                className={`action-chip text-xs ${
-                  balanceFilter === f.id ? 'border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10' : ''
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors ${
+                  balanceFilter === f.id
+                    ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
+                    : 'border-[var(--border)] text-[var(--text-sec)] hover:text-[var(--text)]'
                 }`}
               >
                 {t[f.labelKey] || f.id}
               </button>
             ))}
           </div>
-          <form onSubmit={handleSearch} className="flex flex-wrap gap-2">
-            <div className="relative flex-1 min-w-[12rem]">
-              <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 start-3 text-[var(--text-muted)]" />
-              <input
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                className="input w-full ps-9"
-                placeholder={t.adminUsersSearchPlaceholder}
-              />
-            </div>
-            <button type="submit" className="action-chip gap-2">
-              <Search className="w-4 h-4" />
-              {t.adminUsersSearch}
-            </button>
-            <button
-              type="button"
-              onClick={() => loadUsers(search, safePage, statusFilter, balanceFilter)}
-              className="action-chip gap-2"
-            >
-              <RefreshCw className="w-4 h-4" />
-              {t.refresh}
-            </button>
-            {hasActiveFilters && (
-              <button type="button" onClick={clearFilters} className="action-chip text-xs">
-                {t.clearSearch}
-              </button>
-            )}
-          </form>
         </div>
 
         {usersLoading ? (
-          <div className="p-10 text-center">
-            <Loader2 className="w-6 h-6 animate-spin mx-auto text-[var(--accent)]" />
+          <div className="p-8 text-center">
+            <Loader2 className="w-5 h-5 animate-spin mx-auto text-[var(--accent)]" />
           </div>
         ) : users.length === 0 ? (
-          <p className="text-sm text-[var(--text-sec)] text-center py-10">{t.adminUsersEmpty}</p>
+          <p className="text-sm text-[var(--text-sec)] text-center py-8">{t.adminUsersEmpty}</p>
         ) : (
           <>
-            <div className="space-y-2 p-4 sm:p-5">
+            <div className="divide-y divide-[var(--border)]">
               {users.map((row) => {
                 const banned = isUserRowBanned(row);
                 const verified = isUserRowVerified(row);
+                const bal = parseFloat(row.balance || 0);
+                const spent = parseFloat(row.total_spent || 0);
+                const ordersN = Number(row.order_count || 0);
                 return (
                   <div
                     key={row.id}
@@ -489,37 +482,62 @@ export default function AdminUsersManager({
                         navigate(getAdminUserPath(getProfileUsername(row) || row.id));
                       }
                     }}
-                    className="admin-user-row rounded-xl border border-[var(--border)] p-4 flex flex-wrap items-start justify-between gap-3"
+                    className="admin-user-row admin-user-row--compact flex items-center gap-2.5 px-3 sm:px-4 py-2.5"
                   >
-                    <div className="min-w-0 flex-1">
-                      <div className="font-bold text-sm flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-[var(--accent)]">{getProfileAdminLabel(row, t.adminUsersUnnamed)}</span>
-                        {verified && <span className="admin-user-badge admin-user-badge--verified">{t.adminUserVerified}</span>}
-                      </div>
-                      {profileNamesDiffer(row) && (
-                        <div className="text-xs text-[var(--text-sec)] mt-0.5">{getProfileDisplayName(row)}</div>
-                      )}
-                      <div className="text-xs text-[var(--text-muted)] mt-0.5 break-all">{row.email}</div>
-                      <div className="text-xs text-[var(--text-sec)] mt-1">
-                        {t.balance}: ${parseFloat(row.balance || 0).toFixed(2)}
-                      </div>
-                      {banned && (
-                        <div className="text-xs text-red-400 mt-1">
-                          {row.ban_expires_at ? formatMessage(t.adminUserBannedUntil, {
-                            date: new Date(row.ban_expires_at).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US'),
-                          }) : t.adminUserBannedPermanent}
-                          {row.ban_reason ? ` — ${row.ban_reason}` : ''}
-                        </div>
-                      )}
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                        banned
+                          ? 'bg-red-500/15 text-red-300'
+                          : verified
+                            ? 'bg-emerald-500/15 text-emerald-300'
+                            : 'bg-[var(--accent)]/12 text-[var(--accent)]'
+                      }`}
+                      aria-hidden
+                    >
+                      {userInitials(row)}
                     </div>
-                    <div className="flex flex-wrap gap-2" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-mono text-xs font-semibold text-[var(--accent)] truncate">
+                          {getProfileAdminLabel(row, t.adminUsersUnnamed)}
+                        </span>
+                        {verified && (
+                          <span className="admin-user-badge admin-user-badge--verified shrink-0">
+                            {t.adminUserVerifiedShort || t.adminUserVerified}
+                          </span>
+                        )}
+                        {banned && (
+                          <span className="admin-user-badge admin-user-badge--banned shrink-0">
+                            {t.adminUserBannedBadge}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-[var(--text-muted)] truncate" dir="ltr">
+                        {row.email}
+                        {profileNamesDiffer(row) ? ` · ${getProfileDisplayName(row)}` : ''}
+                      </div>
+                    </div>
+                    <div className="hidden sm:flex items-center gap-3 text-[11px] font-mono text-[var(--text-sec)] shrink-0 tabular-nums">
+                      <span title={t.balance} className="text-emerald-400/90">${bal.toFixed(2)}</span>
+                      <span title={t.adminUsersColSpent} className="text-[var(--text-muted)]">
+                        {t.adminUsersColSpentShort}: ${spent.toFixed(0)}
+                      </span>
+                      <span title={t.adminUsersColOrders} className="text-[var(--text-muted)]">
+                        {ordersN} {t.adminUsersColOrdersShort}
+                      </span>
+                    </div>
+                    <div
+                      className="flex items-center gap-1 shrink-0"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
                       <button
                         type="button"
                         onClick={() => setVerifyTarget(row)}
-                        className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5"
+                        className="p-1.5 rounded-lg border border-[var(--border)] text-[var(--text-sec)] hover:text-[var(--accent)] hover:border-[var(--accent)]/40 transition-colors"
+                        title={verified ? t.adminUnverifyUser : t.adminVerifyUser}
                       >
                         <BadgeCheck className="w-3.5 h-3.5" />
-                        {verified ? t.adminUnverifyUser : t.adminVerifyUser}
                       </button>
                       <button
                         type="button"
@@ -529,31 +547,11 @@ export default function AdminUsersManager({
                           setMessageTitle('');
                           setMessageBody('');
                         }}
-                        className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5"
+                        className="p-1.5 rounded-lg border border-[var(--border)] text-[var(--text-sec)] hover:text-[var(--accent)] hover:border-[var(--accent)]/40 transition-colors"
+                        title={t.adminUserMessage}
                       >
                         <Bell className="w-3.5 h-3.5" />
-                        {t.adminUserMessage}
                       </button>
-                      {banned ? (
-                        <button type="button" onClick={() => setUnbanTarget(row)} className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5">
-                          <ShieldOff className="w-3.5 h-3.5" />
-                          {t.adminUnbanUser}
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setBanTarget(row);
-                            setBanReason('');
-                            setBanDuration('permanent');
-                            setBanDays('7');
-                          }}
-                          className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5 border-red-500/30 text-red-400"
-                        >
-                          <Ban className="w-3.5 h-3.5" />
-                          {t.adminBanUser}
-                        </button>
-                      )}
                     </div>
                   </div>
                 );
@@ -655,37 +653,33 @@ export default function AdminUsersManager({
         </form>
       </section>
 
-      <section className="card p-5 sm:p-6 space-y-3">
-        <div className="flex items-start gap-3">
-          <BadgeCheck className="w-5 h-5 text-emerald-400 mt-0.5" />
-          <div className="flex-1 min-w-0">
-            <h2 className="text-xl font-black">{t.adminThanksVerifiedTitle}</h2>
-            <p className="text-sm text-[var(--text-sec)] mt-1 leading-relaxed">
-              {t.adminThanksVerifiedDesc}
-            </p>
-            <p className="text-xs text-[var(--text-muted)] mt-2 border border-[var(--border)] rounded-lg p-3">
-              <strong className="block mb-1">{t.verifiedThanksDefaultTitle}</strong>
-              {t.verifiedThanksDefaultBody}
-            </p>
-          </div>
-        </div>
-        <button
-          type="button"
-          disabled={thanksSending}
-          onClick={handleThanksVerified}
-          className="btn btn-primary action-chip gap-2 !border-0 disabled:opacity-50"
-        >
-          {thanksSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <BadgeCheck className="w-4 h-4" />}
-          {thanksSending ? t.sending : t.adminThanksVerifiedSend}
-        </button>
-      </section>
-
       <section className="card p-5 sm:p-6 space-y-4">
         <div className="flex items-start gap-3">
           <Wrench className="w-5 h-5 text-amber-400 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <h2 className="text-xl font-black">{t.adminMaintenanceTitle}</h2>
-            <p className="text-sm text-[var(--text-sec)] mt-1">{t.adminMaintenanceDescSoft}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-xl font-black">{t.adminMaintenanceTitle}</h2>
+              <span
+                className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${
+                  maintenanceEnabled
+                    ? 'border-amber-400/50 text-amber-200 bg-amber-500/15'
+                    : 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
+                }`}
+              >
+                {maintenanceEnabled ? t.adminMaintenanceStatusOn : t.adminMaintenanceStatusOff}
+              </span>
+            </div>
+            <p className="text-sm text-[var(--text-sec)] mt-1 leading-relaxed">
+              {t.adminMaintenanceDescSoft}
+            </p>
+            <ul className="mt-3 text-xs text-[var(--text-muted)] space-y-1 list-disc ps-4 leading-relaxed">
+              <li>{t.adminMaintenanceEffectBanner}</li>
+              <li>{t.adminMaintenanceEffectLogin}</li>
+              <li>{t.adminMaintenanceEffectSignup}</li>
+              <li>{t.adminMaintenanceEffectCommerce}</li>
+              <li>{t.adminMaintenanceEffectBrowse}</li>
+              <li>{t.adminMaintenanceEffectAdmin}</li>
+            </ul>
           </div>
         </div>
         {maintenanceLoading ? (
@@ -700,42 +694,48 @@ export default function AdminUsersManager({
               <input type="checkbox" checked={maintenanceAllowAdmins} onChange={(e) => setMaintenanceAllowAdmins(e.target.checked)} className="w-4 h-4 accent-[var(--accent)]" />
               <span className="text-sm">{t.adminMaintenanceAllowAdmins}</span>
             </label>
-            <textarea value={maintenanceMessageAr} onChange={(e) => setMaintenanceMessageAr(e.target.value)} className="input w-full min-h-[88px]" placeholder={t.adminMaintenanceMessageAr} />
-            <textarea value={maintenanceMessageEn} onChange={(e) => setMaintenanceMessageEn(e.target.value)} className="input w-full min-h-[88px]" placeholder={t.adminMaintenanceMessageEn} />
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={maintenanceBroadcast} onChange={(e) => setMaintenanceBroadcast(e.target.checked)} className="w-4 h-4 accent-[var(--accent)]" />
-              <span className="text-sm">{t.adminMaintenanceBroadcast}</span>
+            <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+              {t.adminMaintenanceAllowAdminsHelp}
+            </p>
+            <textarea value={maintenanceMessageAr} onChange={(e) => setMaintenanceMessageAr(e.target.value)} className="input w-full min-h-[88px]" placeholder={t.adminMaintenanceMessageAr} maxLength={500} />
+            <textarea value={maintenanceMessageEn} onChange={(e) => setMaintenanceMessageEn(e.target.value)} className="input w-full min-h-[88px]" placeholder={t.adminMaintenanceMessageEn} maxLength={500} />
+            <label className={`flex items-start gap-3 ${maintenanceEnabled ? 'cursor-pointer' : 'opacity-50'}`}>
+              <input
+                type="checkbox"
+                checked={maintenanceBroadcast}
+                onChange={(e) => setMaintenanceBroadcast(e.target.checked)}
+                disabled={!maintenanceEnabled}
+                className="w-4 h-4 accent-[var(--accent)] mt-0.5"
+              />
+              <span className="text-sm leading-relaxed">
+                {t.adminMaintenanceBroadcast}
+                <span className="block text-[11px] text-[var(--text-muted)] mt-0.5">
+                  {t.adminMaintenanceBroadcastHelp}
+                </span>
+              </span>
             </label>
-            <button type="button" onClick={handleSaveMaintenance} disabled={maintenanceSaving} className="btn btn-primary action-chip gap-2 !border-0">
-              {maintenanceSaving ? t.sending : (t.save || t.adminSaveMaintenance)}
+            <button
+              type="button"
+              onClick={requestSaveMaintenance}
+              disabled={maintenanceSaving}
+              className="btn btn-primary action-chip gap-2 !border-0"
+            >
+              {maintenanceSaving ? t.sending : t.adminSaveMaintenance}
             </button>
           </div>
         )}
       </section>
 
-      <Modal
-        open={!!banTarget}
-        onClose={banLoading ? undefined : () => setBanTarget(null)}
-        closeOnBackdrop={!banLoading}
-        closeOnEscape={!banLoading}
-        size="md"
-        panelClassName="p-5 space-y-3"
-        scrollable={false}
-        ariaLabelledBy="admin-ban-user-title"
-      >
-        <h3 id="admin-ban-user-title" className="text-lg font-bold">{formatMessage(t.adminBanConfirmTitle, { name: banTarget?.name || banTarget?.email })}</h3>
-        <p className="text-sm text-[var(--text-sec)]">{t.adminBanConfirmMessage}</p>
-        <textarea value={banReason} onChange={(e) => setBanReason(e.target.value)} className="input w-full min-h-[88px]" placeholder={t.adminBanReasonPlaceholder} maxLength={500} />
-        <BanDurationField t={t} duration={banDuration} onDurationChange={setBanDuration} banDays={banDays} onBanDaysChange={setBanDays} />
-        <div className="flex gap-2">
-          <button type="button" disabled={banLoading} onClick={handleBanConfirm} className="btn flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white border-red-600">
-            {banLoading ? t.sending : t.adminBanUser}
-          </button>
-          <button type="button" disabled={banLoading} onClick={() => setBanTarget(null)} className="btn btn-secondary flex-1 py-2.5">{t.cancel}</button>
-        </div>
-      </Modal>
-
-      <ConfirmDialog open={!!unbanTarget} title={t.adminUnbanConfirmTitle} message={formatMessage(t.adminUnbanConfirmMessage, { name: unbanTarget?.name || unbanTarget?.email || '' })} confirmLabel={t.adminUnbanUser} cancelLabel={t.cancel} loading={unbanLoading} onConfirm={handleUnbanConfirm} onCancel={() => !unbanLoading && setUnbanTarget(null)} />
+      <ConfirmDialog
+        open={maintenanceConfirmOpen}
+        title={t.adminMaintenanceConfirmTitle}
+        message={t.adminMaintenanceConfirmMessage}
+        confirmLabel={t.adminSaveMaintenance}
+        cancelLabel={t.cancel}
+        loading={maintenanceSaving}
+        onConfirm={handleSaveMaintenance}
+        onCancel={() => !maintenanceSaving && setMaintenanceConfirmOpen(false)}
+      />
 
       <ConfirmDialog
         open={!!verifyTarget}

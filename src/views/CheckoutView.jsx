@@ -18,6 +18,7 @@ import {
   getFulfillmentUnavailableMessage,
   inspectFulfillmentAvailability,
 } from '../lib/fulfillmentAvailability';
+import { isCommerceBlockedDuringMaintenance } from '../lib/siteStatus';
 
 export default function CheckoutView({
   t,
@@ -31,6 +32,7 @@ export default function CheckoutView({
   paymentConfig = {},
   onNotify,
   navigate,
+  siteStatus = null,
 }) {
   const notifyError = (message) => onNotify?.(message, 'error');
   const notifySuccess = (message) => onNotify?.(message, 'success');
@@ -102,8 +104,14 @@ export default function CheckoutView({
     refreshStockCheck();
   }, [refreshStockCheck]);
 
+  const maintenanceBlocked = isCommerceBlockedDuringMaintenance(siteStatus, user);
+
   const handleCheckoutProcess = async () => {
     if (isProcessing || checkoutClickLock.locked) return;
+    if (maintenanceBlocked) {
+      notifyError(t.maintenanceCommerceBlocked);
+      return;
+    }
     if (!cart?.length) {
       notifyError(t.cartEmptyOrUnavailable || t.emptyCart);
       return;

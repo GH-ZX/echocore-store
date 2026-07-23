@@ -33,6 +33,7 @@ import {
   buildRechargeCompletedMessage,
 } from '../lib/rechargeCurrency';
 import { formatMessage } from '../lib/i18n';
+import { isCommerceBlockedDuringMaintenance } from '../lib/siteStatus';
 
 async function cancelPendingRecharge(requestId) {
   if (!requestId) return;
@@ -52,6 +53,7 @@ export default function RechargeView({
   paymentConfig = {},
   onNotify,
   onRechargePaid,
+  siteStatus = null,
 }) {
   const notifyError = (message) => onNotify?.(message, 'error');
   const notifySuccess = (message) => onNotify?.(message, 'success');
@@ -60,7 +62,8 @@ export default function RechargeView({
 
   const balance = typeof currentBalance === 'number' ? currentBalance : (user?.balance || 0);
   const isApiMode = isApiWalletMode(paymentConfig);
-  const rechargeAllowed = canUserRecharge(user);
+  const maintenanceBlocked = isCommerceBlockedDuringMaintenance(siteStatus, user);
+  const rechargeAllowed = canUserRecharge(user) && !maintenanceBlocked;
 
   const walletMethods = useMemo(
     () => buildPaymentMethods(t, lang, paymentConfig).filter((m) => m.id === 'ShamCash' || m.id === 'SyriatelCash'),
@@ -178,6 +181,10 @@ export default function RechargeView({
   const startPayment = async () => {
     if (!user?.id) {
       notifyError(t.loginRequired);
+      return;
+    }
+    if (maintenanceBlocked) {
+      notifyError(t.maintenanceCommerceBlocked);
       return;
     }
     if (!methodReady) {
@@ -341,6 +348,17 @@ export default function RechargeView({
   }
 
   if (!rechargeAllowed) {
+    if (maintenanceBlocked) {
+      return (
+        <div className="max-w-2xl mx-auto py-20 text-center px-4">
+          <AlertCircle className="w-10 h-10 mx-auto text-amber-300 mb-4" />
+          <p className="text-[var(--text-sec)] mb-6 leading-relaxed">{t.maintenanceCommerceBlocked}</p>
+          <button type="button" onClick={() => navigate('/')} className="btn btn-secondary">
+            {t.backToHome}
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="max-w-2xl mx-auto py-20 text-center">
         <AlertCircle className="w-10 h-10 mx-auto text-amber-300 mb-4" />

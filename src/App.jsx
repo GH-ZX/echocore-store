@@ -68,7 +68,12 @@ import { resolveStorefrontGame } from './lib/gameRegions';
 import { cartRequiresPlayerUid, isCartEligibleOffer } from './lib/catalogUtils';
 import { fetchAllSupabaseRows } from './lib/supabaseQuery';
 import { fetchPaymentMethods } from './lib/storeSettings';
-import { fetchSiteStatus, isLoginBlockedDuringMaintenance } from './lib/siteStatus';
+import {
+  fetchSiteStatus,
+  isLoginBlockedDuringMaintenance,
+  isSignupBlockedDuringMaintenance,
+  isCommerceBlockedDuringMaintenance,
+} from './lib/siteStatus';
 import MaintenanceBanner from './components/layout/MaintenanceBanner';
 import { isUserBanned } from './lib/userBan';
 import {
@@ -648,6 +653,25 @@ export default function App() {
     return userData;
   }, [siteStatus, t.maintenanceLoginBlocked]);
 
+  const assertCommerceAllowed = useCallback(() => {
+    if (isCommerceBlockedDuringMaintenance(siteStatus, user)) {
+      throw new Error(t.maintenanceCommerceBlocked);
+    }
+  }, [siteStatus, user, t.maintenanceCommerceBlocked]);
+
+  const refreshSiteStatus = useCallback(async () => {
+    try {
+      const status = await fetchSiteStatus();
+      setSiteStatus(status);
+      if (!status?.maintenanceEnabled) {
+        setMaintenanceBannerDismissed(false);
+      }
+      return status;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const recordLoginSuccess = useCallback(async (email, userId = null, userName = null) => {
     const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
     const dedupeKey = userId || normalizedEmail;
@@ -706,7 +730,7 @@ export default function App() {
   // Signup helper (used by LoginView). Extra profile fields optional.
   // Username uniqueness is enforced in DB (handle_new_user + unique index).
   const handleAuthSignup = async (email, password, profile = {}) => {
-    if (siteStatus?.maintenanceEnabled) {
+    if (isSignupBlockedDuringMaintenance(siteStatus)) {
       throw new Error(t.maintenanceSignupBlocked);
     }
 
@@ -850,6 +874,7 @@ export default function App() {
   const submitOrder = async (currentCart, paymentMethod) => {
     if (!user?.id) throw new Error('Not logged in');
     if (user?.role === 'admin') throw new Error(t.adminCannotPurchase);
+    assertCommerceAllowed();
 
     try {
     return await runWithPurchaseGuard(user.id, async (checkoutToken) => {
@@ -1006,6 +1031,7 @@ export default function App() {
     if (!user?.id) throw new Error('Not logged in');
     if (user?.role === 'admin') throw new Error(t.adminCannotPurchase);
     if (!offer) throw new Error('No offer');
+    assertCommerceAllowed();
 
     return runWithPurchaseGuard(user.id, async (checkoutToken) => {
 
@@ -2204,6 +2230,7 @@ export default function App() {
           setAdminCarouselPickerOpen={setAdminCarouselPickerOpen}
           moveCarouselGame={moveCarouselGame}
           siteStatus={siteStatus}
+          refreshSiteStatus={refreshSiteStatus}
         />
       </main>
 

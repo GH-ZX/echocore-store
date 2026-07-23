@@ -4,6 +4,7 @@ import { brandUserText } from '../lib/branding';
 import { getOfferDisplayName, getGameDisplayName, formatPrice } from '../lib/offerDisplay';
 import { cartRequiresPlayerUid } from '../lib/catalogUtils';
 import { presetImageUrl } from '../lib/imageUtils';
+import { isCommerceBlockedDuringMaintenance } from '../lib/siteStatus';
 
 function CartItemThumb({ src, name, color }) {
   const placeholder = new URL('../assets/placeholder-cover.svg', import.meta.url).href;
@@ -44,8 +45,11 @@ export default function CartView({
   onCheckout,
   onContinueShopping,
   priceUpdated = false,
+  siteStatus = null,
+  user = null,
 }) {
   const uidBlocked = cartRequiresPlayerUid(cart, games);
+  const maintenanceBlocked = isCommerceBlockedDuringMaintenance(siteStatus, user);
   const total = getCartTotal?.() ?? '0.00';
   const count = cart.length;
 
@@ -179,12 +183,17 @@ export default function CartView({
               </div>
             </div>
 
-            {uidBlocked && (
+            {maintenanceBlocked && (
+              <p className="text-sm text-amber-200/90 bg-amber-500/10 border border-amber-500/25 rounded-xl px-3 py-2.5 mb-3 leading-relaxed">
+                {t.maintenanceCommerceBlocked}
+              </p>
+            )}
+            {uidBlocked && !maintenanceBlocked && (
               <p className="text-sm text-amber-200/90 bg-amber-500/10 border border-amber-500/25 rounded-xl px-3 py-2.5 mb-3 leading-relaxed">
                 {t.cartUidCheckoutBlocked}
               </p>
             )}
-            {!uidBlocked && (
+            {!uidBlocked && !maintenanceBlocked && (
               <p className="text-xs text-[var(--text-muted)] mb-4 leading-relaxed">
                 {t.cartVoucherOnlyHint}
               </p>
@@ -193,7 +202,7 @@ export default function CartView({
             <button
               type="button"
               onClick={onCheckout}
-              disabled={uidBlocked || count === 0}
+              disabled={uidBlocked || maintenanceBlocked || count === 0}
               className="btn btn-primary w-full py-3.5 sm:py-4 text-base sm:text-lg font-bold disabled:opacity-50 disabled:pointer-events-none inline-flex items-center justify-center gap-2"
             >
               {t.checkout}

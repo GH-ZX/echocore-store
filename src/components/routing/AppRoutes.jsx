@@ -121,6 +121,7 @@ export default function AppRoutes({
   setAdminCarouselPickerOpen,
   moveCarouselGame,
   siteStatus,
+  refreshSiteStatus,
 }) {
   return (
     <Suspense fallback={<PageLoader t={t} />}>
@@ -451,6 +452,8 @@ export default function AppRoutes({
                 onCheckout={() => navigate('/checkout')}
                 onContinueShopping={() => navigate('/gift-cards')}
                 priceUpdated={cartPriceUpdated}
+                siteStatus={siteStatus}
+                user={user}
               />
             </ProtectedRoute>
           )}
@@ -472,6 +475,7 @@ export default function AppRoutes({
                 currentBalance={user?.balance || 0}
                 paymentConfig={paymentConfig}
                 onNotify={showToast}
+                siteStatus={siteStatus}
               />
             </ProtectedRoute>
           )}
@@ -540,6 +544,7 @@ export default function AppRoutes({
                 t={t}
                 lang={lang}
                 user={user}
+                games={games}
                 navigate={navigate}
                 onLogout={handleLogout}
                 onRecharge={user?.role === 'admin' ? undefined : () => navigate('/recharge')}
@@ -569,6 +574,7 @@ export default function AppRoutes({
                   paymentConfig={paymentConfig}
                   onNotify={showToast}
                   onRechargePaid={handleRechargeApproved}
+                  siteStatus={siteStatus}
                 />
               )}
             </ProtectedRoute>
@@ -653,6 +659,7 @@ export default function AppRoutes({
                 onRefreshInbox={handleRefreshInbox}
                 onNotificationMarkRead={handleNotificationMarkRead}
                 onNotificationsMarkAllRead={handleNotificationsMarkAllRead}
+                refreshSiteStatus={refreshSiteStatus}
               />
             ) : (
               <Navigate to="/" replace />

@@ -7,14 +7,14 @@ export default function CatalogSearchBar({
   className = '',
 }) {
   return (
-    <div className={`relative mb-6 ${className}`}>
-      <Search className="absolute top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)] pointer-events-none start-4" />
+    <div className={`input flex items-center gap-3 mb-6 !py-0 !px-3 rounded-2xl ${className}`}>
+      <Search className="w-4 h-4 shrink-0 text-[var(--text-muted)] pointer-events-none" aria-hidden />
       <input
         type="search"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="input w-full ps-11 pe-4 py-3 rounded-2xl"
+        className="flex-1 min-w-0 bg-transparent border-0 outline-none shadow-none py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
         autoComplete="off"
       />
     </div>
