@@ -131,6 +131,23 @@ export async function sendEmailOtp(email, { shouldCreateUser = true } = {}) {
   if (error) throw error;
 }
 
+/**
+ * Resend the signup confirmation email (link and/or 6-digit code, per project template).
+ */
+export async function resendSignupConfirmation(email) {
+  const { error } = await supabase.auth.resend({
+    type: 'signup',
+    email: email.trim(),
+    options: {
+      emailRedirectTo: getAuthRedirectUrl('/login'),
+    },
+  });
+  if (error) throw error;
+}
+
+/**
+ * Verify email OTP from magic-link login (`signInWithOtp`).
+ */
 export async function verifyEmailOtp(email, token) {
   const { data, error } = await supabase.auth.verifyOtp({
     email: email.trim(),
@@ -139,6 +156,49 @@ export async function verifyEmailOtp(email, token) {
   });
   if (error) throw error;
   return data;
+}
+
+/**
+ * Verify 6-digit code from password signup confirmation email.
+ * Tries `signup` first, then `email` (template / project settings vary).
+ */
+export async function verifySignupOtp(email, token) {
+  const cleaned = {
+    email: email.trim(),
+    token: String(token || '').trim(),
+  };
+
+  const first = await supabase.auth.verifyOtp({
+    ...cleaned,
+    type: 'signup',
+  });
+  if (!first.error) return first.data;
+
+  const second = await supabase.auth.verifyOtp({
+    ...cleaned,
+    type: 'email',
+  });
+  if (!second.error) return second.data;
+
+  throw first.error || second.error || new Error('Invalid code');
+}
+
+/** Map Supabase auth errors to stable codes for UI copy. */
+export function classifyAuthError(error) {
+  const msg = String(error?.message || error || '').toLowerCase();
+  if (/email not confirmed|not confirmed|confirm your email/i.test(msg)) {
+    return 'email_not_confirmed';
+  }
+  if (/invalid login|invalid credentials|invalid email or password/i.test(msg)) {
+    return 'invalid_credentials';
+  }
+  if (/already\s*registered|already\s*exists|user already/i.test(msg)) {
+    return 'already_registered';
+  }
+  if (/otp|token|expired|invalid.*code/i.test(msg)) {
+    return 'invalid_otp';
+  }
+  return 'unknown';
 }
 
 export async function requestPasswordReset(email) {

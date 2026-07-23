@@ -18,6 +18,8 @@ import {
   signInWithGoogle,
   sendEmailOtp,
   verifyEmailOtp,
+  verifySignupOtp,
+  resendSignupConfirmation,
   requestPasswordReset,
   updatePassword,
   clearPasswordRecoveryPending,
@@ -124,9 +126,13 @@ export default function LoginView({
       return;
     }
     if (isSignupPath) {
-      setMode((m) => (m === 'signup' ? m : 'signup'));
+      setMode((m) => (m === 'signup' || m === 'confirm' ? m : 'signup'));
     } else if (isLoginPath) {
-      setMode((m) => (m === 'login' || m === 'forgot' || m === 'otp' || m === 'recovery' ? m : 'login'));
+      setMode((m) => (
+        m === 'login' || m === 'forgot' || m === 'otp' || m === 'recovery' || m === 'confirm'
+          ? m
+          : 'login'
+      ));
     }
   }, [isSignupPath, isLoginPath, searchParams]);
 
@@ -152,10 +158,10 @@ export default function LoginView({
   }, []);
 
   useEffect(() => {
-    if (otpSent && otpInputRef.current) {
+    if ((otpSent || mode === 'confirm') && otpInputRef.current) {
       otpInputRef.current.focus();
     }
-  }, [otpSent]);
+  }, [otpSent, mode]);
 
   useEffect(() => () => {
     if (usernameCheckTimer.current) window.clearTimeout(usernameCheckTimer.current);
@@ -257,10 +263,27 @@ export default function LoginView({
         });
         if (result.autoLogin && result.userData) {
           onLoginSuccess(result.userData, redirectTo);
+        } else if (result.needsEmailConfirm) {
+          // Stay here: enter code or open the confirmation link — don't dump to login.
+          setMode('confirm');
+          setOtpCode('');
+          setOtpSent(true);
+          setSuccessMsg(result.message || t.confirmEmailSent);
         } else {
-          setSuccessMsg(result.message || `${t.createAccount}. ${t.checkEmailToConfirm}`);
-          setMode('login');
+          setSuccessMsg(result.message || t.confirmEmailSent);
+          setMode('confirm');
+          setOtpSent(true);
         }
+        return;
+      }
+
+      if (mode === 'confirm') {
+        if (!otpCode.trim()) {
+          throw new Error(t.invalidOtpCode);
+        }
+        const { user } = await verifySignupOtp(email, otpCode);
+        if (!user) throw new Error(t.invalidOtpCode);
+        await finishAuth(user);
         return;
       }
 
@@ -312,6 +335,27 @@ export default function LoginView({
       const userData = await handleAuthLogin(email, password);
       onLoginSuccess(userData, redirectTo);
     } catch (err) {
+      if (err?.code === 'email_not_confirmed') {
+        setMode('confirm');
+        setOtpSent(true);
+        setSuccessMsg(t.emailNotConfirmed);
+        setError('');
+      } else {
+        setError(err.message || t.authError);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const onResendConfirm = async () => {
+    resetMessages();
+    setIsLoading(true);
+    try {
+      if (!email.trim()) throw new Error(t.authError);
+      await resendSignupConfirmation(email);
+      setSuccessMsg(t.confirmEmailResent);
+    } catch (err) {
       setError(err.message || t.authError);
     } finally {
       setIsLoading(false);
@@ -353,6 +397,7 @@ export default function LoginView({
 
   const title = () => {
     if (mode === 'signup') return t.createAccount;
+    if (mode === 'confirm') return t.confirmEmailTitle;
     if (mode === 'forgot') return t.forgotPasswordTitle;
     if (mode === 'recovery') return t.newPasswordTitle;
     if (mode === 'otp') return t.signInWithOtpTitle;
@@ -361,6 +406,7 @@ export default function LoginView({
 
   const subtitle = () => {
     if (mode === 'signup') return t.signupDesc;
+    if (mode === 'confirm') return t.confirmEmailDesc;
     if (mode === 'forgot') return t.forgotPasswordDesc;
     if (mode === 'recovery') return t.newPasswordDesc;
     if (mode === 'otp') return otpSent ? t.otpSentDesc : t.otpDesc;
@@ -369,6 +415,7 @@ export default function LoginView({
 
   const showGoogle = mode === 'login' || mode === 'signup';
   const showMethodTabs = mode === 'login';
+  const showCodeInput = (mode === 'otp' && otpSent) || mode === 'confirm';
 
   if (loadingAuth) {
     return (
@@ -598,12 +645,12 @@ export default function LoginView({
                 className="input w-full text-left"
                 dir="ltr"
                 autoComplete="email"
-                disabled={mode === 'otp' && otpSent}
+                disabled={(mode === 'otp' && otpSent) || mode === 'confirm'}
               />
             </div>
           )}
 
-          {mode === 'otp' && otpSent && (
+          {showCodeInput && (
             <div>
               <label className="text-sm font-semibold flex items-center gap-2 mb-1.5 text-[var(--text-sec)]">
                 <KeyRound className="w-4 h-4 text-[var(--accent)]" /> {t.verificationCode}
@@ -613,20 +660,39 @@ export default function LoginView({
                 type="text"
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                required
+                required={mode === 'otp'}
                 maxLength={8}
                 value={otpCode}
                 onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
                 className="input w-full text-center text-2xl tracking-[0.35em] font-mono"
                 placeholder="000000"
               />
-              <button
-                type="button"
-                onClick={() => { setOtpSent(false); setOtpCode(''); resetMessages(); }}
-                className="text-xs text-[var(--accent)] mt-2 hover:underline"
-              >
-                {t.sendNewCode}
-              </button>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
+                {mode === 'otp' && (
+                  <button
+                    type="button"
+                    onClick={() => { setOtpSent(false); setOtpCode(''); resetMessages(); }}
+                    className="text-xs text-[var(--accent)] hover:underline"
+                  >
+                    {t.sendNewCode}
+                  </button>
+                )}
+                {mode === 'confirm' && (
+                  <button
+                    type="button"
+                    onClick={onResendConfirm}
+                    disabled={isLoading}
+                    className="text-xs text-[var(--accent)] hover:underline disabled:opacity-60"
+                  >
+                    {t.resendConfirmEmail}
+                  </button>
+                )}
+              </div>
+              {mode === 'confirm' && (
+                <p className="text-[11px] text-[var(--text-muted)] mt-2 leading-relaxed">
+                  {t.confirmEmailLinkHint}
+                </p>
+              )}
             </div>
           )}
 
@@ -706,17 +772,18 @@ export default function LoginView({
           >
             {isLoading ? t.processing : (
               mode === 'signup' ? t.createAccount
-                : mode === 'forgot' ? t.sendResetLink
-                  : mode === 'recovery' ? t.savePassword
-                    : mode === 'otp' ? (otpSent ? t.verifyAndSignIn : t.sendCode)
-                      : loginMethod === 'otp' ? t.continueWithOtp
-                        : t.login
+                : mode === 'confirm' ? t.verifyAndSignIn
+                  : mode === 'forgot' ? t.sendResetLink
+                    : mode === 'recovery' ? t.savePassword
+                      : mode === 'otp' ? (otpSent ? t.verifyAndSignIn : t.sendCode)
+                        : loginMethod === 'otp' ? t.continueWithOtp
+                          : t.login
             )}
           </button>
         </form>
 
         <div className="mt-6 text-center text-sm space-y-2">
-          {(mode === 'forgot' || mode === 'recovery' || mode === 'otp') && (
+          {(mode === 'forgot' || mode === 'recovery' || mode === 'otp' || mode === 'confirm') && (
             <button
               type="button"
               onClick={() => switchMode('login')}

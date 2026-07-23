@@ -8,6 +8,8 @@ import {
   markPasswordRecoveryPending,
   consumeOAuthIntent,
   isLikelyExistingAuthUser,
+  classifyAuthError,
+  getAuthRedirectUrl,
 } from './lib/auth';
 import { supabase, resolveUserData } from './lib/supabase';
 import { fetchAdminProfileSummaries } from './lib/adminModeration';
@@ -676,6 +678,13 @@ export default function App() {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       await logAuthEvent('login_failed', { email });
+      const code = classifyAuthError(error);
+      if (code === 'email_not_confirmed') {
+        const err = new Error(t.emailNotConfirmed);
+        err.code = 'email_not_confirmed';
+        err.email = email;
+        throw err;
+      }
       throw new Error(t.authError || 'Invalid credentials');
     }
 
@@ -723,7 +732,11 @@ export default function App() {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: meta },
+      options: {
+        data: meta,
+        // Confirmation / magic link must land back on our site (Dashboard → Redirect URLs).
+        emailRedirectTo: getAuthRedirectUrl('/login'),
+      },
     });
     if (error) {
       await logAuthEvent('signup_failed', { email });
@@ -758,25 +771,26 @@ export default function App() {
       if (gender === 'male' || gender === 'female') patch.gender = gender;
       if (dateOfBirth) patch.date_of_birth = dateOfBirth;
 
-      const upsertRes = await supabase.from('profiles').upsert(patch, { onConflict: 'id' });
-      if (upsertRes.error && /gender|date_of_birth|column/i.test(upsertRes.error.message || '')) {
-        // Columns not migrated yet — still create core profile
-        await supabase.from('profiles').upsert({
-          id: data.user.id,
-          role: 'user',
-          name: name || email.split('@')[0],
-          balance: 0,
-        }, { onConflict: 'id' });
+      // Only patch when we already have a session (RLS allows own profile).
+      // Unconfirmed users often have no JWT — skip client upsert; trigger handles profile.
+      if (data.session) {
+        const upsertRes = await supabase.from('profiles').upsert(patch, { onConflict: 'id' });
+        if (upsertRes.error && /gender|date_of_birth|column/i.test(upsertRes.error.message || '')) {
+          await supabase.from('profiles').upsert({
+            id: data.user.id,
+            role: 'user',
+            name: name || email.split('@')[0],
+            balance: 0,
+          }, { onConflict: 'id' });
+        }
       }
 
-      // If Supabase gave us a session immediately (email confirmation disabled in project settings),
-      // log the user in right away
+      // Email confirmation disabled → session now → log in immediately
       if (data.session) {
         const userData = await resolveUserData(data.user, { createIfMissing: true });
         if (!userData) {
           throw new Error(t.profileLoadFailed);
         }
-        // profile insert trigger also logs signup; client call is deduped in SQL
         await logAuthEvent('signup_success', {
           email,
           userId: data.user.id,
@@ -786,16 +800,27 @@ export default function App() {
         return { success: true, autoLogin: true, userData };
       }
 
+      // Email confirmation required — stay on confirm screen (code and/or link)
       await logAuthEvent('signup_success', {
         email,
         userId: data.user.id,
         userName: name || username || email.split('@')[0],
       });
-      return { success: true, message: t.checkEmailToConfirm || 'Check your email to confirm your account.' };
+      return {
+        success: true,
+        needsEmailConfirm: true,
+        email,
+        message: t.confirmEmailSent,
+      };
     }
 
     await logAuthEvent('signup_success', { email, userName: name || username || null });
-    return { success: true, message: t.checkEmailToConfirm || 'Check your email to confirm your account.' };
+    return {
+      success: true,
+      needsEmailConfirm: true,
+      email,
+      message: t.confirmEmailSent,
+    };
   };
 
   const runWithPurchaseGuard = async (userId, fn) => {
