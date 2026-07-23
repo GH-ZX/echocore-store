@@ -34,9 +34,29 @@ function BackgroundLayer({ type }) {
   return <Aurora />;
 }
 
+function prefersReducedMotion() {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/** Heavy WebGL / particle backgrounds — skip when user prefers reduced motion */
+const HEAVY_BACKGROUND_TYPES = new Set([
+  'aurora',
+  'particles',
+  'nebula',
+  'grid3d',
+  'grid3d_tunnel',
+  'grid3d_canyon',
+  'grid3d_rings',
+  'starfield',
+  'circuit',
+  'hexgrid',
+]);
+
 export default function StoreBackground() {
   const [type, setType] = useState(readBackgroundType);
   const [layerKey, setLayerKey] = useState(0);
+  const [reduceMotion, setReduceMotion] = useState(prefersReducedMotion);
 
   useEffect(() => {
     const sync = () => {
@@ -51,7 +71,18 @@ export default function StoreBackground() {
     return () => window.removeEventListener('themechange', sync);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const onChange = () => setReduceMotion(mq.matches);
+    onChange();
+    mq.addEventListener?.('change', onChange);
+    return () => mq.removeEventListener?.('change', onChange);
+  }, []);
+
   if (type === 'none') return null;
+  // Solid theme color only — no animated layers (a11y + mid-range phones)
+  if (reduceMotion && HEAVY_BACKGROUND_TYPES.has(type)) return null;
 
   return (
     <Suspense fallback={null}>

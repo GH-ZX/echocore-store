@@ -75,6 +75,12 @@ npm run preview
 - النطاق الأساسي: **www.echocore412.com**
 - احذف سجلات A الزائدة على الـ apex (`15.197…` / `3.33…`) — تُفسد HTTPS على `echocore412.com`
 
+### أسرار Edge (G2Bulk / Sam)
+
+👉 **[docs/edge-secrets.md](./docs/edge-secrets.md)**
+
+لا تضع مفاتيح API في الواجهة؛ Edge Secrets + RPC مقنّع فقط.
+
 ---
 
 ## أوامر مفيدة

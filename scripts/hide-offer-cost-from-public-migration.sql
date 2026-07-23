@@ -1,49 +1,27 @@
 -- =============================================================================
--- Hide supplier wholesale cost from public/anon PostgREST reads.
--- - Column privileges: g2bulk_cost_usd (and pricing_margin_percent) not selectable
---   by anon/authenticated direct table queries
--- - admin_get_offer_wholesale: admin-only cost + pricing policy fields
--- - get_my_offer_unit_prices: partner / influencer display prices without cost
+-- Hide supplier wholesale cost from casual clients (SAFE for Supabase/PostgREST)
+--
+-- HISTORY: An earlier version REVOKE'd table SELECT and re-GRANTed columns only.
+-- That breaks PostgREST (401 permission denied → empty store). DO NOT do that.
+--
+-- Safe approach:
+-- 1) Keep GRANT SELECT on public.offers (required for REST catalog)
+-- 2) Admin costs via admin_get_offer_wholesale (SECURITY DEFINER)
+-- 3) Partner/influencer display prices via get_my_offer_unit_prices
+-- 4) Client strips g2bulk_cost_usd / pricing_margin_percent on storefront loads
+--
+-- True column lockdown without breaking REST needs a public VIEW + client switch
+-- (optional follow-up). Until then, never REVOKE SELECT ON public.offers.
 --
 -- Apply: supabase db query --linked -f scripts/hide-offer-cost-from-public-migration.sql
--- (or paste into Supabase SQL Editor)
 -- =============================================================================
 
--- ---------------------------------------------------------------------------
--- 1) Column-level SELECT: all offer columns except wholesale secrets
---    (table-level SELECT grants all columns; we must revoke then re-grant)
--- ---------------------------------------------------------------------------
-DO $$
-DECLARE
-  cols text;
-BEGIN
-  SELECT string_agg(quote_ident(c.column_name), ', ' ORDER BY c.ordinal_position)
-  INTO cols
-  FROM information_schema.columns c
-  WHERE c.table_schema = 'public'
-    AND c.table_name = 'offers'
-    AND c.column_name NOT IN (
-      'g2bulk_cost_usd',
-      -- With public price + margin %, cost is reverse-engineerable
-      'pricing_margin_percent'
-    );
-
-  IF cols IS NULL OR length(trim(cols)) = 0 THEN
-    RAISE EXCEPTION 'hide-offer-cost: no public columns resolved for offers';
-  END IF;
-
-  REVOKE SELECT ON TABLE public.offers FROM anon, authenticated;
-  EXECUTE format(
-    'GRANT SELECT (%s) ON TABLE public.offers TO anon, authenticated',
-    cols
-  );
-
-  -- Admins still INSERT/UPDATE/DELETE via RLS; keep DML privileges
-  GRANT INSERT, UPDATE, DELETE ON TABLE public.offers TO authenticated;
-END $$;
+-- Ensure REST can always read offers (fixes empty store if broken earlier)
+GRANT SELECT ON TABLE public.offers TO anon, authenticated;
+GRANT INSERT, UPDATE, DELETE ON TABLE public.offers TO authenticated;
 
 -- ---------------------------------------------------------------------------
--- 2) Admin: wholesale map (SECURITY DEFINER — full row access as owner)
+-- Admin: wholesale map (SECURITY DEFINER — full row access as owner)
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.admin_get_offer_wholesale(p_ids uuid[] DEFAULT NULL)
 RETURNS jsonb
@@ -85,7 +63,7 @@ REVOKE EXECUTE ON FUNCTION public.admin_get_offer_wholesale(uuid[]) FROM public;
 GRANT EXECUTE ON FUNCTION public.admin_get_offer_wholesale(uuid[]) TO authenticated;
 
 -- ---------------------------------------------------------------------------
--- 3) Shopper unit prices (partner plan-B / influencer) without exposing cost
+-- Shopper unit prices (partner plan-B / influencer) without needing cost in UI
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.get_my_offer_unit_prices(
   p_ids uuid[] DEFAULT NULL,
@@ -111,7 +89,6 @@ DECLARE
   v_partner boolean;
   v_influencer boolean;
 BEGIN
-  -- Anonymous / logged-out: public shelf only (no special pricing)
   IF v_uid IS NOT NULL THEN
     SELECT t.markup_percent INTO v_partner_markup
     FROM public.profiles p
@@ -197,9 +174,8 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.get_my_offer_unit_prices(uuid[], text) FROM public;
 GRANT EXECUTE ON FUNCTION public.get_my_offer_unit_prices(uuid[], text) TO authenticated;
--- Partners must be logged in; anon only needs public price from table
 
 COMMENT ON FUNCTION public.admin_get_offer_wholesale(uuid[]) IS
-  'Admin-only map of offer id → g2bulk_cost_usd + pricing policy (never expose to clients directly).';
+  'Admin-only map of offer id → g2bulk_cost_usd + pricing policy.';
 COMMENT ON FUNCTION public.get_my_offer_unit_prices(uuid[], text) IS
-  'Returns unit prices for current user (partner / influencer) without revealing supplier cost.';
+  'Unit prices for current user (partner / influencer) without needing cost in the client UI.';

@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { STORE_SETTINGS_CLIENT_SELECT, stripStoreSecrets } from './storeSecrets';
 
 const DEFAULT_SETTINGS = {
   id: 1,
@@ -30,7 +31,7 @@ export async function fetchPaymentMethods() {
 export async function fetchStoreSettings() {
   const { data, error } = await supabase
     .from('store_settings')
-    .select('*')
+    .select(STORE_SETTINGS_CLIENT_SELECT)
     .eq('id', 1)
     .maybeSingle();
 
@@ -44,7 +45,8 @@ export async function fetchStoreSettings() {
     throw error;
   }
 
-  return { ...DEFAULT_SETTINGS, ...data };
+  // Never surface API keys / tokens in the browser (use edge secrets + masked admin RPCs)
+  return stripStoreSecrets({ ...DEFAULT_SETTINGS, ...data, shamcash_api_token: '' });
 }
 
 export async function saveStoreSettings(settings) {
@@ -59,9 +61,6 @@ export async function saveStoreSettings(settings) {
     id: 1,
     shamcash_enabled: settings.shamcash_enabled ?? existing.shamcash_enabled ?? DEFAULT_SETTINGS.shamcash_enabled,
     shamcash_api_base_url: (settings.shamcash_api_base_url ?? existing.shamcash_api_base_url ?? DEFAULT_SETTINGS.shamcash_api_base_url).replace(/\/$/, ''),
-    shamcash_api_token: settings.shamcash_api_token !== undefined
-      ? (settings.shamcash_api_token?.trim() || null)
-      : (existing.shamcash_api_token?.trim() || null),
     shamcash_account_id: settings.shamcash_account_id !== undefined
       ? (settings.shamcash_account_id?.trim() || null)
       : (existing.shamcash_account_id?.trim() || null),
@@ -86,12 +85,19 @@ export async function saveStoreSettings(settings) {
     updated_at: new Date().toISOString(),
   };
 
+  // Token is never re-read into the client. Only write when admin pastes a new non-empty value
+  // (omit field otherwise so existing DB secret is preserved).
+  const nextToken = settings.shamcash_api_token;
+  if (nextToken !== undefined && nextToken !== null && String(nextToken).trim()) {
+    payload.shamcash_api_token = String(nextToken).trim();
+  }
+
   const { data, error } = await supabase
     .from('store_settings')
     .upsert(payload, { onConflict: 'id' })
-    .select()
+    .select(STORE_SETTINGS_CLIENT_SELECT)
     .single();
 
   if (error) throw error;
-  return data;
+  return stripStoreSecrets({ ...data, shamcash_api_token: '' });
 }
