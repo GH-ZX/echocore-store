@@ -1,2 +1,6 @@
 [functions.g2bulk-sync-cron]
 verify_jwt = false
+
+# App-level auth in the function. JWT off so G2Bulk top-up webhooks can POST without a Supabase token.
+[functions.g2bulk]
+verify_jwt = false

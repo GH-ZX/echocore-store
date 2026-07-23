@@ -489,9 +489,22 @@ export async function clearG2bulkSyncedCatalog() {
   return result;
 }
 
-/** Fulfill a completed order via G2Bulk (balance or after admin approval) */
-export async function fulfillOrderG2bulk(orderId) {
-  return invokeG2bulk({ action: 'fulfillOrder', orderId }, { sanitizeForUser: true });
+/**
+ * Fulfill a completed order via G2Bulk (balance or after admin approval).
+ * @param {string} orderId
+ * @param {{ pollOnly?: boolean }} [opts]
+ *   pollOnly — re-check supplier status only; never places a new G2Bulk purchase/top-up.
+ *   Always use when `orders.g2bulk_order_id` already exists.
+ */
+export async function fulfillOrderG2bulk(orderId, { pollOnly = false } = {}) {
+  return invokeG2bulk(
+    {
+      action: 'fulfillOrder',
+      orderId,
+      ...(pollOnly ? { pollOnly: true, mode: 'poll' } : {}),
+    },
+    { sanitizeForUser: true },
+  );
 }
 
 /** Pre-checkout: verify G2Bulk can fulfill before balance is deducted */

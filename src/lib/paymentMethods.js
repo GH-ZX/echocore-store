@@ -80,6 +80,31 @@ export function isManualWalletMethod(methodId) {
   return MANUAL_WALLET_METHODS.includes(methodId);
 }
 
+/**
+ * Human-readable payment method for admin/profile lists (never raw "balance").
+ */
+export function getOrderPaymentMethodLabel(method, t = {}) {
+  const id = String(method || '').trim();
+  if (!id) return '—';
+  if (id === 'balance') {
+    return t.adminOrdersPaymentBalance || t.payFromBalance || t.balance || 'Balance';
+  }
+  if (id === 'admin_gift') {
+    return t.orderPaymentGift || t.adminGiftTitle || 'Admin gift';
+  }
+  if (id === 'ShamCash' || id.toLowerCase() === 'shamcash') {
+    return t.adminOrdersPaymentShamcash || t.shamCash || 'ShamCash';
+  }
+  if (id === 'SyriatelCash' || id.toLowerCase() === 'syriatelcash') {
+    return t.adminOrdersPaymentSyriatel || t.syriatelCash || 'Syriatel Cash';
+  }
+  if (id === 'binance') return t.binance || 'Binance';
+  if (id === 'mastercard') return t.mastercard || 'Card';
+  const def = PAYMENT_METHOD_DEFS[id];
+  if (def?.nameKey && t[def.nameKey]) return t[def.nameKey];
+  return id;
+}
+
 export function isApiWalletMethod(methodId, paymentConfig = {}) {
   return isManualWalletMethod(methodId) && isApiWalletMode(paymentConfig);
 }

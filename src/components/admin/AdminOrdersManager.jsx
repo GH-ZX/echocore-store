@@ -16,10 +16,13 @@ import {
   canRetryOrderFulfillment,
   countOrdersForFilter,
   filterAdminOrders,
+  getAdminDeliveryStatusDisplay,
   getAdminOrderOutcome,
   getAdminOrderOutcomeLabel,
   getAdminOrderOutcomeTone,
   getAdminOrdersEmptyMessageKey,
+  getAdminPaymentStatusLabel,
+  getAdminPaymentStatusTone,
   getOrderStatusFilterOptions,
   isOrderBalanceRefunded,
   isSoftFulfillmentTimeout,
@@ -31,6 +34,7 @@ import {
 } from '../../lib/adminModeration';
 import { getAdminOrdersPath, getAdminUserPath } from '../../lib/adminRoutes';
 import { formatDateTime, formatMessage } from '../../lib/i18n';
+import { getOrderPaymentMethodLabel } from '../../lib/paymentMethods';
 import InboxPager from '../notifications/InboxPager';
 
 /** Match recharges / users admin lists */
@@ -38,8 +42,6 @@ const PAGE_SIZE = 25;
 import {
   formatOrderDisplayId,
   formatOrderItemDisplayName,
-  getOrderStatusColorClass,
-  getOrderStatusLabel,
   getOrderTopupDeliveryDetails,
 } from '../../lib/orderReceipt';
 import { isInvoiceReadyForOrder } from '../../lib/invoices';
@@ -71,14 +73,12 @@ function OrderOutcomeBadge({ order, t }) {
   );
 }
 
-function fulfillmentLabel(order, t) {
-  const fs = order?.fulfillment_status;
-  if (!fs || fs === 'pending') return t.fulfillmentPending || '—';
-  if (fs === 'fulfilling') return t.fulfillmentInProgress || fs;
-  if (fs === 'fulfilled') return t.fulfillmentDone || fs;
-  if (fs === 'failed') return t.fulfillmentFailed || fs;
-  if (fs === 'skipped') return t.fulfillmentSkipped || fs;
-  return fs;
+function StatusChip({ tone = 'neutral', children }) {
+  return (
+    <span className={`admin-order-status admin-order-status--${tone}`}>
+      {children}
+    </span>
+  );
 }
 
 function OrderCustomerBlock({ profile, t, compact = false }) {
@@ -260,7 +260,12 @@ export default function AdminOrdersManager({
     const total = Number(order.total);
     const totalLabel = Number.isFinite(total) ? `$${total.toFixed(2)}` : '—';
     const ref = formatOrderDisplayId(order);
-    const hasSupplierId = !!order.g2bulk_order_id;
+    const hasSupplierId = !!(
+      order.g2bulk_order_id
+      || order.g2bulk_metadata?.g2bulk_order_id
+      || order.g2bulk_metadata?.g2bulkOrderId
+    );
+    // With supplier id: poll status only — never place a second top-up to the player.
     const confirmMsg = hasSupplierId
       ? formatMessage(
         t.adminOrdersRetryFulfillConfirmPoll
@@ -276,8 +281,14 @@ export default function AdminOrdersManager({
 
     setFulfillingId(order.id);
     try {
-      await onFulfillOrder(order.id);
-      onNotify?.(t.adminOrdersFulfillRetryStarted, 'success');
+      // Edge also hard-blocks purchase when g2bulk_order_id exists; pollOnly is belt-and-suspenders.
+      await onFulfillOrder(order.id, { pollOnly: hasSupplierId });
+      onNotify?.(
+        hasSupplierId
+          ? (t.adminOrdersFulfillPollStarted || t.adminOrdersFulfillRetryStarted)
+          : t.adminOrdersFulfillRetryStarted,
+        'success',
+      );
       await refreshOrders?.();
     } catch (err) {
       onNotify?.(err?.message || t.adminOrdersFulfillRetryFailed, 'error');
@@ -294,9 +305,39 @@ export default function AdminOrdersManager({
     const refunded = isOrderBalanceRefunded(order);
     const canRetry = canRetryOrderFulfillment(order) && typeof onFulfillOrder === 'function';
     const topup = getOrderTopupDeliveryDetails(order, items);
+    const paymentStatusLabel = getAdminPaymentStatusLabel(order, t);
+    const paymentStatusTone = getAdminPaymentStatusTone(order);
+    const delivery = getAdminDeliveryStatusDisplay(order, t);
+    const paymentMethodLabel = getOrderPaymentMethodLabel(order.payment_method, t);
 
     return (
       <div className="admin-order-expanded">
+        <div className="admin-order-status-panel">
+          <div className="admin-order-status-cell">
+            <div className="admin-order-expanded-label">{t.adminOrderResultLabel || t.orderStatusLabel}</div>
+            <StatusChip tone={getAdminOrderOutcomeTone(outcome)}>
+              {getAdminOrderOutcomeLabel(outcome, t)}
+            </StatusChip>
+          </div>
+          <div className="admin-order-status-cell">
+            <div className="admin-order-expanded-label">{t.adminOrderPaymentStatusLabel}</div>
+            <StatusChip tone={paymentStatusTone}>{paymentStatusLabel}</StatusChip>
+          </div>
+          <div className="admin-order-status-cell">
+            <div className="admin-order-expanded-label">{t.adminOrderDeliveryStatusLabel}</div>
+            <StatusChip tone={delivery.tone}>{delivery.label}</StatusChip>
+            {delivery.hint ? (
+              <p className="admin-order-status-hint">{delivery.hint}</p>
+            ) : null}
+          </div>
+          <div className="admin-order-status-cell">
+            <div className="admin-order-expanded-label">{t.paymentMethod || t.payment}</div>
+            <div className="admin-order-expanded-value text-sm font-semibold">
+              {paymentMethodLabel}
+            </div>
+          </div>
+        </div>
+
         <div className="admin-order-expanded-grid">
           <div>
             <div className="admin-order-expanded-label">{t.adminUserUsernameLabel}</div>
@@ -312,26 +353,6 @@ export default function AdminOrdersManager({
             {profile?.email && (
               <div className="text-xs text-[var(--text-muted)] mt-0.5 break-all">{profile.email}</div>
             )}
-          </div>
-          <div>
-            <div className="admin-order-expanded-label">{t.orderStatusLabel}</div>
-            <div className={`admin-order-expanded-value ${getOrderStatusColorClass(
-              outcome === 'success'
-                ? 'completed'
-                : outcome === 'failed' || outcome === 'cancelled'
-                  ? 'cancelled'
-                  : 'pending_payment',
-            )}`}>
-              {getAdminOrderOutcomeLabel(outcome, t)}
-            </div>
-            <div className="text-[10px] text-[var(--text-muted)] mt-1">
-              {getOrderStatusLabel(order.status || 'completed', t)}
-              {order.fulfillment_status ? ` · ${fulfillmentLabel(order, t)}` : ''}
-            </div>
-          </div>
-          <div>
-            <div className="admin-order-expanded-label">{t.payment}</div>
-            <div className="admin-order-expanded-value capitalize">{order.payment_method || '—'}</div>
           </div>
           <div>
             <div className="admin-order-expanded-label">{t.orderId}</div>
@@ -449,7 +470,13 @@ export default function AdminOrdersManager({
               {fulfillingId === order.id
                 ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 : <RotateCcw className="w-3.5 h-3.5" />}
-              {t.adminOrdersRetryFulfill}
+              {(
+                order.g2bulk_order_id
+                || order.g2bulk_metadata?.g2bulk_order_id
+                || order.g2bulk_metadata?.g2bulkOrderId
+              )
+                ? (t.adminOrdersRetryFulfillPoll || t.adminOrdersRetryFulfill)
+                : t.adminOrdersRetryFulfill}
             </button>
           )}
           {isInvoiceReadyForOrder(order, {
@@ -661,7 +688,9 @@ export default function AdminOrdersManager({
 
                   <div className="admin-order-row-trailing">
                     <div className="font-black text-[var(--accent)]">${parseFloat(order.total || 0).toFixed(2)}</div>
-                    <div className="text-[10px] text-[var(--text-sec)] mt-1 capitalize">{order.payment_method || '—'}</div>
+                    <div className="text-[10px] text-[var(--text-sec)] mt-1">
+                      {getOrderPaymentMethodLabel(order.payment_method, t)}
+                    </div>
                     <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
                       {items.length} {t.items}
                     </div>

@@ -4844,6 +4844,38 @@ html, body {
   border-top: 1px solid var(--border);
 }
 
+.admin-order-status-panel {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 0.85rem;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+  background: color-mix(in srgb, var(--bg-primary) 70%, transparent);
+}
+
+@media (min-width: 768px) {
+  .admin-order-status-panel {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.admin-order-status-cell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.admin-order-status-hint {
+  margin: 0;
+  font-size: 0.625rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
 .admin-order-expanded-grid {
   display: grid;
   gap: 0.75rem;

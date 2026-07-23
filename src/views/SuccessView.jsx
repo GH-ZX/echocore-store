@@ -75,8 +75,10 @@ function HeaderIcon({ tone, fulfillmentFailed }) {
 }
 
 /** Quiet background refresh while supplier is still delivering (does not re-show loading). */
-const FULFILLMENT_POLL_MS = 3_000;
-const FULFILLMENT_POLL_MAX_MS = 3 * 60_000;
+const FULFILLMENT_POLL_MS = 4_000;
+/** Cover slow PUBG/ML top-ups until webhook or re-poll marks fulfilled */
+const FULFILLMENT_POLL_MAX_MS = 8 * 60_000;
+const FULFILL_RESYNC_EVERY_MS = 25_000;
 
 
 export default function SuccessView({
@@ -166,7 +168,8 @@ export default function SuccessView({
     };
   }, [orderId, userId, loadOrder]);
 
-  // Background poll for codes while delivery is still running (never flips page back to loading)
+  // Background poll while delivery runs: re-sync with supplier (not DB-only) so
+  // top-ups that finish after the first 40s edge poll still flip to delivered.
   useEffect(() => {
     if (loading || !orderId || !userId || !orderDetails) return undefined;
     if (!isOrderPaid(orderDetails)) return undefined;
@@ -178,11 +181,29 @@ export default function SuccessView({
 
     let cancelled = false;
     const startedAt = Date.now();
+    let lastResyncAt = 0;
     let timer = null;
 
     const tick = async () => {
       if (cancelled || Date.now() - startedAt > FULFILLMENT_POLL_MAX_MS) return;
       try {
+        const now = Date.now();
+        if (
+          onFulfillOrder
+          && now - lastResyncAt >= FULFILL_RESYNC_EVERY_MS
+        ) {
+          lastResyncAt = now;
+          try {
+            // Once a supplier order exists, only re-check status — never re-send top-up
+            const hasSupplier = !!(
+              orderDetails?.g2bulk_order_id
+              || orderDetails?.g2bulk_metadata?.g2bulk_order_id
+            );
+            await onFulfillOrder(orderId, { pollOnly: hasSupplier });
+          } catch {
+            /* poll will retry */
+          }
+        }
         const result = await loadOrder();
         if (cancelled || !result?.order) return;
         const codes = extractDeliveryCodes(result.items, result.order.g2bulk_metadata);

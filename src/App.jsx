@@ -1207,17 +1207,22 @@ export default function App() {
     });
   };
 
-  const tryFulfillOrder = async (orderId) => {
+  const tryFulfillOrder = async (orderId, { pollOnly = false } = {}) => {
     try {
-      const first = await fulfillOrderG2bulk(orderId);
-      // Supplier often needs >40s; soft-pending → quiet retries (no false "failed")
+      const first = await fulfillOrderG2bulk(orderId, { pollOnly });
+      // After first contact, if supplier id is known, only poll — never re-purchase.
+      const supplierKnown = !!(first?.g2bulkOrderId || pollOnly);
+      // Top-ups median ~3 min (G2Bulk); edge poll is ~40s — keep re-syncing quietly.
+      // Webhook is primary; these retries cover missed callbacks / slow games.
       if (first?.pending || first?.fulfillmentStatus === 'fulfilling') {
-        for (const delayMs of [8_000, 20_000, 45_000]) {
+        for (const delayMs of [10_000, 20_000, 30_000, 45_000, 60_000, 90_000]) {
           await new Promise((r) => setTimeout(r, delayMs));
           try {
-            const next = await fulfillOrderG2bulk(orderId);
+            const next = await fulfillOrderG2bulk(orderId, {
+              pollOnly: supplierKnown || !!first?.g2bulkOrderId,
+            });
             if (next?.fulfillmentStatus === 'fulfilled' || next?.skipped) return;
-            if (next?.fulfillmentStatus === 'failed') break;
+            if (next?.fulfillmentStatus === 'failed' && !next?.pending) break;
           } catch {
             /* keep trying */
           }

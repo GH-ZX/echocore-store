@@ -112,6 +112,142 @@ export function getAdminOrderOutcomeTone(outcome) {
   return 'pending';
 }
 
+/**
+ * Payment lifecycle label (paid vs awaiting) — separate from delivery.
+ * order.status "completed" means customer paid, not that top-up arrived.
+ */
+export function getAdminPaymentStatusLabel(order, t = {}) {
+  const status = String(order?.status || '');
+  if (status === 'completed') {
+    return t.adminOrderPaid || t.orderStatusCompleted || 'Paid';
+  }
+  if (status === 'pending_payment') {
+    return t.orderStatusPendingPayment || 'Awaiting payment';
+  }
+  if (status === 'payment_sent') {
+    return t.orderStatusPaymentSent || 'Awaiting approval';
+  }
+  if (status === 'cancelled') {
+    return t.adminOrdersOutcomeCancelled || t.orderStatusCancelled || 'Cancelled';
+  }
+  if (status === 'failed') {
+    return t.adminOrdersOutcomeFailed || 'Failed';
+  }
+  return status || '—';
+}
+
+export function getAdminPaymentStatusTone(order) {
+  const status = String(order?.status || '');
+  if (status === 'completed') return 'success';
+  if (status === 'cancelled' || status === 'failed') return 'danger';
+  if (status === 'pending_payment' || status === 'payment_sent') return 'pending';
+  return 'neutral';
+}
+
+/**
+ * Delivery/fulfillment label for admin UI.
+ * When outcome is failed but raw fs is still "fulfilling", show "stuck" — not "delivering".
+ */
+export function getAdminDeliveryStatusDisplay(order, t = {}) {
+  const outcome = getAdminOrderOutcome(order);
+  const fs = order?.fulfillment_status == null || order?.fulfillment_status === ''
+    ? null
+    : String(order.fulfillment_status);
+  const refunded = isOrderBalanceRefunded(order);
+
+  if (outcome === 'cancelled') {
+    return {
+      label: t.adminOrdersOutcomeCancelled || t.orderStatusCancelled || 'Cancelled',
+      tone: 'neutral',
+      hint: null,
+    };
+  }
+
+  if (fs === 'fulfilled') {
+    return {
+      label: t.fulfillmentDone || 'Delivered',
+      tone: 'success',
+      hint: null,
+    };
+  }
+  if (fs === 'skipped') {
+    return {
+      label: t.fulfillmentSkipped || 'Skipped',
+      tone: 'neutral',
+      hint: null,
+    };
+  }
+
+  if (outcome === 'success') {
+    // Legacy paid rows without supplier trail
+    return {
+      label: t.fulfillmentDone || t.adminOrdersOutcomeSuccess || 'Delivered',
+      tone: 'success',
+      hint: null,
+    };
+  }
+
+  if (outcome === 'failed') {
+    if (refunded) {
+      return {
+        label: t.fulfillmentFailed || 'Delivery failed',
+        tone: 'danger',
+        hint: t.adminOrdersRefundedHint || null,
+      };
+    }
+    // Stuck fulfilling / abandoned pending — not actively delivering
+    if (fs === 'fulfilling' || fs === 'pending' || fs == null) {
+      return {
+        label: t.fulfillmentStuck || t.fulfillmentFailed || 'Delivery stuck',
+        tone: 'danger',
+        hint: t.fulfillmentStuckHint || t.adminOrdersSoftTimeoutHint || null,
+      };
+    }
+    return {
+      label: t.fulfillmentFailed || 'Delivery failed',
+      tone: 'danger',
+      hint: isSoftFulfillmentTimeout(order)
+        ? (t.adminOrdersSoftTimeoutHint || null)
+        : null,
+    };
+  }
+
+  // processing
+  if (fs === 'fulfilling') {
+    return {
+      label: t.fulfillmentInProgress || 'Delivering',
+      tone: 'pending',
+      hint: null,
+    };
+  }
+  if (fs === 'failed' && isSoftFulfillmentTimeout(order) && !refunded) {
+    return {
+      label: t.fulfillmentInProgress || 'Delivering',
+      tone: 'warning',
+      hint: t.adminOrdersSoftTimeoutHint || null,
+    };
+  }
+  if (fs === 'pending' || fs == null) {
+    return {
+      label: t.fulfillmentPending || 'Awaiting delivery',
+      tone: 'pending',
+      hint: null,
+    };
+  }
+  if (fs === 'failed') {
+    return {
+      label: t.fulfillmentFailed || 'Delivery failed',
+      tone: 'danger',
+      hint: null,
+    };
+  }
+  return {
+    label: fs,
+    tone: 'neutral',
+    hint: null,
+  };
+}
+
 export function getOrderStatusFilterOptions(t = {}) {
   return [
     { id: ORDER_STATUS_FILTER_IDS.ALL, label: t.adminOrdersFilterAll },
@@ -142,7 +278,12 @@ export function canRetryOrderFulfillment(order) {
   if (fs === 'fulfilled' || fs === 'skipped') return false;
   // Outcome already success (legacy paid row) — do not re-ship
   if (getAdminOrderOutcome(order) === 'success') return false;
-  // Recent in-flight only, or failed (manual recover). No re-fulfill on ancient pending noise.
+
+  // Supplier id known → poll-only resume (never a second purchase). Always allow,
+  // even for old stuck "fulfilling" top-ups that completed in the G2Bulk bot.
+  if (order.g2bulk_order_id) return true;
+
+  // No supplier id yet: only recent in-flight or hard-failed may start a NEW purchase
   if (fs === 'fulfilling' || fs === 'pending') {
     return orderAgeMs(order) < FIFTEEN_MIN_MS;
   }
