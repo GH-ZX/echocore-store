@@ -5,14 +5,20 @@ import { mapProfileBanFields } from './userBan'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-if (!supabaseUrl || !supabaseAnonKey) {
+// @supabase/supabase-js rejects empty URL. Use inert placeholders in tests/CI
+// when .env is absent so pure unit tests can import modules that pull this client.
+const hasSupabaseEnv = !!(supabaseUrl && supabaseAnonKey)
+if (!hasSupabaseEnv) {
   console.warn('⚠️ Supabase environment variables are missing. Create a .env file from .env.example')
 }
 
-export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
+const clientUrl = hasSupabaseEnv ? supabaseUrl : 'http://127.0.0.1:54321'
+const clientKey = hasSupabaseEnv ? supabaseAnonKey : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.placeholder'
+
+export const supabase = createClient(clientUrl, clientKey, {
   auth: {
-    persistSession: true,
-    autoRefreshToken: true,
+    persistSession: hasSupabaseEnv,
+    autoRefreshToken: hasSupabaseEnv,
   },
 })
 

@@ -14,6 +14,11 @@ export default defineConfig(({ command, mode }) => {
     test: {
       environment: 'node',
       include: ['src/**/*.test.js'],
+      // CI has no .env — avoid crash when suites import modules that load supabase.js
+      env: {
+        VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321',
+        VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY || 'test-anon-key',
+      },
     },
     build: {
       sourcemap: false,
