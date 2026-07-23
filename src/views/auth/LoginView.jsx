@@ -24,6 +24,7 @@ import {
   isPasswordRecoveryPending,
   isPasswordRecoveryUrl,
   markPasswordRecoveryPending,
+  setOAuthIntent,
   validatePasswordLength,
   PASSWORD_MIN_LENGTH,
   PASSWORD_MAX_LENGTH,
@@ -213,6 +214,8 @@ export default function LoginView({
     resetMessages();
     setIsLoading(true);
     try {
+      // Survives OAuth redirect so we can warn if signup used an existing Gmail.
+      setOAuthIntent(mode === 'signup' ? 'signup' : 'login');
       await signInWithGoogle();
     } catch (err) {
       setError(err.message || t.googleSignInFailed);

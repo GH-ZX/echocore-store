@@ -1,8 +1,45 @@
 import { supabase } from './supabase';
 
 export const PASSWORD_RECOVERY_FLAG = 'echocore-password-recovery';
+/** sessionStorage: 'signup' | 'login' — set before Google OAuth redirect */
+export const OAUTH_INTENT_KEY = 'echocore-oauth-intent';
 export const PASSWORD_MIN_LENGTH = 1;
 export const PASSWORD_MAX_LENGTH = 32;
+
+/** Remember whether Google was started from signup or login (survives OAuth redirect). */
+export function setOAuthIntent(intent) {
+  if (typeof window === 'undefined') return;
+  const value = intent === 'signup' ? 'signup' : 'login';
+  try {
+    sessionStorage.setItem(OAUTH_INTENT_KEY, value);
+  } catch {
+    /* private mode / blocked storage */
+  }
+}
+
+/** Read and clear OAuth intent. Returns 'signup' | 'login' | null. */
+export function consumeOAuthIntent() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const value = sessionStorage.getItem(OAUTH_INTENT_KEY);
+    sessionStorage.removeItem(OAUTH_INTENT_KEY);
+    if (value === 'signup' || value === 'login') return value;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+/**
+ * True if this auth user was created more than `windowMs` ago (returning account).
+ * New Google signups have created_at ≈ now.
+ */
+export function isLikelyExistingAuthUser(user, windowMs = 60_000) {
+  if (!user?.created_at) return false;
+  const created = new Date(user.created_at).getTime();
+  if (!Number.isFinite(created)) return false;
+  return Date.now() - created > windowMs;
+}
 
 export function validatePasswordLength(password) {
   const len = String(password ?? '').length;

@@ -6,6 +6,8 @@ import {
   isPasswordRecoveryPending,
   isPasswordRecoveryUrl,
   markPasswordRecoveryPending,
+  consumeOAuthIntent,
+  isLikelyExistingAuthUser,
 } from './lib/auth';
 import { supabase, resolveUserData } from './lib/supabase';
 import { fetchAdminProfileSummaries } from './lib/adminModeration';
@@ -728,7 +730,21 @@ export default function App() {
       const msg = String(error.message || '');
       if (/username_taken/i.test(msg)) throw new Error(t.usernameTaken || 'username_taken');
       if (/username_invalid/i.test(msg)) throw new Error(t.usernameInvalid || 'username_invalid');
+      if (/already\s*registered|already\s*exists|user already/i.test(msg)) {
+        throw new Error(t.emailAlreadyRegistered);
+      }
       throw error;
+    }
+
+    // Supabase may return a user with empty identities when the email is already taken
+    // (email enumeration protection) instead of a hard error.
+    if (
+      data?.user
+      && Array.isArray(data.user.identities)
+      && data.user.identities.length === 0
+    ) {
+      await logAuthEvent('signup_failed', { email });
+      throw new Error(t.emailAlreadyRegistered);
     }
 
     // Patch non-username fields if session exists (username set by handle_new_user trigger)
@@ -1460,6 +1476,23 @@ export default function App() {
       }, 0);
     };
 
+    // After Google OAuth: if user started on signup with an existing Gmail, tell them.
+    // Intent is set in LoginView before redirect (sessionStorage).
+    const notifyOAuthLoginResult = (authUser) => {
+      if (!authUser || hasShownLoginToast.current) return;
+      const oauthIntent = consumeOAuthIntent();
+      if (!oauthIntent) return; // password login / session restore — other paths show toasts
+
+      hasShownLoginToast.current = true;
+      const loginLang = localStorage.getItem('echocore-lang') === 'en' ? 'en' : 'ar';
+      const tt = translations[loginLang] || {};
+      if (oauthIntent === 'signup' && isLikelyExistingAuthUser(authUser)) {
+        showToast(tt.googleAccountAlreadyRegistered || tt.loginSuccess, 'warning');
+      } else {
+        showNotification(tt.loginSuccess || 'Welcome back!');
+      }
+    };
+
     // IMPORTANT: Handle Supabase email confirmation / signup redirect tokens
     // They come as #access_token=...&type=signup in the URL hash
     const handleAuthHash = async () => {
@@ -1497,11 +1530,7 @@ export default function App() {
       window.history.replaceState({}, '', '/login');
       navigateRef.current('/', { replace: true });
 
-      if (!hasShownLoginToast.current) {
-        hasShownLoginToast.current = true;
-        const loginLang = localStorage.getItem('echocore-lang') === 'en' ? 'en' : 'ar';
-        showNotification(translations[loginLang].loginSuccess || 'Welcome back!');
-      }
+      notifyOAuthLoginResult(session.user);
 
       void recordLoginSuccessRef.current(userData.email, userData.id, userData.name);
       refreshDataAfterAuth(userData.role);
@@ -1543,6 +1572,8 @@ export default function App() {
         setTimeout(() => {
           void recordLoginSuccessRef.current(email, id, displayName);
         }, 150);
+        // PKCE Google return often has no hash token — handle toast here
+        notifyOAuthLoginResult(session.user);
       }
       if (event === 'PASSWORD_RECOVERY') {
         markPasswordRecoveryPending();
@@ -1936,7 +1967,7 @@ export default function App() {
     return rejectMaintenanceLogin(userData);
   };
 
-  const handleLoginSuccess = (userData, redirectTo = '/') => {
+  const handleLoginSuccess = (userData, redirectTo = '/', options = {}) => {
     if (isLoginBlockedDuringMaintenance(siteStatus, userData)) {
       supabase.auth.signOut();
       showToast(t.maintenanceLoginBlocked, 'error');
@@ -1954,7 +1985,11 @@ export default function App() {
     // Only show login toast once per actual login action
     if (!hasShownLoginToast.current) {
       hasShownLoginToast.current = true;
-      showNotification(t.loginSuccess);
+      if (options?.alreadyRegistered) {
+        showToast(t.googleAccountAlreadyRegistered || t.loginSuccess, 'warning');
+      } else {
+        showNotification(t.loginSuccess);
+      }
     }
     refreshDataAfterAuth(userData.role);
   };
