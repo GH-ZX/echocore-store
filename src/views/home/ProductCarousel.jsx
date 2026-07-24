@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Settings2, ChevronUp, ChevronDown, Plus } fr
 import AdminEditButton from '../../components/admin/AdminEditButton';
 
 import { brandUserText } from '../../lib/branding';
+import { useEmblaAutoplay } from '../../hooks/useEmblaAutoplay';
 import { formatMessage } from '../../lib/i18n';
 import { presetImageUrl } from '../../lib/imageUtils';
 import { getGameCoverUrl } from '../../lib/gameImages';
@@ -45,6 +46,9 @@ export default function ProductCarousel({
   });
   const [activeSlide, setActiveSlide] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [tabHidden, setTabHidden] = useState(
+    () => typeof document !== 'undefined' && document.hidden,
+  );
   const [kenBurnsEnabled, setKenBurnsEnabled] = useState(false);
   const [logoLineColor, setLogoLineColor] = useState(null);
   const logoImgRefs = useRef({});
@@ -59,12 +63,18 @@ export default function ProductCarousel({
   }, []);
 
   useEffect(() => {
-    if (!embla || isPaused) return;
-    const timer = setTimeout(() => {
-      embla.scrollNext();
-    }, AUTOPLAY_MS);
-    return () => clearTimeout(timer);
-  }, [embla, activeSlide, isPaused]);
+    const onVisibility = () => setTabHidden(document.hidden);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+
+  const autoplayPaused = isPaused || tabHidden;
+
+  useEmblaAutoplay(embla, {
+    intervalMs: AUTOPLAY_MS,
+    paused: autoplayPaused,
+    enabled: slides.length > 1,
+  });
 
   useEffect(() => {
     if (!embla) return;
@@ -171,7 +181,7 @@ export default function ProductCarousel({
         >
           <div
             key={activeSlide}
-            className={`carousel-progress-bar ${isPaused ? 'paused' : ''}`}
+            className={`carousel-progress-bar ${autoplayPaused ? 'paused' : ''}`}
           />
         </div>
 
@@ -202,7 +212,7 @@ export default function ProductCarousel({
                     <div
                       className={`carousel-slide-media ${
                         kenBurnsEnabled && isActiveSlide ? 'carousel-slide-ken-burns' : ''
-                      } ${isPaused ? 'paused' : ''}`}
+                      } ${autoplayPaused ? 'paused' : ''}`}
                       style={{
                         backgroundImage: `url(${imgSrc})`,
                         backgroundPosition: `${focusX}% ${focusY}%`,

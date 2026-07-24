@@ -3,6 +3,7 @@ import useEmblaCarousel from 'embla-carousel-react';
 import { Star, Quote, ChevronLeft, ChevronRight, MessageSquare } from 'lucide-react';
 import { getReviewText, pickReviewsForSection } from '../../lib/customerReviews';
 import { getSectionLabel } from '../../lib/homeLayout';
+import { useEmblaAutoplay } from '../../hooks/useEmblaAutoplay';
 import CustomerReviewForm from '../../components/reviews/CustomerReviewForm';
 
 function StarRating({ rating, size = 'sm' }) {
@@ -63,7 +64,16 @@ export default function CustomerReviewsSection({
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [tabHidden, setTabHidden] = useState(
+    () => typeof document !== 'undefined' && document.hidden,
+  );
   const [formOpen, setFormOpen] = useState(false);
+
+  useEffect(() => {
+    const onVisibility = () => setTabHidden(document.hidden);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
 
   useEffect(() => {
     if (!emblaApi) return undefined;
@@ -88,11 +98,11 @@ export default function CustomerReviewsSection({
     emblaApi.scrollTo(0);
   }, [emblaApi, items.length]);
 
-  useEffect(() => {
-    if (!emblaApi || items.length <= 1 || paused) return undefined;
-    const timer = setInterval(() => emblaApi.scrollNext(), intervalMs);
-    return () => clearInterval(timer);
-  }, [emblaApi, items.length, intervalMs, paused]);
+  useEmblaAutoplay(emblaApi, {
+    intervalMs,
+    paused: paused || tabHidden,
+    enabled: items.length > 1,
+  });
 
   const goNext = useCallback(() => {
     emblaApi?.scrollNext();
