@@ -22,28 +22,79 @@ function formatUsd(value) {
   return Number.isFinite(num) ? `$${num.toFixed(2)}` : '—';
 }
 
+/** Local calendar YYYY-MM-DD (avoids UTC shift from toISOString in SY/offset timezones). */
+function localDayKey(dateInput) {
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function isBalanceRefundedOrder(order) {
+  const meta = order?.g2bulk_metadata;
+  if (!meta || typeof meta !== 'object') return false;
+  return meta.balance_refunded === true || meta.balance_refunded === 'true';
+}
+
+/**
+ * Completed paid sales only.
+ * Excludes admin gifts and orders whose customer balance was refunded after failed delivery.
+ */
 function isCountableOrder(order) {
-  return order?.status === 'completed' && order?.payment_method !== 'admin_gift';
+  if (!order || order.status !== 'completed') return false;
+  if (order.payment_method === 'admin_gift') return false;
+  if (isBalanceRefundedOrder(order)) return false;
+  return true;
 }
 
 function orderDayKey(order) {
-  return String(order?.created_at || '').slice(0, 10);
+  if (!order?.created_at) return '';
+  return localDayKey(order.created_at);
 }
 
 function isOrderInPeriod(order, periodDays, todayStart) {
   if (periodDays == null) return true;
   const dayKey = orderDayKey(order);
   if (!dayKey || dayKey.length < 10) return false;
-  const orderDate = new Date(`${dayKey}T00:00:00`);
-  if (Number.isNaN(orderDate.getTime())) return false;
   const cutoff = new Date(todayStart.getTime() - (periodDays - 1) * MS_PER_DAY);
-  return orderDate >= cutoff && orderDate <= todayStart;
+  const cutoffKey = localDayKey(cutoff);
+  const todayKey = localDayKey(todayStart);
+  return dayKey >= cutoffKey && dayKey <= todayKey;
 }
 
 function todayAtMidnight() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   return today;
+}
+
+/**
+ * Actual G2Bulk charge when we captured it at fulfillment (preferred over live catalog cost).
+ * Only explicit supplier-cost fields — never guess from unrelated metadata.
+ */
+function resolveActualSupplierCost(order) {
+  const meta = order?.g2bulk_metadata;
+  if (!meta || typeof meta !== 'object') return null;
+  const candidates = [
+    meta.supplier_amount_usd,
+    meta.supplier_cost_usd,
+  ];
+  // After successful fulfillment we often stash G2Bulk "price" as the charge
+  if (
+    meta.supplier_completed === true
+    || String(meta.supplier_status || '').toUpperCase() === 'COMPLETED'
+    || meta.resumed === true
+    || meta.webhook === true
+  ) {
+    candidates.push(meta.price);
+  }
+  for (const raw of candidates) {
+    const n = Number.parseFloat(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
 }
 
 function resolveItemGame(item, catalogMaps) {
@@ -125,12 +176,13 @@ function buildCatalogMaps(offers = [], games = []) {
 function sumOrderItemMetrics(order, costById, catalogMaps) {
   const items = order.order_items || [];
   let revenue = 0;
-  let cost = 0;
+  let catalogCost = 0;
   let trackedItems = 0;
   let totalItems = 0;
   let units = 0;
   const byOffer = {};
   const byGame = {};
+  const lineAlloc = [];
 
   for (const item of items) {
     const qty = Math.max(1, Number.parseInt(item.quantity, 10) || 1);
@@ -182,28 +234,89 @@ function sumOrderItemMetrics(order, costById, catalogMaps) {
     byGame[gameKey].units += qty;
     byGame[gameKey].lineCount += 1;
 
+    let lineCatalogCost = 0;
+    let lineHasCatalogCost = false;
     if (unitCost != null) {
-      const itemCost = unitCost * qty;
-      cost += itemCost;
+      lineCatalogCost = unitCost * qty;
+      catalogCost += lineCatalogCost;
       trackedItems += 1;
-      byOffer[offerKey].cost += itemCost;
-      byOffer[offerKey].hasCost = true;
-      byOffer[offerKey].profit += itemRevenue - itemCost;
-      byGame[gameKey].cost += itemCost;
-      byGame[gameKey].hasCost = true;
-      byGame[gameKey].profit += itemRevenue - itemCost;
+      lineHasCatalogCost = true;
     }
+
+    lineAlloc.push({
+      offerKey,
+      gameKey,
+      itemRevenue,
+      lineCatalogCost,
+      lineHasCatalogCost,
+    });
   }
 
   const orderRevenue = revenue > 0 ? revenue : parseMoney(order.total);
-  const fullyTracked = totalItems > 0 && trackedItems === totalItems;
+  const actualSupplierCost = resolveActualSupplierCost(order);
+
+  // Prefer actual G2Bulk charge captured at fulfillment; else live catalog cost.
+  let cost = catalogCost;
+  let costSource = trackedItems > 0 ? 'catalog' : 'none';
+  if (actualSupplierCost != null) {
+    cost = actualSupplierCost;
+    costSource = 'actual';
+  }
+
+  // Allocate order-level cost across lines (for offer/game rankings).
+  // When actual cost exists, scale catalog weights — or split by revenue if no catalog.
+  if (costSource === 'actual' && totalItems > 0) {
+    const weightSum = catalogCost > 0
+      ? catalogCost
+      : (orderRevenue > 0 ? orderRevenue : totalItems);
+
+    for (const line of lineAlloc) {
+      let share;
+      if (catalogCost > 0 && line.lineHasCatalogCost) {
+        share = line.lineCatalogCost / weightSum;
+      } else if (catalogCost > 0) {
+        share = 0;
+      } else if (orderRevenue > 0) {
+        share = line.itemRevenue / weightSum;
+      } else {
+        share = 1 / totalItems;
+      }
+      const lineCost = cost * share;
+      const lineProfit = line.itemRevenue - lineCost;
+
+      byOffer[line.offerKey].cost += lineCost;
+      byOffer[line.offerKey].hasCost = true;
+      byOffer[line.offerKey].profit += lineProfit;
+
+      byGame[line.gameKey].cost += lineCost;
+      byGame[line.gameKey].hasCost = true;
+      byGame[line.gameKey].profit += lineProfit;
+    }
+  } else {
+    for (const line of lineAlloc) {
+      if (!line.lineHasCatalogCost) continue;
+      const lineCost = line.lineCatalogCost;
+      const lineProfit = line.itemRevenue - lineCost;
+      byOffer[line.offerKey].cost += lineCost;
+      byOffer[line.offerKey].hasCost = true;
+      byOffer[line.offerKey].profit += lineProfit;
+      byGame[line.gameKey].cost += lineCost;
+      byGame[line.gameKey].hasCost = true;
+      byGame[line.gameKey].profit += lineProfit;
+    }
+  }
+
+  const fullyTracked = costSource === 'actual'
+    || (totalItems > 0 && trackedItems === totalItems);
+  const hasCost = costSource === 'actual' || trackedItems > 0;
 
   return {
     revenue: orderRevenue,
-    cost,
-    profit: cost > 0 || trackedItems > 0 ? orderRevenue - cost : null,
+    cost: hasCost ? cost : 0,
+    profit: hasCost ? orderRevenue - cost : null,
     fullyTracked,
-    partialCost: trackedItems > 0 && trackedItems < totalItems,
+    partialCost: costSource === 'catalog' && trackedItems > 0 && trackedItems < totalItems,
+    costSource,
     units: units || (totalItems > 0 ? totalItems : 1),
     byOffer,
     byGame,
@@ -217,7 +330,7 @@ function buildDayBuckets(days, locale = 'en-US') {
 
   for (let offset = count - 1; offset >= 0; offset -= 1) {
     const date = new Date(today.getTime() - offset * MS_PER_DAY);
-    const key = date.toISOString().slice(0, 10);
+    const key = localDayKey(date);
     buckets.push({
       key,
       // Latin digits for axes so they match product prices
@@ -422,7 +535,7 @@ export function computeAdminProfitMetrics(orders = [], offers = [], {
       day.units += metrics.units;
     }
 
-    if (metrics.fullyTracked || metrics.cost > 0) {
+    if (metrics.fullyTracked || metrics.cost > 0 || metrics.costSource === 'actual') {
       trackedRevenue += metrics.revenue;
       supplierCost += metrics.cost;
       grossProfit += metrics.revenue - metrics.cost;

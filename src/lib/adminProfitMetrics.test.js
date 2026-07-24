@@ -147,4 +147,31 @@ describe('computeAdminProfitMetrics', () => {
     expect(m.completedOrders).toBe(1);
     expect(m.totalRevenue).toBe(10);
   });
+
+  it('excludes balance-refunded orders from revenue and profit', () => {
+    const offers = [makeOffer('o1', { cost: 6, price: 10 })];
+    const refunded = {
+      ...makeOrder({ id: 'refunded', price: 10 }),
+      g2bulk_metadata: { balance_refunded: true, supplier_amount_usd: 6 },
+    };
+    const ok = makeOrder({ id: 'ok', price: 10 });
+    const m = computeAdminProfitMetrics([refunded, ok], offers, { periodDays: 7 });
+    expect(m.completedOrders).toBe(1);
+    expect(m.totalRevenue).toBe(10);
+    expect(m.grossProfit).toBe(4);
+  });
+
+  it('prefers actual supplier_amount_usd over current catalog cost', () => {
+    // Catalog cost drifted to 9; real G2Bulk charge was 5.5
+    const offers = [makeOffer('o1', { cost: 9, price: 10 })];
+    const order = {
+      ...makeOrder({ id: 'actual', price: 10 }),
+      g2bulk_metadata: { supplier_amount_usd: 5.5, supplier_status: 'COMPLETED' },
+    };
+    const m = computeAdminProfitMetrics([order], offers, { periodDays: 7 });
+    expect(m.supplierCost).toBe(5.5);
+    expect(m.grossProfit).toBe(4.5);
+    expect(m.topOffersByProfit[0].cost).toBe(5.5);
+    expect(m.topOffersByProfit[0].profit).toBe(4.5);
+  });
 });
