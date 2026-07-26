@@ -25,8 +25,10 @@ The codebase is open‑source for transparency but not licensed for reuse.
 | `npm run lint` | Runs ESLint across the repo. |
 | `npm run preview` | Serves the production build locally (`vite preview`). |
 | `npm run upload:game-logos` | Uploads game logo assets to Supabase storage (used by admin UI). |
+| `npm test` | Runs the Vitest suite (`*.test.js` files under `src/lib/`). |
+| `npm run test:watch` | Runs Vitest in watch mode. |
 
-**Running a single test** – this project does not ship a test harness out of the box. If Jest/Mocha is added later, use `npm test -- <test‑file>`.
+**Running a single test** – `npm test -- src/lib/<file>.test.js` (Vitest).
 
 ---
 

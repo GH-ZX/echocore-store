@@ -17,7 +17,7 @@ React 19 + Vite 8 SPA · Tailwind v4 · Supabase · AR/EN · GitHub Pages → `w
 
 ## Commands
 
-`npm run dev` · `npm run build` · `npm run lint` · `npm run preview`
+`npm run dev` · `npm run build` · `npm run lint` · `npm test` (Vitest) · `npm run preview`
 
 Env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_SITE_DOMAIN`, `VITE_BASE_PATH` (from `.env`)
 

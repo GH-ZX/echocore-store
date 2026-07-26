@@ -1928,6 +1928,8 @@ export default function App() {
         fetchSiteStatus().then(setSiteStatus).catch(() => {}),
       ]);
     })();
+    // Mount-only by design: catalog reloads after this go through refreshCatalog.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
