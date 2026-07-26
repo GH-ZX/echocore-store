@@ -9,10 +9,19 @@ function normalizeText(value = '') {
   return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+/** Latin-only text must not surface in the Arabic UI (supplier copy is EN). */
+function hasArabicLetters(value = '') {
+  return /[؀-ۿ]/.test(String(value || ''));
+}
+
 function readDbOfferDescription(offer, lang = 'ar') {
-  const raw = lang === 'ar'
-    ? (offer?.description_ar || offer?.description_en)
-    : (offer?.description_en || offer?.description_ar);
+  if (lang === 'ar') {
+    // Arabic UI: only Arabic copy; English supplier text falls through to the
+    // Arabic template fallback instead of leaking into the storefront.
+    const text = String(offer?.description_ar || '').trim();
+    return hasArabicLetters(text) ? text : '';
+  }
+  const raw = offer?.description_en || offer?.description_ar;
   return String(raw || '').trim();
 }
 

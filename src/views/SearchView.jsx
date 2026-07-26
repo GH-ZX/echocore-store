@@ -11,7 +11,7 @@ import {
   getGamingAccountGames,
   getVisibleTopupGames,
 } from '../lib/catalogUtils';
-import { formatMessage } from '../lib/i18n';
+import { formatCountNoun, formatMessage } from '../lib/i18n';
 import {
   filterGamesByQuery,
   filterOffersByQuery,
@@ -150,8 +150,8 @@ export default function SearchView({
           {loading
             ? t.loading
             : formatMessage(t.searchResultsSummary, {
-              products: catalogCount,
-              offers: visibleOffers.length,
+              products: formatCountNoun(t, lang, catalogCount, 'productCount'),
+              offers: formatCountNoun(t, lang, visibleOffers.length, 'offerCount'),
             })}
         </p>
       </div>

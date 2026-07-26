@@ -635,14 +635,14 @@ function LogoSettings({ form, displayTheme, t, onChange, onCoreColorChange, onBg
                     accept="image/png,image/webp,image/jpeg,image/svg+xml"
                     disabled={uploading}
                     onChange={(e) => handleLogoUpload(e.target.files?.[0] || null)}
-                    className="input flex-1 text-sm file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-[var(--accent)] file:text-[#040812]"
+                    className="input w-full flex-1 min-w-0 max-w-full text-sm file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-[var(--accent)] file:text-[#040812]"
                   />
                   <input
                     type="url"
                     placeholder={t.logoUrlPlaceholder}
                     value={logoUrl}
                     onChange={(e) => onChange('logo-url', e.target.value)}
-                    className="input flex-1 text-sm font-mono"
+                    className="input flex-1 min-w-0 text-sm font-mono"
                   />
                 </div>
               </div>
@@ -846,7 +846,7 @@ function ColorField({ field, value, onChange, t, lang }) {
           type="text"
           value={value || ''}
           onChange={(e) => onChange(field.key, e.target.value)}
-          className="flex-1 bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 font-mono text-xs outline-none"
+          className="flex-1 min-w-0 bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 py-2.5 font-mono text-xs outline-none"
         />
       </div>
     </div>

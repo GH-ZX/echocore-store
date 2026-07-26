@@ -1,9 +1,11 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { ShoppingCart } from 'lucide-react';
 import AdminEditButton from '../admin/AdminEditButton';
 import AdminOfferCostBadge from '../admin/AdminOfferCostBadge';
 import BorderGlow from './BorderGlow';
 import { formatPrice, getOfferDisplayName } from '../../lib/offerDisplay';
+import { getGameOfferPath } from '../../lib/offerRoutes';
 import { getOfferDiscount } from '../../lib/saleOffers';
 import { getFulfillmentGameForOffer } from '../../lib/gameRegions';
 import OfferPackLabel from './OfferPackLabel';
@@ -39,6 +41,17 @@ export default function SaleOfferCard({
   const gameCardImage = getGameCardImageUrl(game);
   const saleCardImage = offer.sale_image_url || gameCardImage;
 
+  const offerPath = getGameOfferPath(offer, games && games.length ? games : game);
+
+  const handleOpen = (event) => {
+    // Let the browser handle new-tab / modified clicks via the real link
+    if (event && (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)) return;
+    if (onSelectOffer) {
+      event?.preventDefault();
+      onSelectOffer(offer);
+    }
+  };
+
   return (
     <BorderGlow
       edgeSensitivity={25}
@@ -49,8 +62,9 @@ export default function SaleOfferCard({
       fillOpacity={0.35}
       className={className}
     >
-    <div
-      onClick={() => onSelectOffer?.(offer)}
+    <Link
+      to={offerPath}
+      onClick={handleOpen}
       className="storefront-card sale-offer-card group flex flex-col cursor-pointer transition-all duration-300 active:scale-[0.99]"
     >
       {/* Image */}
@@ -126,20 +140,11 @@ export default function SaleOfferCard({
         </div>
 
         <div className="flex gap-1.5 pt-2">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelectOffer?.(offer);
-            }}
-            className="flex-1 btn btn-secondary text-[11px] sm:text-xs py-2 px-2 min-w-0"
-          >
-            {t.details}
-          </button>
           {onAddToCart && !isAdmin && (
             <button
               type="button"
               onClick={(e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 onAddToCart(offer, e);
               }}
@@ -153,6 +158,7 @@ export default function SaleOfferCard({
           <button
             type="button"
             onClick={(e) => {
+              e.preventDefault();
               e.stopPropagation();
               onBuyNow?.(offer);
             }}
@@ -162,7 +168,7 @@ export default function SaleOfferCard({
           </button>
         </div>
       </div>
-    </div>
+    </Link>
     </BorderGlow>
   );
 }

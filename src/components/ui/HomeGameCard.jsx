@@ -1,9 +1,11 @@
+import { Link } from 'react-router-dom';
 import { Ticket, Gamepad2 } from 'lucide-react';
 import AdminEditButton from '../admin/AdminEditButton';
 import BorderGlow from './BorderGlow';
 import { getGameCardImageUrl, presetGameCardImage } from '../../lib/gameImages';
 import { isVoucherGame } from '../../lib/catalogUtils';
 import { brandUserText } from '../../lib/branding';
+import { formatCountNoun } from '../../lib/i18n';
 
 export default function HomeGameCard({
   game,
@@ -33,18 +35,24 @@ export default function HomeGameCard({
 
   const metaLabel = isVoucher
     ? (packs != null
-      ? `${packs} ${isAr ? (t.voucherPacks || 'باقة') : (t.voucherPacks || 'packs')}`
+      ? formatCountNoun(t, lang, packs, 'packCount')
       : null)
     : hasRegions
-      ? (isAr
-        ? `${regionCount} ${t.regionsBadge || 'مناطق'}`
-        : `${regionCount} ${t.regionsBadge || 'regions'}`)
+      ? `${regionCount} ${t.regionsBadge || (isAr ? 'مناطق' : 'regions')}`
       : (packs != null
-        ? `${packs} ${isAr ? (t.voucherPacks || 'باقة') : (t.voucherPacks || 'packs')}`
+        ? formatCountNoun(t, lang, packs, 'packCount')
         : `${game.points_name || 'Top-up'} ${isAr ? 'شحن' : 'top-ups'}`);
 
-  const handleOpen = () => {
-    if (!teaser) onSelectGame?.(game);
+  const gamePath = `/game/${game.slug || game.id}`;
+  const CardElement = teaser ? 'div' : Link;
+
+  const handleOpen = (event) => {
+    // Let the browser handle new-tab / modified clicks via the real link
+    if (event && (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)) return;
+    if (!teaser && onSelectGame) {
+      event?.preventDefault();
+      onSelectGame(game);
+    }
   };
 
   return (
@@ -57,8 +65,9 @@ export default function HomeGameCard({
       fillOpacity={0.35}
       className={className}
     >
-      <div
-        onClick={handleOpen}
+      <CardElement
+        {...(teaser ? {} : { to: gamePath })}
+        onClick={teaser ? undefined : handleOpen}
         className={`storefront-card home-game-card group flex flex-col transition-all duration-300 ${
           teaser
             ? 'storefront-card--teaser home-game-card--teaser pointer-events-none select-none'
@@ -127,7 +136,7 @@ export default function HomeGameCard({
             </p>
           )}
         </div>
-      </div>
+      </CardElement>
     </BorderGlow>
   );
 }

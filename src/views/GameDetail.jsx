@@ -14,7 +14,7 @@ import { getGameMarketingDescription } from '../lib/gameDescriptions';
 import { resolveStorefrontGame } from '../lib/gameRegions';
 import { sortOffersByPrice } from '../lib/offerDisplay';
 import { buildGameBreadcrumb } from '../lib/catalogNav';
-import { formatMessage } from '../lib/i18n';
+import { formatCountNoun } from '../lib/i18n';
 import {
   buildSearchPath,
   getCatalogSearchQuery,
@@ -211,10 +211,7 @@ export default function GameDetail({
           <div>
             <h2 className="text-xl sm:text-2xl font-bold">{t.availableOffers}</h2>
             <p className="text-xs text-[var(--text-muted)] mt-1">
-              {formatMessage(
-                gameOffers.length === 1 ? t.offerCountOne : t.offerCountMany,
-                { count: gameOffers.length },
-              )}
+              {formatCountNoun(t, lang, gameOffers.length, 'offerCount')}
             </p>
           </div>
         </div>

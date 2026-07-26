@@ -7,6 +7,13 @@ import { getGameDisplayName } from './offerDisplay';
 
 const GENERIC_SYNC_PREFIX = /^instant\s+.+\s+top-up/i;
 
+/** Supplier boilerplate that should never surface to customers. */
+const GENERIC_SYNC_PHRASES = [
+  /^available\s+for\s+all\s+users\.?$/i,
+  /^available\s+globally\.?$/i,
+  /^top[\s-]?up\s+now\.?$/i,
+];
+
 function normalizeKey(value = '') {
   return String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 }
@@ -62,13 +69,24 @@ function isGenericSyncedDescription(value = '') {
   if (!text) return true;
   if (GENERIC_SYNC_PREFIX.test(text)) return true;
   if (/^instant\s+.+\s+via\s+echocore\.?$/i.test(text)) return true;
+  if (GENERIC_SYNC_PHRASES.some((re) => re.test(text))) return true;
   return false;
 }
 
+/** Latin-only text must not surface in the Arabic UI (supplier copy is EN). */
+function hasArabicLetters(value = '') {
+  return /[؀-ۿ]/.test(String(value || ''));
+}
+
 function readDbDescription(game, lang = 'ar') {
-  const raw = lang === 'ar'
-    ? (game?.description_ar || game?.description_en)
-    : (game?.description_en || game?.description_ar);
+  if (lang === 'ar') {
+    // Arabic UI: only Arabic copy; English supplier text falls through to the
+    // Arabic marketing fallback instead of leaking into the storefront.
+    const text = String(game?.description_ar || '').trim();
+    if (!text || isGenericSyncedDescription(text) || !hasArabicLetters(text)) return '';
+    return text;
+  }
+  const raw = game?.description_en || game?.description_ar;
   const text = String(raw || '').trim();
   if (!text || isGenericSyncedDescription(text)) return '';
   return text;

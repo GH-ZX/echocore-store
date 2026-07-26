@@ -1557,10 +1557,10 @@ html, body {
   bottom: 0;
   z-index: 5;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
   min-height: 13.5rem;
-  padding: 1.5rem 1rem 0.5rem;
+  padding: 1.5rem 1rem 0.75rem;
   pointer-events: none;
 }
 
@@ -1585,12 +1585,13 @@ html, body {
 .home-games-preview-overlay-fade {
   position: absolute;
   inset: 0;
-  /* Very light fade — no blur, no shadow band */
+  /* Fade strong enough that teaser cards read as background, not broken cards */
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    color-mix(in srgb, var(--bg-primary) 12%, transparent) 55%,
-    color-mix(in srgb, var(--bg-primary) 55%, transparent) 100%
+    color-mix(in srgb, var(--bg-primary) 35%, transparent) 45%,
+    color-mix(in srgb, var(--bg-primary) 78%, transparent) 78%,
+    color-mix(in srgb, var(--bg-primary) 96%, transparent) 100%
   );
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;

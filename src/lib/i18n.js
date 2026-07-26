@@ -63,3 +63,30 @@ export function formatNumber(value, lang = 'ar', options = {}) {
   // Always Latin digits for counts/prices even when UI language is Arabic
   return new Intl.NumberFormat(getLocale(lang), options).format(num);
 }
+
+const AR_PLURAL_RULES = typeof Intl !== 'undefined' && Intl.PluralRules
+  ? new Intl.PluralRules('ar')
+  : null;
+
+/**
+ * Count + noun with correct Arabic agreement (باقة/باقتان/باقات/باقة).
+ * Looks up `${keyBase}One|Two|Few|Many` in `t` and fills `{count}`.
+ * Arabic: 1→One, 2→Two, 3–10→Few, 11+→Many. English: 1→One, else→Many.
+ */
+export function formatCountNoun(t = {}, lang = 'ar', count = 0, keyBase = '') {
+  const n = Math.abs(Number(count) || 0);
+  let suffix = 'Many';
+  if (lang === 'ar' && AR_PLURAL_RULES) {
+    const category = AR_PLURAL_RULES.select(n);
+    if (category === 'one') suffix = 'One';
+    else if (category === 'two') suffix = 'Two';
+    else if (category === 'few') suffix = 'Few';
+  } else if (n === 1) {
+    suffix = 'One';
+  }
+  const template = t[`${keyBase}${suffix}`]
+    || t[`${keyBase}Many`]
+    || t[`${keyBase}One`]
+    || '{count}';
+  return formatMessage(template, { count: n });
+}
