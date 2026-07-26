@@ -7638,29 +7638,44 @@ button.admin-profit-customer-order__id {
   max-width: 100%;
 }
 
-/* ── Admin group sub-tabs (secondary nav under the page header) ── */
+/* ── Admin group sub-tabs — iOS-style segmented control ────────── */
 .admin-subtabs {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
+  align-items: stretch;
+  gap: 0.2rem;
   margin-bottom: 1rem;
+  padding: 0.25rem;
+  border-radius: 0.875rem;
+  border: 1px solid var(--border);
+  background: var(--dash-card-bg, var(--bg-surface));
+}
+
+/* Desktop uses the sidebar accordion instead (beats the base display:flex) */
+@media (min-width: 768px) {
+  .admin-subtabs {
+    display: none;
+  }
 }
 
 .admin-subtab {
   position: relative;
+  flex: 1 1 0;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.45rem 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: 9999px;
-  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.4rem;
+  border: 1px solid transparent;
+  border-radius: 0.65rem;
+  background: transparent;
   color: var(--text-sec);
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 700;
   cursor: pointer;
   transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .admin-subtab:hover {
@@ -7669,8 +7684,9 @@ button.admin-profit-customer-order__id {
 
 .admin-subtab--active {
   color: var(--dash-tab-active, var(--accent));
-  border-color: color-mix(in srgb, var(--dash-tab-active, var(--accent)) 45%, var(--border));
+  border-color: color-mix(in srgb, var(--dash-tab-active, var(--accent)) 35%, var(--border));
   background: color-mix(in srgb, var(--dash-tab-active, var(--accent)) 14%, var(--bg-surface));
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--dash-tab-active, var(--accent)) 14%, transparent);
 }
 
 .admin-subtab__icon {
@@ -7679,9 +7695,71 @@ button.admin-profit-customer-order__id {
   flex-shrink: 0;
 }
 
+/* iOS segmented style is text-first — icons only when there is room */
+@media (max-width: 479px) {
+  .admin-subtab__icon {
+    display: none;
+  }
+}
+
+.admin-subtab__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .admin-nav-badge--subtab {
   position: static;
   margin-inline-start: 0.15rem;
+  flex-shrink: 0;
+}
+
+/* ── Sidebar group accordion (desktop) ─────────────────────────── */
+.admin-nav-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-nav-group__tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  margin: 0.25rem 0 0.375rem;
+  padding-inline-start: 1.35rem;
+}
+
+.admin-nav-subbtn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border: none;
+  border-radius: 0.6rem;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.admin-nav-subbtn:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-surface) 100%, transparent);
+}
+
+.admin-nav-subbtn--active {
+  color: var(--dash-tab-active, var(--accent));
+  background: color-mix(in srgb, var(--dash-tab-active, var(--accent)) 12%, transparent);
+  font-weight: 700;
+}
+
+.admin-nav-subbtn__icon {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex-shrink: 0;
 }
 
 /* Admin dashboard RTL (Arabic) — mixed AR/EN copy */

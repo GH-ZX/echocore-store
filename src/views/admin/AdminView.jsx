@@ -81,11 +81,11 @@ function buildAdminNavItems(t) {
  */
 function buildAdminNavGroups(t) {
   return [
-    { id: 'insights', label: t.adminGroupOverview, icon: BarChart3, tabs: ['overview', 'profits', 'logs'] },
-    { id: 'sales', label: t.adminGroupSales, icon: ShoppingCart, tabs: ['orders', 'recharges'] },
-    { id: 'catalog', label: t.adminGroupCatalog, icon: Package, tabs: ['products', 'home'] },
-    { id: 'customers', label: t.adminGroupCustomers, icon: Users, tabs: ['users', 'inbox', 'contact', 'reviews'] },
-    { id: 'settings', label: t.adminGroupSettings, icon: Settings, tabs: ['payments', 'apis', 'theme'] },
+    { id: 'insights', label: t.adminGroupOverview, shortLabel: t.tabOverviewShort, icon: BarChart3, tabs: ['overview', 'profits', 'logs'] },
+    { id: 'sales', label: t.adminGroupSales, shortLabel: t.adminGroupSales, icon: ShoppingCart, tabs: ['orders', 'recharges'] },
+    { id: 'catalog', label: t.adminGroupCatalog, shortLabel: t.adminGroupCatalog, icon: Package, tabs: ['products', 'home'] },
+    { id: 'customers', label: t.adminGroupCustomers, shortLabel: t.adminGroupCustomers, icon: Users, tabs: ['users', 'inbox', 'contact', 'reviews'] },
+    { id: 'settings', label: t.adminGroupSettings, shortLabel: t.adminGroupSettings, icon: Settings, tabs: ['payments', 'apis', 'theme'] },
   ];
 }
 
@@ -382,23 +382,52 @@ export default function AdminView({
             const Icon = group.icon;
             const isActive = activeGroup.id === group.id;
             const showInboxBadge = group.tabs.includes('inbox') && inboxUnreadCount > 0;
+            const groupTabs = isActive && !sidebarCollapsed
+              ? group.tabs.map((tabId) => adminNavItems.find((item) => item.id === tabId)).filter(Boolean)
+              : [];
             return (
-              <button
-                key={group.id}
-                type="button"
-                onClick={() => openGroup(group)}
-                className={`admin-nav-btn${isActive ? ' admin-nav-btn--active' : ''}`}
-                title={sidebarCollapsed ? group.label : undefined}
-                aria-current={isActive ? 'page' : undefined}
-              >
-                <Icon className="admin-nav-btn__icon" aria-hidden="true" />
-                <span className="admin-nav-btn__label">{group.label}</span>
-                {showInboxBadge ? (
-                  <span className="admin-nav-badge" aria-label={formatMessage(t.adminInboxUnreadActivity, { count: inboxUnreadCount })}>
-                    {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
-                  </span>
-                ) : null}
-              </button>
+              <div key={group.id} className="admin-nav-group">
+                <button
+                  type="button"
+                  onClick={() => openGroup(group)}
+                  className={`admin-nav-btn${isActive ? ' admin-nav-btn--active' : ''}`}
+                  title={sidebarCollapsed ? group.label : undefined}
+                  aria-current={isActive ? 'page' : undefined}
+                >
+                  <Icon className="admin-nav-btn__icon" aria-hidden="true" />
+                  <span className="admin-nav-btn__label">{group.label}</span>
+                  {showInboxBadge ? (
+                    <span className="admin-nav-badge" aria-label={formatMessage(t.adminInboxUnreadActivity, { count: inboxUnreadCount })}>
+                      {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
+                    </span>
+                  ) : null}
+                </button>
+                {groupTabs.length > 1 && (
+                  <div className="admin-nav-group__tabs">
+                    {groupTabs.map((tab) => {
+                      const TabIcon = tab.icon;
+                      const isTabActive = activeTab === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setAdminTab(tab.id)}
+                          className={`admin-nav-subbtn${isTabActive ? ' admin-nav-subbtn--active' : ''}`}
+                          aria-current={isTabActive ? 'page' : undefined}
+                        >
+                          <TabIcon className="admin-nav-subbtn__icon" aria-hidden="true" />
+                          <span>{tab.label}</span>
+                          {tab.id === 'inbox' && inboxUnreadCount > 0 ? (
+                            <span className="admin-nav-badge admin-nav-badge--subtab">
+                              {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </nav>
@@ -424,7 +453,7 @@ export default function AdminView({
                 title={group.label}
               >
                 <Icon className="admin-mobile-tab__icon" aria-hidden="true" />
-                <span className="admin-mobile-tab__label">{group.label}</span>
+                <span className="admin-mobile-tab__label">{group.shortLabel || group.label}</span>
                 {showInboxBadge ? (
                   <span className="admin-nav-badge admin-nav-badge--mobile">
                     {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
@@ -435,9 +464,35 @@ export default function AdminView({
           })}
         </nav>
 
+        {groupSubTabs.length > 1 && (
+          <nav className="admin-subtabs md:hidden" aria-label={activeGroup.label}>
+            {groupSubTabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setAdminTab(tab.id)}
+                  className={`admin-subtab${isActive ? ' admin-subtab--active' : ''}`}
+                  aria-current={isActive ? 'page' : undefined}
+                >
+                  <Icon className="admin-subtab__icon" aria-hidden="true" />
+                  <span className="admin-subtab__label">{tab.shortLabel || tab.label}</span>
+                  {tab.id === 'inbox' && inboxUnreadCount > 0 ? (
+                    <span className="admin-nav-badge admin-nav-badge--subtab">
+                      {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </nav>
+        )}
+
         <header className="admin-page-header mb-4 sm:mb-6">
           <p className="text-[10px] sm:hidden font-semibold uppercase tracking-wider text-[var(--accent)] mb-0.5">
-            {t.adminDashboard}
+            {t.adminDashboard} · {activeGroup.label}
           </p>
           <h1 className="text-xl sm:text-3xl font-black truncate">
             {activeNavItem?.label || t.adminDashboard}
@@ -452,32 +507,6 @@ export default function AdminView({
                   : t.adminSectionHelp}
           </p>
         </header>
-
-        {groupSubTabs.length > 1 && (
-          <nav className="admin-subtabs" aria-label={activeGroup.label}>
-            {groupSubTabs.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setAdminTab(tab.id)}
-                  className={`admin-subtab${isActive ? ' admin-subtab--active' : ''}`}
-                  aria-current={isActive ? 'page' : undefined}
-                >
-                  <Icon className="admin-subtab__icon" aria-hidden="true" />
-                  <span>{tab.shortLabel || tab.label}</span>
-                  {tab.id === 'inbox' && inboxUnreadCount > 0 ? (
-                    <span className="admin-nav-badge admin-nav-badge--subtab">
-                      {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </nav>
-        )}
 
       {/* OVERVIEW TAB */}
       {activeTab === 'overview' && (
