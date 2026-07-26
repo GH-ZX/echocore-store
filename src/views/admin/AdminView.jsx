@@ -7,7 +7,7 @@ import {
   isValidAdminTabSegment,
   resolveAdminTabFromPath,
 } from '../../lib/adminRoutes';
-import { Trash2, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Percent, PanelLeftClose, PanelLeftOpen, Users, ScrollText, Bell, Mail, TrendingUp, Cable } from 'lucide-react';
+import { Trash2, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Percent, PanelLeftClose, PanelLeftOpen, Users, ScrollText, Bell, Mail, TrendingUp, Cable, Settings } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 import { centerActiveMobileTab, resetPageHorizontalScroll } from '../../lib/adminMobileNav';
@@ -75,6 +75,20 @@ function buildAdminNavItems(t) {
   ];
 }
 
+/**
+ * Nav groups: 5 top-level entries instead of 14 tabs.
+ * URLs are unchanged — groups only organize the existing tabs.
+ */
+function buildAdminNavGroups(t) {
+  return [
+    { id: 'insights', label: t.adminGroupOverview, icon: BarChart3, tabs: ['overview', 'profits', 'logs'] },
+    { id: 'sales', label: t.adminGroupSales, icon: ShoppingCart, tabs: ['orders', 'recharges'] },
+    { id: 'catalog', label: t.adminGroupCatalog, icon: Package, tabs: ['products', 'home'] },
+    { id: 'customers', label: t.adminGroupCustomers, icon: Users, tabs: ['users', 'inbox', 'contact', 'reviews'] },
+    { id: 'settings', label: t.adminGroupSettings, icon: Settings, tabs: ['payments', 'apis', 'theme'] },
+  ];
+}
+
 export default function AdminView({ 
   t, 
   lang, 
@@ -119,15 +133,39 @@ export default function AdminView({
   const activeTab = useMemo(() => resolveAdminTabFromPath(location.pathname), [location.pathname]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const adminNavItems = useMemo(() => buildAdminNavItems(t), [t]);
+  const adminNavGroups = useMemo(() => buildAdminNavGroups(t), [t]);
   const activeNavItem = useMemo(
     () => adminNavItems.find((item) => item.id === activeTab) || adminNavItems[0],
     [adminNavItems, activeTab],
   );
+  const activeGroup = useMemo(
+    () => adminNavGroups.find((group) => group.tabs.includes(activeTab)) || adminNavGroups[0],
+    [adminNavGroups, activeTab],
+  );
+  const groupSubTabs = useMemo(
+    () => activeGroup.tabs
+      .map((tabId) => adminNavItems.find((item) => item.id === tabId))
+      .filter(Boolean),
+    [activeGroup, adminNavItems],
+  );
   const mobileNavRef = useRef(null);
+  // Remember the last visited tab per group so switching groups restores it
+  const lastTabPerGroupRef = useRef({});
+
+  useEffect(() => {
+    if (activeGroup.tabs.includes(activeTab)) {
+      lastTabPerGroupRef.current[activeGroup.id] = activeTab;
+    }
+  }, [activeGroup, activeTab]);
 
   const setAdminTab = (tabId) => {
     resetPageHorizontalScroll();
     navigate(getAdminDashboardPath(tabId));
+  };
+
+  const openGroup = (group) => {
+    const remembered = lastTabPerGroupRef.current[group.id];
+    setAdminTab(group.tabs.includes(remembered) ? remembered : group.tabs[0]);
   };
 
   useEffect(() => {
@@ -340,21 +378,22 @@ export default function AdminView({
         </button>
 
         <nav className="admin-sidebar__nav">
-          {adminNavItems.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
+          {adminNavGroups.map((group) => {
+            const Icon = group.icon;
+            const isActive = activeGroup.id === group.id;
+            const showInboxBadge = group.tabs.includes('inbox') && inboxUnreadCount > 0;
             return (
               <button
-                key={tab.id}
+                key={group.id}
                 type="button"
-                onClick={() => setAdminTab(tab.id)}
+                onClick={() => openGroup(group)}
                 className={`admin-nav-btn${isActive ? ' admin-nav-btn--active' : ''}`}
-                title={sidebarCollapsed ? tab.label : undefined}
+                title={sidebarCollapsed ? group.label : undefined}
                 aria-current={isActive ? 'page' : undefined}
               >
                 <Icon className="admin-nav-btn__icon" aria-hidden="true" />
-                <span className="admin-nav-btn__label">{tab.label}</span>
-                {tab.id === 'inbox' && inboxUnreadCount > 0 ? (
+                <span className="admin-nav-btn__label">{group.label}</span>
+                {showInboxBadge ? (
                   <span className="admin-nav-badge" aria-label={formatMessage(t.adminInboxUnreadActivity, { count: inboxUnreadCount })}>
                     {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
                   </span>
@@ -371,21 +410,22 @@ export default function AdminView({
           className="admin-mobile-nav flex md:hidden"
           aria-label={t.adminNavLabel}
         >
-          {adminNavItems.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
+          {adminNavGroups.map((group) => {
+            const Icon = group.icon;
+            const isActive = activeGroup.id === group.id;
+            const showInboxBadge = group.tabs.includes('inbox') && inboxUnreadCount > 0;
             return (
               <button
-                key={tab.id}
+                key={group.id}
                 type="button"
-                onClick={() => setAdminTab(tab.id)}
-                className={`admin-mobile-tab${isActive ? ' admin-mobile-tab--active' : ''}`}
+                onClick={() => openGroup(group)}
+                className={`admin-mobile-tab admin-mobile-tab--group${isActive ? ' admin-mobile-tab--active' : ''}`}
                 aria-current={isActive ? 'page' : undefined}
-                title={tab.label}
+                title={group.label}
               >
                 <Icon className="admin-mobile-tab__icon" aria-hidden="true" />
-                <span className="admin-mobile-tab__label">{tab.shortLabel}</span>
-                {tab.id === 'inbox' && inboxUnreadCount > 0 ? (
+                <span className="admin-mobile-tab__label">{group.label}</span>
+                {showInboxBadge ? (
                   <span className="admin-nav-badge admin-nav-badge--mobile">
                     {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
                   </span>
@@ -412,6 +452,32 @@ export default function AdminView({
                   : t.adminSectionHelp}
           </p>
         </header>
+
+        {groupSubTabs.length > 1 && (
+          <nav className="admin-subtabs" aria-label={activeGroup.label}>
+            {groupSubTabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setAdminTab(tab.id)}
+                  className={`admin-subtab${isActive ? ' admin-subtab--active' : ''}`}
+                  aria-current={isActive ? 'page' : undefined}
+                >
+                  <Icon className="admin-subtab__icon" aria-hidden="true" />
+                  <span>{tab.shortLabel || tab.label}</span>
+                  {tab.id === 'inbox' && inboxUnreadCount > 0 ? (
+                    <span className="admin-nav-badge admin-nav-badge--subtab">
+                      {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </nav>
+        )}
 
       {/* OVERVIEW TAB */}
       {activeTab === 'overview' && (

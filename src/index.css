@@ -3196,21 +3196,40 @@ html, body {
   left: 1.25rem;
 }
 
-/* ── Storefront mobile bottom nav ─────────────────────────────── */
+/* ── Storefront mobile bottom nav — iOS-style floating glass ──── */
 .mobile-bottom-nav {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: calc(0.65rem + env(safe-area-inset-bottom, 0px));
   z-index: 102;
   display: flex;
+  justify-content: center;
+  padding-inline: 0.75rem;
+  pointer-events: none;
+}
+
+.mobile-bottom-nav__glass {
+  pointer-events: auto;
+  display: flex;
   align-items: stretch;
-  justify-content: space-around;
-  padding: 0.375rem 0.5rem calc(0.375rem + env(safe-area-inset-bottom, 0px));
-  background: color-mix(in srgb, var(--bg-header) 94%, transparent);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border-top: 1px solid var(--border);
+  width: 100%;
+  max-width: 26rem;
+  padding: 0.35rem;
+  border-radius: 1.6rem;
+  background:
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, #ffffff 7%, transparent),
+      transparent 42%
+    ),
+    color-mix(in srgb, var(--bg-header) 62%, transparent);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid color-mix(in srgb, #ffffff 14%, transparent);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 12%, transparent);
 }
 
 .mobile-bottom-nav__item {
@@ -3220,27 +3239,51 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.2rem;
-  padding: 0.3rem 0.25rem;
-  border-radius: 0.75rem;
+  justify-content: center;
+  gap: 0.18rem;
+  padding: 0.42rem 0.25rem 0.38rem;
+  border-radius: 1.25rem;
   color: var(--text-muted);
-  font-size: 0.625rem;
+  font-size: 0.6rem;
   font-weight: 600;
+  letter-spacing: 0.01em;
   text-decoration: none;
-  transition: color 0.15s ease, background-color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.18s ease;
 }
 
 .mobile-bottom-nav__item--active {
   color: var(--accent);
+  font-weight: 700;
 }
 
-.mobile-bottom-nav__item:active {
-  transform: scale(0.96);
+.mobile-bottom-nav__item:active .mobile-bottom-nav__icon-wrap {
+  transform: scale(0.88);
+}
+
+/* Sliding glass pill behind the active tab (framer-motion layoutId) */
+.mobile-bottom-nav__pill {
+  position: absolute;
+  inset: 0.15rem 0.1rem;
+  border-radius: 1.15rem;
+  background:
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, #ffffff 9%, transparent),
+      transparent 55%
+    ),
+    color-mix(in srgb, var(--accent) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  box-shadow:
+    0 4px 14px color-mix(in srgb, var(--accent) 22%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 14%, transparent);
 }
 
 .mobile-bottom-nav__icon-wrap {
   position: relative;
+  z-index: 1;
   display: inline-flex;
+  transition: transform 0.12s ease;
 }
 
 .mobile-bottom-nav__icon {
@@ -3249,6 +3292,8 @@ html, body {
 }
 
 .mobile-bottom-nav__label {
+  position: relative;
+  z-index: 1;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3271,6 +3316,7 @@ html, body {
   font-size: 0.575rem;
   font-weight: 800;
   line-height: 1;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 
 .home-contact-fab {
@@ -3316,18 +3362,18 @@ html, body {
   left: 1.25rem;
 }
 
-/* Keep floating buttons clear of the bottom nav on mobile */
+/* Keep floating buttons clear of the floating glass nav on mobile */
 @media (max-width: 767px) {
   .home-contact-fab {
-    bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+    bottom: calc(5.4rem + env(safe-area-inset-bottom, 0px));
   }
 
   .home-contact-fab--stacked {
-    bottom: calc(8.25rem + env(safe-area-inset-bottom, 0px));
+    bottom: calc(8.9rem + env(safe-area-inset-bottom, 0px));
   }
 
   .home-preview-fab {
-    bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+    bottom: calc(5.4rem + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -7580,6 +7626,62 @@ button.admin-profit-customer-order__id {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 5 group entries share the width equally — no horizontal scroll needed */
+.admin-mobile-tab--group {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.admin-mobile-tab--group .admin-mobile-tab__label {
+  max-width: 100%;
+}
+
+/* ── Admin group sub-tabs (secondary nav under the page header) ── */
+.admin-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-bottom: 1rem;
+}
+
+.admin-subtab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+  color: var(--text-sec);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+  touch-action: manipulation;
+}
+
+.admin-subtab:hover {
+  color: var(--text-primary);
+}
+
+.admin-subtab--active {
+  color: var(--dash-tab-active, var(--accent));
+  border-color: color-mix(in srgb, var(--dash-tab-active, var(--accent)) 45%, var(--border));
+  background: color-mix(in srgb, var(--dash-tab-active, var(--accent)) 14%, var(--bg-surface));
+}
+
+.admin-subtab__icon {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex-shrink: 0;
+}
+
+.admin-nav-badge--subtab {
+  position: static;
+  margin-inline-start: 0.15rem;
 }
 
 /* Admin dashboard RTL (Arabic) — mixed AR/EN copy */
