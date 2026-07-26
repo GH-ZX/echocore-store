@@ -364,7 +364,7 @@ export default function AdminRechargeManager({
         onSelectForCredit={openCreditForUser}
       />
 
-      <div ref={manualCreditRef}>
+      <div ref={manualCreditRef} className="scroll-mt-24">
         <AdminManualBalanceCredit
           t={t}
           lang={lang}

@@ -50,7 +50,10 @@ export default function HomeExpandableGrid({
     ? Math.min(total, displayCount)
     : resolvedActive;
   const useOverlay = !disablePeek && !onMoreClick && rawUseOverlay && hasMoreToExpand;
-  const showMoreControl = alwaysShowMore || hasMoreToExpand || !!onMoreClick;
+  // disablePeek without a navigate target = everything is visible, no control needed
+  const showMoreControl = alwaysShowMore
+    || !!onMoreClick
+    || (!disablePeek && hasMoreToExpand);
 
   useEffect(() => {
     setActiveCount(initialActive);

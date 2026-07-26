@@ -359,7 +359,7 @@ export default function AdminContactMessages({
             })}
           </div>
 
-          <div className="lg:col-span-3" id="admin-contact-detail">
+          <div className="lg:col-span-3 scroll-mt-24" id="admin-contact-detail">
             {!selected ? (
               <div className="card p-10 text-center text-[var(--text-sec)] h-full min-h-[240px] flex flex-col items-center justify-center">
                 <Mail className="w-9 h-9 mb-3 opacity-35" />

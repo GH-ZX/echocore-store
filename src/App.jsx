@@ -2187,7 +2187,7 @@ export default function App() {
 
   return (
     <div 
-      className={`min-h-screen overflow-x-hidden font-sans text-[var(--text-primary)] selection:bg-cyan-500/30 ${lang === 'ar' ? 'dir-rtl' : 'dir-ltr'}`}
+      className={`min-h-screen overflow-x-clip font-sans text-[var(--text-primary)] selection:bg-cyan-500/30 ${lang === 'ar' ? 'dir-rtl' : 'dir-ltr'}`}
       style={{ backgroundColor: 'var(--bg-primary)' }}
       dir={lang === 'ar' ? 'rtl' : 'ltr'}
     >

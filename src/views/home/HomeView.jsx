@@ -269,6 +269,7 @@ export default function HomeView({
         sectionKey={`${section.id}-${items.length}`}
         items={items}
         sectionTitle={sectionTitle}
+        disablePeek={!!options.showAll}
         gridClassName={options.gridClassName || HOME_GRID_DENSE}
         layoutId={options.layoutId || 'dense'}
         loading={loading}
@@ -442,7 +443,8 @@ export default function HomeView({
           title_en: section.title_en || t.g2bulkTopupsNav || t.chooseGame,
           title_ar: section.title_ar || t.g2bulkTopupsNav || t.chooseGame,
         };
-        const gamesContent = renderGamesExpandable(gamesSection, topupGamesWithStats);
+        // All games visible at once — no teaser fade, no show-more
+        const gamesContent = renderGamesExpandable(gamesSection, topupGamesWithStats, { showAll: true });
         if (!gamesContent) return null;
         return renderSectionBlock(
           gamesSection,

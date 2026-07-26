@@ -100,6 +100,14 @@ export const DEFAULT_HOME_LAYOUT = [
     title_ar: 'شحن الألعاب',
   },
   {
+    id: 'gift_cards',
+    type: 'gift_cards',
+    enabled: true,
+    title_en: 'Gift cards & codes',
+    title_ar: 'بطاقات الهدايا والأكواد',
+    limit: 8,
+  },
+  {
     id: 'sale_offers',
     type: 'sale_offers',
     enabled: true,
@@ -114,14 +122,6 @@ export const DEFAULT_HOME_LAYOUT = [
     title_en: 'Bestsellers',
     title_ar: 'الأكثر طلباً',
     limit: 10,
-  },
-  {
-    id: 'gift_cards',
-    type: 'gift_cards',
-    enabled: true,
-    title_en: 'Gift cards & codes',
-    title_ar: 'بطاقات الهدايا والأكواد',
-    limit: 8,
   },
   {
     id: 'customer_reviews',

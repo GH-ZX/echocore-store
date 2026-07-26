@@ -60,6 +60,8 @@ html {
   text-size-adjust: 100%;
   touch-action: manipulation;
   scroll-behavior: smooth;
+  /* Sticky glass header — keep anchors and scrollIntoView targets below it */
+  scroll-padding-top: calc(var(--header-height, 4rem) + 0.75rem);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -118,7 +120,11 @@ body::after {
 }
 
 html, body, #root {
+  /* clip (not hidden) — hidden creates a scroll container and breaks
+     position: sticky on the header; clip only cuts overflow paint.
+     hidden first = fallback for browsers without clip support. */
   overflow-x: hidden;
+  overflow-x: clip;
   max-width: 100%;
 }
 
@@ -2190,11 +2196,47 @@ html, body {
    HEADER SHELL — readable over Aurora background
    ============================================ */
 .header-shell {
-  position: relative;
+  position: sticky;
+  top: 0;
   z-index: var(--z-header);
   overflow: visible;
-  background: var(--bg-header);
+  /* Same glass recipe as the bottom nav — one visual language */
+  background:
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, #ffffff 6%, transparent),
+      transparent 45%
+    ),
+    color-mix(in srgb, var(--bg-header) 62%, transparent);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border-bottom: 1px solid color-mix(in srgb, #ffffff 10%, transparent);
+}
+
+/* Light themes: white sheen/borders vanish on near-white surfaces —
+   use opaque-ish surface + real border, keep the blur */
+[data-color-mode='light'] .header-shell {
+  background: color-mix(in srgb, var(--bg-header) 85%, transparent);
   border-bottom: 1px solid var(--border);
+}
+
+[data-color-mode='light'] .admin-mobile-nav,
+[data-color-mode='light'] .admin-subtabs {
+  background: color-mix(in srgb, var(--bg-header) 85%, transparent);
+  border-color: var(--border);
+  box-shadow: none;
+}
+
+[data-color-mode='light'] .mobile-bottom-nav__glass {
+  background: color-mix(in srgb, var(--bg-header) 85%, transparent);
+  border-color: var(--border);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.18);
+}
+
+[data-color-mode='light'] .mobile-bottom-nav__pill {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+  box-shadow: none;
 }
 
 .header-inner {
@@ -7570,8 +7612,18 @@ button.admin-profit-customer-order__id {
   flex-wrap: nowrap;
   align-items: stretch;
   border-radius: 0.875rem;
-  background: var(--dash-card-bg, var(--bg-surface));
-  border: 1px solid var(--border);
+  /* Same glass recipe as the storefront bottom nav */
+  background:
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, #ffffff 6%, transparent),
+      transparent 45%
+    ),
+    color-mix(in srgb, var(--bg-header) 62%, transparent);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid color-mix(in srgb, #ffffff 12%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 10%, transparent);
 }
 
 .admin-mobile-nav::-webkit-scrollbar {
@@ -7646,8 +7698,16 @@ button.admin-profit-customer-order__id {
   margin-bottom: 1rem;
   padding: 0.25rem;
   border-radius: 0.875rem;
-  border: 1px solid var(--border);
-  background: var(--dash-card-bg, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, #ffffff 10%, transparent);
+  background:
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, #ffffff 5%, transparent),
+      transparent 50%
+    ),
+    color-mix(in srgb, var(--bg-header) 58%, transparent);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
 }
 
 /* Desktop uses the sidebar accordion instead (beats the base display:flex) */
