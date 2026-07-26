@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { Gift, ShoppingCart } from 'lucide-react';
 import AdminEditButton from '../admin/AdminEditButton';
 import AdminOfferCostBadge from '../admin/AdminOfferCostBadge';
@@ -8,8 +9,8 @@ import {
   formatPrice,
   getOfferDiscount,
   getOfferDisplayName,
-  getOfferPackAmount,
 } from '../../lib/offerDisplay';
+import { getGameOfferPath } from '../../lib/offerRoutes';
 
 export default function OfferPackCard({
   offer,
@@ -37,26 +38,30 @@ export default function OfferPackCard({
   const discount = getOfferDiscount(offer);
   const price = formatPrice(offer.price);
 
+  const offerPath = getGameOfferPath(offer, catalogGames.length ? catalogGames : game);
+
+  const handleOpen = (event) => {
+    // Let the browser handle new-tab / modified clicks via the real link
+    if (event && (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)) return;
+    if (onSelect) {
+      event?.preventDefault();
+      onSelect(offer);
+    }
+  };
+
   return (
-    <article
-      className="catalog-offer-card card group cursor-pointer touch-manipulation active:scale-[0.99] transition-transform"
-      onClick={() => onSelect?.(offer)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onSelect?.(offer);
-        }
-      }}
-      role="button"
-      tabIndex={0}
+    <Link
+      to={offerPath}
+      className="catalog-offer-card card group cursor-pointer touch-manipulation active:scale-[0.99] transition-transform flex"
+      onClick={handleOpen}
     >
-      <div className="catalog-offer-card__body p-4 sm:p-5 flex flex-col h-full">
+      <div className="catalog-offer-card__body p-3 sm:p-5 flex flex-col h-full w-full min-w-0">
         {/* Name on start side, pencil/logo on end — opposite ends in AR + EN */}
-        <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex items-start justify-between gap-2 sm:gap-3 mb-2.5 sm:mb-3">
           <div className="min-w-0 flex-1 pe-1">
             <OfferPackLabel
               as="h3"
-              className="font-bold text-base sm:text-lg leading-snug line-clamp-2 group-hover:text-[var(--accent)] transition-colors"
+              className="font-bold text-sm sm:text-lg leading-snug line-clamp-2 group-hover:text-[var(--accent)] transition-colors"
             >
               {offerName}
             </OfferPackLabel>
@@ -68,7 +73,7 @@ export default function OfferPackCard({
           </div>
           <div className="flex items-start gap-2 shrink-0">
             {game?.logo_url && (
-              <img src={game.logo_url} alt="" className="w-8 h-8 object-contain opacity-80" />
+              <img src={game.logo_url} alt="" className="hidden sm:block w-8 h-8 object-contain opacity-80" />
             )}
             {isAdmin && onEdit && (
               <div onClick={(e) => e.stopPropagation()}>
@@ -78,14 +83,7 @@ export default function OfferPackCard({
           </div>
         </div>
 
-        {(offer.amount || getOfferPackAmount(offer)) && (
-          <p className="text-xs text-[var(--text-sec)] mb-3">
-            {t.youReceive || 'You receive'}:{' '}
-            <OfferPackLabel className="font-semibold text-[var(--text-primary)]">{offerName}</OfferPackLabel>
-          </p>
-        )}
-
-        <div className="mt-auto pt-3 border-t border-[var(--border)] flex items-end justify-between gap-3">
+        <div className="mt-auto pt-2.5 sm:pt-3 border-t border-[var(--border)] flex flex-col sm:flex-row sm:items-end justify-between gap-2 sm:gap-3">
           <div>
             {offer.is_sale && offer.original_price && (
               <div className="text-xs line-through text-[var(--text-muted)]">${formatPrice(offer.original_price)}</div>
@@ -100,7 +98,7 @@ export default function OfferPackCard({
                   onNotify={onNotify}
                 />
               ) : (
-                <span className="text-2xl font-black text-[var(--accent)] tabular-nums" dir="ltr">${price}</span>
+                <span className="text-lg sm:text-2xl font-black text-[var(--accent)] tabular-nums" dir="ltr">${price}</span>
               )}
               {offer.is_sale && !offer._partnerPriced && !offer._influencerPriced && (
                 <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/25 font-bold">
@@ -119,10 +117,11 @@ export default function OfferPackCard({
             <button
               type="button"
               onClick={(e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 onGift(offer);
               }}
-              className="btn btn-primary text-xs px-3 py-2 min-h-[40px] shrink-0 inline-flex items-center gap-1.5 bg-gradient-to-r from-pink-600 to-violet-600 border-pink-500/40"
+              className="btn btn-primary text-xs px-3 py-2 min-h-[40px] shrink-0 inline-flex items-center justify-center gap-1.5 bg-gradient-to-r from-pink-600 to-violet-600 border-pink-500/40"
             >
               <Gift className="w-3.5 h-3.5" />
               {t.giftOffer}
@@ -133,6 +132,7 @@ export default function OfferPackCard({
                 <button
                   type="button"
                   onClick={(e) => {
+                    e.preventDefault();
                     e.stopPropagation();
                     onAddToCart(offer, e);
                   }}
@@ -146,10 +146,11 @@ export default function OfferPackCard({
               <button
                 type="button"
                 onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
                   onBuyNow?.(offer);
                 }}
-                className="btn btn-primary text-xs px-3 py-2 min-h-[40px]"
+                className="btn btn-primary text-xs px-3 py-2 min-h-[40px] flex-1 sm:flex-none"
               >
                 {t.buyNow || 'Buy'}
               </button>
@@ -157,6 +158,6 @@ export default function OfferPackCard({
           )}
         </div>
       </div>
-    </article>
+    </Link>
   );
 }

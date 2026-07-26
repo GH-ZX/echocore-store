@@ -116,6 +116,7 @@ import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import Header from './components/layout/Header';
 import Footer from './components/layout/Footer';
+import MobileBottomNav from './components/layout/MobileBottomNav';
 
 import AdminOfferEditModal from './components/admin/AdminOfferEditModal';
 import AdminGameEditModal from './components/admin/AdminGameEditModal';
@@ -2241,7 +2242,7 @@ export default function App() {
         transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
         className={langSwitching ? 'pointer-events-none select-none lang-switch-motion' : ''}
       >
-      <main id="main-content" className="container mx-auto px-3 sm:px-4 pb-20 sm:pb-24 max-w-7xl">
+      <main id="main-content" className="container mx-auto px-3 sm:px-4 pb-32 md:pb-24 max-w-7xl">
         <AppRoutes
           t={t}
           lang={lang}
@@ -2380,6 +2381,8 @@ export default function App() {
 
       <Footer lang={lang} t={t} />
       </motion.div>
+
+      <MobileBottomNav t={t} user={user} cartCount={cart.length} />
 
       {isAdmin && adminEditOffer && (
         <AdminOfferEditModal

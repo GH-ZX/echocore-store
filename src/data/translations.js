@@ -16,6 +16,7 @@ export const translations = {
 
     storeName: "ECHOCORE",
     home: "الرئيسية",
+    bottomNavGames: "الألعاب",
     games: "شحن ألعاب PC",
     giftCards: "بطاقات الهدايا والقسائم",
     giftCardsDesc: "بطاقات PlayStation وXbox وSteam وأكواد شحن الألعاب — تُسلَّم فوراً في إيصال الطلب.",
@@ -2350,6 +2351,7 @@ export const translations = {
 
     storeName: "ECHOCORE",
     home: "Home",
+    bottomNavGames: "Games",
     games: "PC Games",
     giftCards: "Gift Cards & Vouchers",
     giftCardsDesc: "PlayStation, Xbox, Steam, and in-game voucher codes — delivered instantly on your order receipt.",

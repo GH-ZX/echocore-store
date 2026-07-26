@@ -57,6 +57,12 @@ export default function GameDetail({
     offers.filter((offer) => offer.game_id === activeGameId && offer.active !== false),
   );
 
+  // Region per card is noise when every offer shares one region (it already
+  // shows in the hero badge) — only surface it when regions actually differ.
+  const hasMixedRegions = useMemo(() => new Set(
+    gameOffers.map((offer) => offer.region || storefrontGame?.region_label || '').filter(Boolean),
+  ).size > 1, [gameOffers, storefrontGame]);
+
   const showGiftCodeAlt = useMemo(
     () => (storefrontGame && !isVoucher && !isAccount
       ? topupHasGiftCardAlternative(storefrontGame, games, offers)
@@ -218,7 +224,7 @@ export default function GameDetail({
 
         {gameOffers.length > 0 ? (
           <div>
-            <div className="catalog-offer-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+            <div className="catalog-offer-grid grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
               {gameOffers.map((offer) => (
                 <OfferPackCard
                   key={`${activeGameId}:${offer.id}`}
@@ -228,7 +234,7 @@ export default function GameDetail({
                   catalogOffers={offers}
                   lang={lang}
                   t={t}
-                  regionLabel={offer.region || game.region_label}
+                  regionLabel={hasMixedRegions ? (offer.region || game.region_label) : null}
                   isAdmin={isAdmin}
                   onSelect={onSelectOffer}
                   onBuyNow={onBuyNow}
