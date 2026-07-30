@@ -75,9 +75,7 @@ export default function Header({
   const [profileOpen, setProfileOpen] = useState(false);
   const [searchDraft, setSearchDraft] = useState('');
   const desktopSearchRef = useRef(null);
-  const mobileSearchRef = useRef(null);
   const inputRef = useRef(null);
-  const mobileSearchInputRef = useRef(null);
   const profileTriggerRef = useRef(null);
   const profilePanelRef = useRef(null);
   const menuRef = useRef(null);
@@ -136,8 +134,7 @@ export default function Header({
 
   useEffect(() => {
     const handlePointerDown = (event) => {
-      const inSearch = desktopSearchRef.current?.contains(event.target)
-        || mobileSearchRef.current?.contains(event.target);
+      const inSearch = desktopSearchRef.current?.contains(event.target);
       if (!inSearch) {
         setIsSearchOpen(false);
       }
@@ -162,8 +159,7 @@ export default function Header({
 
   useEffect(() => {
     if (!isSearchOpen) return;
-    const target = isMobile ? mobileSearchInputRef.current : inputRef.current;
-    target?.focus();
+    inputRef.current?.focus();
   }, [isSearchOpen, isMobile]);
 
   const submitSearch = useCallback((rawValue = searchDraft) => {
@@ -179,7 +175,6 @@ export default function Header({
   const handleClearSearch = () => {
     setSearchDraft('');
     inputRef.current?.focus();
-    mobileSearchInputRef.current?.focus();
   };
 
   const openSearch = useCallback(() => {
@@ -190,8 +185,7 @@ export default function Header({
   }, [onNotificationsClose]);
 
   const renderSearchControl = (variant = 'desktop') => {
-    const isMobileVariant = variant === 'mobile';
-    const activeInputRef = isMobileVariant ? mobileSearchInputRef : inputRef;
+    const activeInputRef = inputRef;
 
     return (
       <AnimatePresence mode="wait">
@@ -212,7 +206,7 @@ export default function Header({
             animate={{ width: 'auto', opacity: 1, scale: 1 }}
             exit={{ width: 0, opacity: 0, scale: 0.96 }}
             transition={{ type: 'spring', stiffness: 340, damping: 22, mass: 0.85 }}
-            className={`header-search-field ${isMobileVariant ? 'header-search-field--mobile' : ''}`}
+            className={"header-search-field"}
             onSubmit={(event) => {
               event.preventDefault();
               submitSearch();
@@ -597,9 +591,6 @@ export default function Header({
         {/* Mobile utilities — cart lives on the burger button */}
         <div className="flex md:hidden items-center gap-1.5 flex-shrink-0 min-w-0">
           {isMobile && notificationBell}
-          <div ref={mobileSearchRef} className="header-mobile-search-slot">
-            {renderSearchControl('mobile')}
-          </div>
           <button
             type="button"
             onClick={() => {

@@ -313,6 +313,14 @@ export default function CheckoutView({
 
   return (
     <div className="max-w-xl mx-auto mt-4 sm:mt-6 px-2 animate-fade-in">
+      <button
+        type="button"
+        onClick={() => navigate('/cart')}
+        className="flex items-center gap-2 mb-4 text-sm text-[var(--text-sec)] hover:text-white transition-colors"
+        aria-label={`${t.back} ${t.cart}`}
+      >
+        <ArrowLeft className="w-4 h-4" /> {t.back}
+      </button>
       <div className="card p-8 md:p-12">
         <h2 className="text-3xl font-black mb-2 text-center">{t.paymentMethod}</h2>
         <div className="text-center text-sm text-[var(--text-sec)] mb-3">

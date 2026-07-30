@@ -34,7 +34,7 @@ export default function MobileBottomNav({ t = {}, user = null, cartCount = 0 }) 
   ];
 
   return (
-    <nav className="mobile-bottom-nav md:hidden" aria-label={t.mainNavLabel || t.home}>
+    <nav className="mobile-bottom-nav md:!hidden" aria-label={t.mainNavLabel || t.home}>
       <div className="mobile-bottom-nav__glass">
         {items.map((item) => {
           const { id, to, label, icon: Icon, badge, exact } = item;
