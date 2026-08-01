@@ -2886,6 +2886,85 @@ html, body {
   max-width: min(10.5rem, 38vw);
 }
 
+/* Search page — full-width field (mobile + desktop) */
+.search-view-field {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+  border-radius: 0.875rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+  background: color-mix(in srgb, var(--bg-elevated) 62%, var(--bg-surface));
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22);
+  padding: 0.4rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.search-view-field:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent), 0 6px 20px rgba(0, 0, 0, 0.28);
+}
+
+.search-view-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  outline: none;
+  border: none;
+  font-size: 0.9375rem;
+  padding: 0.625rem 0.4rem;
+  color: var(--text-primary);
+}
+
+.search-view-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Keep 16px on mobile — prevents iOS auto-zoom on focus */
+@media (max-width: 767px) {
+  .search-view-input {
+    font-size: 16px;
+  }
+}
+
+.search-view-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.search-view-clear:hover {
+  color: var(--text-primary);
+}
+
+.search-view-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 0.7rem;
+  border: none;
+  border-radius: 0.625rem;
+  background: color-mix(in srgb, var(--accent) 88%, #000 12%);
+  color: #041018;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.15s ease, filter 0.15s ease;
+}
+
+.search-view-submit:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.search-view-submit:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .header-search-field--mobile .header-search-input {
   width: 100%;
   font-size: 0.8125rem;
@@ -3282,8 +3361,6 @@ html, body {
 /* Separate rule — esbuild strips backdrop-filter if both prefixed/unprefixed are together */
 .mobile-bottom-nav__glass {
   -webkit-backdrop-filter: blur(28px) saturate(180%);
-}
-    inset 0 1px 0 color-mix(in srgb, #ffffff 12%, transparent);
 }
 
 .mobile-bottom-nav__item {

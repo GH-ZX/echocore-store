@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Search, Gamepad2, Tag, Ticket, UserCircle } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Search, Gamepad2, Tag, Ticket, UserCircle, X, ArrowRight } from 'lucide-react';
 import HomeGameCard from '../components/ui/HomeGameCard';
 import SaleOfferCard from '../components/ui/SaleOfferCard';
 import { getDisplayGameForOffer } from '../lib/gameRegions';
@@ -64,6 +64,82 @@ export default function SearchView({
   const query = (searchParams.get('q') || '').trim();
   const catalogFilter = parseSearchCatalogFilter(searchParams.get('type'));
   const isAr = lang === 'ar';
+  const [draft, setDraft] = useState(query);
+  const searchInputRef = useRef(null);
+
+  useEffect(() => {
+    setDraft(query);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
+  const submitSearch = () => {
+    const trimmed = draft.trim();
+    if (!trimmed) return;
+    const next = new URLSearchParams(searchParams);
+    next.set('q', trimmed);
+    setSearchParams(next, { replace: true });
+  };
+
+  const handleClearSearch = () => {
+    setDraft('');
+    const next = new URLSearchParams(searchParams);
+    next.delete('q');
+    setSearchParams(next, { replace: true });
+    searchInputRef.current?.focus();
+  };
+
+  const searchForm = (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        submitSearch();
+      }}
+      className="search-view-field"
+    >
+      <div className="pl-3 text-[var(--accent)]" aria-hidden="true">
+        <Search className="w-5 h-5" strokeWidth={2} />
+      </div>
+      <input
+        ref={searchInputRef}
+        type="text"
+        inputMode="search"
+        enterKeyHint="search"
+        autoComplete="off"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder={t.searchPlaceholderShort}
+        className="search-view-input"
+        aria-label={t.headerSearchGames}
+      />
+      <AnimatePresence>
+        {draft && (
+          <motion.button
+            key="search-view-clear"
+            type="button"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            transition={{ duration: 0.15 }}
+            onClick={handleClearSearch}
+            className="search-view-clear"
+            aria-label={t.clearSearch}
+          >
+            <X className="w-4 h-4" strokeWidth={2} />
+          </motion.button>
+        )}
+      </AnimatePresence>
+      <motion.button
+        type="submit"
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        className="search-view-submit"
+        aria-label={t.searchAction}
+        disabled={!draft.trim()}
+      >
+        <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
+      </motion.button>
+    </form>
+  );
 
   const matchedTopupGames = useMemo(() => {
     const matchedIds = new Set(
@@ -122,16 +198,24 @@ export default function SearchView({
 
   if (!query) {
     return (
-      <motion.div {...pageMotion} className="max-w-3xl mx-auto text-center py-20">
-        <Search className="w-10 h-10 mx-auto text-[var(--text-muted)] mb-4" strokeWidth={1.75} />
-        <h1 className="text-2xl font-black mb-2">{t.searchGames}</h1>
-        <p className="text-[var(--text-sec)]">{t.searchPrompt}</p>
+      <motion.div {...pageMotion} className="max-w-3xl mx-auto py-10">
+        <div className="mb-8">
+          {searchForm}
+        </div>
+        <div className="text-center">
+          <Search className="w-10 h-10 mx-auto text-[var(--text-muted)] mb-4" strokeWidth={1.75} />
+          <h1 className="text-2xl font-black mb-2">{t.searchGames}</h1>
+          <p className="text-[var(--text-sec)]">{t.searchPrompt}</p>
+        </div>
       </motion.div>
     );
   }
 
   return (
     <motion.div {...pageMotion} className="max-w-7xl mx-auto">
+      <div className="mb-6 md:mb-8">
+        {searchForm}
+      </div>
       <div className="mb-8 md:mb-10">
         <motion.div
           initial={{ opacity: 0, x: isAr ? 12 : -12 }}
