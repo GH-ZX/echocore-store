@@ -2193,54 +2193,22 @@ html, body {
 }
 
 /* ============================================
-   HEADER SHELL — readable over Aurora background
+   HEADER SHELL — solid theme surface
    ============================================ */
 .header-shell {
   position: sticky;
   top: 0;
   z-index: var(--z-header);
   overflow: visible;
-  /* Same glass recipe as the bottom nav — one visual language */
-  background:
-    linear-gradient(
-      to bottom,
-      color-mix(in srgb, #ffffff 6%, transparent),
-      transparent 45%
-    ),
-    color-mix(in srgb, var(--bg-header) 62%, transparent),
-    var(--bg-header);
-  backdrop-filter: blur(28px) saturate(180%);
-  border-bottom: 1px solid color-mix(in srgb, #ffffff 10%, transparent);
-}
-
-/* Separate rule — esbuild strips backdrop-filter if both prefixed/unprefixed are together */
-.header-shell {
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-}
-
-/* Light themes: white sheen/borders vanish on near-white surfaces —
-   use opaque-ish surface + real border, keep the blur */
-[data-color-mode='light'] .header-shell {
-  background: color-mix(in srgb, var(--bg-header) 85%, transparent);
+  background: var(--bg-header);
   border-bottom: 1px solid var(--border);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--bg-primary) 22%, transparent);
 }
 
 [data-color-mode='light'] .admin-mobile-nav,
 [data-color-mode='light'] .admin-subtabs {
   background: color-mix(in srgb, var(--bg-header) 85%, transparent);
   border-color: var(--border);
-  box-shadow: none;
-}
-
-[data-color-mode='light'] .mobile-bottom-nav__glass {
-  background: color-mix(in srgb, var(--bg-header) 85%, transparent);
-  border-color: var(--border);
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.18);
-}
-
-[data-color-mode='light'] .mobile-bottom-nav__pill {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
   box-shadow: none;
 }
 
@@ -3322,7 +3290,7 @@ html, body {
   left: 1.25rem;
 }
 
-/* ── Storefront mobile bottom nav — iOS-style floating glass ──── */
+/* ── Storefront mobile bottom nav — solid themed bar ──── */
 .mobile-bottom-nav {
   position: fixed;
   left: 0;
@@ -3343,24 +3311,10 @@ html, body {
   max-width: 26rem;
   padding: 0.35rem;
   border-radius: 1.6rem;
-  background:
-    linear-gradient(
-      to bottom,
-      color-mix(in srgb, #ffffff 7%, transparent),
-      transparent 42%
-    ),
-    color-mix(in srgb, var(--bg-header) 62%, transparent),
-    var(--bg-header);
-  backdrop-filter: blur(28px) saturate(180%);
-  border: 1px solid color-mix(in srgb, #ffffff 14%, transparent);
+  background: var(--bg-header);
+  border: 1px solid var(--border);
   box-shadow:
-    0 18px 44px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
-}
-
-/* Separate rule — esbuild strips backdrop-filter if both prefixed/unprefixed are together */
-.mobile-bottom-nav__glass {
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
+    0 14px 36px color-mix(in srgb, var(--bg-primary) 42%, transparent);
 }
 
 .mobile-bottom-nav__item {
@@ -3392,22 +3346,15 @@ html, body {
   transform: scale(0.88);
 }
 
-/* Sliding glass pill behind the active tab (framer-motion layoutId) */
+/* Solid active pill behind the active tab (framer-motion layoutId) */
 .mobile-bottom-nav__pill {
   position: absolute;
   inset: 0.15rem 0.1rem;
   border-radius: 1.15rem;
-  background:
-    linear-gradient(
-      to bottom,
-      color-mix(in srgb, #ffffff 9%, transparent),
-      transparent 55%
-    ),
-    color-mix(in srgb, var(--accent) 16%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-elevated));
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
   box-shadow:
-    0 4px 14px color-mix(in srgb, var(--accent) 22%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #ffffff 14%, transparent);
+    0 4px 14px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .mobile-bottom-nav__icon-wrap {
