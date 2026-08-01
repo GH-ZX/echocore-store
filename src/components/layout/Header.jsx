@@ -456,6 +456,39 @@ export default function Header({
     </button>
   ) : null;
 
+  const adminWalletAmount = Number(g2bulkWallet?.balance);
+  const mobileWalletAmount = isAdmin
+    ? (Number.isFinite(adminWalletAmount) ? adminWalletAmount : null)
+    : Number(user?.balance || 0);
+  const mobileWalletLabel = isAdmin ? t.supplierWalletsTitle : t.balance;
+  const mobileWalletTitle = isAdmin ? t.supplierWalletsHelp : t.topUpWallet;
+  const mobileWalletAction = user && isMobile && !isSearchOpen ? (
+    <button
+      type="button"
+      onClick={() => {
+        if (isAdmin) {
+          const target = getAdminPaymentsPath();
+          navigate(target.pathname, { state: target.state });
+          closeAll();
+          return;
+        }
+        onRecharge();
+        closeAll();
+      }}
+      className="header-btn header-wallet-chip header-mobile-wallet-chip"
+      aria-label={`${mobileWalletLabel} — ${mobileWalletAmount == null ? '—' : `$${mobileWalletAmount.toFixed(2)}`}`}
+      title={mobileWalletTitle}
+    >
+      <span className="header-wallet-chip-icon" aria-hidden="true">
+        <Wallet strokeWidth={2} />
+      </span>
+      <span className="header-balance" dir="ltr">
+        {mobileWalletAmount == null ? '—' : `$${mobileWalletAmount.toFixed(2)}`}
+      </span>
+      <span className="header-mobile-wallet-chip-label">{mobileWalletLabel}</span>
+    </button>
+  ) : null;
+
   const profileDropdown = user ? (
     <div className="relative">
       <button
@@ -590,6 +623,7 @@ export default function Header({
 
         {/* Mobile utilities — cart lives on the burger button */}
         <div className="flex md:hidden items-center gap-1.5 flex-shrink-0 min-w-0">
+          {mobileWalletAction}
           {isMobile && notificationBell}
           <button
             type="button"
