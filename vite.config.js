@@ -23,7 +23,7 @@ export default defineConfig(({ command, mode }) => {
     build: {
       sourcemap: false,
       target: 'es2020',
-      cssMinify: true,
+      cssMinify: false,
       chunkSizeWarningLimit: 1000,
       rollupOptions: {
         output: {
