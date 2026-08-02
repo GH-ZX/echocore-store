@@ -3,6 +3,8 @@
  * Apex and other aliases should redirect to https://www.…
  */
 
+const DEFAULT_SITE_DOMAIN = 'www.echocore412.com';
+
 /** @returns {string|null} hostname without port, e.g. www.echocore412.com */
 export function getConfiguredSiteHost() {
   const explicit = import.meta.env.VITE_AUTH_SITE_URL?.trim();
@@ -13,7 +15,7 @@ export function getConfiguredSiteHost() {
       /* fall through */
     }
   }
-  const domain = import.meta.env.VITE_SITE_DOMAIN?.trim();
+  const domain = import.meta.env.VITE_SITE_DOMAIN?.trim() || DEFAULT_SITE_DOMAIN;
   if (domain) {
     return domain.replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
   }

@@ -37,8 +37,8 @@
   --gradient-surface: linear-gradient(to bottom, #0a1329, #040812);
 
   /* Effects */
-  --shadow-glow: 0 0 20px rgba(34, 211, 238, 0.25);
-  --shadow-card: 0 10px 30px -15px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 12px rgba(34, 211, 238, 0.12);
+  --shadow-card: 0 8px 24px -16px rgba(0, 0, 0, 0.55);
   --radius: 16px;
   --radius-sm: 12px;
   --radius-lg: 24px;
@@ -256,12 +256,12 @@ html, body {
 }
 
 .card:hover {
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
-  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.65), var(--shadow-glow);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  box-shadow: var(--shadow-card);
 }
 
 [data-color-mode='light'] .card:hover {
-  box-shadow: 0 8px 28px -10px rgba(15, 23, 42, 0.14), var(--shadow-glow);
+  box-shadow: 0 8px 28px -10px rgba(15, 23, 42, 0.14);
 }
 
 [data-glows-enabled='false'] {
@@ -314,14 +314,16 @@ html, body {
 }
 
 .btn-primary {
-  background: var(--gradient-accent);
+  background: var(--accent);
   color: #040812;
   padding: 0.75rem 1.75rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 60%, var(--border));
 }
 
 .btn-primary:hover {
-  filter: brightness(1.1);
-  box-shadow: var(--shadow-glow);
+  filter: brightness(1.08);
+  background: var(--accent-hover);
+  box-shadow: none;
 }
 
 .btn-primary:active {
@@ -413,7 +415,8 @@ html, body {
 }
 
 .sale-offers-section .sale-offers-glow {
-  box-shadow: 0 0 28px color-mix(in srgb, var(--sale-title) 18%, transparent);
+  box-shadow: none;
+  border-color: color-mix(in srgb, var(--sale-title) 30%, var(--border));
 }
 
 .sale-offers-page-title {
@@ -541,7 +544,7 @@ html, body {
 }
 
 .reviews-card--active {
-  min-height: 300px;
+  min-height: 260px;
   z-index: 2;
   border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
   box-shadow:
@@ -552,13 +555,23 @@ html, body {
 }
 
 .reviews-card--side {
-  min-height: 210px;
+  min-height: 190px;
   opacity: 0.42;
   transform: scale(0.9);
   filter: saturate(0.65);
   border-color: color-mix(in srgb, var(--border) 90%, transparent);
   box-shadow: 0 8px 24px -18px rgba(0, 0, 0, 0.9);
   pointer-events: none;
+}
+
+@media (min-width: 768px) {
+  .reviews-card--active {
+    min-height: 300px;
+  }
+
+  .reviews-card--side {
+    min-height: 210px;
+  }
 }
 
 .reviews-carousel-side:hover .reviews-card--side {
@@ -581,7 +594,7 @@ html, body {
   inset: -15% auto auto -8%;
   width: 50%;
   height: 65%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 18%, transparent), transparent 72%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 10%, transparent), transparent 72%);
   pointer-events: none;
   z-index: 0;
 }
@@ -676,7 +689,7 @@ html, body {
   color: #040812;
   background: var(--gradient-accent);
   flex-shrink: 0;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .reviews-author {
@@ -1796,9 +1809,9 @@ html, body {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  height: 2.25rem;
-  padding: 0 0.7rem;
-  border-radius: 0.5rem;
+  height: 2.5rem;
+  padding: 0 0.75rem;
+  border-radius: 0.6rem;
   font-size: 0.8125rem;
   font-weight: 600;
   line-height: 1;
@@ -1806,7 +1819,7 @@ html, body {
   background: transparent;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
   -webkit-appearance: none;
@@ -1922,7 +1935,7 @@ html, body {
   height: 2px;
   border-radius: 9999px;
   background: var(--accent);
-  box-shadow: 0 0 8px var(--accent), 0 0 20px color-mix(in srgb, var(--accent) 30%, transparent);
+  box-shadow: none;
 }
 
 /* Portaled dropdown — renders on document.body above page content */
@@ -2381,9 +2394,9 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
-  height: 2.5rem;
-  border-radius: 0.625rem;
-  padding-inline: 0.65rem;
+  height: 2.75rem;
+  border-radius: 0.75rem;
+  padding-inline: 0.7rem;
   font-size: 0.8125rem;
   font-weight: 600;
   color: var(--text-secondary);
@@ -2426,17 +2439,17 @@ html, body {
 
 /* Icon-only floating button */
 .header-btn-icon {
-  width: 2.5rem;
+  width: 2.75rem;
   padding: 0;
 }
 
 @media (min-width: 1024px) {
   .header-btn {
-    height: 2.375rem;
+    height: 2.5rem;
   }
 
   .header-btn-icon {
-    width: 2.375rem;
+    width: 2.5rem;
   }
 }
 
@@ -2957,7 +2970,7 @@ html, body {
   color: #040812;
   flex-shrink: 0;
   background: var(--gradient-accent);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .header-avatar--md {
@@ -2998,7 +3011,7 @@ html, body {
 }
 
 .header-mobile-drawer-inner {
-  padding: 1rem 1rem 1.5rem;
+  padding: 1rem 1rem calc(1.5rem + env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -3255,8 +3268,8 @@ html, body {
   justify-content: center;
   border-radius: 9999px;
   border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg-header) 92%, transparent);
-  backdrop-filter: blur(16px);
+  background: color-mix(in srgb, var(--bg-header) 94%, transparent);
+  backdrop-filter: blur(8px);
   color: var(--text-sec);
   cursor: pointer;
   box-shadow:
@@ -3322,22 +3335,24 @@ html, body {
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 0.18rem;
-  padding: 0.42rem 0.25rem 0.38rem;
+  gap: 0.15rem;
+  height: 2.75rem;
+  padding-inline: 0.35rem;
   border-radius: 1.25rem;
   color: var(--text-muted);
-  font-size: 0.6rem;
+  font-size: 0.625rem;
   font-weight: 600;
   letter-spacing: 0.01em;
   text-decoration: none;
   -webkit-tap-highlight-color: transparent;
-  transition: color 0.18s ease;
+  transition: color 0.18s ease, flex 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .mobile-bottom-nav__item--active {
+  flex: 1.45;
   color: var(--accent);
   font-weight: 700;
 }
@@ -3351,31 +3366,41 @@ html, body {
   position: absolute;
   inset: 0.15rem 0.1rem;
   border-radius: 1.15rem;
-  background: color-mix(in srgb, var(--accent) 16%, var(--bg-elevated));
-  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
-  box-shadow:
-    0 4px 14px color-mix(in srgb, var(--accent) 20%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
 }
 
 .mobile-bottom-nav__icon-wrap {
   position: relative;
   z-index: 1;
   display: inline-flex;
+  flex-shrink: 0;
   transition: transform 0.12s ease;
 }
 
 .mobile-bottom-nav__icon {
-  width: 1.35rem;
-  height: 1.35rem;
+  width: 1.4rem;
+  height: 1.4rem;
 }
 
 .mobile-bottom-nav__label {
   position: relative;
   z-index: 1;
-  max-width: 100%;
+  max-width: 0;
+  opacity: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 0.675rem;
+  font-weight: 700;
+  transition:
+    max-width 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.18s ease 0.08s;
+}
+
+.mobile-bottom-nav__item--active .mobile-bottom-nav__label {
+  max-width: 5.5rem;
+  opacity: 1;
 }
 
 .mobile-bottom-nav__badge {
@@ -3410,7 +3435,7 @@ html, body {
   border-radius: 9999px;
   border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
   background: color-mix(in srgb, var(--accent) 18%, var(--bg-header));
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(8px);
   color: var(--accent);
   cursor: pointer;
   box-shadow:
@@ -3561,6 +3586,19 @@ html, body {
   }
 
   .header-mobile-wallet-chip-label {
+    display: none;
+  }
+}
+
+/* Ultra-narrow phones: collapse the mobile wallet chip to icon-only */
+@media (max-width: 389px) {
+  .header-mobile-wallet-chip {
+    width: 2.75rem;
+    padding-inline: 0;
+    justify-content: center;
+  }
+
+  .header-mobile-wallet-chip .header-balance {
     display: none;
   }
 }
@@ -5257,24 +5295,18 @@ html, body {
 
 /* Primary save actions — action-chip must not wash out btn-primary */
 .btn-primary.action-chip {
-  background: var(--gradient-accent);
+  background: var(--accent);
   color: #040812;
-  border: none;
-  box-shadow:
-    0 1px 0 color-mix(in srgb, #ffffff 18%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent),
-    0 4px 14px color-mix(in srgb, var(--accent) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border));
+  box-shadow: none;
 }
 
 .btn-primary.action-chip:hover {
-  background: var(--gradient-accent);
+  background: var(--accent-hover);
   color: #040812;
-  border-color: transparent;
-  filter: brightness(1.08);
-  box-shadow:
-    0 1px 0 color-mix(in srgb, #ffffff 22%, transparent),
-    var(--shadow-glow),
-    0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  filter: brightness(1.05);
+  box-shadow: none;
 }
 
 .btn-primary.action-chip:active {
@@ -8115,7 +8147,7 @@ button.admin-profit-customer-order__id {
 .carousel-progress-bar {
   height: 100%;
   background: var(--accent);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: none;
   animation: carouselProgress 6000ms linear forwards;
 }
 
@@ -8297,8 +8329,8 @@ button.admin-profit-customer-order__id {
 }
 
 .catalog-offer-card:hover {
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
-  box-shadow: 0 16px 36px -12px rgba(0, 0, 0, 0.55), var(--shadow-glow);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  box-shadow: var(--shadow-card);
 }
 
 .catalog-offer-card__body {
@@ -9023,7 +9055,7 @@ button.admin-profit-customer-order__id {
   color: #040812;
   cursor: pointer;
   transition: transform 0.15s ease, filter 0.15s ease;
-  box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .profile-photo-change:hover {

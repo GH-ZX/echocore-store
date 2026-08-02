@@ -58,7 +58,7 @@ export default function MobileBottomNav({ t = {}, user = null, cartCount = 0 }) 
               )}
               <motion.span
                 className="mobile-bottom-nav__icon-wrap"
-                animate={active ? { y: -1.5, scale: 1.08 } : { y: 0, scale: 1 }}
+                animate={active ? { y: -1.5, scale: 1.1 } : { y: 0, scale: 1 }}
                 transition={{ type: 'spring', stiffness: 500, damping: 28 }}
               >
                 <Icon className="mobile-bottom-nav__icon" aria-hidden="true" />

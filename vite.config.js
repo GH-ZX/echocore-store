@@ -6,7 +6,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig(({ command, mode }) => {
   const useProductionBase = command === 'build' || (command === 'serve' && mode === 'production');
   const productionBase = process.env.VITE_BASE_PATH
-    || (process.env.VITE_SITE_DOMAIN ? '/' : '/echocore-store/');
+    || (process.env.VITE_SITE_DOMAIN ? '/' : '/');
 
   return {
     base: useProductionBase ? productionBase : '/',

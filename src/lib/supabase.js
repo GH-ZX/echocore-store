@@ -1,24 +1,19 @@
 import { createClient } from '@supabase/supabase-js'
 import { mapProfileBanFields } from './userBan'
 
-// Vite exposes env vars with VITE_ prefix via import.meta.env
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+// Vite exposes env vars with VITE_ prefix via import.meta.env.
+// Production defaults are baked in (Supabase URL + publishable/anon key are public
+// by design), so local dev/build works without a .env. CI/Prod overrides via VITE_*.
+const DEFAULT_SUPABASE_URL = 'https://uaiirtgzqtnrvcrlxstg.supabase.co'
+const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_2aP1LEIYs1TElEbiYCeZIQ_CQcothoA'
 
-// @supabase/supabase-js rejects empty URL. Use inert placeholders in tests/CI
-// when .env is absent so pure unit tests can import modules that pull this client.
-const hasSupabaseEnv = !!(supabaseUrl && supabaseAnonKey)
-if (!hasSupabaseEnv) {
-  console.warn('⚠️ Supabase environment variables are missing. Create a .env file from .env.example')
-}
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim() || DEFAULT_SUPABASE_URL
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() || DEFAULT_SUPABASE_ANON_KEY
 
-const clientUrl = hasSupabaseEnv ? supabaseUrl : 'http://127.0.0.1:54321'
-const clientKey = hasSupabaseEnv ? supabaseAnonKey : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.placeholder'
-
-export const supabase = createClient(clientUrl, clientKey, {
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    persistSession: hasSupabaseEnv,
-    autoRefreshToken: hasSupabaseEnv,
+    persistSession: true,
+    autoRefreshToken: true,
   },
 })
 

@@ -72,7 +72,17 @@ function denseGridSkeleton() {
   return (
     <div className={`${HOME_GRID_DENSE} animate-pulse`}>
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="card h-[380px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl" />
+        <div
+          key={i}
+          className="card flex flex-col overflow-hidden bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl"
+        >
+          <div className="aspect-[16/10] sm:aspect-[4/3] bg-[var(--bg-elevated)]" />
+          <div className="p-3 sm:p-3.5 flex flex-col gap-2 flex-1">
+            <div className="h-3.5 bg-[var(--bg-elevated)] rounded-md" />
+            <div className="h-3 bg-[var(--bg-elevated)] rounded-md w-3/4" />
+            <div className="h-3 bg-[var(--bg-elevated)] rounded-md w-1/2 mt-auto" />
+          </div>
+        </div>
       ))}
     </div>
   );
@@ -83,7 +93,17 @@ function voucherGridSkeleton() {
   return (
     <div className={`${HOME_GRID_VOUCHER} animate-pulse`}>
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="card h-48 sm:h-52 bg-[var(--bg-surface)]" />
+        <div
+          key={i}
+          className="card flex flex-col overflow-hidden bg-[var(--bg-surface)] border border-[var(--border)]"
+        >
+          <div className="aspect-[16/10] sm:aspect-[4/3] bg-[var(--bg-elevated)]" />
+          <div className="p-4 flex flex-col gap-2.5">
+            <div className="h-4 bg-[var(--bg-elevated)] rounded-md w-2/3" />
+            <div className="h-3 bg-[var(--bg-elevated)] rounded-md w-1/2" />
+            <div className="h-8 bg-[var(--bg-elevated)] rounded-lg mt-2" />
+          </div>
+        </div>
       ))}
     </div>
   );
