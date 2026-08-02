@@ -36,16 +36,17 @@ export default function InboxNotificationRow({
   if (variant === 'dropdown') {
     return (
       <div
+        dir={textDir}
         className={`header-notif-item group ${unread ? 'header-notif-item--unread' : ''} ${toneClass}`}
       >
         <button
           type="button"
           role="menuitem"
           onClick={() => onOpen?.(item)}
-          className="w-full text-left min-w-0"
+          className="w-full text-start min-w-0"
         >
           <div className="flex items-start justify-between gap-2 w-full">
-            <div className="min-w-0 text-left">
+            <div className="min-w-0 text-start">
               <div className="text-xs font-bold text-[var(--text-primary)] leading-snug">
                 {formatted.title}
               </div>
@@ -55,7 +56,7 @@ export default function InboxNotificationRow({
             </div>
             {unread && <span className="header-notif-dot flex-shrink-0" aria-hidden="true" />}
           </div>
-          <div className="text-[10px] text-[var(--text-muted)] mt-1.5 text-left">
+          <div className="text-[10px] text-[var(--text-muted)] mt-1.5 text-start">
             {formatNotificationRelativeTime(item.created_at, t)}
           </div>
         </button>
