@@ -110,6 +110,7 @@ export default function NotificationBell({
             ref={panelRef}
             key="notif-dropdown"
             role="menu"
+            dir={lang === 'ar' ? 'rtl' : 'ltr'}
             initial={{ opacity: 0, y: 8, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 6, scale: 0.97 }}
@@ -178,6 +179,7 @@ export default function NotificationBell({
                       item={item}
                       formatted={formatted}
                       t={t}
+                      lang={lang}
                       variant="dropdown"
                       onOpen={handleOpenItem}
                       onDismiss={handleDismiss}

@@ -32,6 +32,7 @@ const RECHARGE_TYPES = new Set([
   'recharge_payment_sent',
   'recharge_approved',
   'recharge_rejected',
+  'admin_balance_debit',
   'admin_recharge_payment_sent',
   'admin_recharge_completed',
 ]);
