@@ -488,6 +488,7 @@ export default function Header({
       <span className="header-mobile-wallet-chip-label">{mobileWalletLabel}</span>
     </button>
   ) : null;
+  const mobileDrawerOffset = lang === 'ar' ? -20 : 20;
 
   const profileDropdown = user ? (
     <div className="relative">
@@ -672,10 +673,10 @@ export default function Header({
                 role="dialog"
                 aria-modal="true"
                 aria-label={t.navigationMenu}
-                initial={{ opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 34 }}
+                initial={{ opacity: 0, x: mobileDrawerOffset, scale: 0.98 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                exit={{ opacity: 0, x: mobileDrawerOffset * 0.7, scale: 0.985 }}
+                transition={{ type: 'spring', stiffness: 360, damping: 32 }}
                 className="header-mobile-drawer md:hidden"
                 dir={lang === 'ar' ? 'rtl' : 'ltr'}
               >
@@ -733,43 +734,11 @@ export default function Header({
 
                   {user ? (
                     <div className="header-mobile-account">
-                      {isAdmin ? (
-                        <div className="header-mobile-supplier">
-                          <AdminSupplierWalletsCard
-                            t={t}
-                            variant="compact"
-                            g2bulkBalance={g2bulkWallet != null ? g2bulkWallet.balance : null}
-                            g2bulkError={g2bulkError}
-                            g2bulkFetched={g2bulkFetched}
-                            samWallets={samWallets}
-                            samError={samError}
-                            samNotConfigured={samNotConfigured}
-                            samFetched={samFetched}
-                            loading={supplierWalletsLoading}
-                            idle={supplierWalletsIdle}
-                            sypPerUsd={sypPerUsd}
-                            onOpenDashboard={() => handleNav('/dashboard')}
-                            onOpenPayments={() => handleNav('/dashboard/payments')}
-                            onOpenExchangeRate={openExchangeRateSettings}
-                          />
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => { onRecharge(); setIsMenuOpen(false); }}
-                          className="header-mobile-action"
-                        >
-                          <Wallet className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
-                          <span>{t.recharge}</span>
-                          <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
-                        </button>
-                      )}
-
-                      <div className="header-mobile-profile-row">
+                      <div className="header-mobile-account-main">
                         <button
                           type="button"
                           onClick={() => handleNav('/profile')}
-                          className="header-mobile-profile-card"
+                          className="header-mobile-profile-card header-mobile-profile-card--hero"
                         >
                           <ProfileAvatar
                             name={user.name}
@@ -796,15 +765,49 @@ export default function Header({
                           </div>
                           <ChevronRight className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0" strokeWidth={2} />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => { closeAll(); onLogout(); }}
-                          className="header-btn header-btn--danger header-btn-icon header-mobile-logout-btn"
-                          aria-label={t.logout}
-                        >
-                          <LogOut className="w-4 h-4" strokeWidth={2} />
-                        </button>
+
+                        {isAdmin ? (
+                          <div className="header-mobile-supplier">
+                            <AdminSupplierWalletsCard
+                              t={t}
+                              variant="compact"
+                              g2bulkBalance={g2bulkWallet != null ? g2bulkWallet.balance : null}
+                              g2bulkError={g2bulkError}
+                              g2bulkFetched={g2bulkFetched}
+                              samWallets={samWallets}
+                              samError={samError}
+                              samNotConfigured={samNotConfigured}
+                              samFetched={samFetched}
+                              loading={supplierWalletsLoading}
+                              idle={supplierWalletsIdle}
+                              sypPerUsd={sypPerUsd}
+                              onOpenDashboard={() => handleNav('/dashboard')}
+                              onOpenPayments={() => handleNav('/dashboard/payments')}
+                              onOpenExchangeRate={openExchangeRateSettings}
+                            />
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => { onRecharge(); setIsMenuOpen(false); }}
+                            className="header-mobile-action header-mobile-action--wallet"
+                          >
+                            <Wallet className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
+                            <span>{t.recharge}</span>
+                            <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
+                          </button>
+                        )}
                       </div>
+
+                      <button
+                        type="button"
+                        onClick={() => { closeAll(); onLogout(); }}
+                        className="header-mobile-action header-mobile-action--danger header-mobile-signout"
+                        aria-label={t.logout}
+                      >
+                        <LogOut className="w-4 h-4" strokeWidth={2} />
+                        <span>{t.logout}</span>
+                      </button>
                     </div>
                   ) : (
                     <button
