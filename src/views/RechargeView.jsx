@@ -416,7 +416,7 @@ export default function RechargeView({
 
         <div className="mb-8 p-6 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] text-center">
           <div className="text-sm text-[var(--text-muted)] mb-1">{t.currentBalance}</div>
-          <div className="text-5xl font-black font-mono text-[var(--accent)]">${balance.toFixed(2)}</div>
+          <div className="text-5xl font-black font-mono text-[var(--price)]">${balance.toFixed(2)}</div>
         </div>
 
         {!anyReady && (

@@ -232,7 +232,7 @@ export default function CheckoutView({
           <div className="text-center mb-6">
             <h2 className="text-2xl font-black mb-1">{formatMessage(t.completeWalletPayment, { method: methodLabel })}</h2>
             <div className="text-sm text-[var(--text-sec)]">
-              {t.orderTotal}: <span className="font-mono font-bold text-[var(--accent)]">${total}</span>
+              {t.orderTotal}: <span className="font-mono font-bold text-[var(--price)]">${total}</span>
             </div>
           </div>
 
@@ -324,7 +324,7 @@ export default function CheckoutView({
       <div className="card p-8 md:p-12">
         <h2 className="text-3xl font-black mb-2 text-center">{t.paymentMethod}</h2>
         <div className="text-center text-sm text-[var(--text-sec)] mb-3">
-          {t.orderTotal}: <span className="font-mono font-bold text-[var(--accent)]">${total}</span>
+          {t.orderTotal}: <span className="font-mono font-bold text-[var(--price)]">${total}</span>
         </div>
         <div className="text-center text-xs mb-6 text-[var(--text-muted)]">
           <span>{t.currentBalance}:</span> <span className="font-mono">${currentBalance.toFixed(2)}</span>

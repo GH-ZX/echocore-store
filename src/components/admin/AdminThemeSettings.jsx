@@ -139,13 +139,7 @@ function AppearanceSettings({ form, t, onChange, onColorModeChange }) {
 
 function BackgroundSettings({ form, t, lang, onChange }) {
   const isAr = lang === 'ar';
-  const bgType = form['background-type'] ?? 'aurora';
-  const auroraEnabled = form['aurora-enabled'] ?? 'true';
-  const auroraResponsive = form['aurora-responsive'] ?? 'true';
-  const auroraAmplitude = form['aurora-amplitude'] ?? '0.6';
-  const auroraSpeed = form['aurora-speed'] ?? '0.4';
-  const auroraBlend = form['aurora-blend'] ?? '0.36';
-  const auroraIntensity = form['aurora-intensity'] ?? '1';
+  const bgType = form['background-type'] ?? 'starfield';
   const effectOpacity = form['bg-effect-opacity'] ?? '0.4';
   const circuitSpeed = form['circuit-speed'] ?? '1';
   const circuitPulseSpeed = form['circuit-pulse-speed'] ?? '1';
@@ -160,9 +154,6 @@ function BackgroundSettings({ form, t, lang, onChange }) {
   const particlesSpeed = form['particles-speed'] ?? '1';
   const particlesDensity = form['particles-density'] ?? '1';
   const particlesSize = form['particles-size'] ?? '1';
-  const nebulaSpeed = form['nebula-speed'] ?? '1';
-  const nebulaSize = form['nebula-size'] ?? '1';
-  const nebulaBlur = form['nebula-blur'] ?? '1';
   const scanlinesSpeed = form['scanlines-speed'] ?? '1';
   const scanlinesDensity = form['scanlines-density'] ?? '1';
   const scanlinesBeam = form['scanlines-beam'] ?? '1';
@@ -208,58 +199,6 @@ function BackgroundSettings({ form, t, lang, onChange }) {
         step="0.05"
         onChange={(v) => onChange('bg-effect-opacity', v)}
       />
-
-      {bgType === 'aurora' && (
-        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4 mt-4">
-          <ToggleField
-            label={t.enableAurora}
-            value={auroraEnabled}
-            onChange={(v) => onChange('aurora-enabled', v)}
-          />
-
-          <ToggleField
-            label={t.auroraTouchResponsive}
-            value={auroraResponsive}
-            onChange={(v) => onChange('aurora-responsive', v)}
-          />
-
-          <SliderField
-            label={t.waveHeight}
-            value={auroraAmplitude}
-            min="0.2"
-            max="0.9"
-            step="0.02"
-            onChange={(v) => onChange('aurora-amplitude', v)}
-          />
-
-          <SliderField
-            label={t.animationSpeed}
-            value={auroraSpeed}
-            min="0.1"
-            max="0.8"
-            step="0.02"
-            onChange={(v) => onChange('aurora-speed', v)}
-          />
-
-          <SliderField
-            label={t.edgeSoftness}
-            value={auroraBlend}
-            min="0.15"
-            max="0.65"
-            step="0.01"
-            onChange={(v) => onChange('aurora-blend', v)}
-          />
-
-          <SliderField
-            label={t.auroraBrightness}
-            value={auroraIntensity}
-            min="0.3"
-            max="1.2"
-            step="0.05"
-            onChange={(v) => onChange('aurora-intensity', v)}
-          />
-        </div>
-      )}
 
       {bgType === 'circuit' && (
         <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4 mt-4">
@@ -390,37 +329,6 @@ function BackgroundSettings({ form, t, lang, onChange }) {
             max="2"
             step="0.1"
             onChange={(v) => onChange('particles-size', v)}
-          />
-        </div>
-      )}
-
-      {bgType === 'nebula' && (
-        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4 mt-4">
-          <SliderField
-            label={t.nebulaSpeed}
-            value={nebulaSpeed}
-            min="0.3"
-            max="2.5"
-            step="0.1"
-            onChange={(v) => onChange('nebula-speed', v)}
-          />
-
-          <SliderField
-            label={t.nebulaSize}
-            value={nebulaSize}
-            min="0.6"
-            max="1.6"
-            step="0.05"
-            onChange={(v) => onChange('nebula-size', v)}
-          />
-
-          <SliderField
-            label={t.nebulaBlur}
-            value={nebulaBlur}
-            min="0.5"
-            max="2"
-            step="0.1"
-            onChange={(v) => onChange('nebula-blur', v)}
           />
         </div>
       )}

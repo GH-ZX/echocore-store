@@ -128,7 +128,7 @@ export default function ProductCarousel({
   const slideCount = slides.length;
 
   const sectionClassName = useMemo(
-    () => 'mt-4 sm:mt-8 relative overflow-hidden rounded-[20px] border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.35)]',
+    () => 'mt-4 sm:mt-8 relative overflow-hidden rounded-[20px] border border-[var(--border-strong)]/60 shadow-[0_8px_32px_rgba(0,0,0,0.4)]',
     [],
   );
 
@@ -185,6 +185,22 @@ export default function ProductCarousel({
           />
         </div>
 
+        <div
+          className="absolute top-3 right-4 z-30 hidden sm:flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-bold tabular-nums"
+          style={{
+            color: 'var(--text-secondary)',
+            borderColor: 'color-mix(in srgb, var(--border-strong) 70%, transparent)',
+            background: 'rgba(13,8,28,0.55)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+          }}
+          aria-hidden="true"
+        >
+          <span style={{ color: 'var(--accent-hover)' }}>{String(activeSlide + 1).padStart(2, '0')}</span>
+          <span style={{ opacity: 0.6 }}>/</span>
+          <span>{String(slideCount).padStart(2, '0')}</span>
+        </div>
+
         <div className="overflow-hidden" ref={emblaRef} dir="ltr">
           <div className="flex" dir="ltr">
             {slides.map((item, slideIndex) => {
@@ -228,10 +244,10 @@ export default function ProductCarousel({
                     className="absolute inset-0"
                     style={{
                       background: lang === 'ar'
-                        ? `linear-gradient(260deg, rgba(6,11,25,0.75) 0%, rgba(6,11,25,0.35) 45%, rgba(6,11,25,0.05) 100%),
-                           linear-gradient(0deg, rgba(6,11,25,0.45) 0%, transparent 45%)`
-                        : `linear-gradient(100deg, rgba(6,11,25,0.75) 0%, rgba(6,11,25,0.35) 45%, rgba(6,11,25,0.05) 100%),
-                           linear-gradient(0deg, rgba(6,11,25,0.45) 0%, transparent 45%)`,
+                        ? `linear-gradient(260deg, rgba(18,11,38,0.82) 0%, rgba(18,11,38,0.42) 45%, rgba(18,11,38,0.06) 100%),
+                           linear-gradient(0deg, rgba(18,11,38,0.5) 0%, transparent 45%)`
+                        : `linear-gradient(100deg, rgba(18,11,38,0.82) 0%, rgba(18,11,38,0.42) 45%, rgba(18,11,38,0.06) 100%),
+                           linear-gradient(0deg, rgba(18,11,38,0.5) 0%, transparent 45%)`,
                     }}
                   />
 
@@ -240,6 +256,23 @@ export default function ProductCarousel({
                       lang === 'ar' ? 'items-end text-right' : 'items-start text-left'
                     }`}
                   >
+                    <div
+                      className={`inline-flex items-center gap-1.5 mb-3 rounded-full border px-3 py-1 text-[10px] sm:text-[11px] font-bold tracking-wide ${
+                        lang === 'ar' ? 'text-right' : 'text-left'
+                      }`}
+                      style={{
+                        color: '#e879f9',
+                        borderColor: 'color-mix(in srgb, #e879f9 35%, transparent)',
+                        background: 'rgba(232, 121, 249, 0.08)',
+                      }}
+                    >
+                      <span
+                        className="inline-block w-1.5 h-1.5 rounded-full"
+                        style={{ background: 'linear-gradient(135deg, #a855f7, #e879f9)' }}
+                        aria-hidden="true"
+                      />
+                      {t.carouselFeaturedBadge || (lang === 'ar' ? 'مميز' : 'Featured')}
+                    </div>
                     <h2
                       className="section-heading font-black leading-[1.05] tracking-tight text-white mb-2 max-w-[min(640px,90vw)]"
                       style={{

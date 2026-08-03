@@ -1,9 +1,7 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
 
-const Aurora = lazy(() => import('./Aurora'));
 const HexGridBackground = lazy(() => import('./HexGridBackground'));
 const ParticleBackground = lazy(() => import('./ParticleBackground'));
-const NebulaBackground = lazy(() => import('./NebulaBackground'));
 const ScanlineBackground = lazy(() => import('./ScanlineBackground'));
 const StarfieldBackground = lazy(() => import('./StarfieldBackground'));
 const CircuitBackground = lazy(() => import('./CircuitBackground'));
@@ -13,17 +11,16 @@ const Grid3DCanyonBackground = lazy(() => import('./Grid3DCanyonBackground'));
 const Grid3DRingsBackground = lazy(() => import('./Grid3DRingsBackground'));
 
 function readBackgroundType() {
-  if (typeof window === 'undefined') return 'aurora';
+  if (typeof window === 'undefined') return 'starfield';
   return document.documentElement.getAttribute('data-background-type')
     || getComputedStyle(document.documentElement).getPropertyValue('--background-type').trim()
-    || 'aurora';
+    || 'starfield';
 }
 
 function BackgroundLayer({ type }) {
   if (type === 'none') return null;
   if (type === 'hexgrid') return <HexGridBackground />;
   if (type === 'particles') return <ParticleBackground />;
-  if (type === 'nebula') return <NebulaBackground />;
   if (type === 'scanlines') return <ScanlineBackground />;
   if (type === 'starfield') return <StarfieldBackground />;
   if (type === 'circuit') return <CircuitBackground />;
@@ -31,7 +28,7 @@ function BackgroundLayer({ type }) {
   if (type === 'grid3d_tunnel') return <Grid3DTunnelBackground />;
   if (type === 'grid3d_canyon') return <Grid3DCanyonBackground />;
   if (type === 'grid3d_rings') return <Grid3DRingsBackground />;
-  return <Aurora />;
+  return <StarfieldBackground />;
 }
 
 function prefersReducedMotion() {
@@ -41,9 +38,7 @@ function prefersReducedMotion() {
 
 /** Heavy WebGL / particle backgrounds — skip when user prefers reduced motion */
 const HEAVY_BACKGROUND_TYPES = new Set([
-  'aurora',
   'particles',
-  'nebula',
   'grid3d',
   'grid3d_tunnel',
   'grid3d_canyon',

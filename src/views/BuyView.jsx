@@ -608,7 +608,7 @@ export default function BuyView({
                 ${publicPrice.toFixed(2)}
               </div>
             ) : null}
-            <div className="text-4xl font-black text-[var(--accent)]" dir="ltr">${total}</div>
+            <div className="text-4xl font-black text-[var(--price)]" dir="ltr">${total}</div>
             {appliedCoupon ? (
               <div className="text-[11px] text-emerald-300 mt-1">
                 {formatMessage(t.couponAppliedPriceHint, {

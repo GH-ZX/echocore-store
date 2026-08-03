@@ -51,64 +51,6 @@
   background: radial-gradient(ellipse at 50% 50%, transparent 35%, color-mix(in srgb, var(--bg-primary) 55%, transparent) 100%);
 }
 
-/* ── Nebula glow ── */
-.store-bg-nebula {
-  opacity: calc(var(--bg-effect-opacity, 0.4) * 1.1);
-}
-
-.store-bg-nebula-orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(calc(72px * var(--nebula-blur, 1)));
-  opacity: 0.75;
-  animation: nebulaFloat calc(28s / var(--nebula-speed, 1)) ease-in-out infinite alternate;
-}
-
-.store-bg-nebula-orb--1 {
-  width: calc(55vw * var(--nebula-size, 1));
-  height: calc(55vw * var(--nebula-size, 1));
-  max-width: calc(520px * var(--nebula-size, 1));
-  max-height: calc(520px * var(--nebula-size, 1));
-  top: -12%;
-  left: -8%;
-  background: color-mix(in srgb, var(--accent) 42%, transparent);
-}
-
-.store-bg-nebula-orb--2 {
-  width: calc(45vw * var(--nebula-size, 1));
-  height: calc(45vw * var(--nebula-size, 1));
-  max-width: calc(440px * var(--nebula-size, 1));
-  max-height: calc(440px * var(--nebula-size, 1));
-  top: 28%;
-  right: -10%;
-  background: color-mix(in srgb, var(--accent-hover, var(--accent)) 28%, #3b82f6 12%);
-  animation-delay: -8s;
-  animation-duration: calc(34s / var(--nebula-speed, 1));
-}
-
-.store-bg-nebula-orb--3 {
-  width: calc(38vw * var(--nebula-size, 1));
-  height: calc(38vw * var(--nebula-size, 1));
-  max-width: calc(360px * var(--nebula-size, 1));
-  max-height: calc(360px * var(--nebula-size, 1));
-  bottom: -8%;
-  left: 32%;
-  background: color-mix(in srgb, var(--accent) 22%, var(--bg-primary));
-  animation-delay: -14s;
-  animation-duration: calc(38s / var(--nebula-speed, 1));
-}
-
-.store-bg-nebula-vignette {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at 50% 40%, transparent 30%, color-mix(in srgb, var(--bg-primary) 50%, transparent) 100%);
-}
-
-@keyframes nebulaFloat {
-  from { transform: translate(0, 0) scale(1); }
-  to   { transform: translate(3%, 4%) scale(1.06); }
-}
-
 /* ── Retro CRT scanlines ── */
 .store-bg-scanlines {
   opacity: calc(var(--bg-effect-opacity, 0.55) * 1.15);

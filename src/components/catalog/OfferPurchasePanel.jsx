@@ -48,7 +48,7 @@ export default function OfferPurchasePanel({
                 onNotify={onNotify}
               />
             ) : (
-              <div className="text-4xl sm:text-5xl font-black text-[var(--accent)] tabular-nums" dir="ltr">
+              <div className="text-4xl sm:text-5xl font-black text-[var(--price)] tabular-nums" dir="ltr">
                 ${formatPrice(offer.price)}
               </div>
             )}

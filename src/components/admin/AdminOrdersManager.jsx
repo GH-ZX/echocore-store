@@ -89,7 +89,7 @@ function OrderCustomerBlock({ profile, t, compact = false }) {
 
   return (
     <div className={compact ? 'min-w-0' : ''}>
-      <div className={`font-semibold truncate font-mono text-[var(--accent)] ${compact ? 'text-sm' : ''}`}>
+      <div className={`font-semibold truncate font-mono text-[var(--price)] ${compact ? 'text-sm' : ''}`}>
         {usernameLabel || t.adminOrdersUnknownCustomer}
       </div>
       {showDisplayName && (
@@ -687,7 +687,7 @@ export default function AdminOrdersManager({
                   </div>
 
                   <div className="admin-order-row-trailing">
-                    <div className="font-black text-[var(--accent)]">${parseFloat(order.total || 0).toFixed(2)}</div>
+                    <div className="font-black text-[var(--price)]">${parseFloat(order.total || 0).toFixed(2)}</div>
                     <div className="text-[10px] text-[var(--text-sec)] mt-1">
                       {getOrderPaymentMethodLabel(order.payment_method, t)}
                     </div>

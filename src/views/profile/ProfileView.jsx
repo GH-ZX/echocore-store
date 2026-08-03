@@ -589,7 +589,7 @@ export default function ProfileView({
                 <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">
                   {t.yourBalance}
                 </p>
-                <p className="text-3xl sm:text-4xl font-black font-mono text-[var(--accent)]">${balance.toFixed(2)}</p>
+                <p className="text-3xl sm:text-4xl font-black font-mono text-[var(--price)]">${balance.toFixed(2)}</p>
                 <button
                   type="button"
                   onClick={onRecharge}

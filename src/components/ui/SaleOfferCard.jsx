@@ -84,13 +84,9 @@ export default function SaleOfferCard({
         <div className="absolute top-2 left-2 right-2 flex items-start justify-between gap-1.5">
           <div className="flex items-center gap-1.5">
           {showSale && (
-            <span className="sale-offer-badge px-2 py-0.5 text-[10px] font-bold rounded-md shadow-sm">
-              {t.sale || 'SALE'}
-            </span>
-          )}
-          {showSale && (
-            <span className="sale-offer-discount px-2 py-0.5 bg-black/50 backdrop-blur-sm text-[10px] font-bold rounded-md border">
-              -{discount}%
+            <span className="sale-offer-badge px-2 py-1 text-[11px] font-bold rounded-md shadow-sm inline-flex items-center gap-1">
+              <span>{t.sale || 'SALE'}</span>
+              <span className="sale-offer-discount-inline">-{discount}%</span>
             </span>
           )}
           </div>
@@ -129,7 +125,7 @@ export default function SaleOfferCard({
                 ${formatPrice(offer._publicPrice)}
               </span>
             )}
-            <span className="text-lg sm:text-xl font-black text-[var(--accent)]" dir="ltr">
+            <span className="text-lg sm:text-xl font-black text-[var(--price)] tabular-nums" dir="ltr">
               ${price}
             </span>
           </div>

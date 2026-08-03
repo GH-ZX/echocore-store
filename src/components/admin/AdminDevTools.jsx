@@ -180,7 +180,7 @@ export default function AdminDevTools({
         <div className="grid sm:grid-cols-2 gap-3 mb-4">
           <div className="rounded-xl border border-[var(--border)] p-4">
             <div className="text-xs text-[var(--text-muted)] mb-1">{isAr ? 'الرصيد الكلي' : 'Total balance'}</div>
-            <div className="text-2xl font-black text-[var(--accent)]">${wallet.balance.toFixed(2)}</div>
+            <div className="text-2xl font-black text-[var(--price)]">${wallet.balance.toFixed(2)}</div>
           </div>
           <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-4">
             <div className="text-xs text-[var(--text-muted)] mb-1">{t.devTestBalanceLabel || (isAr ? 'رصيد تجريبي (قابل للمسح)' : 'Test balance (clearable)')}</div>
@@ -253,7 +253,7 @@ export default function AdminDevTools({
             {selectedOffer && (
               <p className="text-xs text-[var(--text-muted)] mb-3">
                 {isAr ? 'سعر الاختبار:' : 'Test price:'}{' '}
-                <span className="font-mono text-[var(--accent)]">${parseFloat(selectedOffer.price).toFixed(2)}</span>
+                <span className="font-mono text-[var(--price)]">${parseFloat(selectedOffer.price).toFixed(2)}</span>
               </p>
             )}
 

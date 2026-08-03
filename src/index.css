@@ -6,38 +6,42 @@
    ============================================ */
 
 :root {
-  /* Core Backgrounds */
-  --bg-primary: #040812;
-  --bg-surface: #0a1329;
-  --bg-elevated: #111c36;
-  --bg-header: rgba(6, 11, 25, 0.92);
+  /* Core Backgrounds — Violet-Magenta Cyber */
+  --bg-primary: #07030f;
+  --bg-surface: #120b26;
+  --bg-elevated: #1d1333;
+  --bg-header: rgba(18, 11, 38, 0.92);
 
   /* Text */
-  --text-primary: #f0f4f8;
-  --text-secondary: #a8b4c4;
-  --text-muted: #6e7d92;
+  --text-primary: #f5f1fb;
+  --text-secondary: #b7aed0;
+  --text-muted: #8b82a3;
   --text-sec: var(--text-secondary);
 
-  /* Accent / Brand (Cyber Cyan) */
-  --accent: #22d3ee;
-  --accent-hover: #67e8f9;
-  --accent-dark: #164e63;
+  /* Accent / Brand (Violet) */
+  --accent: #a855f7;
+  --accent-hover: #c084fc;
+  --accent-2: #e879f9;
+  --accent-dark: #581c87;
+
+  /* Price — cyan reserved for prices & links only */
+  --price: #22d3ee;
 
   /* Borders & Dividers */
-  --border: #1e293b;
-  --border-strong: #334155;
+  --border: #2a2142;
+  --border-strong: #3d3159;
 
   /* Status */
-  --success: #22c55e;
-  --error: #ef4444;
-  --warning: #eab308;
+  --success: #34d399;
+  --error: #fb7185;
+  --warning: #fbbf24;
 
   /* Gradients */
-  --gradient-accent: linear-gradient(to right, #22d3ee, #3b82f6);
-  --gradient-surface: linear-gradient(to bottom, #0a1329, #040812);
+  --gradient-accent: linear-gradient(to right, #a855f7, #e879f9);
+  --gradient-surface: linear-gradient(to bottom, #120b26, #07030f);
 
   /* Effects */
-  --shadow-glow: 0 0 12px rgba(34, 211, 238, 0.12);
+  --shadow-glow: 0 0 12px rgba(168, 85, 247, 0.14);
   --shadow-card: 0 8px 24px -16px rgba(0, 0, 0, 0.55);
   --radius: 16px;
   --radius-sm: 12px;
@@ -234,6 +238,13 @@ html, body {
   font-family: var(--font-sans);
 }
 
+/* Arabic script has no uppercase and cursive joins break with wide letter-spacing.
+   Neutralize tracking/transform on Arabic — Latin runs get dir="ltr" + reset. */
+[dir="rtl"] :is(h1, h2, h3, h4, p, span, a, button, div, li, label):not([dir="ltr"]) {
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
 /* Reusable surface / card base */
 .card {
   background-color: var(--bg-surface);
@@ -262,6 +273,11 @@ html, body {
 
 [data-color-mode='light'] .card:hover {
   box-shadow: 0 8px 28px -10px rgba(15, 23, 42, 0.14);
+}
+
+/* Cyan price reserved signal — deepen for light-mode contrast */
+[data-color-mode='light'] {
+  --price: #0891b2;
 }
 
 [data-glows-enabled='false'] {
@@ -314,16 +330,16 @@ html, body {
 }
 
 .btn-primary {
-  background: var(--accent);
-  color: #040812;
+  background: var(--gradient-accent);
+  color: #1d0b2e;
   padding: 0.75rem 1.75rem;
   border: 1px solid color-mix(in srgb, var(--accent) 60%, var(--border));
 }
 
 .btn-primary:hover {
-  filter: brightness(1.08);
-  background: var(--accent-hover);
-  box-shadow: none;
+  filter: brightness(1.1);
+  background: var(--gradient-accent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .btn-primary:active {
@@ -432,6 +448,12 @@ html, body {
 .sale-offer-badge {
   background: var(--sale-badge);
   color: var(--sale-badge-text);
+}
+
+.sale-offer-discount-inline {
+  padding-inline-start: 0.4rem;
+  border-inline-start: 1px solid color-mix(in srgb, var(--sale-badge-text) 25%, transparent);
+  font-weight: 900;
 }
 
 .sale-offer-discount {
@@ -3366,8 +3388,8 @@ html, body {
   position: absolute;
   inset: 0.15rem 0.1rem;
   border-radius: 1.15rem;
-  background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
-  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-elevated));
+  border: 1px solid color-mix(in srgb, var(--accent-2, var(--accent)) 38%, var(--border));
 }
 
 .mobile-bottom-nav__icon-wrap {
@@ -5339,7 +5361,7 @@ html, body {
 .input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 /* Category pills, badges */
@@ -5350,9 +5372,9 @@ html, body {
   text-transform: uppercase;
   padding: 0.25rem 0.625rem;
   border-radius: 9999px;
-  background: rgba(34, 211, 238, 0.12);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--accent);
-  border: 1px solid rgba(34, 211, 238, 0.3);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 /* Notification toast */
@@ -5462,7 +5484,7 @@ html, body {
   min-width: 0;
   height: var(--carousel-height);
   min-height: 240px;
-  background: #060b19;
+  background: #120b26;
 }
 
 .carousel-slide-media {
@@ -8197,8 +8219,8 @@ button.admin-profit-customer-order__id {
 
 .carousel-progress-bar {
   height: 100%;
-  background: var(--accent);
-  box-shadow: none;
+  background: var(--gradient-accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 55%, transparent);
   animation: carouselProgress 6000ms linear forwards;
 }
 
@@ -8212,7 +8234,7 @@ button.admin-profit-customer-order__id {
 
 .carousel-strip-top-line {
   background: linear-gradient(90deg, transparent, var(--carousel-logo-color, var(--accent)), transparent);
-  opacity: 0.65;
+  opacity: 0.7;
   transition: background 0.5s ease;
 }
 
@@ -8225,7 +8247,7 @@ button.admin-profit-customer-order__id {
 }
 
 .carousel-thumb--active {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(168, 85, 247, 0.1);
 }
 
 .carousel-thumb__icon img {
@@ -8233,7 +8255,7 @@ button.admin-profit-customer-order__id {
 }
 
 .carousel-thumb__initial {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+  background: linear-gradient(135deg, rgba(232, 121, 249, 0.18), rgba(168, 85, 247, 0.06));
   border-radius: inherit;
 }
 
@@ -8494,10 +8516,15 @@ button.admin-profit-customer-order__id {
   letter-spacing: 0.04em;
 }
 
+[dir="rtl"] .catalog-mobile-buybar__title {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 .catalog-mobile-buybar__price {
   font-size: 1.25rem;
   font-weight: 900;
-  color: var(--accent);
+  color: var(--price);
   line-height: 1.2;
 }
 
