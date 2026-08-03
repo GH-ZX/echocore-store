@@ -43,15 +43,15 @@ import { refreshGameRegionOffers } from './lib/catalogOffers';
 import { resolveOffersForCheckout } from './lib/catalogPurchase';
 import {
   syncCartWithOffers,
-  pickCartSnapshot,
-  cartsAreEquivalent,
-  getCartLineKey,
-  isCartFull,
-  loadCartFromStorage,
-  saveCartToStorage,
 } from './lib/cartUtils';
-import { fetchMyPartnerTier } from './lib/partners';
-import { fetchMyInfluencerStatus } from './lib/coupons';
+import { useCartState } from './hooks/useCartState';
+import { useCartActions } from './hooks/useCartActions';
+import { useCatalogState } from './hooks/useCatalogState';
+import { useNotificationsState } from './hooks/useNotificationsState';
+import { usePartnerStatus } from './hooks/usePartnerStatus';
+import { useToastState } from './hooks/useToastState';
+import { useSiteStatusPolling } from './hooks/useSiteStatusPolling';
+import { useStorefrontBootstrap } from './hooks/useStorefrontBootstrap';
 import { mapOffersForCustomer, resolveCustomerUnitPrice } from './lib/partnerPricing';
 import {
   stripOffersSecrets,
@@ -67,7 +67,6 @@ import {
   ADMIN_SALE_DISCOUNTS_FOCUS_STATE,
   getAdminGiftPath,
   getAdminSaleDiscountsPath,
-  navigateTo,
 } from './lib/adminRoutes';
 import { getOfferOrderNameSnapshot } from './lib/offerDisplay';
 import { getGameOfferBuyPath, getGameOfferPath } from './lib/offerRoutes';
@@ -97,19 +96,6 @@ import {
 import { applyTheme, fetchSiteTheme, normalizeThemeOverrides } from './lib/theme';
 import { DEFAULT_HOME_LAYOUT, fetchHomeLayout, normalizeHomeLayout } from './lib/homeLayout';
 import { fetchApprovedReviews } from './lib/customerReviews';
-import {
-  fetchNotifications,
-  INBOX_FETCH_LIMIT,
-  fetchUnreadCount,
-  markNotificationRead,
-  markAllNotificationsRead,
-  clearAllNotifications,
-  dismissNotification,
-  subscribeToNotifications,
-  formatNotification,
-  getNotificationDestination,
-  shouldShowLiveToast,
-} from './lib/notifications';
 
 import { translations } from './data/translations';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
@@ -131,9 +117,35 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [routeLoading, setRouteLoading] = useState(false);
+  const routeLocationKey = `${location.pathname}${location.search}${location.hash}`;
   const hasShownLoginToast = useRef(false);
   const lastSyncedUserIdRef = useRef(null);
   const loginLogDedupeRef = useRef({ key: '', at: 0 });
+  const routeLoadingTimerRef = useRef(null);
+  const previousRouteLocationRef = useRef(routeLocationKey);
+
+  useEffect(() => {
+    if (previousRouteLocationRef.current === routeLocationKey) return undefined;
+    previousRouteLocationRef.current = routeLocationKey;
+
+    if (routeLoadingTimerRef.current) {
+      clearTimeout(routeLoadingTimerRef.current);
+    }
+
+    setRouteLoading(true);
+    routeLoadingTimerRef.current = setTimeout(() => {
+      setRouteLoading(false);
+      routeLoadingTimerRef.current = null;
+    }, 650);
+
+    return () => {
+      if (routeLoadingTimerRef.current) {
+        clearTimeout(routeLoadingTimerRef.current);
+        routeLoadingTimerRef.current = null;
+      }
+    };
+  }, [routeLocationKey]);
 
   const cartIconRef = useRef(null);
   const navigateRef = useRef(navigate);
@@ -149,18 +161,8 @@ export default function App() {
   const [user, setUser] = useState(null);           // { id, role, name, email? }
   const purchaseInFlightRef = useRef(false);
 
-  const [games, setGames] = useState([]);
-  const [offers, setOffers] = useState([]);
-  const [loadingGames, setLoadingGames] = useState(true);
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
-  // Hydrate cart immediately so the first save effect cannot wipe localStorage with []
-  const [cart, setCart] = useState(() => loadCartFromStorage());
-  const [cartPriceUpdated, setCartPriceUpdated] = useState(false);
-  /** Partner tier for current user (reseller / super / custom markup) */
-  const [partnerTier, setPartnerTier] = useState(null);
-  /** True when user owns an active influencer referral code */
-  const [isInfluencer, setIsInfluencer] = useState(false);
   const [paymentConfig, setPaymentConfig] = useState({
     shamcash: true,
     binance: false,
@@ -170,13 +172,21 @@ export default function App() {
     g2bulkCatalogOnly: true,
     g2bulkCatalogMode: 'sync',
   });
+  const {
+    games,
+    setGames,
+    offers,
+    setOffers,
+    loadingGames,
+    setLoadingGames,
+    fetchGames,
+    fetchOffers,
+  } = useCatalogState({
+    isAdmin: user?.role === 'admin',
+    defaultCatalogOnly: paymentConfig.g2bulkCatalogOnly,
+  });
   const [homeLayout, setHomeLayout] = useState(DEFAULT_HOME_LAYOUT);
   const [reviews, setReviews] = useState([]);
-  const [notification, setNotification] = useState(null);
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [notificationsLoading, setNotificationsLoading] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [siteStatus, setSiteStatus] = useState({
     maintenanceEnabled: false,
     maintenanceMessageAr: '',
@@ -185,8 +195,6 @@ export default function App() {
     requireVerifiedAccounts: false,
   });
   const [maintenanceBannerDismissed, setMaintenanceBannerDismissed] = useState(false);
-  const toastTimerRef = useRef(null);
-  const notificationsFetchGenRef = useRef(0);
   const [flyingItems, setFlyingItems] = useState([]);
   const [adminEditOffer, setAdminEditOffer] = useState(null);
   const [adminEditGame, setAdminEditGame] = useState(null);
@@ -198,6 +206,12 @@ export default function App() {
     return saved === 'en' || saved === 'ar' ? saved : 'ar';
   });
   const isAdmin = user?.role === 'admin';
+  const {
+    partnerTier,
+    setPartnerTier,
+    isInfluencer,
+    refreshPartnerTier,
+  } = usePartnerStatus(user);
   const partnerMarkup = partnerTier?.markupPercent != null
     ? Number(partnerTier.markupPercent)
     : null;
@@ -247,7 +261,7 @@ export default function App() {
       if (next?.length) setOffers(next);
     });
     return () => { cancelled = true; };
-  }, [isAdmin, offerIdsKey, offers]);
+  }, [isAdmin, offerIdsKey, offers, setOffers]);
 
   const [homePreviewAsUser, setHomePreviewAsUser] = useState(false);
   const homeShowsAdminChrome = isAdmin && !homePreviewAsUser;
@@ -258,207 +272,60 @@ export default function App() {
     return Number.isFinite(original) && Number.isFinite(price) && original > price;
   });
 
-  const showToast = useCallback((message, type = 'success', options = {}) => {
-    const title = options.title || null;
-    const body = options.body || null;
-    const onClick = typeof options.onClick === 'function' ? options.onClick : null;
-    const text = message || body || title;
-    if (!text) return;
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    const duration = Number.isFinite(options.duration)
-      ? options.duration
-      : (type === 'error' ? 4500 : 3200);
-    setNotification({
-      message: text,
-      title,
-      body: body || (title ? message : null),
-      type,
-      onClick,
-      hint: onClick ? (options.hint || null) : null,
-    });
-    toastTimerRef.current = setTimeout(() => {
-      setNotification(null);
-      toastTimerRef.current = null;
-    }, duration);
-  }, []);
-
+  const t = translations[lang];
+  const { notification, showToast, dismissToast } = useToastState();
   const showNotification = useCallback((msg) => showToast(msg, 'success'), [showToast]);
 
-  const refreshPartnerTier = useCallback(async (userId = user?.id) => {
-    if (!userId) {
-      setPartnerTier(null);
-      return null;
-    }
-    try {
-      const tier = await fetchMyPartnerTier();
-      setPartnerTier(tier);
-      return tier;
-    } catch {
-      setPartnerTier(null);
-      return null;
-    }
-  }, [user?.id]);
+  useSiteStatusPolling({ setSiteStatus, setMaintenanceBannerDismissed });
 
-  const refreshInfluencerStatus = useCallback(async (userId = user?.id) => {
-    if (!userId) {
-      setIsInfluencer(false);
-      return false;
-    }
-    try {
-      const status = await fetchMyInfluencerStatus();
-      const next = !!status?.isInfluencer;
-      setIsInfluencer(next);
-      return next;
-    } catch {
-      setIsInfluencer(false);
-      return false;
-    }
-  }, [user?.id]);
+  const {
+    notifications,
+    unreadCount,
+    notificationsLoading,
+    notificationsOpen,
+    handleNotificationMarkRead,
+    handleNotificationsMarkAllRead,
+    handleNotificationsClearAll,
+    handleNotificationDismiss,
+    handleNotificationNavigate,
+    handleNotificationsClose,
+    handleNotificationsToggle,
+    handleRefreshInbox,
+    handleOpenNotificationsInbox,
+  } = useNotificationsState({
+    user,
+    lang,
+    navigate,
+    showToast,
+    dismissToast,
+    setUser,
+  });
 
-  const dismissToast = useCallback(() => {
-    if (toastTimerRef.current) {
-      clearTimeout(toastTimerRef.current);
-      toastTimerRef.current = null;
-    }
-    setNotification(null);
-  }, []);
+  const {
+    cart,
+    setCart,
+    cartPriceUpdated,
+    setCartPriceUpdated,
+  } = useCartState({
+    offers: storefrontOffers,
+    loadingCatalog: loadingGames,
+    onItemsRemoved: showNotification,
+    removedMessage: t.cartItemsRemoved,
+  });
 
-  const refreshNotifications = useCallback(async (userId = user?.id, limit = 30) => {
-    if (!userId) return;
-    const fetchGen = notificationsFetchGenRef.current + 1;
-    notificationsFetchGenRef.current = fetchGen;
-    setNotificationsLoading(true);
-    try {
-      const [items, count] = await Promise.all([
-        fetchNotifications(limit),
-        fetchUnreadCount(),
-      ]);
-      if (notificationsFetchGenRef.current !== fetchGen) return;
-      setNotifications(items);
-      setUnreadCount(count);
-    } catch (err) {
-      console.error('Failed to load notifications:', err);
-    } finally {
-      if (notificationsFetchGenRef.current === fetchGen) {
-        setNotificationsLoading(false);
-      }
-    }
-  }, [user?.id]);
-
-  const handleNotificationMarkRead = useCallback(async (notificationId) => {
-    try {
-      await markNotificationRead(notificationId);
-      setNotifications((prev) => prev.map((item) => (
-        item.id === notificationId
-          ? { ...item, read_at: item.read_at || new Date().toISOString() }
-          : item
-      )));
-      setUnreadCount((count) => Math.max(0, count - 1));
-    } catch (err) {
-      console.error('Failed to mark notification read:', err);
-    }
-  }, []);
-
-  const handleNotificationsMarkAllRead = useCallback(async () => {
-    try {
-      await markAllNotificationsRead();
-      const now = new Date().toISOString();
-      setNotifications((prev) => prev.map((item) => (
-        item.read_at ? item : { ...item, read_at: now }
-      )));
-      setUnreadCount(0);
-    } catch (err) {
-      console.error('Failed to mark all notifications read:', err);
-    }
-  }, []);
-
-  const handleNotificationsClearAll = useCallback(async () => {
-    try {
-      await clearAllNotifications();
-      const now = new Date().toISOString();
-      setNotifications((prev) => prev.map((item) => (
-        item.bell_hidden_at
-          ? item
-          : { ...item, bell_hidden_at: now, read_at: item.read_at || now }
-      )));
-      setUnreadCount(0);
-    } catch (err) {
-      console.error('Failed to clear bell notifications:', err);
-      showToast(
-        translations[lang].clearNotificationsFailed,
-        'error',
-      );
-    }
-  }, [lang, showToast]);
-
-  const handleNotificationDismiss = useCallback(async (notificationId) => {
-    const item = notifications.find((entry) => entry.id === notificationId);
-    try {
-      const hidden = await dismissNotification(notificationId);
-      if (!hidden) return;
-      const now = new Date().toISOString();
-      setNotifications((prev) => prev.map((entry) => (
-        entry.id === notificationId
-          ? {
-            ...entry,
-            bell_hidden_at: entry.bell_hidden_at || now,
-            read_at: entry.read_at || now,
-          }
-          : entry
-      )));
-      if (item && !item.read_at) {
-        setUnreadCount((count) => Math.max(0, count - 1));
-      }
-    } catch (err) {
-      console.error('Failed to hide bell notification:', err);
-      showToast(
-        translations[lang].dismissNotificationFailed,
-        'error',
-      );
-    }
-  }, [lang, notifications, showToast]);
-
-  const handleNotificationNavigate = useCallback((dest) => {
-    // Support string | { path } | { pathname, search, state } (see navigateTo)
-    if (!dest) {
-      navigate('/profile');
-      return;
-    }
-    navigateTo(navigate, dest);
-  }, [navigate]);
-
-  const handleNotificationsClose = useCallback(() => {
-    setNotificationsOpen(false);
-  }, []);
-
-  const handleNotificationsToggle = useCallback(() => {
-    setNotificationsOpen((open) => {
-      const next = !open;
-      if (next) refreshNotifications();
-      return next;
-    });
-  }, [refreshNotifications]);
-
-  const handleRefreshInbox = useCallback(() => {
-    refreshNotifications(user?.id, INBOX_FETCH_LIMIT);
-  }, [refreshNotifications, user?.id]);
-
-  const handleOpenNotificationsInbox = useCallback(async () => {
-    if (user?.role === 'admin') {
-      navigate('/dashboard/inbox');
-      return;
-    }
-    if (unreadCount > 0) {
-      await handleNotificationsMarkAllRead();
-    }
-    navigate('/notifications');
-  }, [navigate, unreadCount, handleNotificationsMarkAllRead, user?.role]);
-
-  useEffect(() => () => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-  }, []);
-
-  const t = translations[lang];
+  const { addToCart, getCartTotal, removeCartItem } = useCartActions({
+    cart,
+    user,
+    games,
+    navigate,
+    showToast,
+    showNotification,
+    t,
+    cartIconRef,
+    setCart,
+    setCartPriceUpdated,
+    setFlyingItems,
+  });
 
   useEffect(() => {
     if (location.pathname !== '/') {
@@ -538,58 +405,6 @@ export default function App() {
   };
 
 
-
-  // ============================================
-  // LOAD PRODUCTS FROM SUPABASE (REAL DB)
-  // ============================================
-  const fetchGames = async ({ background = false, catalogOnly = paymentConfig.g2bulkCatalogOnly } = {}) => {
-    if (!background) setLoadingGames(true);
-    try {
-      const data = await fetchAllSupabaseRows(
-        () => {
-          let pageQuery = supabase
-            .from('games')
-            .select('*')
-            .eq('active', true);
-          if (catalogOnly) {
-            pageQuery = pageQuery.eq('catalog_source', 'g2bulk');
-          }
-          return pageQuery.order('created_at', { ascending: true });
-        },
-      );
-
-      setGames(sortGamesByCarousel(data || []));
-    } catch (err) {
-      console.error('Failed to load games:', err);
-      setGames([]);
-    } finally {
-      setLoadingGames(false);
-    }
-  };
-
-  const fetchOffers = async ({ catalogOnly = paymentConfig.g2bulkCatalogOnly } = {}) => {
-    try {
-      const data = await fetchAllSupabaseRows(
-        () => {
-          let pageQuery = supabase
-            .from('offers')
-            .select('*')
-            .eq('active', true);
-          if (catalogOnly) {
-            pageQuery = pageQuery.eq('catalog_source', 'g2bulk');
-          }
-          return pageQuery.order('created_at', { ascending: true });
-        },
-      );
-
-      const cleaned = stripOffersSecrets(data || []);
-      const withCost = await withAdminWholesale(cleaned, { isAdmin: user?.role === 'admin' });
-      setOffers(withCost);
-    } catch (err) {
-      console.error('Error fetching offers:', err);
-      setOffers([]);
-    }
-  };
 
   const fetchOrders = useCallback(async () => {
     // Client guard — server RLS must also restrict orders/profiles to admins in production.
@@ -1414,7 +1229,7 @@ export default function App() {
         }
         : p
     )));
-  }, []);
+  }, [setOffers]);
 
   const mergeOffersFromDb = useCallback((rows = []) => {
     if (!rows.length) return;
@@ -1430,7 +1245,7 @@ export default function App() {
         price: saved.price ?? p.price,
       };
     }));
-  }, []);
+  }, [setOffers]);
 
   const saveGame = async (gameData) => {
     // Manual game create is disabled — catalog comes from G2Bulk sync only
@@ -1701,9 +1516,6 @@ export default function App() {
       if (event === 'SIGNED_OUT') {
         lastSyncedUserIdRef.current = null;
         setUser(null);
-        setNotifications([]);
-        setUnreadCount(0);
-        setNotificationsOpen(false);
         hasShownLoginToast.current = false;
         return;
       }
@@ -1819,57 +1631,10 @@ export default function App() {
     setOffers(withCost);
   };
 
-  /*
-  const loadHybridCatalog = async (config) => {
-    setLoadingGames(true);
-    try {
-      const pull = normalizePullSelection(config.g2bulkPullSelection || {});
-      const catalogOnly = config.g2bulkCatalogOnly;
-      const [gamesData, offersData, liveCatalog] = await Promise.all([
-        fetchAllSupabaseRows(() => {
-          let pageQuery = supabase
-            .from('games')
-            .select('*')
-            .eq('active', true);
-          if (catalogOnly) {
-            pageQuery = pageQuery.eq('catalog_source', 'g2bulk');
-          }
-          return pageQuery.order('created_at', { ascending: true });
-        }),
-        fetchAllSupabaseRows(() => {
-          let pageQuery = supabase
-            .from('offers')
-            .select('*')
-            .eq('active', true);
-          if (catalogOnly) {
-            pageQuery = pageQuery.eq('catalog_source', 'g2bulk');
-          }
-          return pageQuery.order('created_at', { ascending: true });
-        }),
-        fetchLiveCatalogForSelection(pull),
-      ]);
-
-      const syncedPull = syncedPullSelection(pull);
-      const syncedGames = filterGamesByPullSelection(gamesData || [], syncedPull);
-      const syncedOffers = filterOffersByPullSelection(offersData || [], syncedGames, syncedPull);
-      const liveFiltered = filterLiveCatalog(liveCatalog, pull);
-
-      setGames(sortGamesByCarousel(mergeCatalogRows(syncedGames, liveFiltered.games)));
-      setOffers(mergeCatalogRows(syncedOffers, liveFiltered.offers));
-    } catch (err) {
-      console.error('Hybrid catalog load failed:', err);
-      setGames([]);
-      setOffers([]);
-    } finally {
-      setLoadingGames(false);
-    }
-  };
-  */
-
   const handleLiveCatalogUpdate = useCallback(({ parent, games: variantGames = [], offers: groupOffers = [] }) => {
     setGames((prev) => mergeCatalogRows(prev, [parent, ...variantGames].filter(Boolean)));
     setOffers((prev) => mergeCatalogRows(prev, groupOffers));
-  }, []);
+  }, [setGames, setOffers]);
 
   const handleRegionCatalogRefresh = useCallback(async (variant, storefrontGame) => {
     const result = await refreshGameRegionOffers({
@@ -1884,7 +1649,7 @@ export default function App() {
     if (result.offers) {
       setOffers((prev) => mergeCatalogRows(prev, result.offers));
     }
-  }, [paymentConfig.g2bulkCatalogMode]);
+  }, [paymentConfig.g2bulkCatalogMode, setGames, setOffers]);
 
   const resolveCheckoutOffers = async (items = []) => resolveOffersForCheckout(items, {
     onOffersMerged: (merge) => setOffers(merge),
@@ -1907,51 +1672,16 @@ export default function App() {
     }
   };
 
-  // Load storefront data — payment config first so G2Bulk catalog filter applies
-  useEffect(() => {
-    (async () => {
-      const config = await fetchPaymentMethods();
-      setPaymentConfig(config);
-      await Promise.allSettled([
-        config.g2bulkCatalogMode === 'live'
-          ? loadLiveCatalog(config.g2bulkPullSelection)
-          : (async () => {
-              setLoadingGames(true);
-              try {
-                await loadSyncedCatalog(config.g2bulkCatalogOnly, config.g2bulkPullSelection);
-              } finally {
-                setLoadingGames(false);
-              }
-            })(),
-        refreshSiteTheme(),
-        refreshHomeLayout(),
-        refreshReviews(),
-        fetchSiteStatus().then(setSiteStatus).catch(() => {}),
-      ]);
-    })();
-    // Mount-only by design: catalog reloads after this go through refreshCatalog.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const refreshStatus = () => {
-      fetchSiteStatus()
-        .then((status) => {
-          setSiteStatus(status);
-          if (!status?.maintenanceEnabled) {
-            setMaintenanceBannerDismissed(false);
-          }
-        })
-        .catch(() => {});
-    };
-    const intervalId = setInterval(refreshStatus, 60000);
-    return () => clearInterval(intervalId);
-  }, []);
-
-  // Persist cart in localStorage (browser, not Supabase — survives refresh on this device)
-  useEffect(() => {
-    saveCartToStorage(cart);
-  }, [cart]);
+  useStorefrontBootstrap({
+    setPaymentConfig,
+    setSiteStatus,
+    setLoadingGames,
+    loadLiveCatalog,
+    loadSyncedCatalog,
+    refreshSiteTheme,
+    refreshHomeLayout,
+    refreshReviews,
+  });
 
   // Load orders when the admin dashboard becomes visible (as admin)
   useEffect(() => {
@@ -1959,159 +1689,6 @@ export default function App() {
       fetchOrders();
     }
   }, [location.pathname, user?.role, fetchOrders]);
-
-  useEffect(() => {
-    if (!user?.id) {
-      setNotifications([]);
-      setUnreadCount(0);
-      return undefined;
-    }
-
-    refreshNotifications(user.id);
-
-    const unsubscribe = subscribeToNotifications(user.id, async (newItem) => {
-      setNotifications((prev) => [newItem, ...prev].slice(0, 30));
-      setUnreadCount((count) => count + 1);
-
-      // On-site toast for purchase/delivery (click → receipt; auto-hide ~10s)
-      if (shouldShowLiveToast(newItem?.type)) {
-        const tLive = translations[lang] || translations.ar;
-        const formatted = formatNotification(newItem, tLive, lang);
-        const dest = getNotificationDestination(newItem, formatted, user.role);
-        const toastType = (formatted.tone === 'danger' || formatted.tone === 'warning')
-          ? 'error'
-          : 'success';
-        showToast(null, toastType, {
-          title: formatted.title,
-          body: formatted.body,
-          duration: 10_000,
-          hint: tLive.toastTapToView,
-          onClick: () => {
-            dismissToast();
-            if (newItem?.id) {
-              markNotificationRead(newItem.id)
-                .then(() => {
-                  setNotifications((prev) => prev.map((entry) => (
-                    entry.id === newItem.id
-                      ? { ...entry, read_at: entry.read_at || new Date().toISOString() }
-                      : entry
-                  )));
-                  setUnreadCount((count) => Math.max(0, count - 1));
-                })
-                .catch(() => {});
-            }
-            navigateTo(navigate, dest);
-          },
-        });
-      }
-
-      if (newItem?.type === 'account_banned') {
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        const refreshed = await resolveUserData(authUser);
-        if (refreshed) {
-          setUser(refreshed);
-          navigate('/banned');
-        }
-      }
-    });
-
-    const pollId = setInterval(() => {
-      fetchUnreadCount()
-        .then((count) => setUnreadCount(count))
-        .catch(() => {});
-    }, 60000);
-
-    return () => {
-      unsubscribe();
-      clearInterval(pollId);
-    };
-  }, [user?.id, user?.role, refreshNotifications, navigate, lang, showToast, dismissToast]);
-
-  useEffect(() => {
-    if (!user?.id || user?.role === 'admin') {
-      setPartnerTier(null);
-      setIsInfluencer(false);
-      return undefined;
-    }
-    refreshPartnerTier(user.id);
-    refreshInfluencerStatus(user.id);
-    return undefined;
-  }, [user?.id, user?.role, refreshPartnerTier, refreshInfluencerStatus]);
-
-  // Keep cart prices in sync when offers load — never purge unknown ids while catalog is loading
-  useEffect(() => {
-    if (loadingGames || !storefrontOffers.length || cart.length === 0) return;
-
-    const { items, removedCount, priceUpdated } = syncCartWithOffers(cart, storefrontOffers);
-    if (!cartsAreEquivalent(cart, items)) {
-      setCart(items);
-      if (removedCount > 0) {
-        showNotification(t.cartItemsRemoved);
-      }
-    }
-    if (priceUpdated) setCartPriceUpdated(true);
-  }, [storefrontOffers, cart, loadingGames, lang, t.cartItemsRemoved, showNotification]);
-
-  const addToCart = (product, e = null) => {
-    if (!user) {
-      navigate('/login');
-      return;
-    }
-    if (user?.role === 'admin') {
-      showToast(t.adminCannotPurchase, 'error');
-      return;
-    }
-    if (!isCartEligibleOffer(product, games)) {
-      showToast(t.cartUidCheckoutBlocked, 'error');
-      return;
-    }
-    if (isCartFull(cart)) {
-      showToast(t.cartMaxItems || t.cartEmptyOrUnavailable, 'error');
-      return;
-    }
-    setCart((prev) => {
-      if (isCartFull(prev)) return prev;
-      return [...prev, pickCartSnapshot(product)];
-    });
-    setCartPriceUpdated(false);
-    showNotification(t.addMsg);
-
-    // Cart icon bump animation
-    if (cartIconRef.current) {
-      cartIconRef.current.classList.add('cart-bump');
-      setTimeout(() => {
-        if (cartIconRef.current) {
-          cartIconRef.current.classList.remove('cart-bump');
-        }
-      }, 450);
-    }
-
-    // Fly to cart animation
-    if (e && e.currentTarget) {
-      const startRect = e.currentTarget.getBoundingClientRect();
-      const endRect = cartIconRef.current ? cartIconRef.current.getBoundingClientRect() : null;
-
-      if (endRect) {
-        const flyId = Date.now() + Math.random();
-        setFlyingItems(prev => [...prev, {
-          id: flyId,
-          product,
-          startRect,
-          endRect
-        }]);
-
-        setTimeout(() => {
-          setFlyingItems(prev => prev.filter(item => item.id !== flyId));
-        }, 800);
-      }
-    }
-  };
-
-  const getCartTotal = () => cart.reduce((total, item) => total + parseFloat(item.price), 0).toFixed(2);
-
-  const removeCartItem = (lineId) => {
-    setCart((prev) => prev.filter((item) => getCartLineKey(item) !== lineId));
-  };
 
   // Called by LoginView after successful Supabase auth
   const resolveUserAfterAuth = async (authUser) => {
@@ -2196,6 +1773,16 @@ export default function App() {
       <a href="#main-content" className="skip-to-content">
         {t.skipToContent}
       </a>
+      {routeLoading && (
+        <div
+          className="route-loading-bar"
+          role="progressbar"
+          aria-label={t.openingPage}
+          aria-valuetext={t.openingPage}
+        >
+          <span className="route-loading-bar-indicator" />
+        </div>
+      )}
       <LangSwitchOverlay t={translations[overlayLang] || t} active={langSwitching} />
       <ScrollToTop />
       <DocumentMeta t={t} lang={lang} />

@@ -5540,6 +5540,55 @@ html, body {
   animation: langSwitchProgress 0.9s ease-in-out infinite;
 }
 
+/* Route loading feedback for first-visit lazy chunks */
+.route-loading-bar {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 260;
+  height: 3px;
+  overflow: hidden;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.route-loading-bar-indicator {
+  display: block;
+  width: 32%;
+  height: 100%;
+  background: var(--gradient-accent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 85%, transparent);
+  animation: routeLoadingProgress 0.9s ease-in-out infinite;
+}
+
+.page-loader-card {
+  color: var(--text-secondary);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+  box-shadow: var(--shadow-card), var(--shadow-glow);
+}
+
+.page-loader-spinner {
+  color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes routeLoadingProgress {
+  0% { transform: translateX(-120%); }
+  55% { transform: translateX(190%); }
+  100% { transform: translateX(360%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-loading-bar-indicator,
+  .page-loader-spinner {
+    animation: none;
+  }
+
+  .route-loading-bar-indicator {
+    width: 100%;
+  }
+}
+
 @keyframes langSwitchProgress {
   0% { transform: translateX(-120%); }
   50% { transform: translateX(180%); }

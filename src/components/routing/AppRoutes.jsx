@@ -289,7 +289,7 @@ export default function AppRoutes({
         <Route
           path="/links"
           element={(
-            <Suspense fallback={null}>
+            <Suspense fallback={<PageLoader t={t} />}>
               <LinksView t={t} lang={lang} />
             </Suspense>
           )}
@@ -298,7 +298,7 @@ export default function AppRoutes({
         <Route
           path="/developer"
           element={(
-            <Suspense fallback={null}>
+            <Suspense fallback={<PageLoader t={t} />}>
               <DeveloperCreditsView t={t} lang={lang} />
             </Suspense>
           )}
