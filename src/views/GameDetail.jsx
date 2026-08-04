@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ArrowLeftRight, Loader2, Ticket, Zap } from 'lucide-react';
 import AdminEditButton from '../components/admin/AdminEditButton';
+import EmptyState from '../components/ui/EmptyState';
 import AdminGameEditModal from '../components/admin/AdminGameEditModal';
 import { getAdminGiftPath } from '../lib/adminRoutes';
 import AdminOfferEditModal from '../components/admin/AdminOfferEditModal';
@@ -173,9 +174,9 @@ export default function GameDetail({
 
       {showGiftCodeAlt && (
         <div className="catalog-info-banner catalog-info-banner--voucher mb-6 sm:mb-8">
-          <ArrowLeftRight className="w-5 h-5 shrink-0 text-violet-300" />
+          <ArrowLeftRight className="w-5 h-5 shrink-0 text-[var(--accent)]" />
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 min-w-0 flex-1">
-            <p className="text-sm font-semibold text-violet-100">
+            <p className="text-sm font-semibold text-[var(--text-primary)]">
               {t.topupGiftCodePrompt}
             </p>
             <button
@@ -184,7 +185,7 @@ export default function GameDetail({
                 q: catalogSearchQuery,
                 type: SEARCH_FILTER_GIFT_CARD,
               }))}
-              className="btn btn-secondary shrink-0 text-sm px-4 py-2 border-violet-400/35 bg-violet-500/15 text-violet-100 hover:bg-violet-500/25"
+              className="btn btn-secondary shrink-0 text-sm px-4 py-2"
             >
               {t.topupGiftCodeCta}
             </button>
@@ -194,9 +195,9 @@ export default function GameDetail({
 
       {(isVoucher || isAccount) && (
         <div className={`catalog-info-banner mb-6 sm:mb-8 ${isAccount ? 'catalog-info-banner--redeem' : 'catalog-info-banner--voucher'}`}>
-          <Ticket className={`w-5 h-5 shrink-0 ${isAccount ? 'text-sky-300' : 'text-violet-300'}`} />
+          <Ticket className={`w-5 h-5 shrink-0 ${isAccount ? 'text-[var(--accent-2)]' : 'text-[var(--accent)]'}`} />
           <div className="text-sm text-[var(--text-sec)] space-y-2 min-w-0">
-            <p className={`font-semibold ${isAccount ? 'text-sky-100' : 'text-violet-100'}`}>
+            <p className={`font-semibold ${isAccount ? 'text-[var(--accent-2)]' : 'text-[var(--accent)]'}`}>
               {isAccount ? t.howRedeemWorks : t.howVouchersWork}
             </p>
             <ol className="list-decimal ps-5 space-y-1 text-xs leading-relaxed">
@@ -251,9 +252,7 @@ export default function GameDetail({
             </div>
           </div>
         ) : (
-          <div className="card p-8 text-center text-[var(--text-sec)]">
-            {t.noOffers}
-          </div>
+          <EmptyState description={t.noOffers} />
         )}
       </section>
 

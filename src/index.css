@@ -8351,19 +8351,19 @@ button.admin-profit-customer-order__id {
 }
 
 .catalog-info-banner--voucher {
-  border-color: color-mix(in srgb, #a78bfa 28%, var(--border));
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
   background: linear-gradient(
     135deg,
-    color-mix(in srgb, #7c3aed 10%, var(--bg-surface)) 0%,
+    color-mix(in srgb, var(--accent) 12%, var(--bg-surface)) 0%,
     var(--bg-surface) 100%
   );
 }
 
 .catalog-info-banner--redeem {
-  border-color: color-mix(in srgb, #38bdf8 28%, var(--border));
+  border-color: color-mix(in srgb, var(--accent-2) 30%, var(--border));
   background: linear-gradient(
     135deg,
-    color-mix(in srgb, #0ea5e9 10%, var(--bg-surface)) 0%,
+    color-mix(in srgb, var(--accent-2) 12%, var(--bg-surface)) 0%,
     var(--bg-surface) 100%
   );
 }

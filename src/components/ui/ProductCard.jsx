@@ -1,6 +1,7 @@
 import { ShoppingCart } from 'lucide-react';
 import BorderGlow from './BorderGlow';
 import { presetImageUrl } from '../../lib/imageUtils';
+import { formatMoney } from '../../lib/i18n';
 
 /**
  * Universal Product Card — fully DB driven.
@@ -76,7 +77,7 @@ export default function ProductCard({
         {/* Price badge */}
         {product.price > 0 && (
           <div className="absolute top-3 right-3 bg-black/60 backdrop-blur px-3 py-0.5 rounded-full text-sm font-black text-white">
-            ${parseFloat(product.price).toFixed(2)}
+              {formatMoney(product.price)}
           </div>
         )}
       </div>
@@ -97,7 +98,7 @@ export default function ProductCard({
         <div className="flex items-center justify-between mt-auto pt-3 border-t border-border gap-2">
           <div>
             <span className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-accent to-blue-400">
-              ${parseFloat(product.price).toFixed(2)}
+            {formatMoney(product.price)}
             </span>
           </div>
 

@@ -16,6 +16,7 @@ import {
 } from '../lib/offerDisplay';
 import { getOfferDescription } from '../lib/offerDescriptions';
 import { resolveOfferRoute } from '../lib/offerRoutes';
+import { formatMoney } from '../lib/i18n';
 import { buildGameBreadcrumb } from '../lib/catalogNav';
 import MobileBuyBar from '../components/catalog/MobileBuyBar';
 
@@ -206,7 +207,7 @@ export default function OfferDetail({
                 />
               ) : (
                 <div className="catalog-mobile-buybar__price tabular-nums" dir="ltr">
-                  ${Number.parseFloat(offer.price).toFixed(2)}
+                  {formatMoney(offer.price)}
                 </div>
               )}
               {isAdmin && <AdminOfferCostBadge offer={offer} t={t} className="mt-0.5" />}

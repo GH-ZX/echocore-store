@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ChevronDown,
@@ -11,6 +11,7 @@ import {
   X,
   RotateCcw,
 } from 'lucide-react';
+import { Spinner } from '../routing/PageLoader';
 import {
   ORDER_STATUS_FILTER_IDS,
   canRetryOrderFulfillment,
@@ -33,7 +34,7 @@ import {
   adminGetUserProfile,
 } from '../../lib/adminModeration';
 import { getAdminOrdersPath, getAdminUserPath } from '../../lib/adminRoutes';
-import { formatDateTime, formatMessage } from '../../lib/i18n';
+import { formatDateTime, formatMessage, formatMoney } from '../../lib/i18n';
 import { getOrderPaymentMethodLabel } from '../../lib/paymentMethods';
 import InboxPager from '../notifications/InboxPager';
 
@@ -54,6 +55,7 @@ import {
   isUuidLike,
   profileNamesDiffer,
 } from '../../lib/username';
+import { useNotify } from '../../hooks/useNotify';
 
 function formatOrderDate(value, lang) {
   if (!value) return '—';
@@ -113,7 +115,7 @@ export default function AdminOrdersManager({
 }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const notifyError = useCallback((message) => onNotify?.(message, 'error'), [onNotify]);
+  const { notifyError } = useNotify(onNotify);
   const [fulfillingId, setFulfillingId] = useState(null);
 
   const userFilterParam = searchParams.get('user') || '';
@@ -258,7 +260,7 @@ export default function AdminOrdersManager({
       return;
     }
     const total = Number(order.total);
-    const totalLabel = Number.isFinite(total) ? `$${total.toFixed(2)}` : '—';
+    const totalLabel = formatMoney(total, { fallback: '—' });
     const ref = formatOrderDisplayId(order);
     const hasSupplierId = !!(
       order.g2bulk_order_id
@@ -451,7 +453,7 @@ export default function AdminOrdersManager({
                 )}
               </div>
               <span className="font-mono text-[var(--accent)] flex-shrink-0">
-                ${parseFloat(item.price).toFixed(2)} × {item.quantity || 1}
+                {formatMoney(item.price)} × {item.quantity || 1}
               </span>
             </div>
           )) : (
@@ -632,7 +634,7 @@ export default function AdminOrdersManager({
 
       {loadingOrders ? (
         <div className="py-12 text-center">
-          <Loader2 className="w-6 h-6 animate-spin mx-auto text-[var(--accent)]" />
+          <Spinner size="md" className="mx-auto text-[var(--accent)]" />
         </div>
       ) : totalFiltered === 0 ? (
         <div className="py-12 text-center space-y-3">
@@ -687,7 +689,7 @@ export default function AdminOrdersManager({
                   </div>
 
                   <div className="admin-order-row-trailing">
-                    <div className="font-black text-[var(--price)]">${parseFloat(order.total || 0).toFixed(2)}</div>
+                    <div className="font-black text-[var(--price)]">{formatMoney(order.total || 0)}</div>
                     <div className="text-[10px] text-[var(--text-sec)] mt-1">
                       {getOrderPaymentMethodLabel(order.payment_method, t)}
                     </div>

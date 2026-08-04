@@ -501,12 +501,18 @@ export default function App() {
     }
   }, [user?.role]);
 
-  const refreshDataAfterAuth = (role) => {
+  const setUserSession = (userData) => {
+    if (!userData?.id) return;
+    lastSyncedUserIdRef.current = userData.id;
+    setUser(userData);
+  };
+
+  const refreshDataAfterAuth = (role, { silent = false } = {}) => {
     // Catalog is public — already loaded on mount; refetching on login caused loading flashes and auth deadlocks.
     if (role === 'admin') {
       fetchOrders();
       // Force supplier wallet balances on every admin login (G2Bulk + Sam, independent).
-      refreshSupplierWallets({ silent: false }).catch(() => {});
+      refreshSupplierWallets({ silent }).catch(() => {});
     }
   };
 
@@ -1085,28 +1091,37 @@ export default function App() {
   // ============================================
   // ADMIN — Real DB product management
   // ============================================
+  const buildOfferPayload = (source, {
+    pricingMode,
+    margin,
+    includeGameId = false,
+    includeSaleImageCustom = false,
+  }) => ({
+    ...(includeGameId ? { game_id: source.game_id } : {}),
+    name_en: source.name_en,
+    name_ar: source.name_ar || source.name_en,
+    price: parseFloat(source.price),
+    pricing_mode: pricingMode,
+    pricing_margin_percent: margin,
+    region: source.region || null,
+    description_en: source.description_en || '',
+    description_ar: source.description_ar || '',
+    sale_image_url: source.sale_image_url || null,
+    ...(includeSaleImageCustom ? { sale_image_custom: !!source.sale_image_url } : {}),
+    is_sale: !!source.is_sale,
+    original_price: source.is_sale ? (parseFloat(source.original_price) || null) : null,
+    g2bulk_type: source.g2bulk_type || null,
+    g2bulk_catalogue_name: source.g2bulk_catalogue_name?.trim() || null,
+    g2bulk_product_id: source.g2bulk_product_id ? parseInt(source.g2bulk_product_id, 10) : null,
+    g2bulk_cost_usd: source.g2bulk_cost_usd ? parseFloat(source.g2bulk_cost_usd) : null,
+  });
+
   const createProduct = async (productData) => {
     const pricingMode = productData.pricing_mode || (productData.is_sale ? 'fixed' : 'auto');
-    const payload = {
-      game_id: productData.game_id,
-      name_en: productData.name_en,
-      name_ar: productData.name_ar || productData.name_en,
-      price: parseFloat(productData.price),
-      pricing_mode: pricingMode,
-      pricing_margin_percent: pricingMode === 'margin'
-        ? (parseFloat(productData.pricing_margin_percent) || null)
-        : null,
-      region: productData.region || null,
-      description_en: productData.description_en || '',
-      description_ar: productData.description_ar || '',
-      sale_image_url: productData.sale_image_url || null,
-      is_sale: !!productData.is_sale,
-      original_price: productData.is_sale ? (parseFloat(productData.original_price) || null) : null,
-      g2bulk_type: productData.g2bulk_type || null,
-      g2bulk_catalogue_name: productData.g2bulk_catalogue_name?.trim() || null,
-      g2bulk_product_id: productData.g2bulk_product_id ? parseInt(productData.g2bulk_product_id, 10) : null,
-      g2bulk_cost_usd: productData.g2bulk_cost_usd ? parseFloat(productData.g2bulk_cost_usd) : null,
-    };
+    const margin = pricingMode === 'margin'
+      ? (parseFloat(productData.pricing_margin_percent) || null)
+      : null;
+    const payload = buildOfferPayload(productData, { pricingMode, margin, includeGameId: true });
 
     const { data, error } = await supabase
       .from('offers')
@@ -1136,17 +1151,15 @@ export default function App() {
     return merged;
   };
 
-  const deleteProduct = async (_productId) => {
-    const message = t.g2bulkDeletionDisabled || 'Deleting products is disabled. Use the G2Bulk selection menu to deselect items from the store.';
+  const rejectDisabledDeletion = (label) => {
+    const message = t.g2bulkDeletionDisabled || `Deleting ${label} is disabled. Use the G2Bulk selection menu to deselect items from the store.`;
     showToast(message, 'warning');
     throw new Error(message);
   };
 
-  const deleteGame = async (_gameId) => {
-    const message = t.g2bulkDeletionDisabled || 'Deleting games is disabled. Use the G2Bulk selection menu to deselect items from the store.';
-    showToast(message, 'warning');
-    throw new Error(message);
-  };
+  const deleteProduct = async () => rejectDisabledDeletion('products');
+
+  const deleteGame = async () => rejectDisabledDeletion('games');
 
   const updateProduct = async (productData) => {
     const { id, ...payload } = productData;
@@ -1163,24 +1176,11 @@ export default function App() {
       throw new Error(t.pricingMarginRequired || 'Enter a margin percent for this pack.');
     }
 
-    const updateRow = {
-      name_en: payload.name_en,
-      name_ar: payload.name_ar || payload.name_en,
-      price: parseFloat(payload.price),
-      pricing_mode: pricingMode,
-      pricing_margin_percent: margin,
-      region: payload.region || null,
-      description_en: payload.description_en || '',
-      description_ar: payload.description_ar || '',
-      sale_image_url: payload.sale_image_url || null,
-      sale_image_custom: !!payload.sale_image_url,
-      is_sale: !!payload.is_sale,
-      original_price: payload.is_sale ? (parseFloat(payload.original_price) || null) : null,
-      g2bulk_type: payload.g2bulk_type || null,
-      g2bulk_catalogue_name: payload.g2bulk_catalogue_name?.trim() || null,
-      g2bulk_product_id: payload.g2bulk_product_id ? parseInt(payload.g2bulk_product_id, 10) : null,
-      g2bulk_cost_usd: payload.g2bulk_cost_usd ? parseFloat(payload.g2bulk_cost_usd) : null,
-    };
+    const updateRow = buildOfferPayload(payload, {
+      pricingMode,
+      margin,
+      includeSaleImageCustom: true,
+    });
 
     const { data, error } = await supabase
       .from('offers')
@@ -1421,12 +1421,8 @@ export default function App() {
         try {
           const userData = await resolveUserData(session.user, { createIfMissing });
           if (!userData) return;
-          lastSyncedUserIdRef.current = userData.id;
-          setUser(userData);
-          if (userData.role === 'admin') {
-            fetchOrders();
-            refreshSupplierWallets({ silent: true }).catch(() => {});
-          }
+          setUserSession(userData);
+          refreshDataAfterAuth(userData.role, { silent: true });
         } catch (err) {
           console.error('Failed to sync user session:', err);
         }
@@ -1482,8 +1478,7 @@ export default function App() {
       const userData = await resolveUserData(session.user, { createIfMissing: true });
       if (!userData) return;
 
-      lastSyncedUserIdRef.current = userData.id;
-      setUser(userData);
+      setUserSession(userData);
       window.history.replaceState({}, '', '/login');
       navigateRef.current('/', { replace: true });
 
@@ -1500,12 +1495,8 @@ export default function App() {
       if (session?.user) {
         const userData = await resolveUserData(session.user);
         if (userData) {
-          lastSyncedUserIdRef.current = userData.id;
-          setUser(userData);
-          if (userData.role === 'admin') {
-            fetchOrders();
-            refreshSupplierWallets({ silent: true }).catch(() => {});
-          }
+          setUserSession(userData);
+          refreshDataAfterAuth(userData.role, { silent: true });
         }
       }
       setLoadingAuth(false);
@@ -1706,8 +1697,7 @@ export default function App() {
       return;
     }
     void recordLoginSuccess(userData.email, userData.id, userData.name);
-    lastSyncedUserIdRef.current = userData.id;
-    setUser(userData);
+    setUserSession(userData);
     if (isUserBanned(userData)) {
       navigate('/banned');
       return;

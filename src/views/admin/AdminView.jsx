@@ -11,11 +11,12 @@ import { Trash2, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, Layout
 import { supabase } from '../../lib/supabase';
 
 import { centerActiveMobileTab, resetPageHorizontalScroll } from '../../lib/adminMobileNav';
-import { formatMessage } from '../../lib/i18n';
+import { formatMessage, formatMoney } from '../../lib/i18n';
 import { getCatalogOfferStats } from '../../lib/catalogUtils';
 import { matchesAdminActivityFilter } from '../../lib/inboxFilters';
 import AdminOverviewPanel from '../../components/admin/AdminOverviewPanel';
 import { useAdminSupplierWallets } from '../../hooks/useAdminSupplierWallets';
+import { useNotify } from '../../hooks/useNotify';
 import AdminExistingGamesList from '../../components/admin/AdminExistingGamesList';
 import AdminSaleDiscountsManager from '../../components/admin/AdminSaleDiscountsManager';
 import AdminGameEditModal from '../../components/admin/AdminGameEditModal';
@@ -35,10 +36,16 @@ const AdminProfitStatsPage = lazyRetry(() => import('../../components/admin/Admi
 const AdminSiteLogs = lazyRetry(() => import('../../components/admin/AdminSiteLogs'));
 const AdminApisPage = lazyRetry(() => import('../../components/admin/AdminApisPage'));
 
-function AdminTabLoader({ label = 'Loading...' }) {
+function AdminTabLoader() {
   return (
-    <div className="flex items-center justify-center py-16 text-[var(--text-sec)] animate-pulse text-sm">
-      {label}
+    <div className="space-y-4 animate-pulse" role="status" aria-label="Loading">
+      <div className="h-9 w-48 bg-[var(--border)] rounded-lg" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="card h-28 bg-[var(--bg-surface)]" />
+        ))}
+      </div>
+      <div className="card h-64 bg-[var(--bg-surface)]" />
     </div>
   );
 }
@@ -126,8 +133,7 @@ export default function AdminView({
   onNotificationsMarkAllRead,
   refreshSiteStatus,
 }) {
-  const notifyError = (message) => onNotify?.(message, 'error');
-  const notifySuccess = (message) => onNotify?.(message, 'success');
+  const { notifyError, notifySuccess } = useNotify(onNotify);
   const location = useLocation();
   const navigate = useNavigate();
   const activeTab = useMemo(() => resolveAdminTabFromPath(location.pathname), [location.pathname]);
@@ -497,15 +503,15 @@ export default function AdminView({
           <h1 className="text-xl sm:text-3xl font-black truncate">
             {activeNavItem?.label || t.adminDashboard}
           </h1>
-          <p className="text-xs sm:text-base text-[var(--text-sec)] mt-0.5 sm:mt-0">
-            {activeTab === 'overview'
-              ? t.manageYourStore
-              : activeTab === 'profits'
-                ? t.adminProfitStatsSubtitle
-                : activeTab === 'apis'
-                  ? t.apisPageDesc
-                  : t.adminSectionHelp}
-          </p>
+          {activeTab === 'overview' || activeTab === 'profits' || activeTab === 'apis' ? (
+            <p className="text-xs sm:text-base text-[var(--text-sec)] mt-0.5 sm:mt-0">
+              {activeTab === 'overview'
+                ? t.manageYourStore
+                : activeTab === 'profits'
+                  ? t.adminProfitStatsSubtitle
+                  : t.apisPageDesc}
+            </p>
+          ) : null}
         </header>
 
       {/* OVERVIEW TAB */}
@@ -659,11 +665,11 @@ export default function AdminView({
                           {game && <span className="text-[var(--accent)]">{lang === 'ar' ? game.name_ar : game.name_en}</span>}
                           {offer.is_sale && offer.original_price ? (
                             <>
-                              <span className="line-through">${parseFloat(offer.original_price).toFixed(2)}</span>
-                              <span className="font-semibold text-red-400">${parseFloat(offer.price).toFixed(2)}</span>
+                              <span className="line-through">{formatMoney(offer.original_price)}</span>
+                              <span className="font-semibold text-red-400">{formatMoney(offer.price)}</span>
                             </>
                           ) : (
-                            <span>${parseFloat(offer.price).toFixed(2)}</span>
+                            <span>{formatMoney(offer.price)}</span>
                           )}
                           {offer.is_sale && <span className="px-1 py-0.5 bg-red-500/10 text-red-400 rounded text-[10px]">{t.sale}</span>}
                           {offer.amount && <span>{offer.amount} {game?.points_name}</span>}
@@ -704,7 +710,7 @@ export default function AdminView({
       )}
 
       {activeTab === 'orders' && (
-        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+        <Suspense fallback={<AdminTabLoader />}>
           <AdminOrdersManager
             t={t}
             lang={lang}
@@ -718,7 +724,7 @@ export default function AdminView({
       )}
 
       {activeTab === 'profits' && (
-        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+        <Suspense fallback={<AdminTabLoader />}>
           <AdminProfitStatsPage
             t={t}
             lang={lang}
@@ -731,7 +737,7 @@ export default function AdminView({
       )}
 
       {activeTab === 'apis' && (
-        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+        <Suspense fallback={<AdminTabLoader />}>
           <AdminApisPage
             t={t}
             lang={lang}
@@ -743,7 +749,7 @@ export default function AdminView({
       )}
 
       {activeTab === 'payments' && (
-        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+        <Suspense fallback={<AdminTabLoader />}>
           <AdminPaymentsSettings
             t={t}
             lang={lang}
@@ -754,7 +760,7 @@ export default function AdminView({
       )}
 
       {activeTab === 'recharges' && (
-        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+        <Suspense fallback={<AdminTabLoader />}>
           <AdminRechargeManager
             t={t}
             lang={lang}
@@ -766,7 +772,7 @@ export default function AdminView({
       )}
 
       {activeTab === 'theme' && (
-        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+        <Suspense fallback={<AdminTabLoader />}>
           <AdminThemeSettings
             t={t}
             lang={lang}
@@ -776,7 +782,7 @@ export default function AdminView({
       )}
 
       {activeTab === 'home' && (
-        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+        <Suspense fallback={<AdminTabLoader />}>
           <AdminHomeLayoutSettings
             t={t}
             lang={lang}
@@ -790,7 +796,7 @@ export default function AdminView({
       )}
 
       {activeTab === 'reviews' && (
-        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+        <Suspense fallback={<AdminTabLoader />}>
           <AdminReviewsManager
             t={t}
             onChanged={onReviewsChanged}
@@ -799,7 +805,7 @@ export default function AdminView({
       )}
 
       {activeTab === 'users' && (
-        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+        <Suspense fallback={<AdminTabLoader />}>
           <AdminUsersManager
             t={t}
             lang={lang}
@@ -810,7 +816,7 @@ export default function AdminView({
       )}
 
       {activeTab === 'partners' && (
-        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+        <Suspense fallback={<AdminTabLoader />}>
           <AdminPartnersManager
             t={t}
             lang={lang}
@@ -820,7 +826,7 @@ export default function AdminView({
       )}
 
       {activeTab === 'inbox' && (
-        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+        <Suspense fallback={<AdminTabLoader />}>
           <AdminInboxManager
             t={t}
             lang={lang}
@@ -835,7 +841,7 @@ export default function AdminView({
       )}
 
       {activeTab === 'contact' && (
-        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+        <Suspense fallback={<AdminTabLoader />}>
           <AdminContactMessages
             t={t}
             lang={lang}
@@ -845,7 +851,7 @@ export default function AdminView({
       )}
 
       {activeTab === 'logs' && (
-        <Suspense fallback={<AdminTabLoader label={t.loadingAdminTab} />}>
+        <Suspense fallback={<AdminTabLoader />}>
           <AdminSiteLogs
             t={t}
             lang={lang}
@@ -854,9 +860,10 @@ export default function AdminView({
         </Suspense>
       )}
 
-        <div className="text-xs text-center text-[var(--text-muted)] mt-8">
-          {t.allDataLive}
-        </div>
+        <footer className="mt-8 flex items-center gap-2 text-[11px] text-[var(--text-muted)] border-t border-[var(--border)]/40 pt-4">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
+          <span>{t.allDataLive}</span>
+        </footer>
       </div>
 
       {gameModal?.id && (

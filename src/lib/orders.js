@@ -1,11 +1,12 @@
 import { supabase } from './supabase'
+import { isMissingRpc } from './supabaseErrors'
 
 const RPC_SETUP_MSG =
   'Checkout is not configured. Run supabase_echocore_full.sql in the Supabase SQL Editor.'
 
 function assertRpcData(data, error, t = {}) {
   if (error) {
-    if (error.message?.includes('function') && error.message?.includes('does not exist')) {
+    if (isMissingRpc(error)) {
       throw new Error(RPC_SETUP_MSG)
     }
     const msg = error.message || ''
@@ -171,7 +172,7 @@ export async function expireStalePendingOrders(maxAgeMinutes = 15) {
   })
   if (error) {
     // Older DBs without migration — ignore so admin orders still load.
-    if (error.message?.includes('function') && error.message?.includes('does not exist')) {
+    if (isMissingRpc(error)) {
       return { cancelledPending: 0, failedStuckFulfillment: 0, skipped: true }
     }
     throw error
@@ -187,7 +188,7 @@ export async function creditUserBalance(userId, amount, paymentMethod, reference
     p_reference: reference,
   })
   if (error) {
-    if (error.message?.includes('function') && error.message?.includes('does not exist')) {
+    if (isMissingRpc(error)) {
       throw new Error(RPC_SETUP_MSG)
     }
     throw error

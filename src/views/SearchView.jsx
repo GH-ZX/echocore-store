@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Gamepad2, Tag, Ticket, UserCircle, X, ArrowRight } from 'lucide-react';
 import HomeGameCard from '../components/ui/HomeGameCard';
 import SaleOfferCard from '../components/ui/SaleOfferCard';
+import CatalogGrid from '../components/catalog/CatalogGrid';
 import { getDisplayGameForOffer } from '../lib/gameRegions';
 import {
   countActiveOffers,
@@ -69,7 +70,6 @@ export default function SearchView({
 
   useEffect(() => {
     setDraft(query);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
   const submitSearch = () => {
@@ -261,25 +261,13 @@ export default function SearchView({
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {Array.from({ length: 8 }).map((_, index) => (
-            <motion.div
-              key={index}
-              initial={{ opacity: 0.4 }}
-              animate={{ opacity: [0.4, 0.85, 0.4] }}
-              transition={{ duration: 1.4, repeat: Infinity, delay: index * 0.08 }}
-              className="card h-52 bg-[var(--bg-surface)]"
-            />
-          ))}
-        </div>
+        <CatalogGrid loading count={1} />
       ) : catalogCount === 0 && visibleOffers.length === 0 ? (
         <motion.div
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="card p-10 text-center"
         >
-          <Gamepad2 className="w-10 h-10 mx-auto text-[var(--text-muted)] mb-3" />
-          <p className="text-lg text-[var(--text-sec)]">{t.noResults}</p>
+          <CatalogGrid count={0} emptyTitle={t.noResults} />
         </motion.div>
       ) : (
         <div className="space-y-10">
@@ -313,7 +301,7 @@ export default function SearchView({
           {visibleGiftCardGames.length > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-5">
-                <Ticket className="w-5 h-5 text-violet-300" />
+                <Ticket className="w-5 h-5 text-[var(--accent)]" />
                 <h2 className="text-xl font-bold">{t.giftCards}</h2>
               </div>
 
@@ -342,7 +330,7 @@ export default function SearchView({
           {visibleAccountGames.length > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-5">
-                <UserCircle className="w-5 h-5 text-sky-300" />
+                <UserCircle className="w-5 h-5 text-[var(--accent)]" />
                 <h2 className="text-xl font-bold">{t.searchGamingAccounts}</h2>
               </div>
 

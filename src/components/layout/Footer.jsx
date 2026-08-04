@@ -17,10 +17,10 @@ export default function Footer({ lang = 'en', t = {} }) {
             <Link to="/" className="flex items-center gap-3 group mb-4">
               <EchoLogo className="w-9 h-9 md:w-10 md:h-10 transition-transform group-hover:scale-105" />
               <div className="flex flex-col">
-                <span className="text-lg md:text-xl font-black tracking-[1px] text-transparent bg-clip-text bg-gradient-to-r from-[var(--accent)] to-blue-400">
+                <span className="text-lg md:text-xl font-black tracking-[1px] text-transparent bg-clip-text bg-gradient-to-r from-[var(--accent)] to-[var(--accent-2)]">
                   ECHOCORE
                 </span>
-                <span className="text-[9px] text-[var(--accent)]/60 tracking-[2px] font-semibold -mt-1">STORE</span>
+                <span className="text-[10px] text-[var(--text-muted)] tracking-[2px] font-semibold -mt-0.5">STORE</span>
               </div>
             </Link>
             <p className="text-[var(--text-secondary)] leading-relaxed pr-2 text-[13px]">
@@ -99,8 +99,6 @@ export default function Footer({ lang = 'en', t = {} }) {
           <div className="flex items-center gap-x-5">
             <Link to="/privacy" className="hover:text-[var(--text-secondary)] transition-colors">{t.footerLinkPrivacy}</Link>
             <Link to="/terms" className="hover:text-[var(--text-secondary)] transition-colors">{t.footerLinkTerms}</Link>
-            <span className="hidden sm:inline">•</span>
-            <span>{t.footerTrustLine}</span>
           </div>
         </div>
       </div>

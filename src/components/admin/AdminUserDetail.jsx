@@ -25,6 +25,8 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
+import { Spinner } from '../routing/PageLoader';
+import EmptyState from '../ui/EmptyState';
 import { getAdminGiftPath, getAdminUserPath } from '../../lib/adminRoutes';
 import {
   adminBanUser,
@@ -44,7 +46,7 @@ import {
   adminSetUserPassword,
 } from '../../lib/adminUserAuth';
 import { validatePasswordLength } from '../../lib/auth';
-import { formatMessage } from '../../lib/i18n';
+import { formatDateTime, formatMessage, formatMoney } from '../../lib/i18n';
 import { formatOrderDisplayId, getOrderStatusLabel } from '../../lib/orderReceipt';
 import {
   formatProfileUsername,
@@ -63,16 +65,15 @@ import {
   formatPartnerTierLabel,
 } from '../../lib/partners';
 import { supabase } from '../../lib/supabase';
+import { useNotify } from '../../hooks/useNotify';
 import BanDurationField from './BanDurationField';
 import AdminManualBalanceCredit from './AdminManualBalanceCredit';
 import Modal from '../ui/Modal';
 
 function formatAdminDate(value, lang) {
-  if (!value) return '—';
-  return new Date(value).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
+  return value
+    ? formatDateTime(value, lang, { dateStyle: 'medium', timeStyle: 'short' }) || '—'
+    : '—';
 }
 
 function InfoField({ label, value, mono = false, className = '' }) {
@@ -95,8 +96,7 @@ export default function AdminUserDetail({
   onOpenOrders,
 }) {
   const navigate = useNavigate();
-  const notifyError = useCallback((message) => onNotify?.(message, 'error'), [onNotify]);
-  const notifySuccess = useCallback((message) => onNotify?.(message, 'success'), [onNotify]);
+  const { notifyError, notifySuccess } = useNotify(onNotify);
 
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(null);
@@ -411,17 +411,21 @@ export default function AdminUserDetail({
   if (loading) {
     return (
       <div className="py-16 text-center">
-        <Loader2 className="w-8 h-8 animate-spin mx-auto text-[var(--accent)]" />
+        <Spinner size="lg" className="mx-auto text-[var(--accent)]" />
       </div>
     );
   }
 
   if (!profile) {
     return (
-      <div className="card p-8 text-center space-y-4">
-        <p className="text-[var(--text-sec)]">{t.adminUserNotFound}</p>
-        <button type="button" onClick={onBack} className="btn btn-secondary">{t.back}</button>
-      </div>
+      <EmptyState
+        description={t.adminUserNotFound}
+        action={
+          <button type="button" onClick={onBack} className="btn btn-secondary">
+            {t.back}
+          </button>
+        }
+      />
     );
   }
 
@@ -512,7 +516,7 @@ export default function AdminUserDetail({
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="rounded-xl border border-[var(--border)] p-4">
             <div className="text-xs text-[var(--text-muted)]">{t.balance}</div>
-            <div className="text-lg font-black mt-1">${parseFloat(profile.balance || 0).toFixed(2)}</div>
+            <div className="text-lg font-black mt-1">{formatMoney(profile.balance || 0)}</div>
           </div>
           <div className="rounded-xl border border-[var(--border)] p-4">
             <div className="text-xs text-[var(--text-muted)]">{t.adminUserOrdersCount}</div>
@@ -524,7 +528,7 @@ export default function AdminUserDetail({
           </div>
           <div className="rounded-xl border border-[var(--border)] p-4">
             <div className="text-xs text-[var(--text-muted)]">{t.adminUserDevBalance}</div>
-            <div className="text-lg font-black mt-1">${parseFloat(profile.dev_test_balance || 0).toFixed(2)}</div>
+            <div className="text-lg font-black mt-1">{formatMoney(profile.dev_test_balance || 0)}</div>
           </div>
         </div>
 
@@ -706,7 +710,7 @@ export default function AdminUserDetail({
           </p>
           {walletTxLoading ? (
             <div className="py-8 text-center">
-              <Loader2 className="w-6 h-6 animate-spin mx-auto text-[var(--accent)]" />
+              <Spinner size="md" className="mx-auto text-[var(--accent)]" />
             </div>
           ) : (() => {
             const filtered = walletTxFilter === 'all'
@@ -751,7 +755,7 @@ export default function AdminUserDetail({
                           </div>
                           {tx.balance_after != null && (
                             <div className="text-[10px] text-[var(--text-muted)] font-mono">
-                              {t.balance}: ${Number(tx.balance_after).toFixed(2)}
+                              {t.balance}: {formatMoney(tx.balance_after)}
                             </div>
                           )}
                         </div>
@@ -989,7 +993,7 @@ export default function AdminUserDetail({
                   {recentOrders.map((order) => (
                     <tr key={order.id} className="border-b border-[var(--border)] last:border-0">
                       <td className="p-3 font-mono text-xs">{formatOrderDisplayId(order)}</td>
-                      <td className="p-3">${parseFloat(order.total || 0).toFixed(2)}</td>
+                      <td className="p-3">{formatMoney(order.total || 0)}</td>
                       <td className="p-3">{getOrderStatusLabel(order.status, t)}</td>
                       <td className="p-3 text-[var(--text-sec)]">{formatAdminDate(order.created_at, lang)}</td>
                     </tr>

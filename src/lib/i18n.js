@@ -64,6 +64,15 @@ export function formatNumber(value, lang = 'ar', options = {}) {
   return new Intl.NumberFormat(getLocale(lang), options).format(num);
 }
 
+/** Canonical USD money formatter — `$12.00`, `$0.00` fallback, `—` for missing. */
+export function formatMoney(value, { fallback = '$0.00' } = {}) {
+  const num = Number.parseFloat(value);
+  if (!Number.isFinite(num) || value === null || value === undefined || value === '') {
+    return fallback;
+  }
+  return `$${num.toFixed(2)}`;
+}
+
 const AR_PLURAL_RULES = typeof Intl !== 'undefined' && Intl.PluralRules
   ? new Intl.PluralRules('ar')
   : null;

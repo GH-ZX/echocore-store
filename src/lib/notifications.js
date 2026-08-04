@@ -1,17 +1,14 @@
 import { supabase } from './supabase';
 import { getAdminContactPath, getAdminDashboardPath } from './adminRoutes';
 import { getInvoiceRouteFromNotification } from './invoiceBuilder';
+import { formatMoney as formatMoneyI18n } from './i18n';
+import { isMissingRpc } from './supabaseErrors';
 
 const RPC_SETUP_MSG =
   'Notifications are not configured. Run supabase_echocore_full.sql in the Supabase SQL Editor.';
 
-function isMissingRpc(error) {
-  return error?.message?.includes('function') && error?.message?.includes('does not exist');
-}
-
 function formatMoney(value) {
-  const num = parseFloat(value);
-  return Number.isFinite(num) ? `$${num.toFixed(2)}` : '';
+  return formatMoneyI18n(value, { fallback: '' });
 }
 
 function applyTemplate(template, vars = {}) {

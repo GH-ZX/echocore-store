@@ -17,7 +17,8 @@ import {
 } from '../../../lib/orderReceipt';
 import { isInvoiceReadyForOrder } from '../../../lib/invoices';
 import { INVOICE_KIND } from '../../../lib/invoiceBuilder';
-import { filterUserOrders, ORDER_STATUS_FILTERS, formatMoney } from '../../../lib/userDashboard';
+import { filterUserOrders, ORDER_STATUS_FILTERS } from '../../../lib/userDashboard';
+import { formatDateTime as i18nFormatDateTime, formatMoney } from '../../../lib/i18n';
 
 async function copyText(text) {
   try {
@@ -29,14 +30,9 @@ async function copyText(text) {
 }
 
 function formatDateTime(dateStr, lang) {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return dateStr
+    ? i18nFormatDateTime(dateStr, lang, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) || '—'
+    : '—';
 }
 
 export default function ProfileOrdersPanel({

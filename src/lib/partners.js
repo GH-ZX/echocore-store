@@ -1,8 +1,5 @@
 import { supabase } from './supabase';
-
-function isMissingRpc(error) {
-  return error?.message?.includes('function') && error?.message?.includes('does not exist');
-}
+import { isMissingRpc } from './supabaseErrors';
 
 export async function fetchMyPartnerTier() {
   const { data, error } = await supabase.rpc('get_my_partner_tier');

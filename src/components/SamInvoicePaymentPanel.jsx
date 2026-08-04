@@ -2,8 +2,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { ExternalLink, Loader2, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import { verifyOrderInvoice, getSamInvoiceStatus } from '../lib/samApi';
 import { formatInvoicePayLabel } from '../lib/rechargeCurrency';
-import { formatMessage } from '../lib/i18n';
+import { formatMessage, formatTime } from '../lib/i18n';
 import { closeSamPaymentWindow, openSamPaymentWindow } from '../lib/samPaymentPopup';
+import { useNotify } from '../hooks/useNotify';
+import AlertBanner from './ui/AlertBanner';
 
 const POLL_MS = 4000;
 
@@ -21,8 +23,7 @@ export default function SamInvoicePaymentPanel({
   autoConfirmNoteKey = 'samInvoiceAutoConfirmNote',
   autoOpenPaymentPopup = false,
 }) {
-  const notifyError = useCallback((message) => onNotify?.(message, 'error'), [onNotify]);
-  const notifySuccess = useCallback((message) => onNotify?.(message, 'success'), [onNotify]);
+  const { notifyError, notifySuccess } = useNotify(onNotify);
 
   const [transactionRef, setTransactionRef] = useState('');
   const [verifying, setVerifying] = useState(false);
@@ -155,11 +156,11 @@ export default function SamInvoicePaymentPanel({
 
   if (status === 'expired') {
     return (
-      <div className="text-center py-6 rounded-2xl border border-red-500/30 bg-red-500/10">
+      <AlertBanner tone="red" centered>
         <AlertCircle className="w-10 h-10 mx-auto text-red-300 mb-3" />
-        <div className="font-bold text-red-100">{t.samInvoiceExpired}</div>
+        <div className="font-bold">{t.samInvoiceExpired}</div>
         <p className="text-xs text-[var(--text-sec)] mt-2 max-w-sm mx-auto">{t[expiredDescKey]}</p>
-      </div>
+      </AlertBanner>
     );
   }
 
@@ -197,10 +198,7 @@ export default function SamInvoicePaymentPanel({
           <p className="text-[10px] text-[var(--text-muted)] mt-3 flex items-center justify-center gap-1">
             <Clock className="w-3 h-3" />
             {formatMessage(t.samInvoiceExpiresAt, {
-              time: new Date(invoice.expiresAt).toLocaleTimeString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US', {
-                hour: '2-digit',
-                minute: '2-digit',
-              }),
+              time: formatTime(invoice.expiresAt, lang, { hour: '2-digit', minute: '2-digit' }),
             })}
           </p>
         )}

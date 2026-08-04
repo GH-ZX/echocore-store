@@ -1,19 +1,9 @@
 import { Activity, ShoppingBag, Wallet, ArrowLeftRight } from 'lucide-react';
 import { activityTone, buildCustomerActivityFeed } from '../../../lib/activityMonitor';
-import { formatMoney } from '../../../lib/userDashboard';
+import { formatDateTime, formatMoney } from '../../../lib/i18n';
 
 function formatWhen(iso, lang) {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return String(iso).slice(0, 16);
-  }
+  return iso ? formatDateTime(iso, lang, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) || '—' : '—';
 }
 
 function KindIcon({ kind }) {

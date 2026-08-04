@@ -8,6 +8,7 @@ import {
   RefreshCw,
   Save,
 } from 'lucide-react';
+import { Spinner } from '../routing/PageLoader';
 import { fetchStoreSettings, saveStoreSettings } from '../../lib/storeSettings';
 import { fetchSamApiSettings, saveSamApiSettings } from '../../lib/samApi';
 import { uploadImage } from '../../lib/uploadImage';
@@ -239,7 +240,7 @@ export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved, on
   if (loading) {
     return (
       <div className="card p-10 text-center text-[var(--text-sec)]">
-        <Loader2 className="w-8 h-8 animate-spin mx-auto text-[var(--accent)]" />
+        <Spinner size="lg" className="mx-auto text-[var(--accent)]" />
       </div>
     );
   }

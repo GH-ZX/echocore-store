@@ -1,10 +1,11 @@
 import { supabase } from './supabase';
 import { extractDeliveryCodes } from './orderReceipt';
+import { isMissingRpc } from './supabaseErrors';
 
 const SETUP_MSG = 'Run supabase_admin_gift_migration.sql in the Supabase SQL Editor.';
 
 function wrapRpcError(error) {
-  if (error?.message?.includes('function') && error?.message?.includes('does not exist')) {
+  if (isMissingRpc(error)) {
     throw new Error(SETUP_MSG);
   }
   throw error;

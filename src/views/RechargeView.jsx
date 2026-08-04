@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ArrowLeft, Loader2, CheckCircle, Wallet, QrCode, Clock, AlertCircle, Info } from 'lucide-react';
+import { Spinner } from '../components/routing/PageLoader';
+import AlertBanner from '../components/ui/AlertBanner';
 import {
   RECHARGE_PRESETS,
   validateRechargeAmount,
@@ -32,8 +34,10 @@ import {
   isSypRateRecentlyUpdated,
   buildRechargeCompletedMessage,
 } from '../lib/rechargeCurrency';
-import { formatMessage } from '../lib/i18n';
+import { formatMessage, formatMoney } from '../lib/i18n';
 import { isCommerceBlockedDuringMaintenance } from '../lib/siteStatus';
+import { useNotify } from '../hooks/useNotify';
+import BackButton from '../components/ui/BackButton';
 
 async function cancelPendingRecharge(requestId) {
   if (!requestId) return;
@@ -55,8 +59,7 @@ export default function RechargeView({
   onRechargePaid,
   siteStatus = null,
 }) {
-  const notifyError = (message) => onNotify?.(message, 'error');
-  const notifySuccess = (message) => onNotify?.(message, 'success');
+  const { notifyError, notifySuccess } = useNotify(onNotify);
   const location = useLocation();
   const returnTo = location.state?.returnTo;
 
@@ -342,7 +345,7 @@ export default function RechargeView({
   if (loadingRequest) {
     return (
       <div className="max-w-2xl mx-auto py-20 text-center text-[var(--text-sec)]">
-        <Loader2 className="w-8 h-8 animate-spin mx-auto text-[var(--accent)]" />
+        <Spinner size="lg" className="mx-auto text-[var(--accent)]" />
       </div>
     );
   }
@@ -416,19 +419,19 @@ export default function RechargeView({
 
         <div className="mb-8 p-6 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] text-center">
           <div className="text-sm text-[var(--text-muted)] mb-1">{t.currentBalance}</div>
-          <div className="text-5xl font-black font-mono text-[var(--price)]">${balance.toFixed(2)}</div>
+          <div className="text-5xl font-black font-mono text-[var(--price)]">{formatMoney(balance)}</div>
         </div>
 
         {!anyReady && (
-          <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          <AlertBanner tone="amber" className="mb-6">
             {t.rechargeNotConfigured}
-          </div>
+          </AlertBanner>
         )}
 
         {invoiceError && step === 'amount' && (
-          <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          <AlertBanner tone="red" className="mb-6">
             {invoiceError}
-          </div>
+          </AlertBanner>
         )}
 
         {step === 'completed' && completedRecharge && (
@@ -580,7 +583,7 @@ export default function RechargeView({
             <div className="text-center mb-4">
               <div className="text-sm text-[var(--text-muted)]">{t.rechargeAmountLabel}</div>
               <div className="text-3xl font-black font-mono text-[var(--accent)]">
-                ${isValidAmount ? effectiveAmount.toFixed(2) : '0.00'}
+                {formatMoney(isValidAmount ? effectiveAmount : null)}
               </div>
               {previewSypSendAmount != null && (
                 <div className="text-sm font-mono text-[var(--text-sec)] mt-2" dir="ltr">
@@ -607,7 +610,7 @@ export default function RechargeView({
               disabled={!isValidAmount || isProcessing || !user || !methodReady}
               className="btn btn-primary w-full py-4 text-lg font-black disabled:opacity-60"
             >
-              {isProcessing ? t.processing : `${t.continueToPayment} — $${isValidAmount ? effectiveAmount.toFixed(2) : '0.00'}`}
+              {isProcessing ? t.processing : `${t.continueToPayment} — ${formatMoney(isValidAmount ? effectiveAmount : null)}`}
             </button>
 
             <div className="mt-4 text-center text-[10px] text-[var(--text-muted)]">
@@ -618,18 +621,12 @@ export default function RechargeView({
 
         {(step === 'payment' || step === 'pending') && activeRequest && (
           <div className="space-y-5">
-            <button
-              type="button"
-              onClick={resetToAmount}
-              className="flex items-center gap-2 text-sm text-[var(--text-sec)] hover:text-white"
-            >
-              <ArrowLeft className="w-4 h-4" /> {t.back}
-            </button>
+            <BackButton onClick={resetToAmount} t={t} className="mb-4" />
 
             <div className="text-center">
               <div className="text-sm text-[var(--text-muted)]">{t.rechargeAmountLabel}</div>
               <div className="text-4xl font-black font-mono text-[var(--accent)]">
-                ${parseFloat(activeRequest.amount).toFixed(2)}
+                {formatMoney(activeRequest.amount)}
               </div>
               {activePayCurrency === 'SYP' && activeSypSendAmount != null && (
                 <div className="text-lg font-bold font-mono text-[var(--text-primary)] mt-2" dir="ltr">
@@ -665,9 +662,9 @@ export default function RechargeView({
                   autoConfirmNoteKey="samInvoiceRechargeAutoConfirmNote"
                 />
               ) : (
-                <div className="text-center py-6 rounded-2xl border border-red-500/30 bg-red-500/10">
+                <AlertBanner tone="red" centered>
                   <AlertCircle className="w-10 h-10 mx-auto text-red-300 mb-3" />
-                  <div className="font-bold text-red-100">{t.samInvoiceUnavailable}</div>
+                  <div className="font-bold">{t.samInvoiceUnavailable}</div>
                   <p className="text-xs text-[var(--text-sec)] mt-2 max-w-sm mx-auto">
                     {invoiceError || t.samInvoiceCreateFailed}
                   </p>
@@ -678,7 +675,7 @@ export default function RechargeView({
                   >
                     {t.back}
                   </button>
-                </div>
+                </AlertBanner>
               )
             ) : (
               <>
@@ -734,14 +731,14 @@ export default function RechargeView({
                     )}
                   </button>
                 ) : (
-                  <div className="text-center py-4 rounded-2xl border border-amber-500/30 bg-amber-500/10">
+                  <AlertBanner tone="amber" centered>
                     <Clock className="w-8 h-8 mx-auto text-amber-300 mb-2" />
-                    <div className="font-bold text-amber-100">{t.awaitingAdminApproval}</div>
+                    <div className="font-bold">{t.awaitingAdminApproval}</div>
                     <p className="text-xs text-[var(--text-sec)] mt-2 max-w-sm mx-auto">
                       {formatMessage(t.rechargePendingDescMethod, { method: activeMethodLabel })}
                     </p>
                     <CheckCircle className="w-5 h-5 mx-auto text-emerald-400 mt-3" />
-                  </div>
+                  </AlertBanner>
                 )}
               </>
             )}

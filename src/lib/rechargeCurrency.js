@@ -1,3 +1,5 @@
+import { formatMoney } from './i18n';
+
 export const RECHARGE_PAY_CURRENCIES = ['USD', 'SYP'];
 
 /** Western digits (0–9) in both AR and EN UI — matches supplier wallet formatting. */
@@ -74,12 +76,12 @@ export function buildRechargeCompletedMessage({
 }) {
   const credited = parseFloat(completed.creditedAmount || completed.amount || 0);
   const requested = parseFloat(completed.requestedAmount || completed.amount || 0);
-  const balance = `$${Number(completed.newBalance || 0).toFixed(2)}`;
+  const balance = formatMoney(completed.newBalance || 0);
   const isPartial = Math.abs(credited - requested) >= 0.01;
 
   if (!isPartial) {
     return formatMsg(t.rechargeCompletedDesc, {
-      amount: `$${credited.toFixed(2)}`,
+      amount: formatMoney(credited),
       balance,
     });
   }
@@ -93,18 +95,18 @@ export function buildRechargeCompletedMessage({
       : '—';
     const requestedLabel = Number.isFinite(rate) && rate > 0
       ? formatUsdToSypConversion(requested, sypForUsd(requested, rate))
-      : `$${requested.toFixed(2)}`;
+      : formatMoney(requested);
     return formatMsg(t.rechargeCompletedPartialSypDesc, {
       requested: requestedLabel,
       paid: paidLabel,
-      credited: `$${credited.toFixed(2)}`,
+      credited: formatMoney(credited),
       balance,
     });
   }
 
   return formatMsg(t.rechargeCompletedPartialDesc, {
-    credited: `$${credited.toFixed(2)}`,
-    requested: `$${requested.toFixed(2)}`,
+    credited: formatMoney(credited),
+    requested: formatMoney(requested),
     balance,
   });
 }
@@ -119,5 +121,5 @@ export function formatInvoicePayLabel({ currency, amount, usdAmount }) {
     return `${formatSypAmount(amount)} SYP`;
   }
   const usd = parseFloat(amount);
-  return `$${Number.isFinite(usd) ? usd.toFixed(2) : '0.00'}`;
+  return formatMoney(usd);
 }

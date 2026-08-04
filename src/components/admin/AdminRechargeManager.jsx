@@ -13,10 +13,11 @@ import {
   ChevronDown,
   History,
 } from 'lucide-react';
+import { Spinner } from '../routing/PageLoader';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import AdminManualBalanceCredit from './AdminManualBalanceCredit';
 import AdminCustomerBalances from './AdminCustomerBalances';
-import { formatMessage } from '../../lib/i18n';
+import { formatMessage, formatMoney as formatMoneyI18n, formatDateTime } from '../../lib/i18n';
 import {
   fetchAdminRechargeRequests,
   approveRechargeRequest,
@@ -57,16 +58,11 @@ const STATUS_LABEL_KEYS = {
 
 function formatRechargeDate(value, lang) {
   if (!value) return '—';
-  return new Date(value).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
+  return formatDateTime(value, lang, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 function formatMoney(value) {
-  const n = parseFloat(value);
-  if (!Number.isFinite(n)) return '—';
-  return `$${n.toFixed(2)}`;
+  return formatMoneyI18n(value, { fallback: '—' });
 }
 
 function formatSyp(value) {
@@ -206,7 +202,7 @@ export default function AdminRechargeManager({
     try {
       const result = await approveRechargeRequest(requestId);
       notifySuccess(
-        `${t.rechargeApproved} +$${parseFloat(result.amount).toFixed(2)}`,
+        `${t.rechargeApproved} +${formatMoney(result.amount)}`,
       );
       onApproved?.(result);
       setBalancesRefreshKey((key) => key + 1);
@@ -385,7 +381,7 @@ export default function AdminRechargeManager({
         open={!!grantConfirmTarget}
         title={t.adminManualCreditGrantConfirmTitle}
         message={grantConfirmTarget ? formatMessage(t.adminManualCreditGrantConfirmBody, {
-          amount: `$${parseFloat(grantConfirmTarget.amount || 0).toFixed(2)}`,
+          amount: formatMoney(grantConfirmTarget.amount || 0),
           user: grantConfirmTarget.user_name || t.adminUsersUnnamed,
         }) : ''}
         confirmLabel={t.adminManualCreditGrantConfirmAction}
@@ -445,7 +441,7 @@ export default function AdminRechargeManager({
 
         {loading ? (
           <div className="p-10 text-center">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto text-[var(--accent)]" />
+            <Spinner size="lg" className="mx-auto text-[var(--accent)]" />
           </div>
         ) : requests.length === 0 ? (
           <div className="p-10 text-center text-[var(--text-sec)] text-sm">

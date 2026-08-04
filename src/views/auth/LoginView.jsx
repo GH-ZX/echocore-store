@@ -12,7 +12,9 @@ import {
   Check,
   X,
 } from 'lucide-react';
+import { Spinner } from '../../components/routing/PageLoader';
 import EchoLogo from '../../components/ui/EchoLogo';
+import AlertBanner from '../../components/ui/AlertBanner';
 import { supabase } from '../../lib/supabase';
 import {
   signInWithGoogle,
@@ -421,7 +423,7 @@ export default function LoginView({
     return (
       <div className="max-w-md mx-auto mt-8 sm:mt-16 animate-fade-in px-2">
         <div className="card p-8 sm:p-10 text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-[var(--accent)] mx-auto mb-4" />
+          <Spinner size="lg" className="mx-auto text-[var(--accent)] mb-4" />
           <p className="text-sm text-[var(--text-sec)]">{t.loading || '…'}</p>
         </div>
       </div>
@@ -458,10 +460,10 @@ export default function LoginView({
         </div>
 
         {maintenanceOn && (
-          <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
-            <div className="font-bold text-amber-50 mb-1">{t.maintenanceLoginPageTitle}</div>
+          <AlertBanner tone="amber" className="mb-6 p-4">
+            <div className="font-bold mb-1">{t.maintenanceLoginPageTitle}</div>
             <p className="leading-relaxed">{t.maintenanceLoginPageDesc}</p>
-          </div>
+          </AlertBanner>
         )}
 
         {showGoogle && (

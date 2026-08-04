@@ -1,4 +1,5 @@
 import { getOfferWholesaleCost } from './offerCost';
+import { formatDate, formatMoney } from './i18n';
 
 const MS_PER_DAY = 86_400_000;
 
@@ -18,8 +19,7 @@ function roundMoney(value) {
 }
 
 function formatUsd(value) {
-  const num = Number(value);
-  return Number.isFinite(num) ? `$${num.toFixed(2)}` : '—';
+  return formatMoney(value, { fallback: '—' });
 }
 
 /** Local calendar YYYY-MM-DD (avoids UTC shift from toISOString in SY/offset timezones). */
@@ -334,12 +334,12 @@ function buildDayBuckets(days, locale = 'en-US') {
     buckets.push({
       key,
       // Latin digits for axes so they match product prices
-      label: date.toLocaleDateString(locale === 'ar' ? 'ar-SY' : 'en-US', {
+      label: formatDate(date, locale, {
         weekday: 'short',
         month: 'short',
         day: 'numeric',
       }),
-      labelShort: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      labelShort: formatDate(date, 'en', { month: 'short', day: 'numeric' }),
       revenue: 0,
       cost: 0,
       profit: 0,

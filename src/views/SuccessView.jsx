@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Copy,
   Check,
-  Loader2,
   Receipt,
   KeyRound,
   UserRound,
@@ -13,7 +12,9 @@ import {
   Gift,
   MessageSquareHeart,
 } from 'lucide-react';
+import { Spinner } from '../components/routing/PageLoader';
 import { fetchMyOrderReceipt } from '../lib/orders';
+import { formatDateTime, formatMoney } from '../lib/i18n';
 import CustomerReviewForm from '../components/reviews/CustomerReviewForm';
 import {
   canUserAccessOrderReceipt,
@@ -254,7 +255,7 @@ export default function SuccessView({
   if (loading) {
     return (
       <div className="max-w-3xl mx-auto p-6 text-center">
-        <Loader2 className="w-8 h-8 animate-spin text-[var(--accent)] mx-auto mb-3" />
+        <Spinner size="lg" className="mx-auto text-[var(--accent)] mb-3" />
         <p className="text-[var(--text-sec)]">{t.loadingOrderDetails}</p>
         {shortOrderRef ? (
           <p className="text-xs text-[var(--text-muted)] mt-2 font-mono" dir="ltr">
@@ -386,7 +387,7 @@ export default function SuccessView({
           <div className="rounded-xl border border-[var(--border)] p-3">
             <div className="text-[var(--text-muted)] text-xs mb-1">{t.total}</div>
             <div className="font-bold text-lg text-[var(--accent)]">
-              ${parseFloat(orderDetails.total).toFixed(2)}
+              {formatMoney(orderDetails.total)}
             </div>
           </div>
           <div className="rounded-xl border border-[var(--border)] p-3">
@@ -405,7 +406,7 @@ export default function SuccessView({
           </div>
           <div className="rounded-xl border border-[var(--border)] p-3 sm:col-span-2">
             <div className="text-[var(--text-muted)] text-xs mb-1">{t.date}</div>
-            <div>{new Date(orderDetails.created_at).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US')}</div>
+            <div>{formatDateTime(orderDetails.created_at, lang)}</div>
           </div>
         </div>
       </div>
@@ -423,7 +424,7 @@ export default function SuccessView({
                   {formatOrderItemDisplayName(item, { lang, order: orderDetails })}
                 </span>
                 <span className="font-mono flex-shrink-0">
-                  ${parseFloat(item.price).toFixed(2)} × {item.quantity || 1}
+                  {formatMoney(item.price)} × {item.quantity || 1}
                 </span>
               </div>
             ))}
@@ -518,11 +519,11 @@ export default function SuccessView({
             )}
             <div className="rounded-xl border border-[var(--border)] p-4 text-sm">
               <div className="text-[var(--text-muted)] text-xs mb-1">{t.total}</div>
-              <div className="font-semibold">${parseFloat(orderDetails.total).toFixed(2)}</div>
+              <div className="font-semibold">{formatMoney(orderDetails.total)}</div>
             </div>
             <div className="rounded-xl border border-[var(--border)] p-4 text-sm">
               <div className="text-[var(--text-muted)] text-xs mb-1">{t.date}</div>
-              <div>{new Date(orderDetails.created_at).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US')}</div>
+              <div>{formatDateTime(orderDetails.created_at, lang)}</div>
             </div>
           </div>
           <p className="text-xs text-[var(--text-muted)] mt-3">{t.topUpArrivesSoon}</p>
@@ -531,7 +532,7 @@ export default function SuccessView({
 
       {isPreparingCodes && (
         <div className="card p-6 mb-6 text-center text-[var(--text-sec)]">
-          <Loader2 className="w-6 h-6 animate-spin text-[var(--accent)] mx-auto mb-2" />
+          <Spinner size="md" className="mx-auto text-[var(--accent)] mb-2" />
           <p>{t.orderPreparingCodes}</p>
         </div>
       )}

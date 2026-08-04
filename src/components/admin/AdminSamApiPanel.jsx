@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle, Loader2, RefreshCw, Save, Smartphone } from 'lucide-react';
+import { Spinner } from '../routing/PageLoader';
 import { fetchSamApiSettings, saveSamApiSettings } from '../../lib/samApi';
 import AdminSamApiSettings from './AdminSamApiSettings';
 
@@ -96,7 +97,7 @@ export default function AdminSamApiPanel({ t = {}, onSaved, onNotify, embedded =
   if (loading) {
     return (
       <div className="admin-apis-section-body py-10 text-center">
-        <Loader2 className="w-7 h-7 animate-spin mx-auto text-[var(--accent)]" />
+        <Spinner size="w-7" className="mx-auto text-[var(--accent)]" />
       </div>
     );
   }

@@ -1,11 +1,8 @@
 import { supabase } from './supabase';
 import { validateUsername } from './username';
+import { isMissingRpc } from './supabaseErrors';
 
 const SETUP_MSG = 'Run supabase_username_change_migration.sql in the Supabase SQL Editor.';
-
-function isMissingRpc(error) {
-  return error?.message?.includes('function') && error?.message?.includes('does not exist');
-}
 
 function mapUsernameError(error) {
   if (isMissingRpc(error)) throw new Error(SETUP_MSG);

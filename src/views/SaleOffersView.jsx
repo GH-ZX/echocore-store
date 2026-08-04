@@ -1,5 +1,7 @@
 import React from 'react';
+import { Tags } from 'lucide-react';
 import SaleOfferCard from '../components/ui/SaleOfferCard';
+import CatalogGrid from '../components/catalog/CatalogGrid';
 import { getDisplayGameForOffer } from '../lib/gameRegions';
 import { getSaleOffers } from '../lib/saleOffers';
 
@@ -34,36 +36,27 @@ export default function SaleOffersView({
         </p>
       </div>
 
-      {saleOffers.length === 0 ? (
-        <div className="card p-8 sm:p-12 text-center">
-          <div className="text-2xl mb-2">🔥</div>
-          <p className="text-[var(--text-sec)]">
-            {t.noSaleOffers}
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 min-[400px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-          {saleOffers.map((offer) => {
-            const game = getDisplayGameForOffer(offer, games);
-            return (
-              <SaleOfferCard
-                key={offer.id}
-                offer={offer}
-                game={game}
-                games={games}
-                offers={offers}
-                t={t}
-                lang={lang}
-                onSelectOffer={onSelectOffer}
-                onBuyNow={onBuyNow}
-                onAddToCart={handleAddToCart}
-                onEditOffer={onEditOffer}
-                isAdmin={isAdmin}
-              />
-            );
-          })}
-        </div>
-      )}
+      <CatalogGrid count={saleOffers.length} emptyTitle={t.noSaleOffers} emptyIcon={Tags} variant="offers">
+        {saleOffers.map((offer) => {
+          const game = getDisplayGameForOffer(offer, games);
+          return (
+            <SaleOfferCard
+              key={offer.id}
+              offer={offer}
+              game={game}
+              games={games}
+              offers={offers}
+              t={t}
+              lang={lang}
+              onSelectOffer={onSelectOffer}
+              onBuyNow={onBuyNow}
+              onAddToCart={handleAddToCart}
+              onEditOffer={onEditOffer}
+              isAdmin={isAdmin}
+            />
+          );
+        })}
+      </CatalogGrid>
     </div>
   );
 }

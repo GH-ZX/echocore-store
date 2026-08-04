@@ -6,17 +6,13 @@ import {
   ArrowDownRight,
   ExternalLink,
 } from 'lucide-react';
-import { formatMoney } from '../../../lib/userDashboard';
+import { formatDateTime as i18nFormatDateTime, formatMoney } from '../../../lib/i18n';
 import { INVOICE_KIND } from '../../../lib/invoiceBuilder';
 
 function formatDateTime(dateStr, lang) {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return dateStr
+    ? i18nFormatDateTime(dateStr, lang, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) || '—'
+    : '—';
 }
 
 export default function ProfileWalletPanel({

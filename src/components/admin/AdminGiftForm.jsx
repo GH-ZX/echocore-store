@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Gift, Loader2, Search, UserRound } from 'lucide-react';
 import { adminGetUserProfile, fetchAdminUsers } from '../../lib/adminModeration';
 import { getSavedGamePlayerEntry } from '../../lib/gamePlayerUid';
-import { formatMessage } from '../../lib/i18n';
+import { formatMessage, formatMoney } from '../../lib/i18n';
 import AdminOfferCostBadge from './AdminOfferCostBadge';
 import {
   getOfferCatalogOptionLabel,
@@ -27,6 +27,7 @@ import {
   gameShowsServerField,
   resolvePlayerServerForOrder,
 } from '../../lib/gameServers';
+import { useNotify } from '../../hooks/useNotify';
 
 const RECIPIENT_SEARCH_LIMIT = 50;
 
@@ -65,8 +66,7 @@ export default function AdminGiftForm({
   onSuccess,
   onCancel,
 }) {
-  const notifyError = useCallback((message) => onNotify?.(message, 'error'), [onNotify]);
-  const notifySuccess = useCallback((message) => onNotify?.(message, 'success'), [onNotify]);
+  const { notifyError, notifySuccess } = useNotify(onNotify);
 
   const [recipientQuery, setRecipientQuery] = useState('');
   const [recipientResults, setRecipientResults] = useState([]);
@@ -399,7 +399,7 @@ export default function AdminGiftForm({
               const wholesale = hasOfferWholesaleCost(offer) ? ` · $${formatOfferWholesaleCost(offer)}` : '';
               return (
                 <option key={offer.id} value={offer.id}>
-                  {getOfferCatalogOptionLabel(offer, games, lang, offers)} — ${parseFloat(offer.price).toFixed(2)}{wholesale}
+                  {getOfferCatalogOptionLabel(offer, games, lang, offers)} — {formatMoney(offer.price)}{wholesale}
                 </option>
               );
             })}
@@ -412,7 +412,7 @@ export default function AdminGiftForm({
           <div className="text-xs text-pink-200/80 mb-1">{t.adminGiftSelectedOffer}</div>
           <div className="font-bold">{getOfferCatalogOptionLabel(selectedOffer, games, lang, offers)}</div>
           <div className="text-sm text-[var(--accent)] font-mono mt-1">
-            ${parseFloat(selectedOffer.price).toFixed(2)}
+            {formatMoney(selectedOffer.price)}
           </div>
           <AdminOfferCostBadge offer={selectedOffer} t={t} className="mt-1.5" />
         </div>

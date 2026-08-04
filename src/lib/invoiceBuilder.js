@@ -1,6 +1,7 @@
 import { extractDeliveryCodes, formatOrderDisplayId, shortOrderId } from './orderReceipt';
 import { getRedeemInstructions } from './redeemInstructions';
 import { formatProfileUsername, getProfileUsername } from './username';
+import { formatMoney as formatMoneyI18n } from './i18n';
 
 function resolveInvoiceCustomer(profile) {
   const name = String(profile?.name || '').trim() || null;
@@ -16,8 +17,7 @@ export const INVOICE_KIND = {
 };
 
 function formatMoney(value) {
-  const num = parseFloat(value);
-  return Number.isFinite(num) ? `$${num.toFixed(2)}` : '—';
+  return formatMoneyI18n(value, { fallback: '—' });
 }
 
 function resolveGameForItem(item, games = [], offers = []) {

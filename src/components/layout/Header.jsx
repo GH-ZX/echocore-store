@@ -21,6 +21,7 @@ import UserRoleBadges from '../ui/UserRoleBadges';
 import { useHeaderDropdownPosition } from '../../hooks/useHeaderDropdownPosition';
 import { getSypPerUsd } from '../../lib/rechargeCurrency';
 import { getAdminPaymentsPath } from '../../lib/adminRoutes';
+import { formatMoney } from '../../lib/i18n';
 
 const iconBtn = (extra = '') => `header-btn header-btn-icon ${extra}`.trim();
 
@@ -445,13 +446,13 @@ export default function Header({
       type="button"
       onClick={() => { onRecharge(); closeAll(); }}
       className="header-btn header-wallet-chip"
-      aria-label={`${t.balance} — $${(user.balance || 0).toFixed(2)}`}
+      aria-label={`${t.balance} — ${formatMoney(user.balance || 0)}`}
       title={t.topUpWallet}
     >
       <span className="header-wallet-chip-icon" aria-hidden="true">
         <Wallet strokeWidth={2} />
       </span>
-      <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
+      <span className="header-balance">{formatMoney(user.balance || 0)}</span>
       <span className="header-wallet-chip-label">{t.balance}</span>
     </button>
   ) : null;
@@ -476,14 +477,14 @@ export default function Header({
         closeAll();
       }}
       className="header-btn header-wallet-chip header-mobile-wallet-chip"
-      aria-label={`${mobileWalletLabel} — ${mobileWalletAmount == null ? '—' : `$${mobileWalletAmount.toFixed(2)}`}`}
+      aria-label={`${mobileWalletLabel} — ${formatMoney(mobileWalletAmount, { fallback: '—' })}`}
       title={mobileWalletTitle}
     >
       <span className="header-wallet-chip-icon" aria-hidden="true">
         <Wallet strokeWidth={2} />
       </span>
       <span className="header-balance" dir="ltr">
-        {mobileWalletAmount == null ? '—' : `$${mobileWalletAmount.toFixed(2)}`}
+        {formatMoney(mobileWalletAmount, { fallback: '—' })}
       </span>
       <span className="header-mobile-wallet-chip-label">{mobileWalletLabel}</span>
     </button>
@@ -761,7 +762,7 @@ export default function Header({
                         >
                           <Wallet className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
                           <span>{t.recharge}</span>
-                          <span className="header-balance">${(user.balance || 0).toFixed(2)}</span>
+                          <span className="header-balance">{formatMoney(user.balance || 0)}</span>
                         </button>
                       )}
 

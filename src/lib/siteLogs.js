@@ -1,12 +1,9 @@
 import { supabase } from './supabase';
-import { formatMessage } from './i18n';
+import { formatMessage, formatMoney as formatMoneyI18n } from './i18n';
+import { isMissingRpc } from './supabaseErrors';
 
 const RPC_SETUP_MSG =
   'Site logs are not configured. Ensure supabase_echocore_full.sql (site_logs RPCs) is applied.';
-
-function isMissingRpc(error) {
-  return error?.message?.includes('function') && error?.message?.includes('does not exist');
-}
 
 function applyTemplate(template, vars = {}) {
   if (!template) return '';
@@ -15,8 +12,7 @@ function applyTemplate(template, vars = {}) {
 }
 
 function formatMoney(value) {
-  const num = parseFloat(value);
-  return Number.isFinite(num) ? `$${num.toFixed(2)}` : '';
+  return formatMoneyI18n(value, { fallback: '' });
 }
 
 function resolveUserName(item, lang = 'ar') {

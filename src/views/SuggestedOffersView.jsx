@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Sparkles } from 'lucide-react';
 import SaleOfferCard from '../components/ui/SaleOfferCard';
+import CatalogGrid from '../components/catalog/CatalogGrid';
 import { getDisplayGameForOffer, offerBelongsToStorefront } from '../lib/gameRegions';
 import { pickTopBoughtOffers } from '../lib/customerReviews';
 import { fetchBestsellingOfferRanks } from '../lib/bestsellingOffers';
@@ -62,42 +64,34 @@ export default function SuggestedOffersView({
         </p>
       </div>
 
-      {loadingRanks && suggested.length === 0 ? (
-        <div className="grid grid-cols-1 min-[400px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 animate-pulse">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="card h-[320px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl" />
-          ))}
-        </div>
-      ) : suggested.length === 0 ? (
-        <div className="card p-8 sm:p-12 text-center">
-          <div className="text-2xl mb-2">✨</div>
-          <p className="text-[var(--text-sec)]">
-            {t.noSuggestedOffers || t.noSaleOffers}
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 min-[400px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-          {suggested.map((offer) => {
-            const game = getDisplayGameForOffer(offer, games);
-            return (
-              <SaleOfferCard
-                key={offer.id}
-                offer={offer}
-                game={game}
-                games={games}
-                offers={offers}
-                t={t}
-                lang={lang}
-                onSelectOffer={onSelectOffer}
-                onBuyNow={onBuyNow}
-                onAddToCart={handleAddToCart}
-                onEditOffer={onEditOffer}
-                isAdmin={isAdmin}
-              />
-            );
-          })}
-        </div>
-      )}
+      <CatalogGrid
+        loading={loadingRanks && suggested.length === 0}
+        count={suggested.length}
+        emptyIcon={Sparkles}
+        emptyTitle={t.noSuggestedOffers || t.noSaleOffers}
+        skeletonHeight="h-[320px]"
+        variant="offers"
+      >
+        {suggested.map((offer) => {
+          const game = getDisplayGameForOffer(offer, games);
+          return (
+            <SaleOfferCard
+              key={offer.id}
+              offer={offer}
+              game={game}
+              games={games}
+              offers={offers}
+              t={t}
+              lang={lang}
+              onSelectOffer={onSelectOffer}
+              onBuyNow={onBuyNow}
+              onAddToCart={handleAddToCart}
+              onEditOffer={onEditOffer}
+              isAdmin={isAdmin}
+            />
+          );
+        })}
+      </CatalogGrid>
     </div>
   );
 }

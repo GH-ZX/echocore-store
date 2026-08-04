@@ -21,10 +21,12 @@ import {
   Hash,
   X,
 } from 'lucide-react';
+import { Spinner } from '../../components/routing/PageLoader';
 import { supabase } from '../../lib/supabase';
 import AdminSupplierWalletsCard from '../../components/ui/AdminSupplierWalletsCard';
 import { useAdminSupplierWallets } from '../../hooks/useAdminSupplierWallets';
 import { formatG2bulkAmount } from '../../lib/g2bulkWalletFormat';
+import { formatDate, formatMoney } from '../../lib/i18n';
 import ProfileAvatar from '../../components/profile/ProfileAvatar';
 import ProfileDashTabs from '../../components/profile/dashboard/ProfileDashTabs';
 import ProfileOverviewPanel from '../../components/profile/dashboard/ProfileOverviewPanel';
@@ -66,16 +68,6 @@ import {
   sumRechargeCredits,
 } from '../../lib/userDashboard';
 import UserRoleBadges from '../../components/ui/UserRoleBadges';
-
-
-function formatDate(dateStr, lang) {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
 
 export default function ProfileView({
   t = {},
@@ -257,7 +249,7 @@ export default function ProfileView({
   const savedDateOfBirth = savedProfile.date_of_birth || user?.date_of_birth || '';
   const heroName = editingProfile ? (nameDraft || user.name) : savedName;
   const displayAvatar = removeAvatar ? '' : (avatarPreview || avatarUrl);
-  const memberSince = formatDate(profileMeta?.created_at, lang);
+  const memberSince = formatDate(profileMeta?.created_at, lang, { year: 'numeric', month: 'short', day: 'numeric' }) || '—';
 
   const formatDetail = useCallback(
     (value) => (emptyProfileValue(value) ? notSetLabel : String(value).trim()),
@@ -284,7 +276,9 @@ export default function ProfileView({
         key: 'date_of_birth',
         label: t.dateOfBirth,
         icon: Calendar,
-        value: savedDateOfBirth ? formatDate(savedDateOfBirth, lang) : notSetLabel,
+        value: savedDateOfBirth
+          ? formatDate(savedDateOfBirth, lang, { year: 'numeric', month: 'short', day: 'numeric' }) || '—'
+          : notSetLabel,
       },
       { key: 'bio', label: t.profileBio, icon: Sparkles, value: formatDetail(savedBio) },
       { key: 'phone', label: t.profilePhone, icon: Phone, value: formatDetail(savedPhone) },
@@ -589,7 +583,7 @@ export default function ProfileView({
                 <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">
                   {t.yourBalance}
                 </p>
-                <p className="text-3xl sm:text-4xl font-black font-mono text-[var(--price)]">${balance.toFixed(2)}</p>
+                <p className="text-3xl sm:text-4xl font-black font-mono text-[var(--price)]">{formatMoney(balance)}</p>
                 <button
                   type="button"
                   onClick={onRecharge}
@@ -935,7 +929,7 @@ export default function ProfileView({
 
       {loading ? (
         <div className="card p-12 text-center text-[var(--text-sec)]">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-[var(--accent)]" />
+          <Spinner size="lg" className="mx-auto text-[var(--accent)] mb-3" />
           {t.loadingProfile}
         </div>
       ) : (

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Gift, Loader2 } from 'lucide-react';
+import { Gift } from 'lucide-react';
+import { Spinner } from '../../components/routing/PageLoader';
+import BackButton from '../../components/ui/BackButton';
 import AdminGiftForm from '../../components/admin/AdminGiftForm';
 import { adminGetUserByUsername } from '../../lib/adminModeration';
 import { getAdminDashboardPath, getAdminGiftReturnPath } from '../../lib/adminRoutes';
@@ -74,13 +76,7 @@ export default function AdminGiftView({
 
   return (
     <div className="max-w-xl mx-auto mt-4 sm:mt-6 px-2 pb-12 animate-fade-in">
-      <button
-        type="button"
-        onClick={goBack}
-        className="flex items-center gap-2 mb-4 text-sm text-[var(--text-sec)] hover:text-white"
-      >
-        <ArrowLeft className="w-4 h-4" /> {t.back}
-      </button>
+      <BackButton onClick={goBack} t={t} className="mb-4" />
 
       <div className="card p-6 sm:p-8 border border-pink-500/15">
         <div className="flex items-center gap-3 mb-6">
@@ -95,7 +91,7 @@ export default function AdminGiftView({
 
         {loadingRecipient ? (
           <div className="py-12 text-center text-[var(--text-sec)]">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto text-[var(--accent)]" />
+            <Spinner size="lg" className="mx-auto text-[var(--accent)]" />
             <p className="mt-3">{t.loading}</p>
           </div>
         ) : (

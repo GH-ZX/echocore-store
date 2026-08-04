@@ -22,6 +22,7 @@ import {
   setHealthAckAt,
   summarizeAdminActivity,
 } from '../../lib/activityMonitor';
+import { formatDateTime, formatTime } from '../../lib/i18n';
 
 const FILTER_OPTIONS = [
   { id: null, labelKey: 'siteLogsFilterAll' },
@@ -47,17 +48,14 @@ function resolveFilter(filterId) {
 }
 
 function formatFeedTime(iso, lang) {
-  if (!iso) return '';
-  try {
-    return new Date(iso).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return '';
-  }
+  return iso
+    ? formatDateTime(iso, lang, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }) || ''
+    : '';
 }
 
 const HEALTH_STYLE = {
@@ -271,7 +269,7 @@ export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
           <span className="font-semibold">{t[healthKey] || t.activityHealthOk}</span>
           {lastOkAt ? (
             <span className="opacity-80" dir="ltr">
-              {t.activityLastCheck}: {new Date(lastOkAt).toLocaleTimeString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US')}
+              {t.activityLastCheck}: {formatTime(lastOkAt, lang)}
             </span>
           ) : null}
           {canAckHealth ? (

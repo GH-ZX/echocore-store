@@ -1,11 +1,8 @@
 import { supabase } from './supabase';
+import { isMissingRpc } from './supabaseErrors';
 
 const DEV_RPC_MSG =
   'Developer tools are not configured. Run supabase_echocore_full.sql in Supabase.';
-
-function isMissingRpc(error) {
-  return error?.message?.includes('function') && error?.message?.includes('does not exist');
-}
 
 export const isMockFulfillmentEnabled = () => (
   import.meta.env.VITE_MOCK_FULFILLMENT === 'true'

@@ -98,9 +98,3 @@ export function sumRechargeCredits(transactions = []) {
     .filter((tx) => tx.type === 'recharge')
     .reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
 }
-
-export function formatMoney(amount) {
-  const n = parseFloat(amount);
-  if (!Number.isFinite(n)) return '$0.00';
-  return `$${n.toFixed(2)}`;
-}

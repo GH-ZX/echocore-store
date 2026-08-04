@@ -6,6 +6,7 @@ import {
   RefreshCw,
   Send,
 } from 'lucide-react';
+import { Spinner } from '../components/routing/PageLoader';
 import {
   buildContactTimeline,
   fetchContactThread,
@@ -13,6 +14,8 @@ import {
   sendContactReply,
 } from '../lib/contactMessages';
 import { formatNotificationRelativeTime } from '../lib/notificationTime';
+import AlertBanner from '../components/ui/AlertBanner';
+import { formatDateTime } from '../lib/i18n';
 
 export default function SupportView({ t = {}, lang = 'ar', user = null }) {
   const location = useLocation();
@@ -36,7 +39,6 @@ export default function SupportView({ t = {}, lang = 'ar', user = null }) {
   }, [location.search]);
 
   const textDir = lang === 'ar' ? 'rtl' : 'ltr';
-  const locale = lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US';
 
   const loadThreads = useCallback(async () => {
     setLoading(true);
@@ -164,14 +166,14 @@ export default function SupportView({ t = {}, lang = 'ar', user = null }) {
       </div>
 
       {error && (
-        <div className="card p-3 text-sm text-amber-300 border border-amber-500/30 bg-amber-500/10">
+        <AlertBanner tone="amber" className="card p-3">
           {error}
-        </div>
+        </AlertBanner>
       )}
 
       {loading && threads.length === 0 ? (
         <div className="card p-10 text-center">
-          <Loader2 className="w-7 h-7 animate-spin text-[var(--accent)] mx-auto" />
+          <Spinner size="w-7" className="mx-auto text-[var(--accent)]" />
         </div>
       ) : threads.length === 0 ? (
         <div className="card p-10 text-center text-[var(--text-sec)]">
@@ -223,7 +225,7 @@ export default function SupportView({ t = {}, lang = 'ar', user = null }) {
                   <h2 className="font-black text-base">{t.supportConversation}</h2>
                   <p className="text-xs text-[var(--text-muted)] mt-1">
                     {threadMessage.created_at
-                      ? new Date(threadMessage.created_at).toLocaleString(locale)
+                      ? formatDateTime(threadMessage.created_at, lang)
                       : ''}
                   </p>
                 </div>
@@ -256,7 +258,7 @@ export default function SupportView({ t = {}, lang = 'ar', user = null }) {
                             </p>
                             <div className="text-[10px] text-[var(--text-muted)] mt-1.5">
                               {item.created_at
-                                ? new Date(item.created_at).toLocaleString(locale)
+                                ? formatDateTime(item.created_at, lang)
                                 : ''}
                             </div>
                           </div>

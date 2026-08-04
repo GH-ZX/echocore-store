@@ -13,7 +13,7 @@ import {
   getSaleOffers,
   validateSaleDiscountInputs,
 } from '../../lib/saleOffers';
-import { formatMessage } from '../../lib/i18n';
+import { formatMessage, formatMoney } from '../../lib/i18n';
 
 const EMPTY_FORM = {
   offerId: '',
@@ -262,8 +262,8 @@ export default function AdminSaleDiscountsManager({
             <div className="inline-flex items-start gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 max-w-xl">
               <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
               {formatMessage(t.adminSaleDiscountLossInline, {
-                sale: `$${lossInfo.sale.toFixed(2)}`,
-                cost: `$${lossInfo.cost.toFixed(2)}`,
+                sale: formatMoney(lossInfo.sale),
+                cost: formatMoney(lossInfo.cost),
               })}
             </div>
           )}
@@ -314,10 +314,10 @@ export default function AdminSaleDiscountsManager({
                     <div className="text-xs text-[var(--text-muted)] truncate">{gameName}</div>
                     <div className="flex flex-wrap items-center gap-2 mt-1.5 text-sm">
                       <span className="line-through text-[var(--text-muted)]">
-                        ${Number.parseFloat(offer.original_price).toFixed(2)}
+                        {formatMoney(offer.original_price)}
                       </span>
                       <span className="font-bold text-[var(--accent)]">
-                        ${Number.parseFloat(offer.price).toFixed(2)}
+                        {formatMoney(offer.price)}
                       </span>
                       {discount > 0 && (
                         <span className="sale-offer-discount px-2 py-0.5 text-[10px] font-bold rounded-md border">
@@ -361,8 +361,8 @@ export default function AdminSaleDiscountsManager({
         open={lossConfirmOpen}
         title={t.adminSaleDiscountLossConfirmTitle}
         message={lossInfo.isLoss && lossInfo.cost != null ? formatMessage(t.adminSaleDiscountLossConfirmBody, {
-          sale: `$${lossInfo.sale.toFixed(2)}`,
-          cost: `$${lossInfo.cost.toFixed(2)}`,
+          sale: formatMoney(lossInfo.sale),
+          cost: formatMoney(lossInfo.cost),
         }) : ''}
         confirmLabel={t.adminSaleDiscountLossConfirmAction}
         cancelLabel={t.cancel}

@@ -1,4 +1,5 @@
 import { getOfferCatalogOptionLabel, getOfferDiscount } from './offerDisplay';
+import { formatMoney } from './i18n';
 
 export { getOfferDiscount };
 
@@ -96,6 +97,6 @@ export function formatCatalogBasePrice(offer) {
 export function formatOfferPickerLabel(offer, games, lang, offers) {
   const label = getOfferCatalogOptionLabel(offer, games, lang, offers);
   const price = Number.parseFloat(offer.price);
-  const priceLabel = Number.isFinite(price) ? ` — $${price.toFixed(2)}` : '';
+  const priceLabel = Number.isFinite(price) ? ` — ${formatMoney(price)}` : '';
   return `${label}${priceLabel}`;
 }

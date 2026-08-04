@@ -10,7 +10,9 @@ import {
   ShieldCheck,
   AlertCircle,
 } from 'lucide-react';
-import { formatMoney, getPendingOrders } from '../../../lib/userDashboard';
+import { getPendingOrders } from '../../../lib/userDashboard';
+import { formatMoney } from '../../../lib/i18n';
+import AlertBanner from '../../ui/AlertBanner';
 import ProfileOrdersPanel from './ProfileOrdersPanel';
 import ProfileActivityFeed from './ProfileActivityFeed';
 
@@ -67,7 +69,7 @@ export default function ProfileOverviewPanel({
   return (
     <div className="space-y-5">
       {!isAdmin && pending.length > 0 && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 flex gap-3">
+        <AlertBanner tone="amber" className="p-4 flex gap-3">
           <AlertCircle className="w-5 h-5 text-amber-300 flex-shrink-0 mt-0.5" />
           <div className="min-w-0">
             <p className="text-sm font-bold text-amber-50">{t.dashPendingOrdersTitle}</p>
@@ -82,7 +84,7 @@ export default function ProfileOverviewPanel({
               {t.dashViewPending}
             </button>
           </div>
-        </div>
+        </AlertBanner>
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

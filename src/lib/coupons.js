@@ -1,10 +1,11 @@
 import { supabase } from './supabase';
+import { isMissingRpc } from './supabaseErrors';
 
 const SETUP_MSG =
   'Influencer coupons are not configured. Run scripts/influencer-margin-model-migration.sql in Supabase.';
 
 function wrapRpcError(error) {
-  if (error?.message?.includes('function') && error?.message?.includes('does not exist')) {
+  if (isMissingRpc(error)) {
     throw new Error(SETUP_MSG);
   }
   throw error;

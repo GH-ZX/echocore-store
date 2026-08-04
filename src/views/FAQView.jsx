@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 
 export default function FAQView({ t = {} }) {
   const faqs = t.faqItems || [];
@@ -33,8 +34,8 @@ export default function FAQView({ t = {} }) {
                 className="w-full flex items-center justify-between gap-4 p-4 sm:p-5 text-start"
               >
                 <span className="font-semibold text-sm sm:text-base">{faq.q}</span>
-                <span className={`text-[var(--accent)] text-xl flex-shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-45' : ''}`}>
-                  +
+                <span className={`flex-shrink-0 flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--border)] transition-all duration-200 ${isOpen ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)] rotate-180' : 'text-[var(--text-muted)]'}`}>
+                  <ChevronDown className="w-4 h-4" />
                 </span>
               </button>
               {isOpen && (

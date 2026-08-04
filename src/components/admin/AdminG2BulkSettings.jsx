@@ -20,7 +20,7 @@ import { normalizeG2bulkWallet } from '../../lib/g2bulkWalletFormat';
 import { refreshSupplierWallets } from '../../lib/adminSupplierWalletsStore';
 import { useAdminG2bulkWallet } from '../../hooks/useAdminG2bulkWallet';
 import { countPullSelection, normalizeCatalogMode, normalizePullSelection } from '../../lib/pullCatalogUtils';
-import { formatMessage } from '../../lib/i18n';
+import { formatDateTime, formatMessage } from '../../lib/i18n';
 import { logDevEvent } from '../../lib/siteLogs';
 import {
   invalidateStoreMarkupPercent,
@@ -714,7 +714,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
                 {form.g2bulk_last_sync_at && (
                   <div>
                     {t.g2bulkLastSync}{' '}
-                    {new Date(form.g2bulk_last_sync_at).toLocaleString(lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US')}
+                    {formatDateTime(form.g2bulk_last_sync_at, lang)}
                   </div>
                 )}
               </div>

@@ -5,6 +5,7 @@ import { getOfferDisplayName, getGameDisplayName, formatPrice } from '../lib/off
 import { cartRequiresPlayerUid } from '../lib/catalogUtils';
 import { presetImageUrl } from '../lib/imageUtils';
 import { isCommerceBlockedDuringMaintenance } from '../lib/siteStatus';
+import AlertBanner from '../components/ui/AlertBanner';
 
 function CartItemThumb({ src, name, color }) {
   const placeholder = new URL('../assets/placeholder-cover.svg', import.meta.url).href;
@@ -81,9 +82,9 @@ export default function CartView({
       </div>
 
       {priceUpdated && count > 0 && (
-        <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+        <AlertBanner tone="amber" className="mb-4">
           {t.cartPricesUpdated}
-        </div>
+        </AlertBanner>
       )}
 
       {count === 0 ? (

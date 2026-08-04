@@ -13,6 +13,7 @@ import {
   UserRound,
   Wrench,
 } from 'lucide-react';
+import { Spinner } from '../routing/PageLoader';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import Modal from '../ui/Modal';
 import AdminUserDetail from './AdminUserDetail';
@@ -35,8 +36,9 @@ import {
 } from '../../lib/adminRoutes';
 import { getProfileUsername } from '../../lib/username';
 import { fetchSiteStatus } from '../../lib/siteStatus';
-import { formatMessage } from '../../lib/i18n';
+import { formatMessage, formatMoney } from '../../lib/i18n';
 import { getProfileAdminLabel, getProfileDisplayName, profileNamesDiffer } from '../../lib/username';
+import { useNotify } from '../../hooks/useNotify';
 
 const BROADCAST_KINDS = ['announcement', 'warning', 'maintenance'];
 const PAGE_SIZE = 10;
@@ -81,8 +83,7 @@ export default function AdminUsersManager({
   const navigate = useNavigate();
   const location = useLocation();
   const routeUserParam = resolveAdminUserRouteParamFromPath(location.pathname);
-  const notifyError = useCallback((message) => onNotify?.(message, 'error'), [onNotify]);
-  const notifySuccess = useCallback((message) => onNotify?.(message, 'success'), [onNotify]);
+  const { notifyError, notifySuccess } = useNotify(onNotify);
 
   const [usersLoading, setUsersLoading] = useState(true);
   const [users, setUsers] = useState([]);
@@ -518,7 +519,7 @@ export default function AdminUsersManager({
                       </div>
                     </div>
                     <div className="hidden sm:flex items-center gap-3 text-[11px] font-mono text-[var(--text-sec)] shrink-0 tabular-nums">
-                      <span title={t.balance} className="text-emerald-400/90">${bal.toFixed(2)}</span>
+                      <span title={t.balance} className="text-emerald-400/90">{formatMoney(bal)}</span>
                       <span title={t.adminUsersColSpent} className="text-[var(--text-muted)]">
                         {t.adminUsersColSpentShort}: ${spent.toFixed(0)}
                       </span>
@@ -683,7 +684,7 @@ export default function AdminUsersManager({
           </div>
         </div>
         {maintenanceLoading ? (
-          <div className="py-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[var(--accent)]" /></div>
+          <div className="py-8 text-center"><Spinner size="md" className="mx-auto text-[var(--accent)]" /></div>
         ) : (
           <div className="space-y-3">
             <label className="flex items-center gap-3 cursor-pointer">

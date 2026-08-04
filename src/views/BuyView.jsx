@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
-import { ArrowLeft, Loader2, CheckCircle, User, QrCode, Clock, Ticket, Zap, Gift, Wallet } from 'lucide-react';
+import { Loader2, CheckCircle, User, QrCode, Clock, Ticket, Zap, Gift, Wallet } from 'lucide-react';
+import AlertBanner from '../components/ui/AlertBanner';
+import EmptyState from '../components/ui/EmptyState';
 import CharnameField from '../components/catalog/CharnameField';
 import ServerIdField from '../components/catalog/ServerIdField';
 import { isVoucherGame } from '../lib/catalogUtils';
@@ -15,7 +17,7 @@ import {
 } from '../lib/paymentMethods';
 import SamInvoicePaymentPanel from '../components/SamInvoicePaymentPanel';
 import PaymentMethodIcon from '../components/ui/PaymentMethodIcon';
-import { formatMessage } from '../lib/i18n';
+import { formatMessage, formatMoney } from '../lib/i18n';
 import { markOrderPaymentSent } from '../lib/orders';
 import { getOfferDisplayName } from '../lib/offerDisplay';
 import { resolveOfferRoute } from '../lib/offerRoutes';
@@ -45,6 +47,8 @@ import {
 } from '../lib/coupons';
 import { resolveCustomerUnitPrice } from '../lib/partnerPricing';
 import { fetchMyOfferUnitPrices } from '../lib/offerWholesale';
+import { useNotify } from '../hooks/useNotify';
+import BackButton from '../components/ui/BackButton';
 
 export default function BuyView({
   t = {},
@@ -61,8 +65,7 @@ export default function BuyView({
   loadingCatalog = false,
   partnerTier = null,
 }) {
-  const notifyError = (message) => onNotify?.(message, 'error');
-  const notifySuccess = (message) => onNotify?.(message, 'success');
+  const { notifyError, notifySuccess } = useNotify(onNotify);
   const { gameSlug, offerSlug } = useParams();
   const location = useLocation();
 
@@ -288,18 +291,34 @@ export default function BuyView({
 
   if (catalogLoading) {
     return (
-      <div className="max-w-2xl mx-auto py-20 text-center text-[var(--text-sec)]">
-        <Loader2 className="w-8 h-8 animate-spin mx-auto text-[var(--accent)]" />
-        <p className="mt-3">{t.loadingOffer}</p>
+      <div className="max-w-2xl mx-auto">
+        <div className="card p-8 space-y-6 animate-pulse">
+          <div className="space-y-2">
+            <div className="h-3 w-24 bg-[var(--border)] rounded" />
+            <div className="h-8 w-48 bg-[var(--border)] rounded-lg" />
+            <div className="h-4 w-64 bg-[var(--border)] rounded" />
+          </div>
+          <div className="h-20 bg-[var(--bg-elevated)] rounded-2xl" />
+          <div className="h-12 bg-[var(--bg-elevated)] rounded-2xl" />
+          <div className="h-16 bg-[var(--bg-elevated)] rounded-2xl" />
+          <div className="h-14 bg-[var(--bg-elevated)] rounded-xl" />
+        </div>
       </div>
     );
   }
 
   if (!isValidOffer) {
     return (
-      <div className="max-w-md mx-auto text-center py-20">
-        <p className="text-xl text-[var(--text-sec)]">{t.offerNotFound}</p>
-        <button type="button" onClick={() => navigate('/')} className="btn btn-secondary mt-4">{t.back}</button>
+      <div className="max-w-md mx-auto py-16 px-2">
+        <BackButton onClick={() => navigate(-1)} t={t} className="mb-6 transition-colors" />
+        <EmptyState
+          title={t.offerNotFound}
+          action={
+            <button type="button" onClick={() => navigate('/')} className="btn btn-secondary mt-5">
+              {t.home}
+            </button>
+          }
+        />
       </div>
     );
   }
@@ -312,13 +331,7 @@ export default function BuyView({
     });
     return (
       <div className="max-w-xl mx-auto mt-6 px-2 animate-fade-in">
-        <button
-          type="button"
-          onClick={() => navigate(gamePath)}
-          className="flex items-center gap-2 mb-4 text-sm text-[var(--text-sec)] hover:text-white"
-        >
-          <ArrowLeft className="w-4 h-4" /> {t.back}
-        </button>
+        <BackButton onClick={() => navigate(gamePath)} t={t} className="mb-4" />
         <div className="card p-8 text-center border border-pink-500/20 bg-pink-500/5">
           <Gift className="w-12 h-12 mx-auto text-pink-300 mb-4" />
           <h1 className="text-2xl font-black mb-2">{t.adminCannotPurchaseTitle}</h1>
@@ -467,25 +480,19 @@ export default function BuyView({
   if (step === 'payment' || step === 'pending') {
     return (
       <div className="max-w-2xl mx-auto">
-        <button
-          type="button"
-          onClick={() => { setStep('details'); setActiveOrder(null); }}
-          className="flex items-center gap-2 mb-6 text-sm text-[var(--text-sec)] hover:text-white"
-        >
-          <ArrowLeft className="w-4 h-4" /> {t.back}
-        </button>
+        <BackButton onClick={() => { setStep('details'); setActiveOrder(null); }} t={t} className="mb-6" />
 
         <div className="card p-8">
-          <div className="mb-6 text-center">
-            <div className="text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">{activeMethodLabel}</div>
+          <div className="mb-6">
+            <div className="text-xs font-semibold text-[var(--accent)] mb-1">{activeMethodLabel}</div>
             <h1 className="text-2xl font-black">{formatMessage(t.completeWalletPayment, { method: activeMethodLabel })}</h1>
             <p className="mt-1 text-[var(--text-sec)]">{purchaseSubtitle}</p>
           </div>
 
-          <div className="text-center mb-6">
+          <div className="mb-6">
             <div className="text-sm text-[var(--text-muted)]">{t.total}</div>
-            <div className="text-4xl font-black font-mono text-[var(--accent)]">
-              ${activeOrder?.total != null ? parseFloat(activeOrder.total).toFixed(2) : total}
+            <div className="text-4xl font-black font-mono text-[var(--price)]">
+              {formatMoney(activeOrder?.total != null ? parseFloat(activeOrder.total) : null, { fallback: `$${total}` })}
             </div>
             {!activeIsApiWallet && (
               <div className="text-xs text-[var(--text-sec)] mt-1">{activePaymentDisplay.merchantName}</div>
@@ -493,10 +500,10 @@ export default function BuyView({
           </div>
 
           {activeIsApiWallet && !activeOrder?.invoice ? (
-            <div className="text-center py-6 rounded-2xl border border-amber-500/30 bg-amber-500/10">
+            <AlertBanner tone="amber" centered>
               <Clock className="w-8 h-8 mx-auto text-amber-300 mb-2" />
-              <p className="text-sm text-amber-100">{t.samInvoiceUnavailable}</p>
-            </div>
+              <p>{t.samInvoiceUnavailable}</p>
+            </AlertBanner>
           ) : activeIsApiWallet && activeOrder?.invoice ? (
             <SamInvoicePaymentPanel
               t={t}
@@ -562,14 +569,14 @@ export default function BuyView({
                   )}
                 </button>
               ) : (
-                <div className="text-center py-4 rounded-2xl border border-amber-500/30 bg-amber-500/10">
+                <AlertBanner tone="amber" centered>
                   <Clock className="w-8 h-8 mx-auto text-amber-300 mb-2" />
-                  <div className="font-bold text-amber-100">{t.awaitingAdminApproval}</div>
+                  <div className="font-bold">{t.awaitingAdminApproval}</div>
                   <p className="text-xs text-[var(--text-sec)] mt-2 max-w-sm mx-auto">
                     {t.orderPendingDesc}
                   </p>
                   <CheckCircle className="w-5 h-5 mx-auto text-emerald-400 mt-3" />
-                </div>
+                </AlertBanner>
               )}
             </>
           )}
@@ -580,13 +587,11 @@ export default function BuyView({
 
   return (
     <div className="max-w-2xl mx-auto">
-      <button type="button" onClick={() => navigate(-1)} className="flex items-center gap-2 mb-6 text-sm text-[var(--text-sec)] hover:text-white">
-        <ArrowLeft className="w-4 h-4" /> {t.back}
-      </button>
+      <BackButton onClick={() => navigate(-1)} t={t} className="mb-6" />
 
       <div className="card p-8">
-        <div className="mb-8 text-center">
-          <div className="text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">
+        <div className="mb-8">
+          <div className="text-xs font-semibold text-[var(--accent)] mb-1">
             {isVoucherOnly ? t.voucherCheckout : t.instantPurchaseLabel}
           </div>
           <h1 className="text-3xl font-black">
@@ -605,7 +610,7 @@ export default function BuyView({
           <div className="text-end">
             {appliedCoupon && publicPrice > price + 0.0001 ? (
               <div className="text-sm line-through text-[var(--text-muted)] font-mono" dir="ltr">
-                ${publicPrice.toFixed(2)}
+                {formatMoney(publicPrice)}
               </div>
             ) : null}
             <div className="text-4xl font-black text-[var(--price)]" dir="ltr">${total}</div>
@@ -624,7 +629,7 @@ export default function BuyView({
           <div className="mb-6 rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)]/60 p-4 space-y-2">
             <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-sec)]">
               <Ticket className="w-4 h-4 text-[var(--accent)]" />
-              {t.couponBuyTitle}
+              <label htmlFor="buy-coupon-input">{t.couponBuyTitle}</label>
             </div>
             <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">{t.couponBuyHelp}</p>
             {appliedCoupon ? (
@@ -651,7 +656,8 @@ export default function BuyView({
             ) : (
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
-                  className="profile-field-input text-sm flex-1 font-mono"
+                  id="buy-coupon-input"
+                  className="input text-sm flex-1 min-w-0 font-mono"
                   placeholder={t.couponRedeemPlaceholder}
                   value={couponInput}
                   onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
@@ -718,7 +724,7 @@ export default function BuyView({
                   {t.voucherDeliveryDesc}
                 </p>
                 <p className="text-xs text-[var(--text-muted)] mt-2 inline-flex items-center gap-1">
-                  <Zap className="w-3.5 h-3.5 text-violet-300" />
+                  <Zap className="w-3.5 h-3.5 text-[var(--accent)]" />
                   {t.voucherFulfillmentNote}
                 </p>
               </div>
@@ -770,7 +776,7 @@ export default function BuyView({
                 value={playerUid}
                 onChange={(e) => setPlayerUid(e.target.value)}
                 placeholder={t.enterUid}
-                className="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 text-lg font-mono focus:border-[var(--accent)] outline-none"
+                className="input w-full text-lg font-mono"
               />
               {savedGamePlayer.uid && (
                 <p className="text-[10px] text-[var(--text-muted)] mt-1.5">{t.gameUidAutofillHint}</p>
@@ -787,8 +793,8 @@ export default function BuyView({
                 onChange={setPlayerServer}
                 t={t}
                 required
-                inputClassName="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 font-mono focus:border-[var(--accent)] outline-none"
-                selectClassName="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 focus:border-[var(--accent)] outline-none"
+                inputClassName="input w-full font-mono"
+                selectClassName="input w-full"
               />
             </div>
           )}
@@ -802,7 +808,7 @@ export default function BuyView({
                 onChange={setPlayerCharname}
                 t={t}
                 required
-                inputClassName="w-full rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] px-4 py-3 focus:border-[var(--accent)] outline-none"
+                inputClassName="input w-full"
               />
             </div>
           )}
@@ -826,9 +832,9 @@ export default function BuyView({
         )}
 
         {!anyManualReady && (
-          <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          <AlertBanner tone="amber" className="mb-6">
             {t.walletManualNotReady}
-          </div>
+          </AlertBanner>
         )}
 
         <div className="mb-6">
@@ -863,7 +869,7 @@ export default function BuyView({
                   </div>
                   {isBalance && (
                     <div className="ml-auto flex flex-col items-end gap-1">
-                      <div className="text-xs text-emerald-400">(${currentBalance.toFixed(2)})</div>
+                      <div className="text-xs text-emerald-400">({formatMoney(currentBalance)})</div>
                       {!hasEnough && (
                         <div className="text-[10px] px-2 py-0.5 rounded bg-red-500/10 text-red-400">
                           {t.insufficientBalance}
@@ -878,7 +884,10 @@ export default function BuyView({
         </div>
 
         {!hasEnough && user && user.role !== 'admin' && (
-          <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <AlertBanner
+            tone="amber"
+            className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+          >
             <p className="text-sm text-amber-100">{t.insufficientBalanceRechargeHint}</p>
             <button
               type="button"
@@ -888,18 +897,18 @@ export default function BuyView({
               <Wallet className="w-4 h-4" />
               {t.recharge}
             </button>
-          </div>
+          </AlertBanner>
         )}
 
         {selectedMethod === 'balance' && !stockCheck.loading && !stockCheck.available && (
-          <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          <AlertBanner tone="red" className="mb-6">
             <p>{stockCheck.message || t.fulfillmentOutOfStock}</p>
             {stockCheck.reason ? (
               <p className="text-[11px] opacity-70 mt-1 font-mono" dir="ltr">
                 reason: {stockCheck.reason}
               </p>
             ) : null}
-          </div>
+          </AlertBanner>
         )}
 
         <button

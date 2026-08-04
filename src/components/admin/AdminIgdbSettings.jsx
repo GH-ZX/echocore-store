@@ -8,6 +8,7 @@ import {
   Sparkles,
   Wand2,
 } from 'lucide-react';
+import { Spinner } from '../routing/PageLoader';
 import { fetchIgdbSettings, saveIgdbSettings, testIgdbConnection } from '../../lib/igdb';
 import AdminApiKeyField from './AdminApiKeyField';
 import ConfirmDialog from '../ui/ConfirmDialog';
@@ -168,7 +169,7 @@ export default function AdminIgdbSettings({ t = {}, onNotify, embedded = false }
 
       {loading ? (
         <div className="py-8 text-center text-[var(--text-muted)]">
-          <Loader2 className="w-6 h-6 animate-spin mx-auto text-[var(--accent)]" />
+          <Spinner size="md" className="mx-auto text-[var(--accent)]" />
         </div>
       ) : (
         <form onSubmit={handleSave} className="space-y-4">

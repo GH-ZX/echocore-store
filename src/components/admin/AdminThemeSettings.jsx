@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Palette, Loader2, CheckCircle, AlertCircle, RefreshCw, Save, RotateCcw, Sparkles, Sparkle, ImageIcon, Check, Sun, Moon } from 'lucide-react';
+import { Spinner } from '../routing/PageLoader';
 import { fetchStoreSettings, saveStoreSettings } from '../../lib/storeSettings';
 import { uploadImage } from '../../lib/uploadImage';
 import EchoLogo from '../ui/EchoLogo';
@@ -1046,7 +1047,7 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
   if (loading) {
     return (
       <div className="card p-10 text-center text-[var(--text-sec)]">
-        <Loader2 className="w-8 h-8 animate-spin mx-auto text-[var(--accent)]" />
+        <Spinner size="lg" className="mx-auto text-[var(--accent)]" />
       </div>
     );
   }

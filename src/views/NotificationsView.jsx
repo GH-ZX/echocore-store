@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Inbox, Loader2 } from 'lucide-react';
+import { Bell, Inbox } from 'lucide-react';
+import { Spinner } from '../components/routing/PageLoader';
 import InboxNotificationRow from '../components/notifications/InboxNotificationRow';
 import InboxPager from '../components/notifications/InboxPager';
 import InboxSearchBar from '../components/notifications/InboxSearchBar';
@@ -144,7 +145,7 @@ export default function NotificationsView({
 
       {loading && notifications.length === 0 ? (
         <div className="card p-10 text-center">
-          <Loader2 className="w-7 h-7 animate-spin text-[var(--accent)] mx-auto" />
+          <Spinner size="w-7" className="mx-auto text-[var(--accent)]" />
         </div>
       ) : pagination.total === 0 ? (
         <div className="card p-10 text-center text-[var(--text-sec)]">

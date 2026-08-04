@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { RECHARGE_MAX } from './recharge';
+import { isMissingRpc } from './supabaseErrors';
 
 const SETUP_MSG =
   'Manual balance adjust is not configured. Run scripts/admin-balance-adjust-migration.sql in Supabase.';
@@ -8,7 +9,7 @@ const ADJUST_MIN = 0.01;
 const ADJUST_MAX = RECHARGE_MAX || 500;
 
 function wrapRpcError(error) {
-  if (error?.message?.includes('function') && error?.message?.includes('does not exist')) {
+  if (isMissingRpc(error)) {
     throw new Error(SETUP_MSG);
   }
   throw error;

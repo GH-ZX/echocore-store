@@ -10,6 +10,7 @@ import {
   Send,
   User,
 } from 'lucide-react';
+import { Spinner } from '../routing/PageLoader';
 import {
   buildContactTimeline,
   fetchContactMessages,
@@ -18,7 +19,9 @@ import {
   updateContactMessageStatus,
 } from '../../lib/contactMessages';
 import { getAdminDashboardPath } from '../../lib/adminRoutes';
+import AlertBanner from '../ui/AlertBanner';
 import { formatNotificationRelativeTime } from '../../lib/notificationTime';
+import { formatDateTime } from '../../lib/i18n';
 
 function statusTone(status) {
   if (status === 'new') return 'bg-sky-500/15 text-sky-300 border-sky-500/30';
@@ -250,7 +253,6 @@ export default function AdminContactMessages({
   };
 
   const textDir = lang === 'ar' ? 'rtl' : 'ltr';
-  const locale = lang === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US';
 
   return (
     <div className="space-y-4" dir={textDir}>
@@ -303,14 +305,14 @@ export default function AdminContactMessages({
       </div>
 
       {error && (
-        <div className="card p-3 text-sm text-amber-300 border border-amber-500/30 bg-amber-500/10">
+        <AlertBanner tone="amber" className="card p-3">
           {error}
-        </div>
+        </AlertBanner>
       )}
 
       {loading && messages.length === 0 ? (
         <div className="card p-10 text-center">
-          <Loader2 className="w-7 h-7 animate-spin text-[var(--accent)] mx-auto" />
+          <Spinner size="w-7" className="mx-auto text-[var(--accent)]" />
         </div>
       ) : filtered.length === 0 ? (
         <div className="card p-10 text-center text-[var(--text-sec)]">
@@ -391,7 +393,7 @@ export default function AdminContactMessages({
                     </span>
                     <span>
                       {selected.created_at
-                        ? new Date(selected.created_at).toLocaleString(locale)
+                        ? formatDateTime(selected.created_at, lang)
                         : ''}
                     </span>
                   </div>
@@ -476,7 +478,7 @@ export default function AdminContactMessages({
                             </p>
                             <div className="text-[10px] text-[var(--text-muted)] mt-1.5">
                               {item.created_at
-                                ? new Date(item.created_at).toLocaleString(locale)
+                                ? formatDateTime(item.created_at, lang)
                                 : ''}
                             </div>
                           </div>

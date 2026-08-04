@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { ArrowLeft, Download, Loader2 } from 'lucide-react';
+import { ArrowLeft, Download } from 'lucide-react';
+import { Spinner } from '../components/routing/PageLoader';
 import InvoiceDocument from '../components/invoices/InvoiceDocument';
 import InvoiceDownloadActions from '../components/invoices/InvoiceDownloadActions';
 import {
@@ -126,7 +127,7 @@ export default function InvoiceView({
   if (loading) {
     return (
       <div className="max-w-3xl mx-auto p-8 text-center">
-        <Loader2 className="w-8 h-8 animate-spin text-[var(--accent)] mx-auto mb-3" />
+        <Spinner size="lg" className="mx-auto text-[var(--accent)] mb-3" />
         <p className="text-[var(--text-sec)]">{t.loadingInvoice}</p>
       </div>
     );

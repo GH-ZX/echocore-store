@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { isMissingRpc } from './supabaseErrors';
 
 /** Top offer ids by completed purchase quantity (public). */
 export async function fetchBestsellingOfferRanks(limit = 10) {
@@ -6,7 +7,7 @@ export async function fetchBestsellingOfferRanks(limit = 10) {
     p_limit: Math.max(1, Math.min(50, Number(limit) || 10)),
   });
   if (error) {
-    if (error?.message?.includes('function') && error?.message?.includes('does not exist')) {
+    if (isMissingRpc(error)) {
       console.warn('get_bestselling_offer_ids missing — run scripts/bestselling-offers-migration.sql');
       return [];
     }

@@ -1,16 +1,16 @@
 import { useMemo, useState } from 'react';
-import { Ticket } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import HomeGameCard from '../components/ui/HomeGameCard';
 import CatalogCategoryHeader from '../components/catalog/CatalogCategoryHeader';
 import CatalogPageShell from '../components/catalog/CatalogPageShell';
 import CatalogSearchBar from '../components/catalog/CatalogSearchBar';
+import CatalogGrid from '../components/catalog/CatalogGrid';
 import {
   countActiveOffers,
   filterVoucherGamesBySegment,
   getCatalogVoucherGames,
 } from '../lib/catalogUtils';
-import { filterGamesByQuery } from '../lib/catalogSearch';
+import { filterGamesByQuery } from '../lib/searchUtils';
 import {
   CATALOG_NAV_ITEMS,
   getCatalogNavDesc,
@@ -61,8 +61,8 @@ export default function GiftCardsView({
       .filter((game) => game.offerCount > 0 || game.catalog_source === 'live' || isAdmin);
 
     const segmented = filterVoucherGamesBySegment(base, segmentFilter);
-    return filterGamesByQuery(segmented, query, lang);
-  }, [games, offers, isAdmin, segmentFilter, query, lang]);
+    return filterGamesByQuery(segmented, query);
+  }, [games, offers, isAdmin, segmentFilter, query]);
 
   return (
     <CatalogPageShell
@@ -103,33 +103,20 @@ export default function GiftCardsView({
         })}
       </div>
 
-      {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
-          {Array.from({ length: 8 }).map((_, index) => (
-            <div key={index} className="card h-52 animate-pulse bg-[var(--bg-surface)]" />
-          ))}
-        </div>
-      ) : voucherGames.length === 0 ? (
-        <div className="card p-10 text-center">
-          <Ticket className="w-10 h-10 mx-auto text-[var(--text-muted)] mb-3" />
-          <p className="text-[var(--text-sec)]">{t.noGiftCards}</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
-          {voucherGames.map((game) => (
-            <HomeGameCard
-              key={game.id}
-              game={game}
-              lang={lang}
-              t={t}
-              offerCount={game.offerCount}
-              onSelectGame={onSelectGame}
-              onEditGame={onEditGame}
-              isAdmin={isAdmin}
-            />
-          ))}
-        </div>
-      )}
+      <CatalogGrid loading={loading} count={voucherGames.length} emptyTitle={t.noGiftCards}>
+        {voucherGames.map((game) => (
+          <HomeGameCard
+            key={game.id}
+            game={game}
+            lang={lang}
+            t={t}
+            offerCount={game.offerCount}
+            onSelectGame={onSelectGame}
+            onEditGame={onEditGame}
+            isAdmin={isAdmin}
+          />
+        ))}
+      </CatalogGrid>
     </CatalogPageShell>
   );
 }

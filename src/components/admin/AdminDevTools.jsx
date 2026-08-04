@@ -16,6 +16,8 @@ import {
   adminGetDevWallet,
   adminRunMockPurchase,
 } from '../../lib/devTools';
+import { formatMoney } from '../../lib/i18n';
+import { useNotify } from '../../hooks/useNotify';
 
 export default function AdminDevTools({
   t = {},
@@ -48,8 +50,7 @@ export default function AdminDevTools({
     [orders],
   );
 
-  const notifyError = (message) => onNotify?.(message, 'error');
-  const notifySuccess = (message) => onNotify?.(message, 'success');
+  const { notifyError, notifySuccess } = useNotify(onNotify);
 
   const refreshWallet = useCallback(async () => {
     try {
@@ -97,7 +98,7 @@ export default function AdminDevTools({
       notifySuccess(
         isAr
           ? `أُضيف ${amount.toFixed(2)}$ رصيداً تجريبياً`
-          : `Added $${amount.toFixed(2)} test balance`,
+          : `Added ${formatMoney(amount)} test balance`,
       );
     } catch (err) {
       notifyError(err.message);
@@ -180,11 +181,11 @@ export default function AdminDevTools({
         <div className="grid sm:grid-cols-2 gap-3 mb-4">
           <div className="rounded-xl border border-[var(--border)] p-4">
             <div className="text-xs text-[var(--text-muted)] mb-1">{isAr ? 'الرصيد الكلي' : 'Total balance'}</div>
-            <div className="text-2xl font-black text-[var(--price)]">${wallet.balance.toFixed(2)}</div>
+            <div className="text-2xl font-black text-[var(--price)]">{formatMoney(wallet.balance)}</div>
           </div>
           <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-4">
             <div className="text-xs text-[var(--text-muted)] mb-1">{t.devTestBalanceLabel || (isAr ? 'رصيد تجريبي (قابل للمسح)' : 'Test balance (clearable)')}</div>
-            <div className="text-2xl font-black text-amber-300">${wallet.devTestBalance.toFixed(2)}</div>
+            <div className="text-2xl font-black text-amber-300">{formatMoney(wallet.devTestBalance)}</div>
           </div>
         </div>
 
@@ -245,7 +246,7 @@ export default function AdminDevTools({
             >
               {purchasableOffers.map((offer) => (
                 <option key={offer.id} value={offer.id}>
-                  {(isAr ? offer.name_ar : offer.name_en) || offer.name_en} — ${parseFloat(offer.price).toFixed(2)}
+                  {(isAr ? offer.name_ar : offer.name_en) || offer.name_en} — {formatMoney(offer.price)}
                 </option>
               ))}
             </select>
@@ -253,7 +254,7 @@ export default function AdminDevTools({
             {selectedOffer && (
               <p className="text-xs text-[var(--text-muted)] mb-3">
                 {isAr ? 'سعر الاختبار:' : 'Test price:'}{' '}
-                <span className="font-mono text-[var(--price)]">${parseFloat(selectedOffer.price).toFixed(2)}</span>
+                <span className="font-mono text-[var(--price)]">{formatMoney(selectedOffer.price)}</span>
               </p>
             )}
 
@@ -310,7 +311,7 @@ export default function AdminDevTools({
                 className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] px-3 py-2 text-sm hover:border-[var(--accent)]/40 transition-colors"
               >
                 <span className="font-mono text-xs">#{order.id.slice(0, 8)}</span>
-                <span>${parseFloat(order.total).toFixed(2)}</span>
+                <span>{formatMoney(order.total)}</span>
               </Link>
             ))}
           </div>

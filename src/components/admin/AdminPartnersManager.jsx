@@ -24,17 +24,17 @@ import {
   adminUpdateInfluencerCoupon,
 } from '../../lib/coupons';
 import { fetchAdminUsers } from '../../lib/adminModeration';
-import { formatMessage } from '../../lib/i18n';
+import { formatMessage, formatMoney } from '../../lib/i18n';
 import {
   formatProfileUsername,
   getProfileAdminLabel,
   getProfileDisplayName,
   getProfileUsername,
 } from '../../lib/username';
+import { useNotify } from '../../hooks/useNotify';
 
 export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) {
-  const notifyError = (m) => onNotify?.(m, 'error');
-  const notifySuccess = (m) => onNotify?.(m, 'success');
+  const { notifyError, notifySuccess } = useNotify(onNotify);
 
   const [loading, setLoading] = useState(true);
   const [tiers, setTiers] = useState([]);
@@ -563,7 +563,7 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
                       ) : null}
                     </span>
                     <span className="font-mono text-xs text-[var(--text-sec)]" dir="ltr">
-                      ${parseFloat(u.balance || 0).toFixed(2)}
+                      {formatMoney(u.balance || 0)}
                     </span>
                   </button>
                 </li>

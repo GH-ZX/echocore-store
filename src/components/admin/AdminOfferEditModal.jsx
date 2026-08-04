@@ -11,7 +11,7 @@ import {
   normalizePricingMode,
   persistOfferPricing,
 } from '../../lib/adminOfferPricing';
-import { formatMessage } from '../../lib/i18n';
+import { formatMessage, formatMoney } from '../../lib/i18n';
 
 export default function AdminOfferEditModal({
   offer,
@@ -443,11 +443,7 @@ export default function AdminOfferEditModal({
                     <PricingEditableValue
                       label={t.price || 'Customer price'}
                       value={form.price}
-                      displayValue={
-                        form.price === '' || form.price == null
-                          ? '—'
-                          : `$${Number(form.price).toFixed(2)}`
-                      }
+                      displayValue={formatMoney(form.price, { fallback: '—' })}
                       prefix="$"
                       min={0.01}
                       step={0.01}
@@ -460,9 +456,7 @@ export default function AdminOfferEditModal({
                         {t.price || 'Customer price'}
                       </label>
                       <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]/50 px-3 py-2.5 font-mono text-base font-semibold tabular-nums min-h-[44px] flex items-center" dir="ltr">
-                        {form.price !== '' && form.price != null
-                          ? `$${Number(form.price).toFixed(2)}`
-                          : '—'}
+                        {formatMoney(form.price, { fallback: '—' })}
                       </div>
                       <p className="text-[10px] text-[var(--text-muted)] mt-1">
                         {t.pricingPriceComputedHint || 'Computed from cost + margin. Choose Fixed to set a custom price.'}
@@ -488,7 +482,7 @@ export default function AdminOfferEditModal({
                   <div className="text-xs text-[var(--text-sec)] rounded-lg border border-[var(--border)] px-3 py-2 bg-[var(--bg-surface)]/40">
                     {formatMessage(t.pricingPreviewLine || 'Cost {cost} → customer {price}', {
                       cost: `$${cost.toFixed(4)}`,
-                      price: `$${Number(previewPrice).toFixed(2)}`,
+                      price: formatMoney(previewPrice),
                     })}
                   </div>
                 )}

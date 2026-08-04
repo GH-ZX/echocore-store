@@ -22,6 +22,7 @@ import {
   Share2,
   RotateCcw,
 } from 'lucide-react';
+import { Spinner } from '../routing/PageLoader';
 import { getCarouselGames } from '../../lib/carouselUtils';
 import {
   countActiveOffers,
@@ -31,7 +32,7 @@ import {
 import { offerBelongsToStorefront } from '../../lib/gameRegions';
 import { isValidSaleOffer } from '../../lib/saleOffers';
 import { isDisplayableReview } from '../../lib/customerReviews';
-import { formatMessage } from '../../lib/i18n';
+import { formatMessage, formatMoney } from '../../lib/i18n';
 import {
   DEFAULT_HOME_LAYOUT,
   HOME_SECTION_TYPES,
@@ -202,7 +203,7 @@ function SectionFields({
           empty={t.homeNoOffers}
           items={offerList.map((o) => ({
             id: o.id,
-            label: `${o.name_en || o.name_ar || o.id} — $${parseFloat(o.price || 0).toFixed(2)}`,
+            label: `${o.name_en || o.name_ar || o.id} — ${formatMoney(o.price || 0)}`,
           }))}
           selectedIds={section.offer_ids || []}
           onChangeIds={(offer_ids) => set({ offer_ids })}
@@ -476,7 +477,7 @@ export default function AdminHomeLayoutSettings({
   if (loading) {
     return (
       <div className="card p-10 text-center text-[var(--text-sec)]">
-        <Loader2 className="w-8 h-8 animate-spin mx-auto text-[var(--accent)]" />
+        <Spinner size="lg" className="mx-auto text-[var(--accent)]" />
       </div>
     );
   }

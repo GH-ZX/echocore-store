@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, ExternalLink, FileText, Loader2, RefreshCw, ShoppingCart, Wallet } from 'lucide-react';
+import { Bell, ExternalLink, FileText, RefreshCw, ShoppingCart, Wallet } from 'lucide-react';
+import { Spinner } from '../routing/PageLoader';
 import InboxNotificationRow from '../notifications/InboxNotificationRow';
 import InboxPager from '../notifications/InboxPager';
 import InboxSearchBar from '../notifications/InboxSearchBar';
@@ -188,7 +189,7 @@ export default function AdminInboxManager({
 
       {loading && notifications.length === 0 ? (
         <div className="card p-10 text-center">
-          <Loader2 className="w-7 h-7 animate-spin text-[var(--accent)] mx-auto" />
+          <Spinner size="w-7" className="mx-auto text-[var(--accent)]" />
         </div>
       ) : pagination.total === 0 ? (
         <div className="card p-10 text-center text-[var(--text-sec)] space-y-3">

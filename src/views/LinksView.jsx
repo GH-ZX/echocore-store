@@ -10,7 +10,7 @@ export default function LinksView({ t = {}, lang = 'en' }) {
         <Link to="/" className="inline-flex flex-col items-center gap-3 group mb-5">
           <EchoLogo className="w-16 h-16 transition-transform group-hover:scale-105" />
           <div>
-            <div className="text-2xl font-black tracking-[1px] text-transparent bg-clip-text bg-gradient-to-r from-[var(--accent)] to-blue-400">
+            <div className="text-2xl font-black tracking-[1px] text-transparent bg-clip-text bg-gradient-to-r from-[var(--accent)] to-[var(--accent-2)]">
               ECHOCORE
             </div>
             <div className="text-[10px] text-[var(--accent)]/60 tracking-[2px] font-semibold -mt-0.5">

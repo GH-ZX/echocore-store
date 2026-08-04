@@ -11,6 +11,7 @@ import { getFulfillmentGameForOffer } from '../../lib/gameRegions';
 import OfferPackLabel from './OfferPackLabel';
 import PartnerPriceBadge from './PartnerPriceBadge';
 import { presetImageUrl } from '../../lib/imageUtils';
+import { formatMoney } from '../../lib/i18n';
 import { getGameCardImageUrl } from '../../lib/gameImages';
 
 export default function SaleOfferCard({
@@ -33,8 +34,8 @@ export default function SaleOfferCard({
   const gameName = isAr ? game.name_ar : game.name_en;
   const fulfillmentGame = getFulfillmentGameForOffer(offer, games) || game;
   const offerName = getOfferDisplayName(offer, lang, { game: fulfillmentGame, games, relatedOffers: offers });
-  const price = parseFloat(offer.price).toFixed(2);
-  const originalPrice = offer.original_price ? parseFloat(offer.original_price).toFixed(2) : null;
+  const price = formatMoney(offer.price);
+  const originalPrice = offer.original_price ? formatMoney(offer.original_price) : null;
   const discount = getOfferDiscount(offer);
   const showSale = offer.is_sale && discount != null && discount > 0;
 
@@ -117,7 +118,7 @@ export default function SaleOfferCard({
           <div className="flex items-baseline gap-2 flex-wrap">
             {showSale && originalPrice && !offer._partnerPriced && !offer._influencerPriced && (
               <span className="text-xs sm:text-sm line-through text-[var(--text-muted)]">
-                ${originalPrice}
+                {originalPrice}
               </span>
             )}
             {(offer._partnerPriced || offer._influencerPriced) && offer._publicPrice != null && (
@@ -126,7 +127,7 @@ export default function SaleOfferCard({
               </span>
             )}
             <span className="text-lg sm:text-xl font-black text-[var(--price)] tabular-nums" dir="ltr">
-              ${price}
+              {price}
             </span>
           </div>
           {!isAdmin && (offer._partnerPriced || offer._influencerPriced) && (

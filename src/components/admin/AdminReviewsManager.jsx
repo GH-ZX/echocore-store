@@ -11,6 +11,7 @@ import {
   X,
   Pencil,
 } from 'lucide-react';
+import { Spinner } from '../routing/PageLoader';
 import {
   fetchAllReviews,
   saveReview,
@@ -149,7 +150,7 @@ export default function AdminReviewsManager({ t = {}, onChanged }) {
   if (loading) {
     return (
       <div className="card p-10 text-center text-[var(--text-sec)]">
-        <Loader2 className="w-8 h-8 animate-spin mx-auto text-[var(--accent)]" />
+        <Spinner size="lg" className="mx-auto text-[var(--accent)]" />
       </div>
     );
   }

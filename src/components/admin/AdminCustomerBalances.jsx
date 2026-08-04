@@ -3,17 +3,18 @@ import { useNavigate } from 'react-router-dom';
 import {
   ChevronLeft,
   ChevronRight,
-  Loader2,
   RefreshCw,
   Search,
   Users,
   HandCoins,
   History,
 } from 'lucide-react';
+import { Spinner } from '../routing/PageLoader';
 import { fetchAdminUsers } from '../../lib/adminModeration';
 import { getAdminUserWalletFlowPath } from '../../lib/adminRoutes';
-import { formatMessage } from '../../lib/i18n';
+import { formatMessage, formatMoney } from '../../lib/i18n';
 import { getProfileUsername } from '../../lib/username';
+import { useNotify } from '../../hooks/useNotify';
 
 const PAGE_SIZE = 25;
 
@@ -30,7 +31,7 @@ export default function AdminCustomerBalances({
   refreshKey = 0,
 }) {
   const navigate = useNavigate();
-  const notifyError = useCallback((message) => onNotify?.(message, 'error'), [onNotify]);
+  const { notifyError } = useNotify(onNotify);
 
   const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState('');
@@ -114,7 +115,7 @@ export default function AdminCustomerBalances({
             {t.adminCustomerBalancesTotal}
           </div>
           <div className="font-mono font-black text-[var(--accent)] text-lg">
-            ${pageBalanceSum.toFixed(2)}
+            ${formatMoney(pageBalanceSum)}
           </div>
           <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
             {formatMessage(t.adminCustomerBalancesCount, { count: total })}
@@ -173,7 +174,7 @@ export default function AdminCustomerBalances({
 
       {loading ? (
         <div className="p-10 text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto text-[var(--accent)]" />
+          <Spinner size="lg" className="mx-auto text-[var(--accent)]" />
         </div>
       ) : users.length === 0 ? (
         <div className="p-10 text-center text-[var(--text-sec)] text-sm">
@@ -204,7 +205,7 @@ export default function AdminCustomerBalances({
                       {user.email || '—'}
                     </td>
                     <td className="p-3 text-end font-mono font-bold text-[var(--accent)] whitespace-nowrap">
-                      ${Number(user.balance || 0).toFixed(2)}
+                      {formatMoney(user.balance || 0)}
                     </td>
                     <td className="p-3 text-end">
                       <div className="inline-flex flex-wrap justify-end gap-1.5">

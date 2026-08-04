@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ArrowLeft, Loader2, QrCode, Clock, CheckCircle, Gift, Wallet } from 'lucide-react';
+import { Loader2, QrCode, Clock, CheckCircle, Gift, Wallet } from 'lucide-react';
 import {
   buildPaymentMethods,
   getDefaultPaymentMethod,
@@ -11,14 +11,17 @@ import {
 } from '../lib/paymentMethods';
 import SamInvoicePaymentPanel from '../components/SamInvoicePaymentPanel';
 import PaymentMethodIcon from '../components/ui/PaymentMethodIcon';
+import AlertBanner from '../components/ui/AlertBanner';
 import { markOrderPaymentSent } from '../lib/orders';
-import { formatMessage } from '../lib/i18n';
+import { formatMessage, formatMoney } from '../lib/i18n';
 import { getAdminGiftPath, getAdminDashboardPath } from '../lib/adminRoutes';
 import {
   getFulfillmentUnavailableMessage,
   inspectFulfillmentAvailability,
 } from '../lib/fulfillmentAvailability';
 import { isCommerceBlockedDuringMaintenance } from '../lib/siteStatus';
+import { useNotify } from '../hooks/useNotify';
+import BackButton from '../components/ui/BackButton';
 
 export default function CheckoutView({
   t,
@@ -34,8 +37,7 @@ export default function CheckoutView({
   navigate,
   siteStatus = null,
 }) {
-  const notifyError = (message) => onNotify?.(message, 'error');
-  const notifySuccess = (message) => onNotify?.(message, 'success');
+  const { notifyError, notifySuccess } = useNotify(onNotify);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [step, setStep] = useState('method');
@@ -47,7 +49,7 @@ export default function CheckoutView({
 
   const location = useLocation();
   const totalNum = cart.reduce((s, i) => s + (parseFloat(i.price) || 0), 0);
-  const total = totalNum.toFixed(2);
+  const total = formatMoney(totalNum);
   const hasEnoughBalance = currentBalance >= totalNum;
   const goRecharge = () => navigate('/recharge', { state: { returnTo: location.pathname } });
 
@@ -220,27 +222,22 @@ export default function CheckoutView({
   if (step === 'payment' && activeOrder) {
     return (
       <div className="max-w-xl mx-auto mt-4 sm:mt-6 px-2 animate-fade-in">
-        <button
-          type="button"
-          onClick={() => { setStep('method'); setActiveOrder(null); }}
-          className="flex items-center gap-2 mb-4 text-sm text-[var(--text-sec)] hover:text-white"
-        >
-          <ArrowLeft className="w-4 h-4" /> {t.back}
-        </button>
+        <BackButton onClick={() => { setStep('method'); setActiveOrder(null); }} t={t} className="mb-4" />
 
         <div className="card p-8 md:p-10">
-          <div className="text-center mb-6">
+          <div className="mb-6">
+            <div className="text-xs font-semibold text-[var(--accent)] mb-1">{methodLabel}</div>
             <h2 className="text-2xl font-black mb-1">{formatMessage(t.completeWalletPayment, { method: methodLabel })}</h2>
             <div className="text-sm text-[var(--text-sec)]">
-              {t.orderTotal}: <span className="font-mono font-bold text-[var(--price)]">${total}</span>
+            {t.orderTotal}: <span className="font-mono font-bold text-[var(--price)]" dir="ltr">{total}</span>
             </div>
           </div>
 
           {isApiWallet && !activeOrder.invoice ? (
-            <div className="text-center py-6 rounded-2xl border border-amber-500/30 bg-amber-500/10">
+            <AlertBanner tone="amber" centered>
               <Clock className="w-8 h-8 mx-auto text-amber-300 mb-2" />
-              <p className="text-sm text-amber-100">{t.samInvoiceUnavailable}</p>
-            </div>
+              <p>{t.samInvoiceUnavailable}</p>
+            </AlertBanner>
           ) : isApiWallet && activeOrder.invoice ? (
             <SamInvoicePaymentPanel
               t={t}
@@ -284,12 +281,12 @@ export default function CheckoutView({
               </div>
 
               {activeOrder.status === 'payment_sent' ? (
-                <div className="text-center py-4 rounded-2xl border border-amber-500/30 bg-amber-500/10">
+                <AlertBanner tone="amber" centered>
                   <Clock className="w-8 h-8 mx-auto text-amber-300 mb-2" />
-                  <div className="font-bold text-amber-100">{t.awaitingAdminApproval}</div>
+                  <div className="font-bold">{t.awaitingAdminApproval}</div>
                   <p className="text-xs text-[var(--text-sec)] mt-2">{t.orderPendingDesc}</p>
                   <CheckCircle className="w-5 h-5 mx-auto text-emerald-400 mt-3" />
-                </div>
+                </AlertBanner>
               ) : (
                 <button
                   type="button"
@@ -313,21 +310,17 @@ export default function CheckoutView({
 
   return (
     <div className="max-w-xl mx-auto mt-4 sm:mt-6 px-2 animate-fade-in">
-      <button
-        type="button"
-        onClick={() => navigate('/cart')}
-        className="flex items-center gap-2 mb-4 text-sm text-[var(--text-sec)] hover:text-white transition-colors"
-        aria-label={`${t.back} ${t.cart}`}
-      >
-        <ArrowLeft className="w-4 h-4" /> {t.back}
-      </button>
+      <BackButton onClick={() => navigate('/cart')} t={t} ariaLabel={`${t.back} ${t.cart}`} className="mb-4 transition-colors" />
       <div className="card p-8 md:p-12">
-        <h2 className="text-3xl font-black mb-2 text-center">{t.paymentMethod}</h2>
-        <div className="text-center text-sm text-[var(--text-sec)] mb-3">
-          {t.orderTotal}: <span className="font-mono font-bold text-[var(--price)]">${total}</span>
-        </div>
-        <div className="text-center text-xs mb-6 text-[var(--text-muted)]">
-          <span>{t.currentBalance}:</span> <span className="font-mono">${currentBalance.toFixed(2)}</span>
+        <div className="mb-6">
+          <div className="text-xs font-semibold text-[var(--accent)] mb-1">{t.checkout}</div>
+          <h2 className="text-3xl font-black">{t.paymentMethod}</h2>
+          <div className="mt-1 text-sm text-[var(--text-sec)]">
+            {t.orderTotal}: <span className="font-mono font-bold text-[var(--price)]" dir="ltr">${total}</span>
+          </div>
+          <div className="mt-1 text-xs text-[var(--text-muted)]">
+            <span>{t.currentBalance}:</span> <span className="font-mono" dir="ltr">{formatMoney(currentBalance)}</span>
+          </div>
         </div>
 
         <div className="space-y-3 mb-8">
@@ -377,7 +370,10 @@ export default function CheckoutView({
         </div>
 
         {!hasEnoughBalance && user && user.role !== 'admin' && (
-          <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <AlertBanner
+            tone="amber"
+            className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+          >
             <p className="text-sm text-amber-100">{t.insufficientBalanceRechargeHint}</p>
             <button
               type="button"
@@ -387,13 +383,13 @@ export default function CheckoutView({
               <Wallet className="w-4 h-4" />
               {t.recharge}
             </button>
-          </div>
+          </AlertBanner>
         )}
 
         {selectedMethod === 'balance' && !stockCheck.loading && !stockCheck.available && (
-          <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          <AlertBanner tone="red" className="mb-6">
             {stockCheck.message || t.fulfillmentOutOfStock}
-          </div>
+          </AlertBanner>
         )}
 
         <button

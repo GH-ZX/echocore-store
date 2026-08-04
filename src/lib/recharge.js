@@ -1,11 +1,12 @@
 import { supabase } from './supabase';
+import { isMissingRpc } from './supabaseErrors';
 
 const RPC_SETUP_MSG =
   'Recharge is not configured. Run supabase_echocore_full.sql in the Supabase SQL Editor.';
 
 function assertRpcData(data, error) {
   if (error) {
-    if (error.message?.includes('function') && error.message?.includes('does not exist')) {
+    if (isMissingRpc(error)) {
       throw new Error(RPC_SETUP_MSG);
     }
     throw error;
@@ -38,7 +39,7 @@ export async function expireStalePendingRecharges(maxAgeMinutes = 20) {
     p_max_age_minutes: maxAgeMinutes,
   });
   if (error) {
-    if (error.message?.includes('function') && error.message?.includes('does not exist')) {
+    if (isMissingRpc(error)) {
       return { cancelledPending: 0, skipped: true };
     }
     throw error;
@@ -56,7 +57,7 @@ export async function getMyActiveRechargeRequest() {
 
   const { data, error } = await supabase.rpc('get_my_active_recharge_request');
   if (error) {
-    if (error.message?.includes('function') && error.message?.includes('does not exist')) {
+    if (isMissingRpc(error)) {
       return null;
     }
     throw error;
@@ -114,8 +115,8 @@ export async function fetchAdminRechargeRequests(status = 'all', {
     });
     if (legacy.error) {
       if (
-        (primary.error.message?.includes('function') && primary.error.message?.includes('does not exist'))
-        || (legacy.error.message?.includes('function') && legacy.error.message?.includes('does not exist'))
+        isMissingRpc(primary.error)
+        || isMissingRpc(legacy.error)
       ) {
         throw new Error(RPC_SETUP_MSG);
       }

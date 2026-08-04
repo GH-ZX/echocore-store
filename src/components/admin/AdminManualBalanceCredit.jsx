@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Loader2, Search, UserRound, Wallet, AlertCircle, MinusCircle, PlusCircle } from 'lucide-react';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import { fetchAdminUsers } from '../../lib/adminModeration';
@@ -9,7 +9,8 @@ import {
   validateShamcashTransactionRef,
 } from '../../lib/adminBalanceCredit';
 import { RECHARGE_PRESETS } from '../../lib/recharge';
-import { formatMessage } from '../../lib/i18n';
+import { formatMessage, formatMoney } from '../../lib/i18n';
+import { useNotify } from '../../hooks/useNotify';
 
 const REASON_PRESETS_CREDIT = [
   'shamcashExpiredRecovery',
@@ -39,8 +40,7 @@ export default function AdminManualBalanceCredit({
   allowDebit = true,
   className = '',
 }) {
-  const notifyError = useCallback((message) => onNotify?.(message, 'error'), [onNotify]);
-  const notifySuccess = useCallback((message) => onNotify?.(message, 'success'), [onNotify]);
+  const { notifyError, notifySuccess } = useNotify(onNotify);
 
   const [direction, setDirection] = useState('credit');
   const [searchInput, setSearchInput] = useState('');
@@ -133,9 +133,9 @@ export default function AdminManualBalanceCredit({
         });
         notifySuccess(
           formatMessage(t.adminManualDebitSuccess, {
-            amount: `$${parseFloat(result.amount).toFixed(2)}`,
+            amount: formatMoney(result.amount),
             user: result.userName || selectedUser.name || selectedUser.email,
-            balance: `$${Number(result.newBalance || 0).toFixed(2)}`,
+            balance: formatMoney(result.newBalance || 0),
           }),
         );
       } else if (rechargeRequestId) {
@@ -148,9 +148,9 @@ export default function AdminManualBalanceCredit({
         });
         notifySuccess(
           formatMessage(t.adminManualCreditSuccess, {
-            amount: `$${parseFloat(result.amount).toFixed(2)}`,
+            amount: formatMoney(result.amount),
             user: result.userName || selectedUser.name || selectedUser.email,
-            balance: `$${Number(result.newBalance || 0).toFixed(2)}`,
+            balance: formatMoney(result.newBalance || 0),
           }),
         );
       } else {
@@ -163,9 +163,9 @@ export default function AdminManualBalanceCredit({
         });
         notifySuccess(
           formatMessage(t.adminManualCreditSuccess, {
-            amount: `$${parseFloat(result.amount).toFixed(2)}`,
+            amount: formatMoney(result.amount),
             user: result.userName || selectedUser.name || selectedUser.email,
-            balance: `$${Number(result.newBalance || 0).toFixed(2)}`,
+            balance: formatMoney(result.newBalance || 0),
           }),
         );
       }
@@ -282,7 +282,7 @@ export default function AdminManualBalanceCredit({
             <div className="text-end">
               <div className="text-[10px] text-[var(--text-muted)]">{t.currentBalance}</div>
               <div className="font-mono font-bold text-[var(--accent)]">
-                ${Number(selectedUser.balance || 0).toFixed(2)}
+                {formatMoney(selectedUser.balance || 0)}
               </div>
             </div>
           </div>
@@ -397,7 +397,7 @@ export default function AdminManualBalanceCredit({
         message={formatMessage(
           isDebit ? t.adminManualDebitConfirmBody : t.adminManualCreditConfirmBody,
           {
-            amount: `$${amountValue.toFixed(2)}`,
+            amount: formatMoney(amountValue),
             user: selectedUser?.username
               ? `@${selectedUser.username}`
               : (selectedUser?.name || selectedUser?.email || '—'),
