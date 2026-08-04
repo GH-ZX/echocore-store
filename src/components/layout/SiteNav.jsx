@@ -119,15 +119,8 @@ function NavGlow({ active }) {
   return <span className="site-nav-item-glow" aria-hidden="true" />;
 }
 
-function NavIcon({ Icon, accent }) {
-  if (!accent) {
-    return <Icon className="site-nav-trigger-icon" strokeWidth={2} />;
-  }
-  return (
-    <span className={`site-nav-trigger-icon-box site-nav-trigger-icon-box--${accent}`} aria-hidden="true">
-      <Icon className="site-nav-trigger-icon" strokeWidth={2} />
-    </span>
-  );
+function NavIcon({ Icon }) {
+  return <Icon className="site-nav-trigger-icon" strokeWidth={2} />;
 }
 
 function NavLinkItem({ item, t, lang, active }) {
@@ -145,7 +138,7 @@ function NavLinkItem({ item, t, lang, active }) {
         className={triggerClass(active, item.accent)}
         aria-current={active ? 'page' : undefined}
       >
-        <NavIcon Icon={Icon} accent={item.accent} />
+        <NavIcon Icon={Icon} />
         <span className="site-nav-trigger-label">{label}</span>
         <NavGlow active={active} />
       </Link>

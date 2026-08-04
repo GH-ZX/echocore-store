@@ -1890,37 +1890,6 @@ html, body {
   transition: transform 0.15s ease, color 0.15s ease;
 }
 
-.site-nav-trigger-icon-box {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  border-radius: 0.375rem;
-  flex-shrink: 0;
-  transition: background-color 0.15s ease, color 0.15s ease;
-}
-
-.site-nav-trigger-icon-box--games {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  color: var(--accent);
-}
-
-.site-nav-trigger-icon-box--gift {
-  background: color-mix(in srgb, #a78bfa 14%, transparent);
-  color: #c4b5fd;
-}
-
-.site-nav-trigger--games.site-nav-trigger--active .site-nav-trigger-icon-box--games,
-.site-nav-trigger--games:hover .site-nav-trigger-icon-box--games {
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
-}
-
-.site-nav-trigger--gift.site-nav-trigger--active .site-nav-trigger-icon-box--gift,
-.site-nav-trigger--gift:hover .site-nav-trigger-icon-box--gift {
-  background: color-mix(in srgb, #a78bfa 22%, transparent);
-}
-
 .site-nav-trigger-label {
   max-width: 9.5rem;
   overflow: hidden;
@@ -2216,11 +2185,6 @@ html, body {
   .site-nav-trigger-icon {
     width: 0.875rem;
     height: 0.875rem;
-  }
-
-  .site-nav-trigger-icon-box {
-    width: 1.625rem;
-    height: 1.625rem;
   }
 
   .site-nav-trigger-label {
