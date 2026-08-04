@@ -66,3 +66,11 @@ export function getCarouselPickableGames(games = [], { kind = 'all' } = {}) {
 export function getCarouselManageableGames(games = []) {
   return sortGamesByCarousel(getCarouselEligibleGames(games));
 }
+
+export function resolveCarouselBadge(item = {}, lang = 'en') {
+  if (!item) return '';
+  const en = String(item.carousel_badge_en || '').trim();
+  const ar = String(item.carousel_badge_ar || '').trim();
+  if (lang === 'ar') return ar || en;
+  return en || ar;
+}

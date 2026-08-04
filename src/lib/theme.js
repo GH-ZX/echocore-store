@@ -931,6 +931,18 @@ function blendHex(hexA, hexB, weightA = 0.5) {
   return `#${toHex(mix(a.r, b.r))}${toHex(mix(a.g, b.g))}${toHex(mix(a.b, b.b))}`;
 }
 
+function derivePriceColor(base, overrides, accent, lightMode) {
+  if (overrides['price']) return;
+
+  if (!accent.startsWith('#')) {
+    base['price'] = DEFAULT_THEME['price'];
+    return;
+  }
+
+  // In light mode the raw accent is often too pale for text; darken it for contrast.
+  base['price'] = lightMode ? blendHex(accent, '#0f172a', 0.55) : accent;
+}
+
 function deriveTextColors(base, overrides) {
   const primary = base['text-primary'];
   if (!primary?.startsWith('#')) return;
@@ -996,6 +1008,7 @@ export function buildFullTheme(overrides = {}) {
   deriveTextColors(base, overrides);
   deriveSaleColors(base, overrides, accent);
   deriveGamesColors(base, overrides, accent);
+  derivePriceColor(base, overrides, accent, lightMode);
 
   const logoAuto = (overrides['logo-filter-auto'] ?? base['logo-filter-auto'] ?? 'true') !== 'false';
   if (logoAuto) {

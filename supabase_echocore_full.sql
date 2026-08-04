@@ -80,6 +80,8 @@ CREATE TABLE IF NOT EXISTS public.games (
   carousel_focus_y numeric(5,2) DEFAULT 50, -- Vertical focal point (0 = top, 100 = bottom)
   carousel_order integer,                   -- Sort order in home carousel
   show_in_carousel boolean DEFAULT true,    -- Toggle carousel visibility
+  carousel_badge_en text,                   -- Per-slide carousel badge (EN)
+  carousel_badge_ar text,                   -- Per-slide carousel badge (AR)
   servers jsonb DEFAULT '[]'::jsonb,        -- Selectable servers/regions (e.g. ["Global", "Europe"])
   topup_fields jsonb DEFAULT '[]'::jsonb,   -- G2Bulk /games/fields tokens (e.g. ["userid","serverid"])
   topup_notes text,                         -- G2Bulk /games/fields notes for checkout hints

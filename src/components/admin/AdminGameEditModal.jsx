@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { X, Percent, Lock, RefreshCw, Loader2 } from 'lucide-react';
+import { X, Percent, Lock, RefreshCw, Loader2, EyeOff, Gamepad2, Link2, Coins, MessageSquareText, Tag, Repeat, Image, Upload } from 'lucide-react';
 import { uploadImage } from '../../lib/uploadImage';
 // import ConfirmDialog from '../ui/ConfirmDialog';
 import Modal from '../ui/Modal';
@@ -13,6 +13,45 @@ import {
 } from '../../lib/adminOfferPricing';
 import PricingEditableValue from './PricingEditableValue';
 import { formatMessage } from '../../lib/i18n';
+
+function Field({ icon: Icon, label, required, children, className = '' }) {
+  return (
+    <div className={className}>
+      <label className="flex items-center gap-1 text-[11px] font-semibold text-[var(--text-sec)] mb-1">
+        {Icon && <Icon className="w-3 h-3 shrink-0" />}
+        <span className="truncate">{label}</span>
+        {required && <span className="text-red-400">*</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function ImageModeToggle({ t = {}, value, onChange }) {
+  const modes = [
+    { id: 'library', label: t.imageModeLibrary || 'Library' },
+    { id: 'upload', label: t.imageModeUpload || 'Upload' },
+    { id: 'url', label: t.imageModeUrl || 'URL' },
+  ];
+  return (
+    <div className="flex gap-1 p-0.5 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)] mb-2">
+      {modes.map((mode) => (
+        <button
+          key={mode.id}
+          type="button"
+          onClick={() => onChange(mode.id)}
+          className={`flex-1 text-xs font-semibold py-1 rounded-md transition-all ${
+            value === mode.id
+              ? 'bg-[var(--accent)]/20 text-[var(--accent)]'
+              : 'text-[var(--text-muted)]'
+          }`}
+        >
+          {mode.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default function AdminGameEditModal({
   game,
@@ -36,10 +75,14 @@ export default function AdminGameEditModal({
     description_ar: '',
     carousel_focus_x: 50,
     carousel_focus_y: 50,
+    carousel_badge_en: '',
+    carousel_badge_ar: '',
     g2bulk_game_code: '',
   });
   const [logoFile, setLogoFile] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
+  const [logoImageMode, setLogoImageMode] = useState('library');
+  const [coverImageMode, setCoverImageMode] = useState('library');
   const [coverPreviewUrl, setCoverPreviewUrl] = useState(null);
   const [saving, setSaving] = useState(false);
   const [deleting] = useState(false);
@@ -85,6 +128,8 @@ export default function AdminGameEditModal({
         description_ar: '',
         carousel_focus_x: 50,
         carousel_focus_y: 50,
+        carousel_badge_en: '',
+        carousel_badge_ar: '',
         g2bulk_game_code: '',
       });
     } else {
@@ -99,12 +144,16 @@ export default function AdminGameEditModal({
         description_ar: game.description_ar || '',
         carousel_focus_x: game.carousel_focus_x ?? 50,
         carousel_focus_y: game.carousel_focus_y ?? 50,
+        carousel_badge_en: game.carousel_badge_en || '',
+        carousel_badge_ar: game.carousel_badge_ar || '',
         g2bulk_game_code: game.g2bulk_game_code || '',
       });
     }
 
     setLogoFile(null);
     setCoverFile(null);
+    setLogoImageMode('library');
+    setCoverImageMode('library');
     setError('');
     setBulkMsg('');
   }, [game, isNew]);
@@ -188,6 +237,8 @@ export default function AdminGameEditModal({
         description_ar: form.description_ar || form.description_en || '',
         carousel_focus_x: form.carousel_focus_x ?? 50,
         carousel_focus_y: form.carousel_focus_y ?? 50,
+        carousel_badge_en: form.carousel_badge_en?.trim() || null,
+        carousel_badge_ar: form.carousel_badge_ar?.trim() || null,
         g2bulk_game_code: form.g2bulk_game_code?.trim() || null,
       });
       onClose();
@@ -227,74 +278,108 @@ export default function AdminGameEditModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          <input
-            required
-            placeholder={t.gameNameEnglish || 'Game name (English)'}
-            value={form.name_en}
-            onChange={(e) => setForm({ ...form, name_en: e.target.value })}
-            className="input"
-          />
-          <input
-            required
-            placeholder={t.slug || 'Slug'}
-            value={form.slug}
-            onChange={(e) => setForm({ ...form, slug: e.target.value })}
-            className="input"
-          />
-          <input
-            placeholder={t.pointsName || 'Points name (VP, RP, UC...)'}
-            value={form.points_name}
-            onChange={(e) => setForm({ ...form, points_name: e.target.value })}
-            className="input"
-          />
-
+        <form onSubmit={handleSubmit} className="p-4 space-y-4" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
           <div>
-            <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 block">
-              {t.descriptionEnglish || 'Carousel description (English)'}
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-sec)] mb-2">
+              <Gamepad2 className="w-3.5 h-3.5 shrink-0" />
+              {t.gameBasicInfo || 'Game basic info'}
             </label>
-            <textarea
-              placeholder={t.descriptionEnglish || 'Text shown on the carousel slide'}
-              value={form.description_en}
-              onChange={(e) => setForm({ ...form, description_en: e.target.value })}
-              className="input w-full h-20 resize-y"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 block">
-              {t.descriptionArabic || 'Carousel description (Arabic)'}
-            </label>
-            <textarea
-              placeholder={t.descriptionArabic || 'Arabic carousel text'}
-              value={form.description_ar}
-              onChange={(e) => setForm({ ...form, description_ar: e.target.value })}
-              className="input w-full h-20 resize-y"
-            />
+            <div className="grid grid-cols-3 gap-2">
+              <Field icon={Gamepad2} label={t.gameNameEnglish || 'Game name (English)'} required>
+                <input
+                  required
+                  placeholder={t.gameNameEnglish || 'Game name (English)'}
+                  value={form.name_en}
+                  onChange={(e) => setForm({ ...form, name_en: e.target.value })}
+                  className="input w-full"
+                />
+              </Field>
+              <Field icon={Link2} label={t.slug || 'Slug'} required>
+                <input
+                  required
+                  placeholder={t.slug || 'Slug'}
+                  value={form.slug}
+                  onChange={(e) => setForm({ ...form, slug: e.target.value })}
+                  className="input w-full"
+                />
+              </Field>
+              <Field icon={Coins} label={t.pointsName || 'Points name (VP, RP, UC...)'}>
+                <input
+                  placeholder={t.pointsName || 'Points name (VP, RP, UC...)'}
+                  value={form.points_name}
+                  onChange={(e) => setForm({ ...form, points_name: e.target.value })}
+                  className="input w-full"
+                />
+              </Field>
+            </div>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field icon={MessageSquareText} label={t.descriptionEnglish || 'Carousel description (English)'}>
+              <textarea
+                placeholder={t.descriptionEnglish || 'Text shown on the carousel slide'}
+                value={form.description_en}
+                onChange={(e) => setForm({ ...form, description_en: e.target.value })}
+                className="input w-full h-20 resize-y"
+              />
+            </Field>
+            <Field icon={MessageSquareText} label={t.descriptionArabic || 'Carousel description (Arabic)'}>
+              <textarea
+                placeholder={t.descriptionArabic || 'Arabic carousel text'}
+                value={form.description_ar}
+                onChange={(e) => setForm({ ...form, description_ar: e.target.value })}
+                className="input w-full h-20 resize-y"
+                dir={lang === 'ar' ? 'rtl' : 'ltr'}
+              />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field icon={Repeat} label={t.redemptionMethod || 'Redemption method'}>
+              <select
+                value={form.redemption_method}
+                onChange={(e) => setForm({ ...form, redemption_method: e.target.value })}
+                className="input w-full"
+              >
+                <option value="uid">{t.redemptionUid || 'UID only'}</option>
+                <option value="redeem_code">{t.redemptionCode || 'Redeem code only'}</option>
+                <option value="both">{t.redemptionBoth || 'Both'}</option>
+              </select>
+            </Field>
+          </div>
+
           <div>
-            <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 block">{t.redemptionMethod || 'Redemption method'}</label>
-            <select
-              value={form.redemption_method}
-              onChange={(e) => setForm({ ...form, redemption_method: e.target.value })}
-              className="input w-full"
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-sec)] mb-2">
+              <Tag className="w-3.5 h-3.5 shrink-0" />
+              {t.carouselBadgeSection || 'Carousel badge'}
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <Field icon={Tag} label={t.carouselBadgeEnglish || 'Badge (English)'}>
+                <input
+                  placeholder={t.carouselBadgeEnglish || 'Badge (English)'}
+                  value={form.carousel_badge_en}
+                  onChange={(e) => setForm({ ...form, carousel_badge_en: e.target.value })}
+                  className="input w-full"
+                />
+              </Field>
+              <Field icon={Tag} label={t.carouselBadgeArabic || 'Badge (Arabic)'}>
+                <input
+                  placeholder={t.carouselBadgeArabic || 'Badge (Arabic)'}
+                  value={form.carousel_badge_ar}
+                  onChange={(e) => setForm({ ...form, carousel_badge_ar: e.target.value })}
+                  className="input w-full"
+                  dir={lang === 'ar' ? 'rtl' : 'ltr'}
+                />
+              </Field>
+            </div>
+            <button
+              type="button"
+              onClick={() => setForm((prev) => ({ ...prev, carousel_badge_en: '', carousel_badge_ar: '' }))}
+              className="btn btn-secondary text-sm mt-2 inline-flex items-center gap-1.5"
             >
-              <option value="uid">{t.redemptionUid || 'UID only'}</option>
-              <option value="redeem_code">{t.redemptionCode || 'Redeem code only'}</option>
-              <option value="both">{t.redemptionBoth || 'Both'}</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 block">
-              {t.g2bulkGameCode || 'Catalog game code'}
-            </label>
-            <input
-              placeholder="pubgm, mlbb, free_fire…"
-              value={form.g2bulk_game_code}
-              onChange={(e) => setForm({ ...form, g2bulk_game_code: e.target.value })}
-              className="input w-full font-mono text-sm"
-            />
+              <EyeOff className="w-3.5 h-3.5" />
+              {t.carouselBadgeHide || 'Hide badge'}
+            </button>
           </div>
 
           <GameImageSearch
@@ -315,64 +400,99 @@ export default function AdminGameEditModal({
             }}
           />
 
-          <div>
-            <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 block">{t.logoForCarousel || 'Logo'}</label>
-            <SiteImagePicker
-              t={t}
-              games={games}
-              offers={offers}
-              g2bulkGameCode={form.g2bulk_game_code}
-              fieldLabel={t.siteImagePickerLogo}
-              onSelect={(url) => {
-                setLogoFile(null);
-                setForm((prev) => ({ ...prev, logo_url: url }));
-              }}
-            />
-            <input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} className="input text-sm mt-2" />
-            <input
-              placeholder={t.orPasteLogoURL || 'Or logo URL'}
-              value={form.logo_url}
-              onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
-              className="input mt-2 text-sm"
-            />
-          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-sec)] mb-1">
+                <Image className="w-3.5 h-3.5 shrink-0" />
+                {t.logoForCarousel || 'Logo'}
+              </label>
+              <ImageModeToggle t={t} value={logoImageMode} onChange={setLogoImageMode} />
+              {logoImageMode === 'library' && (
+                <SiteImagePicker
+                  t={t}
+                  games={games}
+                  offers={offers}
+                  g2bulkGameCode={form.g2bulk_game_code}
+                  fieldLabel={t.siteImagePickerLogo}
+                  onSelect={(url) => {
+                    setLogoFile(null);
+                    setForm((prev) => ({ ...prev, logo_url: url }));
+                  }}
+                />
+              )}
+              {logoImageMode === 'upload' && (
+                <label className="btn btn-secondary text-sm inline-flex items-center gap-1.5 cursor-pointer w-full justify-center">
+                  <Upload className="w-3.5 h-3.5" />
+                  {t.upload || 'Upload'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
+                  />
+                </label>
+              )}
+              {logoImageMode === 'url' && (
+                <input
+                  placeholder={t.orPasteLogoURL || 'Or logo URL'}
+                  value={form.logo_url}
+                  onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
+                  className="input w-full text-sm"
+                />
+              )}
+            </div>
 
-          <div>
-            <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 block">{t.coverPhoto || 'Cover photo'}</label>
-            <SiteImagePicker
-              t={t}
-              games={games}
-              offers={offers}
-              g2bulkGameCode={form.g2bulk_game_code}
-              fieldLabel={t.siteImagePickerCover}
-              onSelect={(url) => {
-                setCoverFile(null);
-                setForm((prev) => ({
-                  ...prev,
-                  image_url: url,
-                  carousel_focus_x: 50,
-                  carousel_focus_y: 50,
-                }));
-              }}
-            />
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => {
-                const file = e.target.files?.[0] || null;
-                setCoverFile(file);
-                if (file) {
-                  setForm((prev) => ({ ...prev, carousel_focus_x: 50, carousel_focus_y: 50 }));
-                }
-              }}
-              className="input text-sm"
-            />
-            <input
-              placeholder={t.orPasteCoverURL || 'Or cover URL'}
-              value={form.image_url}
-              onChange={(e) => setForm({ ...form, image_url: e.target.value })}
-              className="input mt-2 text-sm"
-            />
+            <div>
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-sec)] mb-1">
+                <Image className="w-3.5 h-3.5 shrink-0" />
+                {t.coverPhoto || 'Cover photo'}
+              </label>
+              <ImageModeToggle t={t} value={coverImageMode} onChange={setCoverImageMode} />
+              {coverImageMode === 'library' && (
+                <SiteImagePicker
+                  t={t}
+                  games={games}
+                  offers={offers}
+                  g2bulkGameCode={form.g2bulk_game_code}
+                  fieldLabel={t.siteImagePickerCover}
+                  onSelect={(url) => {
+                    setCoverFile(null);
+                    setForm((prev) => ({
+                      ...prev,
+                      image_url: url,
+                      carousel_focus_x: 50,
+                      carousel_focus_y: 50,
+                    }));
+                  }}
+                />
+              )}
+              {coverImageMode === 'upload' && (
+                <label className="btn btn-secondary text-sm inline-flex items-center gap-1.5 cursor-pointer w-full justify-center">
+                  <Upload className="w-3.5 h-3.5" />
+                  {t.upload || 'Upload'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      setCoverFile(file);
+                      if (file) {
+                        setForm((prev) => ({ ...prev, carousel_focus_x: 50, carousel_focus_y: 50 }));
+                      }
+                    }}
+                  />
+                </label>
+              )}
+              {coverImageMode === 'url' && (
+                <input
+                  placeholder={t.orPasteCoverURL || 'Or cover URL'}
+                  value={form.image_url}
+                  onChange={(e) => setForm({ ...form, image_url: e.target.value })}
+                  className="input w-full text-sm"
+                />
+              )}
+            </div>
           </div>
 
           {coverImageForFocus && (

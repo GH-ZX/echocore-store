@@ -59,9 +59,9 @@ function formatFeedTime(iso, lang) {
 }
 
 const HEALTH_STYLE = {
-  ok: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100',
-  busy: 'border-amber-500/30 bg-amber-500/10 text-amber-50',
-  degraded: 'border-red-500/35 bg-red-500/10 text-red-100',
+  ok: 'border-emerald-500/30 bg-emerald-500/10 text-[var(--status-ok)]',
+  busy: 'border-amber-500/30 bg-amber-500/10 text-[var(--status-busy)]',
+  degraded: 'border-red-500/35 bg-red-500/10 text-[var(--status-danger)]',
 };
 
 export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
@@ -244,7 +244,7 @@ export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
               onClick={() => setLive((v) => !v)}
               className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold ${
                 live
-                  ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-100'
+                  ? 'border-emerald-500/40 bg-emerald-500/15 text-[var(--status-live)]'
                   : 'border-[var(--border)] text-[var(--text-sec)]'
               }`}
               title={t.activityLiveHint}

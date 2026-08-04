@@ -28,7 +28,7 @@ export default function CatalogPageShell({
           {breadcrumb.length > 0 && (
             <nav
               aria-label="Breadcrumb"
-              className="catalog-page__breadcrumb flex flex-1 min-w-0 flex-wrap items-center justify-end gap-1.5 text-[11px] sm:text-xs text-[var(--text-muted)]"
+              className="catalog-page__breadcrumb flex flex-1 min-w-0 flex-nowrap items-center justify-end gap-1.5 text-[11px] sm:text-xs text-[var(--text-muted)] overflow-hidden whitespace-nowrap"
             >
               <Home className="w-3 h-3 shrink-0" />
               {breadcrumb.map((item, index) => (

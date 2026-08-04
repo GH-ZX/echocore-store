@@ -32,7 +32,7 @@ export default function Footer({ lang = 'en', t = {} }) {
           </div>
 
           <div>
-            <div className="font-semibold text-white mb-3 tracking-tight">{t.footerShop}</div>
+            <div className="font-semibold text-[var(--text-primary)] mb-3 tracking-tight">{t.footerShop}</div>
             <ul className="space-y-[9px] text-[var(--text-secondary)]">
               <li>
                 <Link to="/games" className="hover:text-[var(--accent)] transition-colors">{t.footerLinkGames}</Link>
@@ -44,7 +44,7 @@ export default function Footer({ lang = 'en', t = {} }) {
           </div>
 
           <div>
-            <div className="font-semibold text-white mb-3 tracking-tight">{t.footerSupport}</div>
+            <div className="font-semibold text-[var(--text-primary)] mb-3 tracking-tight">{t.footerSupport}</div>
             <ul className="space-y-[9px] text-[var(--text-secondary)]">
               <li>
                 <Link to="/how" className="hover:text-[var(--accent)] transition-colors">{t.footerLinkHow}</Link>
@@ -59,7 +59,7 @@ export default function Footer({ lang = 'en', t = {} }) {
           </div>
 
           <div>
-            <div className="font-semibold text-white mb-3 tracking-tight">{t.footerFollow}</div>
+            <div className="font-semibold text-[var(--text-primary)] mb-3 tracking-tight">{t.footerFollow}</div>
             <div className="flex flex-wrap gap-2 mb-3">
               {SOCIAL_LINKS.map((social) => (
                 <a

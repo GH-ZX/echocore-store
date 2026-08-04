@@ -120,12 +120,12 @@ export default function HomeGameCard({
           </div>
         </div>
 
-        <div className="storefront-card__body flex flex-col flex-1 p-3 sm:p-3.5 gap-1.5 min-w-0">
-          <h3 className="font-semibold text-sm sm:text-base leading-snug text-[var(--text-primary)] line-clamp-2 min-h-[2.5rem]">
+        <div className="storefront-card__body flex flex-col flex-1 p-2.5 sm:p-3 gap-1 min-w-0">
+          <h3 className="font-semibold text-sm sm:text-[15px] leading-snug text-[var(--text-primary)] truncate">
             {gameName}
           </h3>
           {description && (
-            <p className="text-[11px] sm:text-xs text-[var(--text-sec)] line-clamp-2 leading-relaxed">
+            <p className="text-[11px] sm:text-xs text-[var(--text-sec)] truncate leading-relaxed">
               {description}
             </p>
           )}

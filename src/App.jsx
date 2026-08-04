@@ -1278,6 +1278,8 @@ export default function App() {
       description_ar: payload.description_ar || '',
       carousel_focus_x: payload.carousel_focus_x ?? 50,
       carousel_focus_y: payload.carousel_focus_y ?? 50,
+      carousel_badge_en: payload.carousel_badge_en || null,
+      carousel_badge_ar: payload.carousel_badge_ar || null,
       g2bulk_game_code: payload.g2bulk_game_code?.trim() || null,
     };
     if (Object.prototype.hasOwnProperty.call(payload, 'image_url') || Object.prototype.hasOwnProperty.call(payload, 'image_custom')) {

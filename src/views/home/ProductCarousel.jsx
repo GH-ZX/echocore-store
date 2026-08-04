@@ -9,6 +9,7 @@ import { formatMessage } from '../../lib/i18n';
 import { presetImageUrl } from '../../lib/imageUtils';
 import { getGameCoverUrl } from '../../lib/gameImages';
 import { extractDominantLogoColor, isCanvasSafeUrl, sampleLogoColorFromUrl } from '../../lib/logoColor';
+import { resolveCarouselBadge } from '../../lib/carouselUtils';
 
 const AUTOPLAY_MS = 6000;
 
@@ -144,7 +145,7 @@ export default function ProductCarousel({
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onManageCarousel?.(); }}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--accent)]/40 bg-black/60 backdrop-blur-md px-3 py-1.5 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/20 transition-all"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--accent)]/40 bg-[var(--carousel-admin-btn-bg)] backdrop-blur-md px-3 py-1.5 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/20 transition-all"
           >
             <Settings2 className="w-3.5 h-3.5" />
             {t.manageCarousel}
@@ -153,7 +154,7 @@ export default function ProductCarousel({
             <AdminEditButton
               label={t.editSlide}
               onClick={() => onEditGame?.(currentItem)}
-              className="bg-black/60 backdrop-blur-md"
+              className="bg-[var(--carousel-admin-btn-bg)] backdrop-blur-md"
             />
           )}
         </div>
@@ -256,23 +257,29 @@ export default function ProductCarousel({
                       lang === 'ar' ? 'items-end text-right' : 'items-start text-left'
                     }`}
                   >
-                    <div
-                      className={`inline-flex items-center gap-1.5 mb-3 rounded-full border px-3 py-1 text-[10px] sm:text-[11px] font-bold tracking-wide ${
-                        lang === 'ar' ? 'text-right' : 'text-left'
-                      }`}
-                      style={{
-                        color: '#e879f9',
-                        borderColor: 'color-mix(in srgb, #e879f9 35%, transparent)',
-                        background: 'rgba(232, 121, 249, 0.08)',
-                      }}
-                    >
-                      <span
-                        className="inline-block w-1.5 h-1.5 rounded-full"
-                        style={{ background: 'linear-gradient(135deg, #a855f7, #e879f9)' }}
-                        aria-hidden="true"
-                      />
-                      {t.carouselFeaturedBadge || (lang === 'ar' ? 'مميز' : 'Featured')}
-                    </div>
+                    {(() => {
+                      const badgeText = resolveCarouselBadge(item, lang);
+                      if (!badgeText) return null;
+                      return (
+                        <div
+                          className={`inline-flex items-center gap-1.5 mb-3 rounded-full border px-3 py-1 text-[10px] sm:text-[11px] font-bold tracking-wide ${
+                            lang === 'ar' ? 'text-right' : 'text-left'
+                          }`}
+                          style={{
+                            color: '#e879f9',
+                            borderColor: 'color-mix(in srgb, #e879f9 35%, transparent)',
+                            background: 'rgba(232, 121, 249, 0.08)',
+                          }}
+                        >
+                          <span
+                            className="inline-block w-1.5 h-1.5 rounded-full"
+                            style={{ background: 'linear-gradient(135deg, #a855f7, #e879f9)' }}
+                            aria-hidden="true"
+                          />
+                          {badgeText}
+                        </div>
+                      );
+                    })()}
                     <h2
                       className="section-heading font-black leading-[1.05] tracking-tight text-white mb-2 max-w-[min(640px,90vw)]"
                       style={{
@@ -303,7 +310,7 @@ export default function ProductCarousel({
         <button
           type="button"
           onClick={() => embla?.scrollPrev()}
-          className="absolute left-3 sm:left-4 md:left-5 top-1/2 z-20 -translate-y-1/2 flex h-9 w-9 md:h-11 md:w-11 items-center justify-center rounded-full border border-white/20 bg-black/50 backdrop-blur-sm text-white transition-all duration-200 hover:border-white/50 hover:bg-black/70 hover:scale-110 active:scale-95 shadow-[0_2px_16px_rgba(0,0,0,0.5)]"
+          className="absolute left-3 sm:left-4 md:left-5 top-1/2 z-20 -translate-y-1/2 flex h-9 w-9 md:h-11 md:w-11 items-center justify-center rounded-full border border-[var(--carousel-nav-border)] bg-[var(--carousel-nav-bg)] backdrop-blur-sm text-[var(--carousel-nav-text)] transition-all duration-200 hover:border-[var(--carousel-nav-border-hover)] hover:bg-[var(--carousel-nav-bg-hover)] hover:scale-110 active:scale-95 shadow-[0_2px_16px_rgba(0,0,0,0.5)]"
           aria-label={t.carouselPreviousAria}
         >
           <ChevronLeft className="w-5 h-5" />
@@ -311,7 +318,7 @@ export default function ProductCarousel({
         <button
           type="button"
           onClick={() => embla?.scrollNext()}
-          className="absolute right-3 sm:right-4 md:right-5 top-1/2 z-20 -translate-y-1/2 flex h-9 w-9 md:h-11 md:w-11 items-center justify-center rounded-full border border-white/20 bg-black/50 backdrop-blur-sm text-white transition-all duration-200 hover:border-white/50 hover:bg-black/70 hover:scale-110 active:scale-95 shadow-[0_2px_16px_rgba(0,0,0,0.5)]"
+          className="absolute right-3 sm:right-4 md:right-5 top-1/2 z-20 -translate-y-1/2 flex h-9 w-9 md:h-11 md:w-11 items-center justify-center rounded-full border border-[var(--carousel-nav-border)] bg-[var(--carousel-nav-bg)] backdrop-blur-sm text-[var(--carousel-nav-text)] transition-all duration-200 hover:border-[var(--carousel-nav-border-hover)] hover:bg-[var(--carousel-nav-bg-hover)] hover:scale-110 active:scale-95 shadow-[0_2px_16px_rgba(0,0,0,0.5)]"
           aria-label={t.carouselNextAria}
         >
           <ChevronRight className="w-5 h-5" />
@@ -324,7 +331,7 @@ export default function ProductCarousel({
         className="relative"
         style={{
           background: 'transparent',
-          boxShadow: '0 1px 0 rgba(255,255,255,0.05), 0 -8px 20px rgba(0,0,0,0.4)',
+          boxShadow: 'var(--carousel-strip-shadow)',
           '--carousel-logo-color': logoLineColor || undefined,
         }}
       >
@@ -332,7 +339,7 @@ export default function ProductCarousel({
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
-            background: 'linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.88) 100%)',
+            background: 'var(--carousel-strip-bg)',
             backdropFilter: 'blur(18px)',
             WebkitBackdropFilter: 'blur(18px)',
           }}
@@ -351,7 +358,7 @@ export default function ProductCarousel({
                   <button
                     type="button"
                     onClick={() => embla?.scrollTo(index)}
-                    className={`carousel-thumb group relative flex flex-col items-center gap-1.5 px-3 py-2.5 sm:px-4 sm:py-3 min-w-[76px] sm:min-w-[92px] max-w-[110px] transition-all duration-300 snap-start hover:bg-white/[0.04] overflow-hidden touch-manipulation ${
+                    className={`carousel-thumb group relative flex flex-col items-center gap-1 px-2 py-2 sm:px-3 sm:py-2.5 min-w-[70px] sm:min-w-[84px] max-w-[96px] transition-all duration-300 snap-start hover:bg-[var(--carousel-thumb-hover-bg)] overflow-hidden touch-manipulation ${
                       isActive ? 'carousel-thumb--active' : ''
                     }`}
                     aria-label={formatMessage(t.carouselGoToSlideAria, { name: slideLabel })}
@@ -368,7 +375,7 @@ export default function ProductCarousel({
                         isActive ? 'scale-105' : 'opacity-40 group-hover:opacity-70'
                       }`}
                       style={{
-                        background: isActive ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
+                        background: isActive ? 'var(--carousel-thumb-icon-bg-active)' : 'var(--carousel-thumb-icon-bg)',
                       }}
                     >
                       {logoPresetSrc ? (
@@ -396,7 +403,7 @@ export default function ProductCarousel({
                         />
                       ) : null}
                       <span
-                        className={`carousel-thumb__initial h-full w-full items-center justify-center text-sm font-black text-white/90 ${
+                        className={`carousel-thumb__initial h-full w-full items-center justify-center text-sm font-black text-[var(--carousel-thumb-text)] ${
                           logoPresetSrc ? 'hidden' : 'flex'
                         }`}
                       >
@@ -404,8 +411,8 @@ export default function ProductCarousel({
                       </span>
                     </div>
                     <span
-                      className={`carousel-thumb__label text-[10px] sm:text-[11px] font-semibold text-center leading-tight line-clamp-2 w-full px-0.5 transition-colors duration-300 ${
-                        isActive ? 'text-white' : 'text-white/45 group-hover:text-white/70'
+                      className={`carousel-thumb__label text-[10px] sm:text-[11px] font-semibold text-center leading-tight truncate whitespace-nowrap w-full px-0.5 transition-colors duration-300 ${
+                        isActive ? 'text-[var(--carousel-thumb-text)]' : 'text-[var(--carousel-thumb-text-muted)] group-hover:text-[var(--carousel-thumb-text-hover)]'
                       }`}
                     >
                       {slideLabel}
@@ -417,7 +424,7 @@ export default function ProductCarousel({
                         type="button"
                         onClick={(e) => { e.stopPropagation(); onMoveCarouselGame?.(item.id, -1); }}
                         disabled={index === 0}
-                        className="p-1 rounded text-white/50 hover:text-[var(--accent)] disabled:opacity-20"
+                        className="p-1 rounded text-[var(--carousel-thumb-text-muted)] hover:text-[var(--accent)] disabled:opacity-20"
                         aria-label="Move left"
                       >
                         <ChevronUp className="w-3 h-3 rotate-[-90deg]" />
@@ -433,7 +440,7 @@ export default function ProductCarousel({
                         type="button"
                         onClick={(e) => { e.stopPropagation(); onMoveCarouselGame?.(item.id, 1); }}
                         disabled={index === slides.length - 1}
-                        className="p-1 rounded text-white/50 hover:text-[var(--accent)] disabled:opacity-20"
+                        className="p-1 rounded text-[var(--carousel-thumb-text-muted)] hover:text-[var(--accent)] disabled:opacity-20"
                         aria-label="Move right"
                       >
                         <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
@@ -441,12 +448,6 @@ export default function ProductCarousel({
                     </div>
                   )}
                 </div>
-
-                {index < slides.length - 1 && (
-                  <div
-                    className="flex-shrink-0 self-center w-px h-5 mx-0.5 rounded-full bg-white/15"
-                  />
-                )}
               </React.Fragment>
             );
           })}
@@ -456,7 +457,7 @@ export default function ProductCarousel({
               <button
                 type="button"
                 onClick={onPickCarouselGame}
-                className="group relative flex flex-col items-center justify-center gap-1 px-4 py-3 sm:px-5 sm:py-4 min-w-[80px] sm:min-w-[96px] transition-all duration-300 snap-start hover:bg-white/[0.03]"
+                className="group relative flex flex-col items-center justify-center gap-1 px-4 py-3 sm:px-5 sm:py-4 min-w-[80px] sm:min-w-[96px] transition-all duration-300 snap-start hover:bg-[var(--carousel-thumb-hover-bg)]"
                 aria-label={t.addToCarousel}
               >
                 <div className="h-8 sm:h-10 flex items-center justify-center px-1.5 transition-all duration-300 opacity-50 group-hover:opacity-100 group-hover:scale-[1.02]">

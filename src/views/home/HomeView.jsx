@@ -224,6 +224,8 @@ export default function HomeView({
       description_ar: descriptions.description_ar,
       carousel_focus_x: g.carousel_focus_x ?? 50,
       carousel_focus_y: g.carousel_focus_y ?? 50,
+      carousel_badge_en: g.carousel_badge_en || null,
+      carousel_badge_ar: g.carousel_badge_ar || null,
       category: 'games',
       price: 0,
     };

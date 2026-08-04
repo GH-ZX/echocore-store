@@ -6638,7 +6638,7 @@ html, body {
 .dev-log-terminal {
   border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
   border-radius: 0.75rem;
-  background: color-mix(in srgb, #0a0f14 92%, var(--bg-surface));
+  background: var(--devlog-bg);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
   font-size: 0.6875rem;
   line-height: 1.45;
@@ -6651,6 +6651,42 @@ html, body {
   width: 100%;
 }
 
+:root {
+  --devlog-bg: color-mix(in srgb, #0a0f14 92%, var(--bg-surface));
+  --devlog-text: color-mix(in srgb, var(--text-sec) 92%, #9ca3af);
+  --devlog-time: color-mix(in srgb, var(--text-muted) 88%, #9ca3af);
+  --devlog-fields: color-mix(in srgb, var(--text-sec) 95%, #e5e7eb);
+  --devlog-console-bg: color-mix(in srgb, #0b0f14 94%, #450a0a);
+  --devlog-console-border: color-mix(in srgb, #ef4444 28%, var(--border));
+  --devlog-console-label: #fca5a5;
+  --devlog-console-pre: #fecaca;
+  --devlog-success: #86efac;
+  --devlog-warning: #fcd34d;
+  --devlog-danger: #fca5a5;
+  --status-ok: #86efac;
+  --status-busy: #fde68a;
+  --status-danger: #fca5a5;
+  --status-live: #86efac;
+}
+
+[data-color-mode="light"] {
+  --devlog-bg: color-mix(in srgb, var(--bg-surface) 96%, transparent);
+  --devlog-text: var(--text-secondary);
+  --devlog-time: var(--text-muted);
+  --devlog-fields: var(--text-secondary);
+  --devlog-console-bg: color-mix(in srgb, var(--bg-surface) 90%, #fee2e2);
+  --devlog-console-border: color-mix(in srgb, #ef4444 35%, var(--border));
+  --devlog-console-label: #b91c1c;
+  --devlog-console-pre: #7f1d1d;
+  --devlog-success: #15803d;
+  --devlog-warning: #a16207;
+  --devlog-danger: #b91c1c;
+  --status-ok: #15803d;
+  --status-busy: #a16207;
+  --status-danger: #b91c1c;
+  --status-live: #15803d;
+}
+
 .dev-log-line {
   display: block;
   width: 100%;
@@ -6660,7 +6696,7 @@ html, body {
   padding: 0.45rem 0.65rem;
   text-align: start;
   font: inherit;
-  color: color-mix(in srgb, var(--text-sec) 92%, #9ca3af);
+  color: var(--devlog-text);
   background: transparent;
   border: 0;
   border-inline-start: 2px solid transparent;
@@ -6695,7 +6731,7 @@ html, body {
 }
 
 .dev-log-line__time {
-  color: color-mix(in srgb, var(--text-muted) 88%, #9ca3af);
+  color: var(--devlog-time);
   font-size: 0.625rem;
   white-space: nowrap;
   opacity: 0.85;
@@ -6741,7 +6777,7 @@ html, body {
 
 .dev-log-line__fields {
   display: block;
-  color: color-mix(in srgb, var(--text-sec) 95%, #e5e7eb);
+  color: var(--devlog-fields);
   line-height: 1.55;
 }
 
@@ -6750,7 +6786,7 @@ html, body {
   margin-top: 0.4rem;
   text-align: end;
   font-size: 0.625rem;
-  color: color-mix(in srgb, var(--text-muted) 90%, #9ca3af);
+  color: var(--devlog-time);
   opacity: 0.9;
 }
 
@@ -6758,8 +6794,8 @@ html, body {
   display: block;
   margin-top: 0.5rem;
   border-radius: 0.5rem;
-  border: 1px solid color-mix(in srgb, #ef4444 28%, var(--border));
-  background: color-mix(in srgb, #0b0f14 94%, #450a0a);
+  border: 1px solid var(--devlog-console-border);
+  background: var(--devlog-console-bg);
   overflow: hidden;
 }
 
@@ -6769,7 +6805,7 @@ html, body {
   font-size: 0.55rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #fca5a5;
+  color: var(--devlog-console-label);
   border-bottom: 1px solid color-mix(in srgb, #ef4444 22%, transparent);
   background: color-mix(in srgb, #ef4444 10%, transparent);
 }
@@ -6784,24 +6820,24 @@ html, body {
   overflow-wrap: anywhere;
   font-size: 0.6rem;
   line-height: 1.45;
-  color: #fecaca;
+  color: var(--devlog-console-pre);
   font-family: inherit;
   -webkit-overflow-scrolling: touch;
 }
 
 .dev-log-line--warning .dev-log-line__console {
   border-color: color-mix(in srgb, #f59e0b 30%, var(--border));
-  background: color-mix(in srgb, #0b0f14 94%, #451a03);
+  background: color-mix(in srgb, var(--devlog-console-bg) 94%, #451a03);
 }
 
 .dev-log-line--warning .dev-log-line__console-label {
-  color: #fcd34d;
+  color: var(--devlog-warning);
   border-bottom-color: color-mix(in srgb, #f59e0b 22%, transparent);
   background: color-mix(in srgb, #f59e0b 10%, transparent);
 }
 
 .dev-log-line--warning .dev-log-line__console-pre {
-  color: #fde68a;
+  color: var(--devlog-warning);
 }
 
 .dev-log-line--status {
@@ -6812,22 +6848,22 @@ html, body {
 }
 
 .dev-log-line--success {
-  color: #86efac;
+  color: var(--devlog-success);
   border-inline-start-color: color-mix(in srgb, #22c55e 55%, transparent);
 }
 
 .dev-log-line--info {
-  color: color-mix(in srgb, var(--text-sec) 92%, #9ca3af);
+  color: var(--devlog-text);
   border-inline-start-color: color-mix(in srgb, var(--border) 80%, transparent);
 }
 
 .dev-log-line--warning {
-  color: #fcd34d;
+  color: var(--devlog-warning);
   border-inline-start-color: color-mix(in srgb, #f59e0b 55%, transparent);
 }
 
 .dev-log-line--danger {
-  color: #fca5a5;
+  color: var(--devlog-danger);
   border-inline-start-color: color-mix(in srgb, #ef4444 55%, transparent);
 }
 
@@ -8239,6 +8275,44 @@ button.admin-profit-customer-order__id {
 }
 
 /* Carousel bottom strip — icon + game name (hesap-style) */
+:root {
+  --carousel-strip-bg: linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.88) 100%);
+  --carousel-strip-shadow: 0 1px 0 rgba(255,255,255,0.05), 0 -8px 20px rgba(0,0,0,0.4);
+  --carousel-thumb-icon-bg: rgba(255,255,255,0.04);
+  --carousel-thumb-icon-bg-active: rgba(255,255,255,0.08);
+  --carousel-thumb-text: #fff;
+  --carousel-thumb-text-muted: rgba(255,255,255,0.45);
+  --carousel-thumb-text-hover: rgba(255,255,255,0.7);
+  --carousel-thumb-hover-bg: rgba(255,255,255,0.04);
+  --carousel-thumb-divider: rgba(255,255,255,0.15);
+  --carousel-nav-bg: rgba(0,0,0,0.5);
+  --carousel-nav-bg-hover: rgba(0,0,0,0.7);
+  --carousel-nav-border: rgba(255,255,255,0.2);
+  --carousel-nav-border-hover: rgba(255,255,255,0.5);
+  --carousel-nav-text: #fff;
+  --carousel-admin-btn-bg: rgba(0,0,0,0.6);
+  --carousel-logo-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+[data-color-mode="light"] {
+  --carousel-strip-bg: linear-gradient(to bottom, color-mix(in srgb, var(--bg-surface) 85%, transparent) 0%, var(--bg-surface) 100%);
+  --carousel-strip-shadow: 0 1px 0 var(--border), 0 -8px 20px color-mix(in srgb, var(--text-primary) 14%, transparent);
+  --carousel-thumb-icon-bg: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  --carousel-thumb-icon-bg-active: color-mix(in srgb, var(--accent) 12%, transparent);
+  --carousel-thumb-text: var(--text-primary);
+  --carousel-thumb-text-muted: var(--text-secondary);
+  --carousel-thumb-text-hover: var(--text-primary);
+  --carousel-thumb-hover-bg: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  --carousel-thumb-divider: var(--border);
+  --carousel-nav-bg: var(--bg-surface);
+  --carousel-nav-bg-hover: var(--bg-elevated);
+  --carousel-nav-border: var(--border);
+  --carousel-nav-border-hover: var(--accent);
+  --carousel-nav-text: var(--text-primary);
+  --carousel-admin-btn-bg: var(--bg-surface);
+  --carousel-logo-shadow: none;
+}
+
 .carousel-thumb {
   border: none;
   background: transparent;
@@ -8260,8 +8334,9 @@ button.admin-profit-customer-order__id {
 }
 
 .carousel-thumb__label {
-  word-break: break-word;
-  hyphens: auto;
+  word-break: normal;
+  hyphens: none;
+  text-overflow: ellipsis;
 }
 
 .carousel-thumb--active .carousel-thumb__label {
@@ -8313,6 +8388,12 @@ button.admin-profit-customer-order__id {
 
 .catalog-page__breadcrumb button {
   transition: color 0.15s ease;
+}
+
+@media (max-width: 639px) {
+  .catalog-page__breadcrumb > span:not(:last-child) {
+    display: none;
+  }
 }
 
 .catalog-category-header__title {
