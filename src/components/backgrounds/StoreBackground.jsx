@@ -1,52 +1,34 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
 
-const HexGridBackground = lazy(() => import('./HexGridBackground'));
-const ParticleBackground = lazy(() => import('./ParticleBackground'));
-const ScanlineBackground = lazy(() => import('./ScanlineBackground'));
-const StarfieldBackground = lazy(() => import('./StarfieldBackground'));
-const CircuitBackground = lazy(() => import('./CircuitBackground'));
-const Grid3DBackground = lazy(() => import('./Grid3DBackground'));
-const Grid3DTunnelBackground = lazy(() => import('./Grid3DTunnelBackground'));
-const Grid3DCanyonBackground = lazy(() => import('./Grid3DCanyonBackground'));
-const Grid3DRingsBackground = lazy(() => import('./Grid3DRingsBackground'));
+const MeshGradientBackground = lazy(() => import('./MeshGradientBackground'));
+const AuroraBackground = lazy(() => import('./AuroraBackground'));
+const DotGridBackground = lazy(() => import('./DotGridBackground'));
+const WallpaperBackground = lazy(() => import('./WallpaperBackground'));
+
+export const NEW_BACKGROUND_TYPES = new Set(['mesh', 'aurora', 'dots', 'wallpaper', 'none']);
 
 function readBackgroundType() {
-  if (typeof window === 'undefined') return 'starfield';
-  return document.documentElement.getAttribute('data-background-type')
-    || getComputedStyle(document.documentElement).getPropertyValue('--background-type').trim()
-    || 'starfield';
+  if (typeof window === 'undefined') return 'mesh';
+  const raw = (document.documentElement.getAttribute('data-background-type') || '').trim();
+  if (raw && NEW_BACKGROUND_TYPES.has(raw)) return raw;
+  const cssVar = getComputedStyle(document.documentElement).getPropertyValue('--background-type').trim();
+  if (cssVar && NEW_BACKGROUND_TYPES.has(cssVar)) return cssVar;
+  return 'mesh';
 }
 
 function BackgroundLayer({ type }) {
   if (type === 'none') return null;
-  if (type === 'hexgrid') return <HexGridBackground />;
-  if (type === 'particles') return <ParticleBackground />;
-  if (type === 'scanlines') return <ScanlineBackground />;
-  if (type === 'starfield') return <StarfieldBackground />;
-  if (type === 'circuit') return <CircuitBackground />;
-  if (type === 'grid3d') return <Grid3DBackground />;
-  if (type === 'grid3d_tunnel') return <Grid3DTunnelBackground />;
-  if (type === 'grid3d_canyon') return <Grid3DCanyonBackground />;
-  if (type === 'grid3d_rings') return <Grid3DRingsBackground />;
-  return <StarfieldBackground />;
+  if (type === 'mesh') return <MeshGradientBackground />;
+  if (type === 'aurora') return <AuroraBackground />;
+  if (type === 'dots') return <DotGridBackground />;
+  if (type === 'wallpaper') return <WallpaperBackground />;
+  return <MeshGradientBackground />;
 }
 
 function prefersReducedMotion() {
   if (typeof window === 'undefined' || !window.matchMedia) return false;
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
-
-/** Heavy WebGL / particle backgrounds — skip when user prefers reduced motion */
-const HEAVY_BACKGROUND_TYPES = new Set([
-  'particles',
-  'grid3d',
-  'grid3d_tunnel',
-  'grid3d_canyon',
-  'grid3d_rings',
-  'starfield',
-  'circuit',
-  'hexgrid',
-]);
 
 export default function StoreBackground() {
   const [type, setType] = useState(readBackgroundType);
@@ -76,8 +58,16 @@ export default function StoreBackground() {
   }, []);
 
   if (type === 'none') return null;
-  // Solid theme color only — no animated layers (a11y + mid-range phones)
-  if (reduceMotion && HEAVY_BACKGROUND_TYPES.has(type)) return null;
+
+  // Reduced-motion handling is done in CSS (`@media (prefers-reduced-motion: reduce)`
+  // stops the animation but keeps the static composition visible). Tag the root so the
+  // CSS hook `[data-bg-motion='false']` fires the same overrides, then keep rendering
+  // — never bail to null, or the user sees a blank screen instead of a calm static bg.
+  if (reduceMotion && typeof document !== 'undefined') {
+    document.documentElement.setAttribute('data-bg-motion', 'false');
+  } else if (typeof document !== 'undefined') {
+    document.documentElement.removeAttribute('data-bg-motion');
+  }
 
   return (
     <Suspense fallback={null}>

@@ -266,14 +266,14 @@ export default function ProductCarousel({
                             lang === 'ar' ? 'text-right' : 'text-left'
                           }`}
                           style={{
-                            color: '#e879f9',
-                            borderColor: 'color-mix(in srgb, #e879f9 35%, transparent)',
-                            background: 'rgba(232, 121, 249, 0.08)',
+                            color: 'var(--accent-2)',
+                            borderColor: 'color-mix(in srgb, var(--accent-2) 35%, transparent)',
+                            background: 'color-mix(in srgb, var(--accent-2) 8%, transparent)',
                           }}
                         >
                           <span
                             className="inline-block w-1.5 h-1.5 rounded-full"
-                            style={{ background: 'linear-gradient(135deg, #a855f7, #e879f9)' }}
+                            style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-2))' }}
                             aria-hidden="true"
                           />
                           {badgeText}

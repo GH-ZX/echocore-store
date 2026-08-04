@@ -18,13 +18,14 @@
   --text-muted: #8b82a3;
   --text-sec: var(--text-secondary);
 
-  /* Accent / Brand (Violet) */
-  --accent: #a855f7;
-  --accent-hover: #c084fc;
-  --accent-2: #e879f9;
-  --accent-dark: #581c87;
+  /* Accent / Brand (Violet — tightened from #a855f7 to #8b5cf6.
+     Within-family accent: do not introduce a second hue. */
+  --accent: #8b5cf6;
+  --accent-hover: #a78bfa;
+  --accent-2: #c084fc;
+  --accent-dark: #6d28d9;
 
-  /* Price — cyan reserved for prices & links only */
+  /* Price — cyan reserved for prices & links only (semantic token, not an accent) */
   --price: #22d3ee;
 
   /* Borders & Dividers */
@@ -37,11 +38,11 @@
   --warning: #fbbf24;
 
   /* Gradients */
-  --gradient-accent: linear-gradient(to right, #a855f7, #e879f9);
+  --gradient-accent: linear-gradient(to right, #8b5cf6, #a78bfa);
   --gradient-surface: linear-gradient(to bottom, #120b26, #07030f);
 
   /* Effects */
-  --shadow-glow: 0 0 12px rgba(168, 85, 247, 0.14);
+  --shadow-glow: 0 0 12px rgba(139, 92, 246, 0.14);
   --shadow-card: 0 8px 24px -16px rgba(0, 0, 0, 0.55);
   --radius: 16px;
   --radius-sm: 12px;
@@ -8321,7 +8322,7 @@ button.admin-profit-customer-order__id {
 }
 
 .carousel-thumb--active {
-  background: rgba(168, 85, 247, 0.1);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .carousel-thumb__icon img {
@@ -8329,7 +8330,7 @@ button.admin-profit-customer-order__id {
 }
 
 .carousel-thumb__initial {
-  background: linear-gradient(135deg, rgba(232, 121, 249, 0.18), rgba(168, 85, 247, 0.06));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-2) 18%, transparent), color-mix(in srgb, var(--accent) 6%, transparent));
   border-radius: inherit;
 }
 
@@ -9836,5 +9837,44 @@ button.profile-list-item {
 
   .invoice-summary-row {
     width: 100%;
+  }
+}
+
+/* ============================================
+   Admin Theme panel — Appearance | Background
+   two-column at lg+ for a premium, denser panel;
+   stacks vertically on tablet/phone.
+   ============================================ */
+.appearance-bg-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+
+@media (min-width: 1024px) {
+  .appearance-bg-grid {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    align-items: start;
+    gap: 2rem;
+  }
+}
+
+/* Each block carries its own internal divider so they don't bleed
+   into each other when side-by-side */
+.appearance-block,
+.background-block {
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.appearance-block {
+  padding-top: 0;
+  border-top: none;
+}
+
+@media (min-width: 1024px) {
+  .appearance-block {
+    padding-top: 0;
+    border-top: none;
   }
 }

@@ -12,7 +12,6 @@ import {
   THEME_FIELD_GROUPS,
   EDITABLE_THEME_FIELDS,
   BACKGROUND_TYPES,
-  isGrid3DBackground,
   applyTheme,
   buildFullTheme,
   normalizeThemeOverrides,
@@ -29,6 +28,8 @@ import {
   getEffectiveLogoBgColor,
   isLogoBgColorDefault,
 } from '../../lib/theme';
+import { WALLPAPER_PRESETS } from '../../lib/wallpaperPresets';
+import { FONT_PRESETS, findFontPreset, findFontPresetByStack, ensureFontLoaded } from '../../lib/fontPresets';
 
 function SliderField({ label, value, min, max, step, onChange }) {
   return (
@@ -75,12 +76,13 @@ function ToggleField({ label, value, onChange }) {
   );
 }
 
-function AppearanceSettings({ form, t, onChange, onColorModeChange }) {
+function AppearanceSettings({ form, t, lang, onChange, onColorModeChange }) {
+  const isAr = lang === 'ar';
   const colorMode = form['color-mode'] ?? 'dark';
   const glowsEnabled = form['glows-enabled'] ?? 'true';
 
   return (
-    <div className="mb-6 pb-6 border-b border-[var(--border)]">
+    <div className="appearance-block">
       <h3 className="text-lg font-black flex items-center gap-2 mb-1">
         <Sparkles className="w-4.5 h-4.5 text-[var(--accent)]" />
         {t.appearanceSettings}
@@ -134,36 +136,93 @@ function AppearanceSettings({ form, t, onChange, onColorModeChange }) {
         </div>
 
       </div>
+
+      <FontSettings form={form} t={t} isAr={isAr} onChange={onChange} />
+    </div>
+  );
+}
+
+function FontSettings({ form, t, isAr = false, onChange }) {
+  // Resolve the active preset from the persisted `font-sans` stack, fall back to Cairo.
+  const rawStack = form['font-sans'] || '';
+  const activeByStack = findFontPresetByStack(rawStack);
+  const activePresetId = activeByStack ? activeByStack.id
+    : (rawStack ? '__custom' : 'cairo');
+
+  // Always ensure the active non-default family is loaded (covers admin open + restore).
+  useEffect(() => {
+    const preset = findFontPreset(activePresetId);
+    if (preset) ensureFontLoaded(preset);
+  }, [activePresetId]);
+
+  return (
+    <div className="mt-5 pt-4 border-t border-[var(--border)]">
+      <label className="text-xs text-[var(--text-muted)] block mb-2">
+        {t.fontFamily}
+      </label>
+      <p className="text-[10px] text-[var(--text-muted)] mb-2.5">
+        {t.fontFamilyHelp}
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        {FONT_PRESETS.map((preset) => {
+          const active = preset.id === activePresetId;
+          return (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => {
+                ensureFontLoaded(preset);
+                onChange('font-sans', preset.stack);
+              }}
+              className={`px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all flex items-center gap-2 ${
+                active
+                  ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10'
+                  : 'border-[var(--border)] text-[var(--text-sec)] hover:border-[var(--accent)]/35'
+              }`}
+              style={{ fontFamily: preset.stack }}
+              aria-pressed={active}
+            >
+              <span className="flex-1 min-w-0 truncate">{isAr ? preset.labelAr : preset.labelEn}</span>
+              {active && <Check className="w-3.5 h-3.5 flex-shrink-0" />}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
 function BackgroundSettings({ form, t, lang, onChange }) {
   const isAr = lang === 'ar';
-  const bgType = form['background-type'] ?? 'starfield';
-  const effectOpacity = form['bg-effect-opacity'] ?? '0.4';
-  const circuitSpeed = form['circuit-speed'] ?? '1';
-  const circuitPulseSpeed = form['circuit-pulse-speed'] ?? '1';
-  const circuitDensity = form['circuit-density'] ?? '1';
-  const circuitPulses = form['circuit-pulses'] ?? '5';
-  const circuitGlowStrength = form['circuit-glow-strength'] ?? '1';
-  const grid3dSpeed = form['grid3d-speed'] ?? '1';
-  const grid3dDepth = form['grid3d-depth'] ?? '1';
-  const hexgridSpeed = form['hexgrid-speed'] ?? '1';
-  const hexgridDensity = form['hexgrid-density'] ?? '1';
-  const hexgridTilt = form['hexgrid-tilt'] ?? '1';
-  const particlesSpeed = form['particles-speed'] ?? '1';
-  const particlesDensity = form['particles-density'] ?? '1';
-  const particlesSize = form['particles-size'] ?? '1';
-  const scanlinesSpeed = form['scanlines-speed'] ?? '1';
-  const scanlinesDensity = form['scanlines-density'] ?? '1';
-  const scanlinesBeam = form['scanlines-beam'] ?? '1';
-  const starfieldSpeed = form['starfield-speed'] ?? '1';
-  const starfieldDensity = form['starfield-density'] ?? '1';
-  const starfieldTwinkle = form['starfield-twinkle'] ?? '1';
+  // Coerce legacy/anomalous stored values to the new 'mesh' default.
+  const raw = form['background-type'];
+  const bgType = raw && BACKGROUND_TYPES[raw] ? raw : 'mesh';
+  const effectOpacity = form['bg-effect-opacity'] ?? '0.45';
+  const dotsDensity = form['dots-density'] ?? '1';
+  const wallpaperUrl = form['wallpaper-url'] || '';
+  const [wpUploading, setWpUploading] = useState(false);
+  const [wpUploadError, setWpUploadError] = useState('');
+
+  const handleWallpaperUpload = async (file) => {
+    if (!file) return;
+    setWpUploading(true);
+    setWpUploadError('');
+    try {
+      const url = await uploadImage(file, 'store-wallpaper');
+      if (url) {
+        onChange('wallpaper-url', url);
+        // Switching to wallpaper type the first time a file is set makes UX frictionless.
+        if (bgType !== 'wallpaper') onChange('background-type', 'wallpaper');
+      }
+    } catch (err) {
+      setWpUploadError(err.message || t.wallpaperUploadFailed);
+    } finally {
+      setWpUploading(false);
+    }
+  };
 
   return (
-    <div className="mt-8 pt-6 border-t border-[var(--border)]">
+    <div className="background-block">
       <h3 className="text-lg font-black flex items-center gap-2 mb-1">
         <Sparkle className="w-4.5 h-4.5 text-[var(--accent)]" />
         {t.backgroundSettings}
@@ -201,198 +260,116 @@ function BackgroundSettings({ form, t, lang, onChange }) {
         onChange={(v) => onChange('bg-effect-opacity', v)}
       />
 
-      {bgType === 'circuit' && (
+      {bgType === 'dots' && (
         <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4 mt-4">
           <SliderField
-            label={t.circuitTraceSpeed}
-            value={circuitSpeed}
-            min="0.3"
-            max="2.5"
-            step="0.1"
-            onChange={(v) => onChange('circuit-speed', v)}
-          />
-
-          <SliderField
-            label={t.circuitPulseSpeed}
-            value={circuitPulseSpeed}
-            min="0.3"
-            max="2.5"
-            step="0.1"
-            onChange={(v) => onChange('circuit-pulse-speed', v)}
-          />
-
-          <SliderField
-            label={t.circuitDensity}
-            value={circuitDensity}
-            min="0.5"
-            max="2"
-            step="0.1"
-            onChange={(v) => onChange('circuit-density', v)}
-          />
-
-          <SliderField
-            label={t.circuitPulseCount}
-            value={circuitPulses}
-            min="1"
-            max="12"
-            step="1"
-            onChange={(v) => onChange('circuit-pulses', v)}
-          />
-
-          <SliderField
-            label={t.circuitGlowStrength}
-            value={circuitGlowStrength}
-            min="0.2"
-            max="2"
-            step="0.1"
-            onChange={(v) => onChange('circuit-glow-strength', v)}
-          />
-        </div>
-      )}
-
-      {isGrid3DBackground(bgType) && (
-        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4 mt-4">
-          <SliderField
-            label={t.grid3dSpeed}
-            value={grid3dSpeed}
-            min="0.3"
-            max="2.5"
-            step="0.1"
-            onChange={(v) => onChange('grid3d-speed', v)}
-          />
-
-          <SliderField
-            label={t.grid3dDepth}
-            value={grid3dDepth}
+            label={t.dotsDensity}
+            value={dotsDensity}
             min="0.6"
             max="1.8"
-            step="0.05"
-            onChange={(v) => onChange('grid3d-depth', v)}
+            step="0.1"
+            onChange={(v) => onChange('dots-density', v)}
           />
         </div>
       )}
 
-      {bgType === 'hexgrid' && (
-        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4 mt-4">
-          <SliderField
-            label={t.hexgridSpeed}
-            value={hexgridSpeed}
-            min="0.3"
-            max="2.5"
-            step="0.1"
-            onChange={(v) => onChange('hexgrid-speed', v)}
-          />
+      {bgType === 'wallpaper' && (
+        <div className="mt-4 space-y-5">
+          {/* Preset gallery — one-click pick among curated cyber wallpapers bundled in bundle */}
+          <div>
+            <label className="text-xs font-semibold text-[var(--text-sec)] mb-2 block">
+              {t.wallpaperPresets}
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+              {WALLPAPER_PRESETS.map((preset) => {
+                const active = wallpaperUrl === preset.src;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => {
+                      onChange('wallpaper-url', preset.src);
+                    }}
+                    className={`group relative aspect-[3/2] rounded-lg overflow-hidden border transition-all ${
+                      active
+                        ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]/40'
+                        : 'border-[var(--border)] hover:border-[var(--accent)]/45'
+                    }`}
+                    aria-pressed={active}
+                    aria-label={isAr ? preset.labelAr : preset.labelEn}
+                    title={isAr ? preset.labelAr : preset.labelEn}
+                  >
+                    <span
+                      className="absolute inset-0 bg-cover bg-center"
+                      style={{ backgroundImage: `url("${preset.src}")` }}
+                      aria-hidden="true"
+                    />
+                    <span className="absolute inset-x-0 bottom-0 px-2 py-1 flex items-center justify-between bg-black/65 backdrop-blur-sm">
+                      <span className="text-[10px] font-semibold text-white truncate">
+                        {isAr ? preset.labelAr : preset.labelEn}
+                      </span>
+                      {active && <Check className="w-3 h-3 text-[var(--accent)] flex-shrink-0" />}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-[var(--text-muted)] mt-2 leading-relaxed">
+              {t.wallpaperPresetsHelp}
+            </p>
+          </div>
 
-          <SliderField
-            label={t.hexgridDensity}
-            value={hexgridDensity}
-            min="0.5"
-            max="2"
-            step="0.1"
-            onChange={(v) => onChange('hexgrid-density', v)}
-          />
-
-          <SliderField
-            label={t.hexgridTilt}
-            value={hexgridTilt}
-            min="0.7"
-            max="1.4"
-            step="0.05"
-            onChange={(v) => onChange('hexgrid-tilt', v)}
-          />
-        </div>
-      )}
-
-      {bgType === 'particles' && (
-        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4 mt-4">
-          <SliderField
-            label={t.particlesSpeed}
-            value={particlesSpeed}
-            min="0.3"
-            max="2.5"
-            step="0.1"
-            onChange={(v) => onChange('particles-speed', v)}
-          />
-
-          <SliderField
-            label={t.particlesDensity}
-            value={particlesDensity}
-            min="0.4"
-            max="2"
-            step="0.1"
-            onChange={(v) => onChange('particles-density', v)}
-          />
-
-          <SliderField
-            label={t.particlesSize}
-            value={particlesSize}
-            min="0.5"
-            max="2"
-            step="0.1"
-            onChange={(v) => onChange('particles-size', v)}
-          />
-        </div>
-      )}
-
-      {bgType === 'scanlines' && (
-        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4 mt-4">
-          <SliderField
-            label={t.scanlinesSpeed}
-            value={scanlinesSpeed}
-            min="0.3"
-            max="2.5"
-            step="0.1"
-            onChange={(v) => onChange('scanlines-speed', v)}
-          />
-
-          <SliderField
-            label={t.scanlinesDensity}
-            value={scanlinesDensity}
-            min="0.5"
-            max="2"
-            step="0.1"
-            onChange={(v) => onChange('scanlines-density', v)}
-          />
-
-          <SliderField
-            label={t.scanlinesBeam}
-            value={scanlinesBeam}
-            min="0.3"
-            max="2"
-            step="0.1"
-            onChange={(v) => onChange('scanlines-beam', v)}
-          />
-        </div>
-      )}
-
-      {bgType === 'starfield' && (
-        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4 mt-4">
-          <SliderField
-            label={t.starfieldSpeed}
-            value={starfieldSpeed}
-            min="0.3"
-            max="2.5"
-            step="0.1"
-            onChange={(v) => onChange('starfield-speed', v)}
-          />
-
-          <SliderField
-            label={t.starfieldDensity}
-            value={starfieldDensity}
-            min="0.4"
-            max="2"
-            step="0.1"
-            onChange={(v) => onChange('starfield-density', v)}
-          />
-
-          <SliderField
-            label={t.starfieldTwinkle}
-            value={starfieldTwinkle}
-            min="0.3"
-            max="2.5"
-            step="0.1"
-            onChange={(v) => onChange('starfield-twinkle', v)}
-          />
+          <div>
+            <label className="text-xs font-semibold text-[var(--text-sec)] mb-1.5 block">
+              {t.wallpaperFile}
+            </label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="file"
+                accept="image/png,image/webp,image/jpeg,image/svg+xml"
+                disabled={wpUploading}
+                onChange={(e) => handleWallpaperUpload(e.target.files?.[0] || null)}
+                className="input w-full flex-1 min-w-0 max-w-full text-sm file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-[var(--accent)] file:text-[#040812]"
+              />
+              <input
+                type="url"
+                placeholder={t.wallpaperUrlPlaceholder}
+                value={wallpaperUrl}
+                onChange={(e) => onChange('wallpaper-url', e.target.value)}
+                className="input flex-1 min-w-0 text-sm font-mono"
+              />
+            </div>
+            {wpUploading && (
+              <p className="text-xs text-[var(--accent)] mt-1.5 flex items-center gap-1.5">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                {t.uploading}
+              </p>
+            )}
+            {wpUploadError && <p className="text-xs text-red-400 mt-1.5">{wpUploadError}</p>}
+            <p className="text-[10px] text-[var(--text-muted)] mt-2">
+              {t.wallpaperHelp}
+            </p>
+          </div>
+          {wallpaperUrl && (
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href={wallpaperUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-[var(--accent)] hover:underline"
+              >
+                {t.viewWallpaper}
+              </a>
+              <button
+                type="button"
+                onClick={() => onChange('wallpaper-url', '')}
+                className="action-chip text-xs gap-1.5 !h-9 !min-h-9"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                {t.removeWallpaper}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1072,12 +1049,21 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
           </div>
         </div>
 
-        <AppearanceSettings
-          form={form}
-          t={t}
-          onChange={handleFieldChange}
-          onColorModeChange={handleColorModeChange}
-        />
+        <div className="appearance-bg-grid mb-6">
+          <AppearanceSettings
+            form={form}
+            t={t}
+            lang={lang}
+            onChange={handleFieldChange}
+            onColorModeChange={handleColorModeChange}
+          />
+          <BackgroundSettings
+            form={form}
+            t={t}
+            lang={lang}
+            onChange={handleFieldChange}
+          />
+        </div>
 
         <div className="mb-6">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -1144,13 +1130,6 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
 
           <ThemePreview theme={form} t={t} />
         </div>
-
-        <BackgroundSettings
-          form={form}
-          t={t}
-          lang={lang}
-          onChange={handleFieldChange}
-        />
 
         {error && (
           <div className="mt-6 flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 text-sm">

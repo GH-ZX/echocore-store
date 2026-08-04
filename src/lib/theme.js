@@ -3,7 +3,8 @@ import { supabase } from './supabase';
 export const THEME_STORAGE_KEY = 'echocore-theme';
 
 export const DEFAULT_THEME = {
-  /* Violet-Magenta Cyber (flagship) */
+  /* Violet-Cyber (flagship) — tightened away from the obvious Tailwind #a855f7 to a
+     slightly desaturated violet (#8b5cf6). Same gaming identity, less LLM-tell. */
   'bg-primary': '#07030f',
   'bg-surface': '#120b26',
   'bg-elevated': '#1d1333',
@@ -11,32 +12,40 @@ export const DEFAULT_THEME = {
   'text-primary': '#f5f1fb',
   'text-secondary': '#b7aed0',
   'text-muted': '#8b82a3',
-  accent: '#a855f7',
-  'accent-hover': '#c084fc',
-  'accent-2': '#e879f9',
-  'accent-dark': '#581c87',
+  accent: '#8b5cf6',
+  'accent-hover': '#a78bfa',
+  'accent-2': '#c084fc',
+  'accent-dark': '#6d28d9',
   border: '#2a2142',
   'border-strong': '#3d3159',
   success: '#34d399',
   error: '#fb7185',
   warning: '#fbbf24',
-  'gradient-accent': 'linear-gradient(to right, #a855f7, #e879f9)',
+  'gradient-accent': 'linear-gradient(to right, #8b5cf6, #a78bfa)',
   'gradient-surface': 'linear-gradient(to bottom, #120b26, #07030f)',
-  'shadow-glow': '0 0 12px rgba(168, 85, 247, 0.14)',
+  'shadow-glow': '0 0 12px rgba(139, 92, 246, 0.14)',
   'shadow-card': '0 8px 24px -16px rgba(0, 0, 0, 0.55)',
   radius: '16px',
   'radius-sm': '12px',
   'radius-lg': '24px',
   'font-sans': "'Cairo', ui-sans-serif, system-ui, sans-serif",
-  /* Cyan reserved for prices / links */
-  'sale-title': '#c084fc',
-  'sale-divider': 'rgba(192, 132, 252, 0.55)',
-  'sale-badge': '#e879f9',
+  /* Color system (decision log):
+     - accent / accent-hover / accent-2 form ONE locked family (violet). Do not introduce
+       a second hue anywhere — gradients stay within the violet family.
+     - `price` (cyan #22d3ee) is a SEMANTIC token reserved for prices & checkout links.
+       Not a competing accent — it's a deliberate contrast pop against the violet accent
+       so money/CTA reads instantly. Status colors (success/error/warning) are also
+       semantic, not accents.
+     - Status colors must never be repurposed as decorative accents.
+  */
+  'sale-title': '#a78bfa',
+  'sale-divider': 'rgba(167, 139, 250, 0.55)',
+  'sale-badge': '#c084fc',
   'sale-badge-text': '#1d0b2e',
   'games-title': '#b7aed0',
-  'games-divider': 'rgba(168, 85, 247, 0.5)',
+  'games-divider': 'rgba(139, 92, 246, 0.5)',
   'games-subtitle': '#b7aed0',
-  'games-card-hover': '#a855f7',
+  'games-card-hover': '#8b5cf6',
   'price': '#22d3ee',
   'logo-url': '',
   'logo-core-color': '',
@@ -44,7 +53,7 @@ export const DEFAULT_THEME = {
   'logo-bg-enabled': 'true',
   'logo-filter-auto': 'true',
   'logo-hue-rotate': '0deg',
-  'logo-glow': 'rgba(168, 85, 247, 0.2)',
+  'logo-glow': 'rgba(139, 92, 246, 0.2)',
   'logo-saturate': '1.04',
   'logo-brightness': '1.02',
   'logo-zoom': '1',
@@ -61,41 +70,16 @@ export const DEFAULT_THEME = {
   'surfaces-opacity': '0.88',
   'surfaces-style': 'solid',
   'surfaces-glass-blur': '24',
-  'background-type': 'starfield',
+  'background-type': 'mesh',
 
-  /* Background effects (Aurora removed — heavy WebGL, noisy on mobile) */
-  'bg-effect-opacity': '0.4',
+  /* Background effects — opacity slider shared across Mesh / Aurora / Dots / Wallpaper */
+  'bg-effect-opacity': '0.45',
 
-  /* Circuit pulse */
-  'circuit-speed': '1',
-  'circuit-pulse-speed': '1',
-  'circuit-density': '1',
-  'circuit-pulses': '5',
-  'circuit-glow-strength': '1',
+  /* Dots grid density (1 = normal, 0.6 = sparse, 2 = tight) */
+  'dots-density': '1',
 
-  /* 3D backgrounds */
-  'grid3d-speed': '1',
-  'grid3d-depth': '1',
-
-  /* Hex grid */
-  'hexgrid-speed': '1',
-  'hexgrid-density': '1',
-  'hexgrid-tilt': '1',
-
-  /* Particle field */
-  'particles-speed': '1',
-  'particles-density': '1',
-  'particles-size': '1',
-
-  /* Scanlines */
-  'scanlines-speed': '1',
-  'scanlines-density': '1',
-  'scanlines-beam': '1',
-
-  /* Star field */
-  'starfield-speed': '1',
-  'starfield-density': '1',
-  'starfield-twinkle': '1',
+  /* Wallpaper — admin-chosen image URL for the 4th background type */
+  'wallpaper-url': '',
 
   /* Dashboard accents */
   'dash-card-bg': 'var(--bg-surface)',
@@ -104,21 +88,12 @@ export const DEFAULT_THEME = {
 };
 
 export const BACKGROUND_TYPES = {
-  starfield: { id: 'starfield', labelEn: 'Star Field', labelAr: 'حقل نجوم' },
-  hexgrid: { id: 'hexgrid', labelEn: 'Cyber Hex Grid', labelAr: 'شبكة سداسية' },
-  particles: { id: 'particles', labelEn: 'Particle Field', labelAr: 'حقل جزيئات' },
-  scanlines: { id: 'scanlines', labelEn: 'Retro Scanlines', labelAr: 'خطوط رجعية' },
-  circuit: { id: 'circuit', labelEn: 'Circuit Pulse', labelAr: 'نبض الدوائر' },
-  grid3d: { id: 'grid3d', labelEn: '3D Grid Horizon', labelAr: 'شبكة أفقية 3D' },
-  grid3d_tunnel: { id: 'grid3d_tunnel', labelEn: '3D Warp Tunnel', labelAr: 'نفق 3D' },
-  grid3d_canyon: { id: 'grid3d_canyon', labelEn: '3D Grid Canyon', labelAr: 'وادٍ شبكي 3D' },
-  grid3d_rings: { id: 'grid3d_rings', labelEn: '3D Orbital Rings', labelAr: 'حلقات مدارية 3D' },
+  mesh: { id: 'mesh', labelEn: 'Soft Mesh', labelAr: 'تدرّج ناعم' },
+  aurora: { id: 'aurora', labelEn: 'Calm Aurora', labelAr: 'شفق هادئ' },
+  dots: { id: 'dots', labelEn: 'Dot Grid', labelAr: 'نقاط الشبكة' },
+  wallpaper: { id: 'wallpaper', labelEn: 'Wallpaper', labelAr: 'خلفية مخصصة' },
   none: { id: 'none', labelEn: 'Solid Only', labelAr: 'لون صلب فقط' },
 };
-
-export function isGrid3DBackground(type = '') {
-  return type === 'grid3d' || type.startsWith('grid3d_');
-}
 
 /** Settings preserved when switching color presets */
 export const APPEARANCE_THEME_KEYS = [
@@ -126,25 +101,9 @@ export const APPEARANCE_THEME_KEYS = [
   'glows-enabled',
   'background-type',
   'bg-effect-opacity',
-  'circuit-speed',
-  'circuit-pulse-speed',
-  'circuit-density',
-  'circuit-pulses',
-  'circuit-glow-strength',
-  'grid3d-speed',
-  'grid3d-depth',
-  'hexgrid-speed',
-  'hexgrid-density',
-  'hexgrid-tilt',
-  'particles-speed',
-  'particles-density',
-  'particles-size',
-  'scanlines-speed',
-  'scanlines-density',
-  'scanlines-beam',
-  'starfield-speed',
-  'starfield-density',
-  'starfield-twinkle',
+  'dots-density',
+  'wallpaper-url',
+  'font-sans',
   'logo-url',
   'logo-core-color',
   'logo-bg-color',
@@ -1094,6 +1053,15 @@ const STRIP_THEME_KEYS = new Set([
   'glass-text-primary',
   'glass-text-secondary',
   'glass-text-muted',
+  // Legacy animated backgrounds (removed). Strip so old persisted values don't linger.
+  'circuit-speed', 'circuit-pulse-speed', 'circuit-density', 'circuit-pulses', 'circuit-glow-strength',
+  'grid3d-speed', 'grid3d-depth',
+  'hexgrid-speed', 'hexgrid-density', 'hexgrid-tilt',
+  'particles-speed', 'particles-density', 'particles-size',
+  'scanlines-speed', 'scanlines-density', 'scanlines-beam',
+  'starfield-speed', 'starfield-density', 'starfield-twinkle',
+  'nebula-speed', 'nebula-size', 'nebula-blur',
+  'enable-aurora', 'aurora-touch-responsive', 'aurora-speed', 'aurora-brightness',
 ]);
 
 export function sanitizeThemeOverrides(overrides = {}) {
@@ -1129,13 +1097,22 @@ export function applyTheme(overrides = {}, { persist = true, replace = false } =
     root.style.removeProperty('--logo-url');
   }
 
+  // Wallpaper URL only applies when background-type is 'wallpaper'; clear it otherwise
+  // so the previous background image never bleeds into Mesh / Aurora / Dots.
+  const wallpaperUrl = clean['wallpaper-url']?.trim();
+  if (wallpaperUrl && (clean['background-type'] || theme['background-type']) === 'wallpaper') {
+    root.style.setProperty('--wallpaper-url', `url(${wallpaperUrl})`);
+  } else {
+    root.style.removeProperty('--wallpaper-url');
+  }
+
   root.style.setProperty('--text-sec', theme['text-secondary'] || DEFAULT_THEME['text-secondary']);
   root.setAttribute('data-color-mode', theme['color-mode'] || 'dark');
   root.setAttribute(
     'data-glows-enabled',
     (clean['glows-enabled'] ?? theme['glows-enabled'] ?? 'true') !== 'false' ? 'true' : 'false',
   );
-  root.setAttribute('data-background-type', theme['background-type'] || 'starfield');
+  root.setAttribute('data-background-type', theme['background-type'] || 'mesh');
   root.setAttribute(
     'data-logo-bg-enabled',
     (clean['logo-bg-enabled'] ?? theme['logo-bg-enabled'] ?? 'true') !== 'false' ? 'true' : 'false',
@@ -1149,6 +1126,19 @@ export function applyTheme(overrides = {}, { persist = true, replace = false } =
     } catch {
       // ignore quota / private mode
     }
+  }
+
+  // Load the chosen font on demand (Tajawal / Almarai / Readex Pro).
+  // Cairo is preloaded in index.html, so dynamic loading is only triggered for non-default
+  // families — keeps first paint fast for the majority of stores still on Cairo.
+  const fontStack = clean['font-sans']?.trim();
+  if (fontStack && fontStack !== DEFAULT_THEME['font-sans']) {
+    import('./fontPresets')
+      .then(({ findFontPresetByStack, ensureFontLoaded }) => {
+        const preset = findFontPresetByStack(fontStack);
+        if (preset) ensureFontLoaded(preset);
+      })
+      .catch(() => { /* load failure is silent — fallback stack handles it */ });
   }
 
   window.dispatchEvent(new CustomEvent('themechange'));
