@@ -64,6 +64,13 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at timestamptz DEFAULT now()
 );
 
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS sam_shamcash_wallet_id text,
+  ADD COLUMN IF NOT EXISTS sam_syriatel_recipient text;
+
+COMMENT ON COLUMN public.profiles.sam_shamcash_wallet_id IS 'Optional admin/customer Sam ShamCash recipient wallet id';
+COMMENT ON COLUMN public.profiles.sam_syriatel_recipient IS 'Optional admin/customer Sam Syriatel phone or cash code';
+
 -- GAMES (Represents game categories / top-up systems)
 CREATE TABLE IF NOT EXISTS public.games (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2020,6 +2027,44 @@ CREATE POLICY "Admins manage sam invoices" ON public.sam_invoices
   USING (public.is_admin())
   WITH CHECK (public.is_admin());
 
+-- Admin payout ledger (money sent out of a linked wallet via Sam API)
+CREATE TABLE IF NOT EXISTS public.sam_transfers (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  customer_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
+  method text NOT NULL CHECK (method IN ('shamcash', 'syriatel')),
+  source_identifier text,
+  recipient_identifier text NOT NULL,
+  currency text NOT NULL CHECK (currency IN ('USD', 'SYP', 'EUR')),
+  amount numeric(14,2) NOT NULL CHECK (amount > 0),
+  note text,
+  status text NOT NULL DEFAULT 'completed' CHECK (status IN ('completed', 'failed')),
+  sam_message text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.sam_transfers
+  ADD COLUMN IF NOT EXISTS customer_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS sam_transfers_customer_idx
+  ON public.sam_transfers (customer_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS sam_transfers_created_idx
+  ON public.sam_transfers (created_at DESC);
+
+ALTER TABLE public.sam_transfers ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Admins read sam transfers" ON public.sam_transfers;
+CREATE POLICY "Admins read sam transfers" ON public.sam_transfers
+  FOR SELECT TO authenticated
+  USING (public.is_admin());
+
+DROP POLICY IF EXISTS "Admins manage sam transfers" ON public.sam_transfers;
+CREATE POLICY "Admins manage sam transfers" ON public.sam_transfers
+  FOR ALL TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
 -- (removed older get_sam_api_settings; see later definition)
 
 
@@ -2531,9 +2576,14 @@ CREATE TRIGGER profiles_before_insert_defaults
 -- (deduped: earlier protect_profile_sensitive_fields)
 
 
+DROP FUNCTION IF EXISTS public.admin_list_users(text, int);
 CREATE OR REPLACE FUNCTION public.admin_list_users(
   p_search text DEFAULT '',
-  p_limit int DEFAULT 50
+  p_limit int DEFAULT 50,
+  p_offset int DEFAULT 0,
+  p_order_by text DEFAULT 'created_at',
+  p_balance_filter text DEFAULT 'all',
+  p_status_filter text DEFAULT 'all'
 )
 RETURNS json
 LANGUAGE plpgsql
@@ -2542,14 +2592,18 @@ SET search_path = public
 STABLE AS $$
 DECLARE
   v_search text := lower(trim(COALESCE(p_search, '')));
+  v_order_by text := lower(trim(COALESCE(p_order_by, 'created_at')));
 BEGIN
   IF NOT public.is_admin() THEN
     RAISE EXCEPTION 'Unauthorized';
   END IF;
 
-  RETURN COALESCE((
-    SELECT json_agg(row_to_json(q) ORDER BY q.created_at DESC)
-    FROM (
+  IF v_order_by NOT IN ('created_at', 'balance', 'total_spent', 'order_count', 'name', 'username') THEN
+    v_order_by := 'created_at';
+  END IF;
+
+  RETURN (
+    WITH filtered AS (
       SELECT
         p.id,
         p.username,
@@ -2562,8 +2616,12 @@ BEGIN
         p.verified_at,
         p.phone,
         p.country,
+        p.sam_shamcash_wallet_id,
+        p.sam_syriatel_recipient,
         p.created_at,
-        u.email
+        u.email,
+        COALESCE((SELECT SUM(o.total) FROM public.orders o WHERE o.user_id = p.id AND o.status = 'completed'), 0) AS total_spent,
+        (SELECT COUNT(*)::int FROM public.orders o WHERE o.user_id = p.id AND o.status = 'completed') AS order_count
       FROM public.profiles p
       JOIN auth.users u ON u.id = p.id
       WHERE p.role = 'user'
@@ -2573,12 +2631,45 @@ BEGIN
           OR lower(COALESCE(p.name, '')) LIKE '%' || v_search || '%'
           OR lower(COALESCE(u.email, '')) LIKE '%' || v_search || '%'
         )
-      ORDER BY p.created_at DESC
-      LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 50), 100))
-    ) q
-  ), '[]'::json);
+        AND (
+          lower(COALESCE(p_balance_filter, 'all')) = 'all'
+          OR (lower(p_balance_filter) = 'positive' AND p.balance > 0)
+          OR (lower(p_balance_filter) = 'zero' AND p.balance = 0)
+        )
+        AND (
+          lower(COALESCE(p_status_filter, 'all')) = 'all'
+          OR (lower(p_status_filter) = 'verified' AND p.verified_at IS NOT NULL)
+          OR (lower(p_status_filter) = 'unverified' AND p.verified_at IS NULL)
+          OR (lower(p_status_filter) = 'banned' AND p.banned_at IS NOT NULL AND (p.ban_expires_at IS NULL OR p.ban_expires_at > now()))
+          OR (lower(p_status_filter) = 'active' AND (p.banned_at IS NULL OR (p.ban_expires_at IS NOT NULL AND p.ban_expires_at <= now())))
+        )
+    )
+    SELECT json_build_object(
+      'rows', COALESCE((
+        SELECT json_agg(row_to_json(page))
+        FROM (
+          SELECT *
+          FROM filtered
+          ORDER BY
+            CASE WHEN v_order_by = 'balance' THEN balance END DESC NULLS LAST,
+            CASE WHEN v_order_by = 'total_spent' THEN total_spent END DESC NULLS LAST,
+            CASE WHEN v_order_by = 'order_count' THEN order_count END DESC NULLS LAST,
+            CASE WHEN v_order_by = 'name' THEN lower(COALESCE(name, '')) END ASC,
+            CASE WHEN v_order_by = 'username' THEN lower(COALESCE(username, '')) END ASC,
+            created_at DESC,
+            id DESC
+          LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 50), 100))
+          OFFSET GREATEST(0, COALESCE(p_offset, 0))
+        ) page
+      ), '[]'::json),
+      'total', (SELECT COUNT(*) FROM filtered)
+    )
+  );
 END;
 $$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_list_users(text, int, int, text, text, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_list_users(text, int, int, text, text, text) TO authenticated;
 
 -- (removed older admin_get_user_profile; see later definition)
 
@@ -2937,6 +3028,8 @@ BEGIN
     'bio', v_row.bio,
     'phone', v_row.phone,
     'country', v_row.country,
+    'sam_shamcash_wallet_id', v_row.sam_shamcash_wallet_id,
+    'sam_syriatel_recipient', v_row.sam_syriatel_recipient,
     'favorite_game', v_row.favorite_game,
     'discord_username', v_row.discord_username,
     'default_player_uid', v_row.default_player_uid,
@@ -5493,6 +5586,168 @@ ALTER TABLE public.store_settings
 
 COMMENT ON COLUMN public.store_settings.igdb_auto_cover_on_sync IS
   'When true and IGDB keys are set, G2Bulk sync fetches a cover via first name word and sets image_url (skips image_custom games).';
+
+
+-- -----------------------------------------------------------------------------
+-- MERGED FROM: scripts/binance-pay-migration.sql
+-- -----------------------------------------------------------------------------
+-- Binance Pay merchant integration: receive USDT customer recharges.
+ALTER TABLE public.store_settings
+  ADD COLUMN IF NOT EXISTS binance_api_key text;
+ALTER TABLE public.store_settings
+  ADD COLUMN IF NOT EXISTS binance_api_secret text;
+ALTER TABLE public.store_settings
+  ADD COLUMN IF NOT EXISTS binance_cert_sn text;
+ALTER TABLE public.store_settings
+  ADD COLUMN IF NOT EXISTS binance_merchant_id text;
+ALTER TABLE public.store_settings
+  ADD COLUMN IF NOT EXISTS binance_webhook_secret text;
+ALTER TABLE public.store_settings
+  ADD COLUMN IF NOT EXISTS binance_api_enabled boolean NOT NULL DEFAULT false;
+
+CREATE TABLE IF NOT EXISTS public.binance_pay_orders (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  recharge_request_id uuid REFERENCES public.recharge_requests(id) ON DELETE CASCADE,
+  entity_type text NOT NULL DEFAULT 'recharge'
+    CHECK (entity_type IN ('recharge', 'order')),
+  prepay_id text,
+  merchant_trade_no text NOT NULL UNIQUE,
+  order_amount numeric(10,2) NOT NULL,
+  currency text NOT NULL DEFAULT 'USDT',
+  status text NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','paid','expired','failed','cancelled')),
+  paid_amount numeric(12,2),
+  transaction_ref text,
+  checkout_url text,
+  biz_status text,
+  webhook_received_at timestamptz,
+  webhook_payload jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS binance_pay_orders_recharge_idx
+  ON public.binance_pay_orders (recharge_request_id);
+CREATE INDEX IF NOT EXISTS binance_pay_orders_status_idx
+  ON public.binance_pay_orders (status, created_at DESC);
+
+ALTER TABLE public.binance_pay_orders ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Service role full binance_pay_orders" ON public.binance_pay_orders;
+CREATE POLICY "Service role full binance_pay_orders" ON public.binance_pay_orders
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+CREATE OR REPLACE FUNCTION public.complete_recharge_from_binance_pay_order(p_merchant_trade_no text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_ord public.binance_pay_orders%ROWTYPE;
+  v_row public.recharge_requests%ROWTYPE;
+  v_new_balance numeric;
+  v_ref text;
+  v_paid numeric(12,2);
+  v_credit numeric(10,2);
+BEGIN
+  SELECT * INTO v_ord
+  FROM public.binance_pay_orders
+  WHERE merchant_trade_no = p_merchant_trade_no
+  FOR UPDATE;
+
+  IF v_ord.id IS NULL THEN
+    RAISE EXCEPTION 'Binance Pay order not found';
+  END IF;
+
+  IF v_ord.entity_type IS DISTINCT FROM 'recharge' OR v_ord.recharge_request_id IS NULL THEN
+    RETURN jsonb_build_object('skipped', true, 'reason', 'not_a_recharge');
+  END IF;
+
+  SELECT * INTO v_row
+  FROM public.recharge_requests
+  WHERE id = v_ord.recharge_request_id
+  FOR UPDATE;
+
+  IF v_row.id IS NULL THEN
+    RAISE EXCEPTION 'Recharge request not found';
+  END IF;
+
+  IF v_row.status = 'approved' THEN
+    SELECT balance INTO v_new_balance
+    FROM public.profiles
+    WHERE id = v_row.user_id;
+    RETURN jsonb_build_object(
+      'requestId', v_row.id,
+      'userId', v_row.user_id,
+      'amount', COALESCE(v_row.credited_amount, v_row.amount),
+      'requestedAmount', v_row.amount,
+      'creditedAmount', COALESCE(v_row.credited_amount, v_row.amount),
+      'newBalance', v_new_balance,
+      'status', 'approved',
+      'skipped', true
+    );
+  END IF;
+
+  IF v_row.status NOT IN ('pending', 'payment_sent') THEN
+    RAISE EXCEPTION 'Recharge request is not awaiting payment confirmation';
+  END IF;
+
+  v_paid := round(COALESCE(v_ord.paid_amount, v_ord.order_amount)::numeric, 2);
+  IF v_paid IS NULL OR v_paid <= 0 THEN
+    RAISE EXCEPTION 'Paid amount is missing or invalid';
+  END IF;
+  v_credit := round(v_paid, 2);
+  IF v_credit < 0.01 THEN
+    RAISE EXCEPTION 'Paid amount too small to credit';
+  END IF;
+
+  v_ref := COALESCE(
+    nullif(trim(v_ord.transaction_ref), ''),
+    nullif(trim(v_row.reference), ''),
+    v_ord.merchant_trade_no
+  );
+
+  UPDATE public.profiles
+  SET balance = COALESCE(balance, 0) + v_credit
+  WHERE id = v_row.user_id
+  RETURNING balance INTO v_new_balance;
+
+  IF v_new_balance IS NULL THEN
+    RAISE EXCEPTION 'Profile not found';
+  END IF;
+
+  INSERT INTO public.transactions (user_id, type, amount, balance_after, payment_method, reference, status)
+  VALUES (v_row.user_id, 'recharge', v_credit, v_new_balance, 'Binance Pay', v_ref, 'completed');
+
+  UPDATE public.recharge_requests
+  SET status = 'approved', credited_amount = v_credit, reviewed_at = now(), updated_at = now()
+  WHERE id = v_row.id;
+
+  UPDATE public.binance_pay_orders
+  SET status = 'paid', paid_amount = v_credit,
+    webhook_received_at = COALESCE(webhook_received_at, now()), updated_at = now()
+  WHERE id = v_ord.id;
+
+  PERFORM public.notify_user(
+    v_row.user_id,
+    'recharge_approved',
+    jsonb_build_object(
+      'requestId', v_row.id, 'amount', v_credit, 'requestedAmount', v_row.amount,
+      'creditedAmount', v_credit, 'paidAmount', v_paid, 'payCurrency', v_ord.currency,
+      'newBalance', v_new_balance
+    ),
+    '/profile'
+  );
+
+  RETURN jsonb_build_object(
+    'requestId', v_row.id, 'userId', v_row.user_id, 'amount', v_credit,
+    'requestedAmount', v_row.amount, 'creditedAmount', v_credit, 'paidAmount', v_paid,
+    'payCurrency', v_ord.currency, 'newBalance', v_new_balance
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.complete_recharge_from_binance_pay_order(text) FROM public;
+GRANT EXECUTE ON FUNCTION public.complete_recharge_from_binance_pay_order(text) TO service_role;
 
 
 -- -----------------------------------------------------------------------------
@@ -8495,7 +8750,10 @@ BEGIN
     p_amount,
     'credit',
     p_reason,
-    p_transaction_ref
+    COALESCE(
+      NULLIF(TRIM(p_transaction_ref), ''),
+      CASE WHEN p_recharge_request_id IS NOT NULL THEN v_req.reference END
+    )
   );
 
   IF p_recharge_request_id IS NOT NULL THEN
@@ -8519,6 +8777,7 @@ REVOKE EXECUTE ON FUNCTION public.admin_manual_balance_credit(uuid, numeric, tex
 GRANT EXECUTE ON FUNCTION public.admin_manual_balance_credit(uuid, numeric, text, text, uuid) TO authenticated;
 
 -- Admin edit customer profile fields (not role/balance — use adjust for wallet)
+DROP FUNCTION IF EXISTS public.admin_update_user_profile(uuid, text, text, text, text, text, text, text);
 CREATE OR REPLACE FUNCTION public.admin_update_user_profile(
   p_user_id uuid,
   p_name text DEFAULT NULL,
@@ -8527,7 +8786,9 @@ CREATE OR REPLACE FUNCTION public.admin_update_user_profile(
   p_bio text DEFAULT NULL,
   p_discord_username text DEFAULT NULL,
   p_favorite_game text DEFAULT NULL,
-  p_default_player_uid text DEFAULT NULL
+  p_default_player_uid text DEFAULT NULL,
+  p_sam_shamcash_wallet_id text DEFAULT NULL,
+  p_sam_syriatel_recipient text DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -8535,6 +8796,8 @@ SECURITY DEFINER
 SET search_path = public AS $$
 DECLARE
   v_row public.profiles%ROWTYPE;
+  v_shamcash text := nullif(trim(p_sam_shamcash_wallet_id), '');
+  v_syriatel text := nullif(trim(p_sam_syriatel_recipient), '');
 BEGIN
   IF NOT public.is_admin() THEN
     RAISE EXCEPTION 'Unauthorized';
@@ -8542,6 +8805,13 @@ BEGIN
 
   IF p_user_id IS NULL THEN
     RAISE EXCEPTION 'User is required';
+  END IF;
+
+  IF v_shamcash IS NOT NULL AND v_shamcash !~* '^[0-9a-f]{32}$' THEN
+    RAISE EXCEPTION 'Invalid ShamCash recipient';
+  END IF;
+  IF v_syriatel IS NOT NULL AND v_syriatel !~ '^(09[0-9]{8}|[0-9]{8})$' THEN
+    RAISE EXCEPTION 'Invalid Syriatel recipient';
   END IF;
 
   UPDATE public.profiles
@@ -8552,7 +8822,9 @@ BEGIN
     bio = CASE WHEN p_bio IS NULL THEN bio ELSE nullif(trim(p_bio), '') END,
     discord_username = CASE WHEN p_discord_username IS NULL THEN discord_username ELSE nullif(trim(p_discord_username), '') END,
     favorite_game = CASE WHEN p_favorite_game IS NULL THEN favorite_game ELSE nullif(trim(p_favorite_game), '') END,
-    default_player_uid = CASE WHEN p_default_player_uid IS NULL THEN default_player_uid ELSE nullif(trim(p_default_player_uid), '') END
+    default_player_uid = CASE WHEN p_default_player_uid IS NULL THEN default_player_uid ELSE nullif(trim(p_default_player_uid), '') END,
+    sam_shamcash_wallet_id = CASE WHEN p_sam_shamcash_wallet_id IS NULL THEN sam_shamcash_wallet_id ELSE v_shamcash END,
+    sam_syriatel_recipient = CASE WHEN p_sam_syriatel_recipient IS NULL THEN sam_syriatel_recipient ELSE v_syriatel END
   WHERE id = p_user_id
   RETURNING * INTO v_row;
 
@@ -8569,14 +8841,78 @@ BEGIN
     'discord_username', v_row.discord_username,
     'favorite_game', v_row.favorite_game,
     'default_player_uid', v_row.default_player_uid,
+    'sam_shamcash_wallet_id', v_row.sam_shamcash_wallet_id,
+    'sam_syriatel_recipient', v_row.sam_syriatel_recipient,
     'username', v_row.username,
     'balance', v_row.balance
   );
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.admin_update_user_profile(uuid, text, text, text, text, text, text, text) FROM public;
-GRANT EXECUTE ON FUNCTION public.admin_update_user_profile(uuid, text, text, text, text, text, text, text) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.admin_update_user_profile(uuid, text, text, text, text, text, text, text, text, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_update_user_profile(uuid, text, text, text, text, text, text, text, text, text) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.admin_get_user_by_username(p_username text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+STABLE AS $$
+DECLARE
+  v_user_id uuid;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  SELECT id INTO v_user_id
+  FROM public.profiles
+  WHERE lower(username) = lower(trim(regexp_replace(COALESCE(p_username, ''), '^@+', '')))
+  LIMIT 1;
+
+  IF v_user_id IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  RETURN public.admin_get_user_profile(v_user_id);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_get_user_by_username(text) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_get_user_by_username(text) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.admin_get_profile_summaries(p_user_ids uuid[])
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+STABLE AS $$
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  RETURN COALESCE(
+    (
+      SELECT jsonb_agg(jsonb_build_object(
+        'id', p.id,
+        'username', p.username,
+        'name', p.name,
+        'role', p.role,
+        'balance', p.balance,
+        'sam_shamcash_wallet_id', p.sam_shamcash_wallet_id,
+        'sam_syriatel_recipient', p.sam_syriatel_recipient
+      ) ORDER BY p.created_at DESC)
+      FROM public.profiles p
+      WHERE p.id = ANY(COALESCE(p_user_ids, '{}'::uuid[]))
+    ),
+    '[]'::jsonb
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_get_profile_summaries(uuid[]) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_get_profile_summaries(uuid[]) TO authenticated;
 
 
 -- -----------------------------------------------------------------------------
@@ -9641,7 +9977,15 @@ STABLE AS $$
       END
       FROM store_settings WHERE id = 1
     ), false),
-    'binance', COALESCE((SELECT binance_enabled FROM store_settings WHERE id = 1), false),
+    'binance', COALESCE((
+      SELECT binance_enabled
+        AND binance_api_enabled
+        AND binance_api_key IS NOT NULL
+        AND length(trim(binance_api_key)) > 0
+        AND binance_api_secret IS NOT NULL
+        AND length(trim(binance_api_secret)) > 0
+      FROM store_settings WHERE id = 1
+    ), false),
     'mastercard', COALESCE((SELECT mastercard_enabled FROM store_settings WHERE id = 1), false),
     'shamcashMerchantName', COALESCE((SELECT shamcash_merchant_name FROM store_settings WHERE id = 1), 'ECHOCORE Store'),
     'shamcashQrImageUrl', (SELECT shamcash_qr_image_url FROM store_settings WHERE id = 1),
@@ -9707,7 +10051,16 @@ STABLE AS $$
     'sypRateUpdatedAt', (SELECT sam_syp_rate_updated_at FROM store_settings WHERE id = 1),
     'g2bulkCatalogOnly', COALESCE((SELECT g2bulk_catalog_only FROM store_settings WHERE id = 1), true),
     'g2bulkCatalogMode', COALESCE((SELECT g2bulk_catalog_mode FROM store_settings WHERE id = 1), 'sync'),
-    'g2bulkPullSelection', COALESCE((SELECT g2bulk_pull_selection FROM store_settings WHERE id = 1), '{}'::jsonb)
+    'g2bulkPullSelection', COALESCE((SELECT g2bulk_pull_selection FROM store_settings WHERE id = 1), '{}'::jsonb),
+    'binanceApiEnabled', COALESCE((SELECT binance_api_enabled FROM store_settings WHERE id = 1), false),
+    'binanceApiReady', COALESCE((
+      SELECT binance_api_enabled
+        AND binance_api_key IS NOT NULL
+        AND length(trim(binance_api_key)) > 0
+        AND binance_api_secret IS NOT NULL
+        AND length(trim(binance_api_secret)) > 0
+      FROM store_settings WHERE id = 1
+    ), false)
   );
 $$;
 
@@ -10962,6 +11315,265 @@ BEGIN
   );
 END;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Admin recharge history (ledger-backed credit status)
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.list_admin_recharge_history_rows(
+  p_search text DEFAULT '',
+  p_status text DEFAULT '',
+  p_method text DEFAULT ''
+)
+RETURNS TABLE(id uuid, event_at timestamptz, row_data jsonb)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE AS $$
+  WITH source_rows AS (
+    SELECT
+      si.id,
+      COALESCE(r.user_id, si.user_id) AS user_id,
+      r.id AS recharge_request_id,
+      si.sam_invoice_id,
+      si.payment_url,
+      COALESCE(r.amount, si.requested_usd_amount, si.amount) AS requested_amount,
+      si.paid_amount,
+      COALESCE(si.currency, r.pay_currency, 'USD') AS currency,
+      si.method,
+      r.payment_method,
+      r.status AS request_status,
+      si.status AS payment_status,
+       CASE WHEN credit.id IS NOT NULL OR r.credited_amount IS NOT NULL THEN 'credited' ELSE 'not_credited' END AS credit_status,
+      si.transaction_ref,
+      COALESCE(r.created_at, si.created_at) AS created_at,
+      GREATEST(COALESCE(r.updated_at, r.created_at), COALESCE(si.updated_at, si.created_at)) AS event_at,
+      COALESCE(credit.amount, r.credited_amount) AS credited_amount,
+      r.reference,
+      r.reviewed_at,
+      si.paid_at,
+      si.webhook_received_at,
+      si.expires_at,
+      p.name AS customer_name,
+      p.username AS customer_username
+    FROM public.sam_invoices si
+    LEFT JOIN public.recharge_requests r ON r.id = si.entity_id
+    LEFT JOIN public.profiles p ON p.id = COALESCE(r.user_id, si.user_id)
+    LEFT JOIN LATERAL (
+      SELECT t.id, t.amount
+      FROM public.transactions t
+      WHERE t.user_id = COALESCE(r.user_id, si.user_id)
+         AND t.type IN ('recharge', 'adjustment')
+         AND t.amount > 0
+         AND t.status = 'completed'
+         AND (
+           t.reference = r.reference
+           OR t.reference = si.transaction_ref
+           OR t.reference = si.sam_invoice_id
+           OR t.metadata->>'recharge_request_id' = r.id::text
+           OR t.metadata->>'requestId' = r.id::text
+           OR t.metadata->>'rechargeRequestId' = r.id::text
+           OR t.metadata->>'sam_invoice_id' = si.sam_invoice_id
+           OR (
+             r.status = 'approved'
+             AND r.reviewed_at IS NOT NULL
+             AND t.type = 'adjustment'
+             AND t.payment_method = 'admin_manual'
+             AND t.amount = r.amount
+             AND t.created_at >= r.created_at
+             AND t.created_at <= r.reviewed_at
+                AND NOT (COALESCE(t.metadata, '{}'::jsonb) ?| ARRAY[
+                  'recharge_request_id', 'requestId', 'rechargeRequestId'
+                ])
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM public.recharge_requests competing
+                  WHERE competing.user_id = r.user_id
+                    AND competing.id <> r.id
+                    AND competing.status = 'approved'
+                    AND competing.reviewed_at IS NOT NULL
+                    AND competing.amount = r.amount
+                    AND t.created_at >= competing.created_at
+                    AND t.created_at <= competing.reviewed_at
+                    AND (
+                      competing.created_at > r.created_at
+                      OR (competing.created_at = r.created_at AND competing.id > r.id)
+                    )
+                )
+              )
+         )
+      ORDER BY t.created_at DESC, t.id DESC
+      LIMIT 1
+    ) credit ON true
+    WHERE si.entity_type = 'recharge'
+    UNION ALL
+    SELECT
+      r.id, r.user_id, r.id, NULL, NULL, r.amount, NULL, r.pay_currency, NULL,
+      r.payment_method, r.status, NULL,
+      CASE WHEN credit.id IS NOT NULL OR r.credited_amount IS NOT NULL THEN 'credited' ELSE 'not_credited' END,
+      NULL, r.created_at, r.updated_at, COALESCE(credit.amount, r.credited_amount), r.reference, r.reviewed_at,
+      NULL, NULL, NULL, p.name, p.username
+    FROM public.recharge_requests r
+    LEFT JOIN public.profiles p ON p.id = r.user_id
+    LEFT JOIN LATERAL (
+      SELECT t.id, t.amount
+      FROM public.transactions t
+      WHERE t.user_id = r.user_id
+         AND t.type IN ('recharge', 'adjustment')
+         AND t.amount > 0
+         AND t.status = 'completed'
+         AND (
+           t.reference = r.reference
+           OR t.metadata->>'recharge_request_id' = r.id::text
+           OR t.metadata->>'requestId' = r.id::text
+           OR t.metadata->>'rechargeRequestId' = r.id::text
+           OR (
+             r.status = 'approved'
+             AND r.reviewed_at IS NOT NULL
+             AND t.type = 'adjustment'
+             AND t.payment_method = 'admin_manual'
+             AND t.amount = r.amount
+             AND t.created_at >= r.created_at
+             AND t.created_at <= r.reviewed_at
+              AND NOT (COALESCE(t.metadata, '{}'::jsonb) ?| ARRAY[
+                'recharge_request_id', 'requestId', 'rechargeRequestId'
+              ])
+              AND NOT EXISTS (
+                SELECT 1
+                FROM public.recharge_requests competing
+                WHERE competing.user_id = r.user_id
+                  AND competing.id <> r.id
+                  AND competing.status = 'approved'
+                  AND competing.reviewed_at IS NOT NULL
+                  AND competing.amount = r.amount
+                  AND t.created_at >= competing.created_at
+                  AND t.created_at <= competing.reviewed_at
+                  AND (
+                    competing.created_at > r.created_at
+                    OR (competing.created_at = r.created_at AND competing.id > r.id)
+                  )
+              )
+            )
+         )
+      ORDER BY t.created_at DESC, t.id DESC
+      LIMIT 1
+    ) credit ON true
+    WHERE NOT EXISTS (
+      SELECT 1 FROM public.sam_invoices si
+      WHERE si.entity_type = 'recharge' AND si.entity_id = r.id
+    )
+  ), filtered AS (
+    SELECT s.*
+    FROM source_rows s
+    WHERE (NULLIF(TRIM(p_status), '') IS NULL OR s.request_status = LOWER(TRIM(p_status))
+      OR s.payment_status = LOWER(TRIM(p_status)) OR s.credit_status = LOWER(TRIM(p_status)))
+      AND (NULLIF(TRIM(p_method), '') IS NULL OR s.method = LOWER(TRIM(p_method))
+        OR LOWER(s.payment_method) = LOWER(TRIM(p_method)))
+      AND (NULLIF(TRIM(p_search), '') IS NULL OR LOWER(CONCAT_WS(' ', s.customer_name, s.customer_username,
+        s.user_id, s.recharge_request_id, s.reference, s.sam_invoice_id, s.transaction_ref)) LIKE '%' || LOWER(TRIM(p_search)) || '%')
+  )
+  SELECT f.id, f.event_at,
+    JSONB_BUILD_OBJECT(
+      'id', f.id, 'user_id', f.user_id, 'customer_id', f.user_id,
+      'customer_name', f.customer_name, 'customer_username', f.customer_username,
+      'recharge_request_id', f.recharge_request_id, 'reference', f.reference,
+      'sam_invoice_id', f.sam_invoice_id, 'payment_url', f.payment_url,
+      'requested_amount', f.requested_amount, 'paid_amount', f.paid_amount,
+      'credited_amount', f.credited_amount, 'currency', f.currency,
+      'method', COALESCE(f.method, 'manual'), 'payment_method', f.payment_method,
+      'request_status', f.request_status, 'payment_status', f.payment_status,
+      'credit_status', f.credit_status, 'transaction_ref', f.transaction_ref,
+      'created_at', f.created_at, 'updated_at', f.event_at, 'reviewed_at', f.reviewed_at,
+      'paid_at', f.paid_at, 'webhook_received_at', f.webhook_received_at, 'expires_at', f.expires_at
+    )
+  FROM filtered f;
+$$;
+
+CREATE OR REPLACE FUNCTION public.list_admin_recharge_history(
+  p_page int DEFAULT 1,
+  p_page_size int DEFAULT 25,
+  p_search text DEFAULT '',
+  p_status text DEFAULT '',
+  p_method text DEFAULT '',
+  p_admin_id uuid DEFAULT null
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+STABLE AS $$
+DECLARE
+  v_page int := GREATEST(COALESCE(p_page, 1), 1);
+  v_page_size int := LEAST(GREATEST(COALESCE(p_page_size, 25), 1), 100);
+  v_search text := LOWER(TRIM(COALESCE(p_search, '')));
+  v_status text := LOWER(TRIM(COALESCE(p_status, '')));
+  v_method text := LOWER(TRIM(COALESCE(p_method, '')));
+  v_total int;
+  v_rows json;
+  v_by_request_status json;
+  v_by_credit_status json;
+BEGIN
+  -- Called by the edge function with the service role, where auth.uid() is
+  -- null. The edge has already verified the caller is an admin; validate the
+  -- passed admin id against profiles instead of auth.uid().
+  IF p_admin_id IS NULL
+     OR NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = p_admin_id AND role = 'admin') THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+
+  WITH audit_rows AS (
+    SELECT row_data->>'request_status' AS request_status
+    FROM public.list_admin_recharge_history_rows(v_search, v_status, v_method)
+  )
+  SELECT COUNT(*) INTO v_total FROM audit_rows;
+
+  WITH audit_rows AS (
+    SELECT row_data->>'request_status' AS request_status
+    FROM public.list_admin_recharge_history_rows(v_search, v_status, v_method)
+  )
+  SELECT COALESCE(JSON_OBJECT_AGG(request_status, status_count), '{}'::json)
+    INTO v_by_request_status
+  FROM (SELECT COALESCE(request_status, 'unlinked') request_status, COUNT(*) status_count
+         FROM audit_rows GROUP BY request_status) counts;
+
+  WITH audit_rows AS (
+    SELECT row_data->>'credit_status' AS credit_status
+    FROM public.list_admin_recharge_history_rows(v_search, v_status, v_method)
+  )
+  SELECT COALESCE(JSON_OBJECT_AGG(credit_status, status_count), '{}'::json)
+    INTO v_by_credit_status
+  FROM (SELECT COALESCE(credit_status, 'unknown') credit_status, COUNT(*) status_count
+        FROM audit_rows GROUP BY credit_status) counts;
+
+  WITH audit_rows AS (
+    SELECT * FROM public.list_admin_recharge_history_rows(v_search, v_status, v_method)
+  )
+  SELECT COALESCE(JSON_AGG(page_rows.row_data ORDER BY page_rows.event_at DESC, page_rows.id DESC), '[]'::json)
+    INTO v_rows
+  FROM (
+    SELECT * FROM audit_rows
+    ORDER BY event_at DESC, id DESC
+    OFFSET (v_page - 1) * v_page_size LIMIT v_page_size
+  ) page_rows;
+
+  RETURN JSON_BUILD_OBJECT(
+    'rows', v_rows,
+    'total', v_total,
+    'page', v_page,
+    'pageSize', v_page_size,
+    'stats', JSON_BUILD_OBJECT(
+      'total', v_total,
+      'byRequestStatus', v_by_request_status,
+      'byCreditStatus', v_by_credit_status
+    )
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.list_admin_recharge_history(int, int, text, text, text, uuid) FROM public;
+GRANT EXECUTE ON FUNCTION public.list_admin_recharge_history(int, int, text, text, text, uuid) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.list_admin_recharge_history_rows(text, text, text) FROM public;
 
 REVOKE EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text, text, text) FROM public;
 GRANT EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text, text, text) TO authenticated;

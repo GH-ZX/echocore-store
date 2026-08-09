@@ -24,7 +24,7 @@ export const ADMIN_SEGMENT_TO_TAB = Object.fromEntries(
 );
 
 /** Nested section under /dashboard/apis/:section (survives refresh). */
-export const ADMIN_API_SECTIONS = ['g2bulk', 'sam', 'igdb'];
+export const ADMIN_API_SECTIONS = ['g2bulk', 'sam', 'igdb', 'binance'];
 
 export function isValidAdminApisSection(section = '') {
   return ADMIN_API_SECTIONS.includes(String(section || '').trim());

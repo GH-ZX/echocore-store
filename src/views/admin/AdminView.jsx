@@ -7,7 +7,7 @@ import {
   isValidAdminTabSegment,
   resolveAdminTabFromPath,
 } from '../../lib/adminRoutes';
-import { Trash2, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Percent, PanelLeftClose, PanelLeftOpen, Users, ScrollText, Bell, Mail, TrendingUp, Cable, Settings } from 'lucide-react';
+import { Trash2, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Percent, PanelLeftClose, PanelLeftOpen, Users, ScrollText, Bell, Mail, TrendingUp, Cable, Settings, Handshake } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 import { centerActiveMobileTab, resetPageHorizontalScroll } from '../../lib/adminMobileNav';
@@ -76,8 +76,7 @@ function buildAdminNavItems(t) {
     { id: 'contact', label: t.adminContactTab, shortLabel: t.tabContactShort, icon: Mail },
     { id: 'reviews', label: t.reviewsTab, shortLabel: t.tabReviewsShort, icon: MessageSquare },
     { id: 'apis', label: t.apisTab, shortLabel: t.tabApisShort, icon: Cable },
-    // Partners tab hidden in UI until public launch (~1 month). Route + manager stay wired.
-    // { id: 'partners', label: t.partnersTab, shortLabel: t.tabPartnersShort, icon: Handshake },
+    { id: 'partners', label: t.partnersTab, shortLabel: t.tabPartnersShort, icon: Handshake },
     { id: 'logs', label: t.logsTab, shortLabel: t.tabLogsShort, icon: ScrollText },
   ];
 }
@@ -91,7 +90,7 @@ function buildAdminNavGroups(t) {
     { id: 'insights', label: t.adminGroupOverview, shortLabel: t.tabOverviewShort, icon: BarChart3, tabs: ['overview', 'profits', 'logs'] },
     { id: 'sales', label: t.adminGroupSales, shortLabel: t.adminGroupSales, icon: ShoppingCart, tabs: ['orders', 'recharges'] },
     { id: 'catalog', label: t.adminGroupCatalog, shortLabel: t.adminGroupCatalog, icon: Package, tabs: ['products', 'home'] },
-    { id: 'customers', label: t.adminGroupCustomers, shortLabel: t.adminGroupCustomers, icon: Users, tabs: ['users', 'inbox', 'contact', 'reviews'] },
+    { id: 'customers', label: t.adminGroupCustomers, shortLabel: t.adminGroupCustomers, icon: Users, tabs: ['users', 'partners', 'inbox', 'contact', 'reviews'] },
     { id: 'settings', label: t.adminGroupSettings, shortLabel: t.adminGroupSettings, icon: Settings, tabs: ['payments', 'apis', 'theme'] },
   ];
 }

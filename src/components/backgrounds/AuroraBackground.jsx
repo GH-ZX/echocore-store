@@ -1,5 +1,3 @@
-import './StoreBackgrounds.css';
-
 export default function AuroraBackground() {
   return (
     <div className="store-bg store-bg-aurora" aria-hidden="true">

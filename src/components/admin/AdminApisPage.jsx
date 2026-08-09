@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
+  Bitcoin,
   Cable,
   CheckCircle,
   ChevronDown,
@@ -12,9 +13,11 @@ import {
 import AdminG2BulkSettings from './AdminG2BulkSettings';
 import AdminIgdbSettings from './AdminIgdbSettings';
 import AdminSamApiPanel from './AdminSamApiPanel';
+import AdminBinanceSettings from './AdminBinanceSettings';
 import { fetchG2bulkSettings } from '../../lib/g2bulk';
 import { fetchIgdbSettings } from '../../lib/igdb';
 import { fetchSamApiSettings } from '../../lib/samApi';
+import { fetchBinancePaySettings } from '../../lib/binancePay';
 import {
   getAdminApisPath,
   isValidAdminApisSection,
@@ -94,15 +97,17 @@ export default function AdminApisPage({
     g2bulk: { ok: false, synced: false },
     sam: { ok: false, mode: 'manual' },
     igdb: { ok: false, auto: false },
+    binance: { ok: false },
   });
 
   const refreshStatus = useCallback(async () => {
     setStatusLoading(true);
     try {
-      const [g2, sam, igdb] = await Promise.allSettled([
+      const [g2, sam, igdb, bin] = await Promise.allSettled([
         fetchG2bulkSettings(),
         fetchSamApiSettings(),
         fetchIgdbSettings(),
+        fetchBinancePaySettings(),
       ]);
       setStatus({
         g2bulk: {
@@ -116,6 +121,9 @@ export default function AdminApisPage({
         igdb: {
           ok: igdb.status === 'fulfilled' && !!igdb.value?.configured,
           auto: igdb.status === 'fulfilled' && !!igdb.value?.igdb_auto_cover_on_sync,
+        },
+        binance: {
+          ok: bin.status === 'fulfilled' && !!(bin.value?.binance_api_key_set && bin.value?.binance_api_secret_set),
         },
       });
     } finally {
@@ -154,7 +162,7 @@ export default function AdminApisPage({
     navigate(getAdminApisPath({ section: next }), { replace: true });
   };
 
-  const readyCount = [status.g2bulk.ok, status.sam.ok, status.igdb.ok].filter(Boolean).length;
+  const readyCount = [status.g2bulk.ok, status.sam.ok, status.igdb.ok, status.binance.ok].filter(Boolean).length;
 
   return (
     <div className="admin-apis space-y-5 sm:space-y-6" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
@@ -174,7 +182,7 @@ export default function AdminApisPage({
           <div className="admin-apis-hero__ok">
             <CheckCircle className="w-4 h-4 text-emerald-400" aria-hidden />
             <span>
-              {readyCount}/3 {t.apisReadyCount}
+              {readyCount}/4 {t.apisReadyCount}
             </span>
           </div>
         )}
@@ -214,6 +222,7 @@ export default function AdminApisPage({
         >
           <AdminSamApiPanel
             t={t}
+            lang={lang}
             embedded
             onSaved={() => {
               onPaymentSettingsSaved?.();
@@ -234,6 +243,26 @@ export default function AdminApisPage({
           statusLabel={status.igdb.ok ? t.igdbConfigured : t.igdbNotConfigured}
         >
           <AdminIgdbSettings
+            t={t}
+            embedded
+            onNotify={(msg, type) => {
+              onNotify?.(msg, type);
+              if (type === 'success') refreshStatus();
+            }}
+          />
+        </ApiSection>
+
+        <ApiSection
+          id="binance"
+          open={openId === 'binance'}
+          onToggle={() => setSection('binance')}
+          icon={Bitcoin}
+          title={t.apisBinanceTitle}
+          description={t.apisBinanceDesc}
+          statusOk={status.binance.ok}
+          statusLabel={status.binance.ok ? (t.binanceConfigured || t.igdbConfigured) : (t.binanceNotConfigured || t.igdbNotConfigured)}
+        >
+          <AdminBinanceSettings
             t={t}
             embedded
             onNotify={(msg, type) => {

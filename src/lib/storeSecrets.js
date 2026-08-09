@@ -9,6 +9,11 @@ export const STORE_SETTINGS_SECRET_COLUMNS = Object.freeze([
   'shamcash_api_token',
   'igdb_client_id',
   'igdb_client_secret',
+  'binance_api_key',
+  'binance_api_secret',
+  'binance_cert_sn',
+  'binance_merchant_id',
+  'binance_webhook_secret',
 ]);
 
 /** Columns safe for client admin/settings reads (no API keys / secrets). */
@@ -57,7 +62,10 @@ export const STORE_SETTINGS_CLIENT_SELECT = [
   'g2bulk_auto_approve',
   'sam_syp_per_usd',
   'sam_syp_rate_updated_at',
+  'sam_syp_per_usd',
+  'sam_syp_rate_updated_at',
   'igdb_auto_cover_on_sync',
+  'binance_api_enabled',
 ].join(',');
 
 /** Strip secret keys from any settings-like object (defense in depth). */
@@ -81,6 +89,14 @@ export function storeSecretKeySetFlags(row = {}) {
     igdb_configured: !!(
       (row.igdb_client_id && String(row.igdb_client_id).trim())
       && (row.igdb_client_secret && String(row.igdb_client_secret).trim())
+    ),
+    binance_api_key_set: !!(row.binance_api_key && String(row.binance_api_key).trim()),
+    binance_api_secret_set: !!(row.binance_api_secret && String(row.binance_api_secret).trim()),
+    binance_cert_sn_set: !!(row.binance_cert_sn && String(row.binance_cert_sn).trim()),
+    binance_merchant_id_set: !!(row.binance_merchant_id && String(row.binance_merchant_id).trim()),
+    binance_configured: !!(
+      (row.binance_api_key && String(row.binance_api_key).trim())
+      && (row.binance_api_secret && String(row.binance_api_secret).trim())
     ),
   };
 }

@@ -46,3 +46,6 @@ npm-debug.log
 
 agent-tools/
 terminals/
+
+# Supabase CLI local state
+supabase/.temp/

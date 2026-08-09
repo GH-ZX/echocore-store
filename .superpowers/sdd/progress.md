@@ -1,0 +1,7 @@
+Task 1: complete (profile Sam recipient fields, admin RPC contract, review clean)
+Task 2: complete (scoped Sam settings/loading and stale-request guards, review clean)
+Task 3: complete (customer selection, profile recipients, customer-page payout, audited linkage, review approved)
+Task 4: complete (customer recharge audit history, bounded filters/pagination, ledger reconciliation, review approved)
+Task 5: complete (exact log copy per row + copy-all-errors, tests pass)
+Task 6: complete (CSS preload detection + single guarded reload, background CSS in main bundle, tests pass)
+Task 7: complete (prod deploy of migrations + sam-api edge; hotfix: list_admin_recharge_history admin check now validates passed p_admin_id under service role)

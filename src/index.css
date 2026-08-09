@@ -4365,6 +4365,51 @@ html, body {
   }
 }
 
+/* ── Sam panels: status colors in light mode ──
+   Tailwind status utilities (emerald/red/amber/slate/violet -200..-400) are tuned
+   for dark surfaces and go low-contrast on a light theme. Bump them to deeper
+   shades when color-mode is light. Un-layered rules win over Tailwind utilities. */
+[data-color-mode='light'] .text-emerald-100,
+[data-color-mode='light'] .text-emerald-300,
+[data-color-mode='light'] .text-emerald-400 {
+  color: #047857;
+}
+
+[data-color-mode='light'] .text-green-300,
+[data-color-mode='light'] .text-green-400 {
+  color: #047857;
+}
+
+[data-color-mode='light'] .text-red-300,
+[data-color-mode='light'] .text-red-400 {
+  color: #be123c;
+}
+
+[data-color-mode='light'] .text-amber-200,
+[data-color-mode='light'] .text-amber-300,
+[data-color-mode='light'] .text-amber-400 {
+  color: #b45309;
+}
+
+[data-color-mode='light'] .text-slate-300,
+[data-color-mode='light'] .text-slate-400 {
+  color: #475569;
+}
+
+[data-color-mode='light'] .text-violet-400 {
+  color: #6d28d9;
+}
+
+[data-color-mode='light'] .sam-wallet-row__icon--sham {
+  background: color-mix(in srgb, #10b981 14%, white);
+  color: #047857;
+}
+
+[data-color-mode='light'] .sam-wallet-row__icon--syriatel {
+  background: color-mix(in srgb, #ef4444 14%, white);
+  color: #be123c;
+}
+
 /* ── Admin APIs hub ── */
 .admin-apis-hero {
   display: flex;
@@ -4427,6 +4472,89 @@ html, body {
   font-weight: 700;
   color: var(--text-sec);
   flex-shrink: 0;
+}
+
+/* ── Admin Partners stat chips ── */
+.admin-partners-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.admin-partners-stat {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  min-width: 7.5rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.8rem;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
+}
+
+.admin-partners-stat__top {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-sec);
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.admin-partners-stat__icon {
+  color: var(--accent);
+  opacity: 0.85;
+}
+
+.admin-partners-stat__num {
+  font-size: 1.35rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.admin-partners-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  min-height: 2.5rem;
+  padding: 0 0.8rem;
+  border-radius: 0.8rem;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-sec);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.admin-partners-refresh:hover {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+@media (max-width: 479px) {
+  .admin-partners-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .admin-partners-stat {
+    min-width: 0;
+  }
+
+  .admin-partners-refresh {
+    grid-column: span 2;
+    width: 100%;
+  }
 }
 
 .admin-apis-status-grid {
@@ -6738,6 +6866,34 @@ html, body {
   white-space: normal;
   word-break: break-word;
   overflow-wrap: anywhere;
+}
+
+.dev-log-line__detail-head {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.3rem;
+}
+
+.dev-log-line__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-sec);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.dev-log-line__copy:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--surface-hover);
 }
 
 .dev-log-line__fields {

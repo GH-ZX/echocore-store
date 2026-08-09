@@ -41,6 +41,16 @@ export async function adminUpsertPartnerTier(payload = {}) {
   return data;
 }
 
+/** Admin: profiles that currently have a partner tier assigned (id + tier id). */
+export async function adminListPartnerUsers() {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, partner_tier_id')
+    .not('partner_tier_id', 'is', null);
+  if (error) throw error;
+  return (Array.isArray(data) ? data : []).filter((r) => !!r.partner_tier_id);
+}
+
 export async function adminSetUserPartnerTier(userId, tierId = null) {
   const { data, error } = await supabase.rpc('admin_set_user_partner_tier', {
     p_user_id: userId,

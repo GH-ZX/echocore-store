@@ -554,6 +554,7 @@ export function formatDevLogLine(item, lang = 'ar') {
       tag,
       id: item?.id || `${tag}-${timestamp}`,
       createdAt: item?.created_at,
+      copyText: formatDevLogCopy(item, lang, { body, consoleLog }),
     };
   } catch (err) {
     const tag = `${item?.category || 'unknown'}.${item?.event_type || 'event'}`;
@@ -568,7 +569,61 @@ export function formatDevLogLine(item, lang = 'ar') {
       tag,
       id: item?.id || `bad-${tag}`,
       createdAt: item?.created_at,
+      copyText: `ERR  | ${tag}\n${String(err?.stack || err || '')}`,
     };
+  }
+}
+
+/**
+ * Build the complete diagnostic payload for a log row so admins can paste it
+ * into support/issue reports. Includes the formatted line, raw metadata fields,
+ * console/stack/component-stack dump, and the page URL when present.
+ */
+export function formatDevLogCopy(item, lang = 'ar', preformatted = {}) {
+  try {
+    const severityKey = normalizeLogSeverity(item?.severity);
+    const severity = DEV_LOG_SEVERITY[severityKey] || DEV_LOG_SEVERITY.info;
+    const tag = `${item?.category || 'unknown'}.${item?.event_type || 'event'}`;
+    const timestamp = formatDevLogTimestamp(item?.created_at);
+    const metadata = safeLogMetadata(item?.metadata);
+    const url = metadata.url
+      || (typeof window !== 'undefined' ? window.location?.href : '');
+    const consoleLog = preformatted.consoleLog
+      || extractConsoleLogDump(item);
+
+    const lines = [
+      `${severity} | ${tag} | ${timestamp}`,
+    ];
+
+    const body = preformatted.body || (() => {
+      const fields = buildDevLogFields(item, lang);
+      return fields ? `${severity} | ${tag} | ${fields}` : `${severity} | ${tag}`;
+    })();
+    lines.push(body);
+
+    if (url) lines.push(`url=${url}`);
+
+    const rawMeta = Object.entries(metadata)
+      .filter(([k]) => !CONSOLE_META_KEYS.has(k) && !['userAgent'].includes(k))
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}=${typeof v === 'object' ? safeStringify(v) : v}`)
+      .join('\n');
+    if (rawMeta) lines.push('\n[metadata]', rawMeta);
+
+    if (consoleLog) lines.push('\n[console]', consoleLog);
+
+    return lines.join('\n');
+  } catch {
+    return String(item?.metadata?.consoleLog || preformatted?.body || '');
+  }
+}
+
+function safeStringify(value) {
+  try {
+    const raw = JSON.stringify(value, null, 2);
+    return raw.length > 2000 ? `${raw.slice(0, 1997)}...` : raw;
+  } catch {
+    return String(value);
   }
 }
 

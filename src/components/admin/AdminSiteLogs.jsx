@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Loader2,
   RefreshCw,
   ScrollText,
@@ -16,7 +17,12 @@ import {
   Radio,
   HeartPulse,
 } from 'lucide-react';
-import { fetchAdminSiteLogs, formatDevLogLine, formatSiteLogCount, formatSiteLog } from '../../lib/siteLogs';
+import {
+  fetchAdminSiteLogs,
+  formatDevLogLine,
+  formatSiteLogCount,
+  formatSiteLog,
+} from '../../lib/siteLogs';
 import {
   getHealthAckAt,
   setHealthAckAt,
@@ -196,6 +202,33 @@ export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
   const toggleExpanded = (id) => {
     setExpandedId((prev) => (prev === id ? null : id));
   };
+
+  const copyText = useCallback(async (value) => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      onNotifyRef.current?.(t.copied || 'Copied', 'success');
+    } catch {
+      onNotifyRef.current?.(t.copyFailed || 'Copy failed', 'error');
+    }
+  }, [t]);
+
+  const copyVisibleErrors = useCallback(async () => {
+    const payload = logs
+      .map((row) => {
+        const line = formatDevLogLine(row, lang);
+        return line.severity === 'danger' || line.severity === 'warning'
+          ? line.copyText || line.text
+          : '';
+      })
+      .filter(Boolean)
+      .join('\n\n---\n\n');
+    if (!payload) {
+      onNotifyRef.current?.(t.siteLogsNoErrorsToCopy || 'No errors to copy', 'error');
+      return;
+    }
+    await copyText(payload);
+  }, [logs, lang, copyText, t]);
 
   const healthKey = fetchError
     ? 'activityHealthDown'
@@ -395,6 +428,16 @@ export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={copyVisibleErrors}
+              disabled={loading || !logs.length}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[var(--border)] text-xs disabled:opacity-40"
+              title={t.siteLogsCopyErrorsHint}
+            >
+              <Copy size={14} />
+              {t.siteLogsCopyErrors}
+            </button>
+            <button
+              type="button"
               disabled={!canPrev || loading}
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[var(--border)] text-xs disabled:opacity-40"
@@ -450,6 +493,17 @@ export default function AdminSiteLogs({ t = {}, lang = 'ar', onNotify }) {
                   </span>
                   {expanded && (
                     <span className="dev-log-line__detail">
+                      <span className="dev-log-line__detail-head">
+                        <button
+                          type="button"
+                          onClick={() => copyText(line.copyText || line.text)}
+                          className="dev-log-line__copy"
+                          title={t.siteLogsCopyLine}
+                        >
+                          <Copy size={13} />
+                          {t.siteLogsCopyLine}
+                        </button>
+                      </span>
                       {line.fields ? (
                         <span className="dev-log-line__fields">{line.fields}</span>
                       ) : null}

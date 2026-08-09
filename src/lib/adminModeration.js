@@ -47,7 +47,16 @@ function normalizeAdminUsersResult(data, {
     rows = applyClientUserFilters(rows, { balanceFilter, statusFilter });
     total = rows.length;
   }
-  return { rows, total };
+  return { rows: rows.map(normalizeAdminProfile), total };
+}
+
+function normalizeAdminProfile(profile) {
+  if (!profile || typeof profile !== 'object') return profile;
+  return {
+    ...profile,
+    sam_shamcash_wallet_id: profile.sam_shamcash_wallet_id ?? null,
+    sam_syriatel_recipient: profile.sam_syriatel_recipient ?? null,
+  };
 }
 
 /**
@@ -185,7 +194,7 @@ export async function adminGetUserProfile(userId) {
     p_user_id: userId,
   });
   if (error) wrapRpcError(error);
-  return data;
+  return normalizeAdminProfile(data);
 }
 
 export async function adminGetUserByUsername(username) {
@@ -193,7 +202,7 @@ export async function adminGetUserByUsername(username) {
     p_username: String(username || '').trim().replace(/^@+/, ''),
   });
   if (error) wrapRpcError(error);
-  return data;
+  return normalizeAdminProfile(data);
 }
 
 export async function fetchAdminProfileSummaries(userIds = []) {
@@ -204,7 +213,7 @@ export async function fetchAdminProfileSummaries(userIds = []) {
     p_user_ids: ids,
   });
   if (error) wrapRpcError(error);
-  return Array.isArray(data) ? data : [];
+  return Array.isArray(data) ? data.map(normalizeAdminProfile) : [];
 }
 
 export async function adminVerifyUser(userId) {
@@ -281,6 +290,8 @@ export async function adminUpdateUserProfile(userId, fields = {}) {
     p_discord_username: fields.discord_username ?? null,
     p_favorite_game: fields.favorite_game ?? null,
     p_default_player_uid: fields.default_player_uid ?? null,
+    p_sam_shamcash_wallet_id: fields.sam_shamcash_wallet_id ?? null,
+    p_sam_syriatel_recipient: fields.sam_syriatel_recipient ?? null,
   });
   if (error) wrapRpcError(error);
   return data;

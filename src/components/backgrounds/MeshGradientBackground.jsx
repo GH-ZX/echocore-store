@@ -1,5 +1,3 @@
-import './StoreBackgrounds.css';
-
 export default function MeshGradientBackground() {
   return (
     <div className="store-bg store-bg-mesh" aria-hidden="true">

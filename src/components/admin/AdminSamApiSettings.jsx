@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Wallet,
   Link2,
@@ -40,7 +40,7 @@ function StatusPill({ ok, label }) {
 function SectionCard({ icon: Icon, title, description, children, accent = false }) {
   return (
     <section
-      className={`rounded-2xl border p-5 space-y-4 ${
+      className={`rounded-2xl border p-4 sm:p-5 space-y-4 ${
         accent
           ? 'border-[var(--accent)]/35 bg-[var(--accent)]/5'
           : 'border-[var(--border)] bg-[var(--bg-primary)]'
@@ -202,6 +202,17 @@ export default function AdminSamApiSettings({
   const [deleteKeyOpen, setDeleteKeyOpen] = useState(false);
   const [deletingKey, setDeletingKey] = useState(false);
   const [sypRateSaving, setSypRateSaving] = useState(false);
+  const samFormRef = useRef(samForm);
+  const onErrorRef = useRef(onError);
+  const walletsRequestRef = useRef(0);
+
+  useEffect(() => {
+    samFormRef.current = samForm;
+  }, [samForm]);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
 
   const apiKeyLocked = !!samForm.sam_api_key_set;
 
@@ -237,18 +248,21 @@ export default function AdminSamApiSettings({
   };
 
   const fetchWallets = useCallback(async ({ savePendingKey = false, withBalances = true } = {}) => {
+    const requestId = ++walletsRequestRef.current;
+    const form = samFormRef.current;
     setWalletsLoading(true);
     try {
-      if (savePendingKey && samForm.sam_api_key?.trim()) {
+      if (savePendingKey && form.sam_api_key?.trim()) {
         await saveSamApiSettings({
-          enabled: samForm.sam_api_enabled,
-          walletMode: samForm.sam_wallet_mode,
-          shamcashWalletIdentifier: samForm.sam_shamcash_wallet_identifier,
-          syriatelWalletIdentifier: samForm.sam_syriatel_wallet_identifier,
-          invoiceCurrency: samForm.sam_invoice_currency,
-          sypPerUsd: samForm.sam_syp_per_usd,
-          apiKey: samForm.sam_api_key,
+          enabled: form.sam_api_enabled,
+          walletMode: form.sam_wallet_mode,
+          shamcashWalletIdentifier: form.sam_shamcash_wallet_identifier,
+          syriatelWalletIdentifier: form.sam_syriatel_wallet_identifier,
+          invoiceCurrency: form.sam_invoice_currency,
+          sypPerUsd: form.sam_syp_per_usd,
+          apiKey: form.sam_api_key,
         });
+        if (requestId !== walletsRequestRef.current) return [];
         setSamForm((prev) => ({ ...prev, sam_api_key: '', sam_api_key_set: true }));
       }
 
@@ -261,17 +275,18 @@ export default function AdminSamApiSettings({
         const wallets = await listSamWallets();
         list = normalizeSamWalletRows(Array.isArray(wallets) ? wallets : []);
       }
+      if (requestId !== walletsRequestRef.current) return [];
       setSamWallets(list);
       return list;
     } finally {
-      setWalletsLoading(false);
+      if (requestId === walletsRequestRef.current) setWalletsLoading(false);
     }
-  }, [samForm, setSamForm]);
+  }, [setSamForm]);
 
   useEffect(() => {
     if (!apiKeyLocked) return;
-    fetchWallets().catch((err) => onError?.(err.message));
-  }, [apiKeyLocked, fetchWallets, onError]);
+    fetchWallets().catch((err) => onErrorRef.current?.(err.message));
+  }, [apiKeyLocked, fetchWallets]);
 
   const handleSamTestWallets = async () => {
     setSamTesting(true);
@@ -547,7 +562,7 @@ export default function AdminSamApiSettings({
         {walletsLoading && !samWallets.length ? (
           <div className="flex items-center gap-2 text-sm text-[var(--text-sec)] py-4">
             <Loader2 className="w-4 h-4 animate-spin text-[var(--accent)]" />
-            {t.samWalletLoading}
+            {t.samExternalWalletLoading}
           </div>
         ) : samWallets.length === 0 ? (
           <p className="text-sm text-[var(--text-muted)] py-2">{t.samApiNoWalletsYet}</p>

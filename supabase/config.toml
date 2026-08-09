@@ -4,3 +4,8 @@ verify_jwt = false
 # App-level auth in the function. JWT off so G2Bulk top-up webhooks can POST without a Supabase token.
 [functions.g2bulk]
 verify_jwt = false
+
+# Binance Pay merchant integration: signing (HMAC-SHA512) is app-level; the
+# webhook delivery from Binance carries no Supabase JWT so JWT must be off.
+[functions.binance-pay]
+verify_jwt = false

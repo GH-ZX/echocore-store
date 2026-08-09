@@ -47,8 +47,6 @@ export const PAYMENT_METHOD_DEFS = {
     fallbackAr: 'بايننس باي (USDT)',
     descEn: 'Scan QR in Binance app',
     descAr: 'مسح QR في تطبيق Binance',
-    disabled: true,
-    comingSoon: true,
   },
   mastercard: {
     id: 'mastercard',
@@ -138,6 +136,10 @@ export function isPaymentMethodReady(methodId, paymentConfig = {}) {
     return mode === 'api' ? !!paymentConfig.samSyriatelApiReady : !!paymentConfig.syriatelManualReady;
   }
 
+  if (methodId === 'binance') {
+    return !!paymentConfig.binance && !!paymentConfig.binanceApiReady;
+  }
+
   return true;
 }
 
@@ -150,6 +152,15 @@ export function getManualPaymentDisplay(paymentConfig = {}, methodId = 'ShamCash
       qrImageUrl: paymentConfig.syriatelQrImageUrl || '',
       payCode: paymentConfig.syriatelPayCode || '',
       methodLabelKey: 'syriatelCash',
+    };
+  }
+
+  if (String(methodId).toLowerCase() === 'binance') {
+    return {
+      merchantName: 'Binance',
+      qrImageUrl: '',
+      payCode: '',
+      methodLabelKey: 'binance',
     };
   }
 
@@ -173,7 +184,7 @@ export function buildPaymentMethods(t, lang, paymentConfig = {}, options = {}) {
   const enabled = {
     shamcash: isPaymentMethodReady('ShamCash', paymentConfig),
     syriatel: isPaymentMethodReady('SyriatelCash', paymentConfig),
-    binance: !!paymentConfig.binance,
+    binance: isPaymentMethodReady('binance', paymentConfig),
     mastercard: !!paymentConfig.mastercard,
   };
 
@@ -218,7 +229,7 @@ export function buildPaymentMethods(t, lang, paymentConfig = {}, options = {}) {
 
   if (enabled.binance) {
     const def = PAYMENT_METHOD_DEFS.binance;
-    methods.push({ ...def, name: label(def), desc: desc(def), disabled: false });
+    methods.push({ ...def, name: label(def), desc: desc(def), disabled: false, comingSoon: false });
   } else {
     const def = PAYMENT_METHOD_DEFS.binance;
     methods.push({
@@ -253,6 +264,8 @@ export function getDefaultPaymentMethod(methods) {
   if (shamcash) return 'ShamCash';
   const syriatel = usable.find((m) => m.id === 'SyriatelCash');
   if (syriatel) return 'SyriatelCash';
+  const binance = usable.find((m) => m.id === 'binance');
+  if (binance) return 'binance';
   const balance = usable.find((m) => m.id === 'balance');
   if (balance) return 'balance';
   return usable[0]?.id || 'ShamCash';

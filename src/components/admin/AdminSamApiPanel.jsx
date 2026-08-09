@@ -1,18 +1,26 @@
-import { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, CheckCircle, Loader2, RefreshCw, Save, Smartphone } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { AlertCircle, CheckCircle, Loader2, RefreshCw, Save, Send, Smartphone, Wallet } from 'lucide-react';
 import { Spinner } from '../routing/PageLoader';
 import { fetchSamApiSettings, saveSamApiSettings } from '../../lib/samApi';
 import AdminSamApiSettings from './AdminSamApiSettings';
+import AdminSamRechargeHistory from './AdminSamRechargeHistory';
+import AdminSamWalletHistory from './AdminSamWalletHistory';
+import AdminSamTransfer from './AdminSamTransfer';
+import { getAdminUserPath } from '../../lib/adminRoutes';
 
 /**
  * Self-contained Sam API settings (API keys, wallets, SYP rate).
  * Used on the APIs hub; payments page keeps manual QR methods only.
  */
-export default function AdminSamApiPanel({ t = {}, onSaved, onNotify, embedded = false }) {
+export default function AdminSamApiPanel({ t = {}, lang = 'ar', onSaved, onNotify, embedded = false }) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [activeTab, setActiveTab] = useState('settings');
+  const loadGenerationRef = useRef(0);
   const [samForm, setSamForm] = useState({
     sam_api_enabled: false,
     sam_wallet_mode: 'manual',
@@ -27,10 +35,12 @@ export default function AdminSamApiPanel({ t = {}, onSaved, onNotify, embedded =
   });
 
   const load = useCallback(async () => {
+    const loadGeneration = ++loadGenerationRef.current;
     setLoading(true);
     setError('');
     try {
       const samData = await fetchSamApiSettings();
+      if (loadGeneration !== loadGenerationRef.current) return;
       setSamForm({
         sam_api_enabled: samData.sam_api_enabled ?? false,
         sam_wallet_mode: samData.sam_wallet_mode || 'manual',
@@ -44,9 +54,10 @@ export default function AdminSamApiPanel({ t = {}, onSaved, onNotify, embedded =
         webhookUrl: samData.webhookUrl || '',
       });
     } catch (err) {
+      if (loadGeneration !== loadGenerationRef.current) return;
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (loadGeneration === loadGenerationRef.current) setLoading(false);
     }
   }, []);
 
@@ -96,8 +107,9 @@ export default function AdminSamApiPanel({ t = {}, onSaved, onNotify, embedded =
 
   if (loading) {
     return (
-      <div className="admin-apis-section-body py-10 text-center">
+      <div className="admin-apis-section-body py-10 flex items-center justify-center gap-2 text-sm text-[var(--text-sec)]">
         <Spinner size="w-7" className="mx-auto text-[var(--accent)]" />
+        <span>{t.samSettingsLoading}</span>
       </div>
     );
   }
@@ -123,37 +135,91 @@ export default function AdminSamApiPanel({ t = {}, onSaved, onNotify, embedded =
         </div>
       )}
 
-      <AdminSamApiSettings
-        t={t}
-        samForm={samForm}
-        setSamForm={setSamForm}
-        onSaved={onSaved}
-        onError={(msg) => { setError(msg || ''); if (msg) onNotify?.(msg, 'error'); }}
-        onSuccess={(msg) => { setSuccess(msg || ''); if (msg) onNotify?.(msg, 'success'); }}
-        saving={saving}
-        onSaveAll={handleSaveAll}
-      />
-
-      <div className="flex flex-col-reverse sm:flex-row flex-wrap gap-2 pt-2">
-        <button
-          type="button"
-          onClick={() => handleSaveAll(false)}
-          disabled={saving}
-          className="btn btn-primary gap-2 text-sm py-2.5 px-4 w-full sm:w-auto justify-center"
-        >
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          {t.saveSettings}
-        </button>
-        <button
-          type="button"
-          onClick={load}
-          disabled={saving}
-          className="btn btn-secondary gap-2 text-sm py-2.5 px-4 w-full sm:w-auto justify-center"
-        >
-          <RefreshCw className="w-4 h-4" />
-          {t.refresh}
-        </button>
+      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+        {[
+          { id: 'settings', icon: Smartphone, label: t.samTabSettings },
+           { id: 'invoices', icon: RefreshCw, label: t.samTabRechargeHistory },
+           { id: 'wallet', icon: Wallet, label: t.samTabWalletDiagnostics },
+          { id: 'transfer', icon: Send, label: t.samTabTransfer },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={`action-chip text-xs !h-9 !min-h-9 px-3 gap-1.5 w-full sm:w-auto ${
+              activeTab === tab.id ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10' : ''
+            }`}
+          >
+            <tab.icon className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">{tab.label}</span>
+          </button>
+        ))}
       </div>
+
+      {activeTab === 'settings' && (
+        <>
+          <AdminSamApiSettings
+            t={t}
+            samForm={samForm}
+            setSamForm={setSamForm}
+            onSaved={onSaved}
+            onError={(msg) => { setError(msg || ''); if (msg) onNotify?.(msg, 'error'); }}
+            onSuccess={(msg) => { setSuccess(msg || ''); if (msg) onNotify?.(msg, 'success'); }}
+            saving={saving}
+            onSaveAll={handleSaveAll}
+          />
+
+          <div className="flex flex-col-reverse sm:flex-row flex-wrap gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => handleSaveAll(false)}
+              disabled={saving}
+              className="btn btn-primary gap-2 text-sm py-2.5 px-4 w-full sm:w-auto justify-center"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {t.saveSettings}
+            </button>
+            <button
+              type="button"
+              onClick={load}
+              disabled={saving}
+              className="btn btn-secondary gap-2 text-sm py-2.5 px-4 w-full sm:w-auto justify-center"
+            >
+              <RefreshCw className="w-4 h-4" />
+              {t.refresh}
+            </button>
+          </div>
+        </>
+      )}
+
+      {activeTab === 'invoices' && (
+        <AdminSamRechargeHistory
+          t={t}
+          lang={lang}
+          onError={(msg) => { if (msg) onNotify?.(msg, 'error'); }}
+          onSuccess={(msg) => { if (msg) onNotify?.(msg, 'success'); }}
+          onOpenCustomer={(path) => navigate(path || getAdminUserPath())}
+        />
+      )}
+
+      {activeTab === 'wallet' && (
+        <AdminSamWalletHistory
+          t={t}
+          lang={lang}
+          onError={(msg) => { if (msg) onNotify?.(msg, 'error'); }}
+          onSuccess={(msg) => { if (msg) onNotify?.(msg, 'success'); }}
+        />
+      )}
+
+      {activeTab === 'transfer' && (
+        <AdminSamTransfer
+          t={t}
+          lang={lang}
+          samSettings={samForm}
+          onError={(msg) => { if (msg) onNotify?.(msg, 'error'); }}
+          onSuccess={(msg) => { if (msg) onNotify?.(msg, 'success'); }}
+        />
+      )}
 
       {error && (
         <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 text-sm">

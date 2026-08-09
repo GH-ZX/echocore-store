@@ -40,6 +40,7 @@ import {
   fetchAdminUserTransactions,
   isUserRowBanned,
 } from '../../lib/adminModeration';
+import { isValidSamRecipient } from '../../lib/samApi';
 import {
   adminGenerateRecoveryLink,
   adminSendPasswordResetEmail,
@@ -123,6 +124,8 @@ export default function AdminUserDetail({
     discord_username: '',
     favorite_game: '',
     default_player_uid: '',
+    sam_shamcash_wallet_id: '',
+    sam_syriatel_recipient: '',
   });
   const [profileSaving, setProfileSaving] = useState(false);
   const [walletTxs, setWalletTxs] = useState([]);
@@ -171,6 +174,8 @@ export default function AdminUserDetail({
         discord_username: data?.discord_username || '',
         favorite_game: data?.favorite_game || '',
         default_player_uid: data?.default_player_uid || '',
+        sam_shamcash_wallet_id: data?.sam_shamcash_wallet_id || '',
+        sam_syriatel_recipient: data?.sam_syriatel_recipient || '',
       });
 
       // Partner tier (column may be absent on older profiles until migration)
@@ -398,6 +403,16 @@ export default function AdminUserDetail({
     if (!profile?.id) return;
     setProfileSaving(true);
     try {
+      const shamcashRecipient = profileDraft.sam_shamcash_wallet_id.trim();
+      const syriatelRecipient = profileDraft.sam_syriatel_recipient.trim();
+      if (shamcashRecipient && !isValidSamRecipient('shamcash', shamcashRecipient)) {
+        notifyError(t.samCustomerShamcashInvalid);
+        return;
+      }
+      if (syriatelRecipient && !isValidSamRecipient('syriatel', syriatelRecipient)) {
+        notifyError(t.samCustomerSyriatelInvalid);
+        return;
+      }
       await adminUpdateUserProfile(profile.id, profileDraft);
       notifySuccess(t.adminProfileSaved);
       await loadProfile();
@@ -884,6 +899,28 @@ export default function AdminUserDetail({
                   value={profileDraft.favorite_game}
                   onChange={(e) => setProfileDraft((d) => ({ ...d, favorite_game: e.target.value }))}
                   maxLength={80}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--text-muted)] block mb-1">{t.samCustomerShamcashLabel}</label>
+                <input
+                  type="text"
+                  className="input w-full font-mono"
+                  value={profileDraft.sam_shamcash_wallet_id}
+                  onChange={(e) => setProfileDraft((d) => ({ ...d, sam_shamcash_wallet_id: e.target.value }))}
+                  maxLength={32}
+                  dir="ltr"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--text-muted)] block mb-1">{t.samCustomerSyriatelLabel}</label>
+                <input
+                  type="text"
+                  className="input w-full font-mono"
+                  value={profileDraft.sam_syriatel_recipient}
+                  onChange={(e) => setProfileDraft((d) => ({ ...d, sam_syriatel_recipient: e.target.value }))}
+                  maxLength={10}
+                  dir="ltr"
                 />
               </div>
               <div className="sm:col-span-2">

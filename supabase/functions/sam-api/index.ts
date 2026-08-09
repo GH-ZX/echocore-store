@@ -8,6 +8,7 @@ const corsHeaders = {
 };
 
 type Json = Record<string, unknown>;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function jsonResponse(body: Json, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -75,13 +76,19 @@ async function samFetch(apiKey: string, path: string, init: RequestInit = {}) {
   } catch {
     data = { raw: text };
   }
+  if (text && typeof data.raw !== 'string') {
+    data.raw = text;
+  }
   return { res, data };
 }
 
-function samErrorMessage(data: Json, fallback: string) {
+function samErrorMessage(data: Json, fallback: string, status = 0) {
   const code = typeof data.code === 'string' ? data.code : '';
-  const message = typeof data.message === 'string' ? data.message : fallback;
-  return code ? `${code}: ${message}` : message;
+  const message = typeof data.message === 'string' ? data.message : '';
+  const error = typeof data.error === 'string' ? data.error : '';
+  const raw = typeof data.raw === 'string' ? String(data.raw).slice(0, 300) : '';
+  const detail = message || error || raw || (status ? `HTTP ${status}` : '') || fallback;
+  return code ? `${code}: ${detail}` : detail;
 }
 
 // Map Sam API GET/POST invoice error codes to actionable messages + an uplevel
@@ -139,6 +146,119 @@ function mapSamInvoiceError(data: Json, fallback: string) {
   };
 }
 
+const SHAMCASH_RECIPIENT_RE = /^[0-9a-f]{32}$/;
+const SYRIATEL_RECIPIENT_RE = /^(09\d{8}|\d{8})$/;
+const SYRIATEL_PIN_RE = /^\d{4}$/;
+
+const CURRENCY_IDS: Record<string, number> = { USD: 1, SYP: 2, EUR: 3 };
+const CURRENCY_ID_TO_CODE: Record<number, string> = { 1: 'USD', 2: 'SYP', 3: 'EUR' };
+
+function mapSamTransferError(data: Json, fallback: string, status = 0) {
+  const code = typeof data.code === 'string' ? data.code : '';
+  const isCloudflare = typeof data.title === 'string' && data.title.includes('502');
+
+  if (status >= 500 || isCloudflare || code === 'WALLET_UPSTREAM_ERROR' || code === 'PROVIDER_ERROR') {
+    return {
+      message: 'Sam API is currently unavailable (provider error). Please try again in a few minutes.',
+      code: 'SAM_PROVIDER',
+      samCode: code || 'WALLET_UPSTREAM_ERROR',
+    };
+  }
+
+  if (code === 'WALLET_SESSION_EXPIRED') {
+    return {
+      message: 'Sam wallet session expired — re-link the source wallet in the Sam dashboard.',
+      code: 'SAM_SESSION',
+      samCode: 'WALLET_SESSION_EXPIRED',
+    };
+  }
+  if (code === 'MISSING_API_KEY' || code === 'INVALID_API_KEY') {
+    return {
+      message: 'Sam API key is missing or invalid. Configure it in Admin → Payments → Sam API.',
+      code: 'SAM_API_KEY',
+      samCode: code,
+    };
+  }
+  if (code === 'VALIDATION_ERROR') {
+    return {
+      message: 'Sam rejected the transfer (validation error). Check recipient address, amount and currency.',
+      code: 'SAM_VALIDATION',
+      samCode: 'VALIDATION_ERROR',
+    };
+  }
+  if (code === 'PROVIDER_ERROR' || code === 'WALLET_UPSTREAM_ERROR') {
+    return {
+      message: 'Payment provider is unavailable right now. Please try again later.',
+      code: 'SAM_PROVIDER',
+      samCode: code,
+    };
+  }
+  if (code === 'NOT_FOUND') {
+    return {
+      message: 'Source or recipient wallet not found on Sam. Check the recipient id and source wallet.',
+      code: 'SAM_NOT_FOUND',
+      samCode: 'NOT_FOUND',
+    };
+  }
+  if (code === 'INVALID_IDENTIFIER') {
+    return {
+      message: 'Recipient wallet id format is invalid for ShamCash.',
+      code: 'SAM_INVALID_IDENTIFIER',
+      samCode: 'INVALID_IDENTIFIER',
+    };
+  }
+
+  return {
+    message: samErrorMessage(data, fallback, status),
+    code: String(code || 'SAM_UNKNOWN'),
+    samCode: code,
+  };
+}
+
+async function resolveTransferSourceIdentifier(
+  serviceClient: ReturnType<typeof createClient>,
+  method: string,
+): Promise<string | null> {
+  const { data } = await serviceClient
+    .from('store_settings')
+    .select('sam_shamcash_wallet_identifier, sam_syriatel_wallet_identifier')
+    .eq('id', 1)
+    .maybeSingle();
+
+  const column = method === 'syriatel' ? 'sam_syriatel_wallet_identifier' : 'sam_shamcash_wallet_identifier';
+  const value = data?.[column];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+async function checkTransferSourceBalance(
+  apiKey: string,
+  method: string,
+  source: string,
+  currency: string,
+  amount: number,
+): Promise<{ ok: true } | { ok: false; message: string; code: string }> {
+  const path = `/v1/wallets/${method}/${encodeURIComponent(source)}/balance`;
+  const { res, data } = await samFetch(apiKey, path);
+  if (!res.ok) return { ok: true };
+
+  const balances = Array.isArray(data) ? data : [];
+  const entry = balances.find(
+    (b) => String((b as Json).currency || '').toUpperCase() === currency,
+  ) as Json | undefined;
+  if (!entry) return { ok: true };
+
+  const available = Number(entry.amount ?? entry.balance ?? 0);
+  if (Number.isFinite(available) && available > 0 && available < amount) {
+    return {
+      ok: false,
+      message: `Insufficient ${currency} balance in the source wallet (${available.toFixed(2)} available).`,
+      code: 'SAM_INSUFFICIENT_BALANCE',
+    };
+  }
+
+  return { ok: true };
+}
+
 function buildWebhookUrl(supabaseUrl: string, token: string) {
   const base = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/sam-api`;
   return `${base}?token=${encodeURIComponent(token)}`;
@@ -166,6 +286,12 @@ const ADMIN_ACTIONS = new Set([
   'listWallets',
   'getBalance',
   'getAllWalletBalances',
+  'listInvoices',
+  'listRechargeHistory',
+  'getWalletTransactions',
+  'transfer',
+  'listTransfers',
+  'clearTransfers',
 ]);
 
 const USER_ACTIONS = new Set(['createInvoice', 'verifyInvoice', 'getInvoiceStatus']);
@@ -927,8 +1053,192 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: true, settings });
   }
 
+  if (action === 'listInvoices') {
+    const status = typeof body.status === 'string' && body.status ? String(body.status) : '';
+    const method = typeof body.method === 'string' && body.method ? String(body.method) : '';
+    const entityType = typeof body.entityType === 'string' && body.entityType ? String(body.entityType) : '';
+    const search = typeof body.search === 'string' ? String(body.search).trim() : '';
+    const rawPage = Number(body.page);
+    const rawPageSize = Number(body.pageSize);
+    const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1;
+    const pageSize = Number.isFinite(rawPageSize) && rawPageSize > 0 ? Math.min(Math.floor(rawPageSize), 100) : 25;
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    const allowedStatus = new Set(['pending', 'paid', 'expired', 'failed', 'cancelled']);
+    const allowedMethods = new Set(['shamcash', 'syriatel']);
+    const allowedEntityTypes = new Set(['recharge', 'order']);
+
+    const applyFilters = <T extends ReturnType<typeof serviceClient.from>>(q: T): T => {
+      let b = q;
+      if (allowedStatus.has(status)) b = b.eq('status', status) as T;
+      if (allowedMethods.has(method)) b = b.eq('method', method) as T;
+      if (allowedEntityTypes.has(entityType)) b = b.eq('entity_type', entityType) as T;
+      if (search) {
+        const like = `%${search}%`;
+        b = b.or(`transaction_ref.ilike.${like},sam_invoice_id.ilike.${like}`) as T;
+      }
+      return b;
+    };
+
+    const [statusAgg, collectedAgg] = await Promise.all([
+      applyFilters(serviceClient.from('sam_invoices').select('status, count()')),
+      applyFilters(serviceClient.from('sam_invoices').select('currency, sum(paid_amount)')),
+    ]);
+
+    const byStatus: Record<string, number> = { pending: 0, paid: 0, expired: 0, failed: 0, cancelled: 0 };
+    for (const row of (statusAgg.data || []) as { status?: string; count?: number }[]) {
+      const key = String(row.status || '');
+      if (key in byStatus) byStatus[key] = Number(row.count) || 0;
+    }
+    const collectedByCurrency: Record<string, number> = {};
+    for (const row of (collectedAgg.data || []) as { currency?: string; sum?: number | null }[]) {
+      const key = String(row.currency || '');
+      const value = Number(row.sum || 0);
+      if (key && value > 0) collectedByCurrency[key] = value;
+    }
+
+    let query: ReturnType<typeof serviceClient.from> = serviceClient
+      .from('sam_invoices')
+      .select(
+        'id, user_id, entity_type, entity_id, sam_invoice_id, payment_url, amount, requested_usd_amount, paid_amount, syp_per_usd_snapshot, currency, method, status, transaction_ref, webhook_received_at, paid_at, expires_at, created_at, updated_at',
+        { count: 'exact' },
+      )
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    query = applyFilters(query);
+
+    const { data: invoices, error, count } = await query;
+    if (error) {
+      return jsonResponse({ success: false, message: error.message }, 400);
+    }
+
+    const rows = Array.isArray(invoices) ? invoices : [];
+    const stats = {
+      total: count ?? rows.length,
+      byStatus,
+      collectedByCurrency,
+    };
+    const entityRefs = rows
+      .filter((row) => row.entity_id && (row.entity_type === 'recharge' || row.entity_type === 'order'))
+      .map((row) => row.entity_id as string);
+    const userIds = rows.map((row) => row.user_id as string).filter(Boolean);
+
+    const [entityResult, profileResult] = await Promise.all([
+      entityRefs.length
+        ? serviceClient
+            .from('recharge_requests')
+            .select('id, reference')
+            .in('id', entityRefs)
+        : Promise.resolve({ data: [] }),
+      userIds.length
+        ? serviceClient.from('profiles').select('id, name').in('id', userIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    const rechargeRefs = new Map<string, string>();
+    for (const row of (entityResult.data as { id: string; reference: string }[]) || []) {
+      rechargeRefs.set(row.id, row.reference);
+    }
+    const profileNames = new Map<string, string>();
+    for (const row of (profileResult.data as { id: string; name: string | null }[]) || []) {
+      if (row.name) profileNames.set(row.id, row.name);
+    }
+
+    return jsonResponse({
+      success: true,
+      invoices: rows.map((row) => ({
+        id: row.id,
+        user_id: row.user_id,
+        entity_type: row.entity_type,
+        entity_id: row.entity_id,
+        reference: row.entity_type === 'recharge' ? (rechargeRefs.get(String(row.entity_id)) || null) : null,
+        customer_name: profileNames.get(String(row.user_id)) || null,
+        sam_invoice_id: row.sam_invoice_id,
+        payment_url: row.payment_url,
+        amount: row.amount,
+        requested_usd_amount: row.requested_usd_amount,
+        paid_amount: row.paid_amount,
+        syp_per_usd_snapshot: row.syp_per_usd_snapshot,
+        currency: row.currency,
+        method: row.method,
+        status: row.status,
+        transaction_ref: row.transaction_ref,
+        webhook_received_at: row.webhook_received_at,
+        paid_at: row.paid_at,
+        expires_at: row.expires_at,
+        created_at: row.created_at,
+      })),
+      total: count ?? rows.length,
+      page,
+      pageSize,
+      stats,
+    });
+  }
+
+  if (action === 'listRechargeHistory') {
+    const search = typeof body.search === 'string' ? String(body.search).trim().toLowerCase() : '';
+    const status = typeof body.status === 'string' ? String(body.status).trim().toLowerCase() : '';
+    const method = typeof body.method === 'string' ? String(body.method).trim().toLowerCase() : '';
+    const rawPage = Number(body.page);
+    const rawPageSize = Number(body.pageSize);
+    const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1;
+    const pageSize = Number.isFinite(rawPageSize) && rawPageSize > 0 ? Math.min(Math.floor(rawPageSize), 100) : 25;
+
+    // The RPC owns the union, exact count, filters, and deterministic event/id ordering;
+    // the edge function never downloads historical source rows to merge or slice.
+    // The RPC validates the passed admin id (service role has no auth.uid()).
+    const { data, error } = await serviceClient.rpc('list_admin_recharge_history', {
+      p_page: page,
+      p_page_size: pageSize,
+      p_search: search,
+      p_status: status,
+      p_method: method,
+      p_admin_id: userId,
+    });
+    if (error) {
+      return jsonResponse({ success: false, message: error.message }, 400);
+    }
+    return jsonResponse({
+      success: true,
+      ...((data || {}) as Record<string, unknown>),
+    });
+  }
+
+  if (action === 'getWalletTransactions') {
+    const provider = String(body.provider || '').trim();
+    const identifier = String(body.identifier || '').trim();
+    const direction = String(body.direction || 'all').trim();
+
+    if (provider !== 'shamcash' && provider !== 'syriatel') {
+      return jsonResponse({ success: false, message: 'Invalid provider' }, 400);
+    }
+    if (!identifier) {
+      return jsonResponse({ success: false, message: 'identifier required' }, 400);
+    }
+    const dir = direction === 'in' || direction === 'out' ? direction : 'all';
+    const query = dir === 'all' ? '' : `?direction=${dir}`;
+
+    const walletApiKey = await resolveSamApiKey(serviceClient);
+    if (!walletApiKey) {
+      return jsonResponse({ success: false, message: 'Sam API key not configured' }, 400);
+    }
+
+    const { res, data } = await samFetch(
+      walletApiKey,
+      `/v1/wallets/${provider}/${encodeURIComponent(identifier)}/transactions${query}`,
+    );
+    if (!res.ok) {
+      return jsonResponse({ success: false, message: samErrorMessage(data, 'Failed to read wallet transactions') }, res.status);
+    }
+
+    const list = Array.isArray(data) ? data : [];
+    return jsonResponse({ success: true, provider, identifier, direction: dir, transactions: list });
+  }
+
   const apiKey = await resolveSamApiKey(serviceClient);
-  if (!apiKey) {
+  if (!apiKey && action !== 'transfer') {
     return jsonResponse({ success: false, message: 'Sam API key not configured' }, 400);
   }
 
@@ -1003,6 +1313,281 @@ Deno.serve(async (req) => {
     }
 
     return jsonResponse({ success: true, wallets: results });
+  }
+
+  if (action === 'transfer') {
+    const requestedMethod = String(body.method || '').trim().toLowerCase();
+    const validMethod = requestedMethod === 'shamcash' || requestedMethod === 'syriatel';
+    const method = validMethod ? requestedMethod : 'shamcash';
+    const source = validMethod ? await resolveTransferSourceIdentifier(serviceClient, method) : null;
+    const rawAmount = Number(body.amount);
+    const roundedAmount = Math.round(rawAmount * 100) / 100;
+    const validAmount = Number.isFinite(rawAmount) && rawAmount > 0 && roundedAmount > 0;
+    const amount = roundedAmount;
+
+    const requestedCurrency = String(body.currency || '').trim().toUpperCase();
+    let currency = requestedCurrency;
+    let currencyId = Number(body.currencyId);
+    if (currency && CURRENCY_IDS[currency]) {
+      currencyId = CURRENCY_IDS[currency];
+    } else if (Number.isFinite(currencyId) && CURRENCY_ID_TO_CODE[currencyId]) {
+      currency = CURRENCY_ID_TO_CODE[currencyId];
+    } else {
+      currency = '';
+    }
+    const validCurrency = Boolean(currency && CURRENCY_IDS[currency]);
+
+    const recipient = String(body.recipient || '').trim();
+    const note = typeof body.note === 'string' ? String(body.note).trim() || null : null;
+    const auditAmount = validAmount && amount <= 999999999999.99 ? amount : 0.01;
+    const auditCurrency = validCurrency ? currency : 'USD';
+    let verifiedCustomerId: string | null = null;
+    const recordAttempt = async (status: 'failed' | 'completed', samMessage: string) => {
+      const { error } = await serviceClient.from('sam_transfers').insert({
+        created_by: userId,
+        customer_id: verifiedCustomerId,
+        method,
+        source_identifier: source,
+        recipient_identifier: recipient,
+        currency: auditCurrency,
+        amount: auditAmount,
+        note,
+        status,
+        sam_message: samMessage,
+      });
+      if (error) console.error('sam_transfers insert:', error.message);
+    };
+
+    if (!validMethod) {
+      const message = 'Invalid transfer method; expected shamcash or syriatel.';
+      await recordAttempt('failed', message);
+      return jsonResponse({ success: false, message, code: 'SAM_VALIDATION' }, 400);
+    }
+
+    const suppliedCustomerId = typeof body.customerId === 'string' ? body.customerId.trim() : '';
+    if (suppliedCustomerId) {
+      if (!UUID_RE.test(suppliedCustomerId)) {
+        const message = 'Customer must be a valid customer profile.';
+        await recordAttempt('failed', message);
+        return jsonResponse({ success: false, message, code: 'SAM_VALIDATION' }, 400);
+      }
+
+      const { data: customerProfile, error: customerError } = await serviceClient
+        .from('profiles')
+        .select('id, role')
+        .eq('id', suppliedCustomerId)
+        .maybeSingle();
+
+      if (customerError || !customerProfile || customerProfile.role !== 'user') {
+        const message = 'Customer profile was not found or is not a customer.';
+        await recordAttempt('failed', message);
+        return jsonResponse({ success: false, message, code: 'SAM_VALIDATION' }, 400);
+      }
+
+      verifiedCustomerId = customerProfile.id;
+    }
+
+    if (!validAmount) {
+      const message = 'Amount must be a positive number';
+      await recordAttempt('failed', message);
+      return jsonResponse({ success: false, message }, 400);
+    }
+    if (!validCurrency) {
+      const message = 'Invalid currency';
+      await recordAttempt('failed', message);
+      return jsonResponse({ success: false, message }, 400);
+    }
+    if (!source) {
+      const message = method === 'syriatel'
+        ? 'Syriatel source wallet is not configured. Set it in Admin → Payments → Sam API.'
+        : 'ShamCash source wallet is not configured. Set it in Admin → Payments → Sam API.';
+      await recordAttempt('failed', message);
+      return jsonResponse({ success: false, message, code: 'SAM_NOT_CONFIGURED' }, 400);
+    }
+    if (!recipient) {
+      const message = 'Recipient identifier required';
+      await recordAttempt('failed', message);
+      return jsonResponse({ success: false, message }, 400);
+    }
+
+    let transferBody: Json;
+    if (method === 'shamcash') {
+      if (!SHAMCASH_RECIPIENT_RE.test(recipient.toLowerCase())) {
+        await recordAttempt('failed', 'Recipient must be a 32-character ShamCash wallet id (hex).');
+        return jsonResponse({
+          success: false,
+          message: 'Recipient must be a 32-character ShamCash wallet id (hex).',
+          code: 'SAM_VALIDATION',
+        }, 400);
+      }
+      transferBody = {
+        recipientAddress: recipient,
+        currencyId,
+        amount,
+        note: typeof body.note === 'string' && body.note.trim() ? String(body.note).trim() : undefined,
+      };
+    } else {
+      if (!SYRIATEL_RECIPIENT_RE.test(recipient)) {
+        const message = 'Recipient must be a 10-digit Syriatel phone starting with 09 or an 8-digit cash code.';
+        await recordAttempt('failed', message);
+        return jsonResponse({ success: false, message, code: 'SAM_VALIDATION' }, 400);
+      }
+      const pinCode = String(body.pinCode || '').trim();
+      if (!SYRIATEL_PIN_RE.test(pinCode)) {
+        await recordAttempt('failed', 'Syriatel transfers require a 4-digit PIN.');
+        return jsonResponse({ success: false, message: 'Syriatel transfers require a 4-digit PIN.' }, 400);
+      }
+      transferBody = { toGsmOrCode: recipient, amount, pinCode };
+    }
+
+    if (!apiKey) {
+      const message = 'Sam API key not configured';
+      await recordAttempt('failed', message);
+      return jsonResponse({ success: false, message }, 400);
+    }
+
+    const balanceCheck = await checkTransferSourceBalance(apiKey, method, source, currency, amount);
+    if (!balanceCheck.ok) {
+      await recordAttempt('failed', balanceCheck.message);
+      return jsonResponse({ success: false, message: balanceCheck.message, code: balanceCheck.code }, 400);
+    }
+
+    const { res, data } = await samFetch(apiKey, `/v1/wallets/${method}/${encodeURIComponent(source)}/transfer`, {
+      method: 'POST',
+      body: JSON.stringify(transferBody),
+    });
+
+    if (!res.ok) {
+      const mapped = mapSamTransferError(data as Json, 'Failed to send transfer', res.status);
+      const detail = samErrorMessage(data as Json, mapped.message, res.status);
+      await recordAttempt('failed', detail);
+      return jsonResponse({ success: false, message: mapped.message, code: mapped.code, samCode: mapped.samCode }, res.status);
+    }
+
+    const { data: insertRow, error: insertError } = await serviceClient.from('sam_transfers').insert({
+      created_by: userId,
+      customer_id: verifiedCustomerId,
+      method,
+      source_identifier: source,
+      recipient_identifier: recipient,
+      currency,
+      amount,
+      note,
+      status: 'completed',
+      sam_message: typeof data.message === 'string' ? data.message : null,
+    }).select('id, created_at').single();
+
+    if (insertError) {
+      console.error('sam_transfers insert:', insertError.message);
+    }
+
+    return jsonResponse({
+      success: true,
+      transfer: {
+        id: insertRow?.id,
+        method,
+        sourceIdentifier: source,
+        recipientIdentifier: recipient,
+        currency,
+        amount,
+        note: typeof body.note === 'string' ? String(body.note).trim() || null : null,
+        status: 'completed',
+        customerId: verifiedCustomerId,
+        createdAt: insertRow?.created_at || new Date().toISOString(),
+      },
+    });
+  }
+
+  if (action === 'listTransfers') {
+    const rawPage = Number(body.page);
+    const rawPageSize = Number(body.pageSize);
+    const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1;
+    const pageSize = Number.isFinite(rawPageSize) && rawPageSize > 0 ? Math.min(Math.floor(rawPageSize), 100) : 25;
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    let query: ReturnType<typeof serviceClient.from> = serviceClient
+      .from('sam_transfers')
+      .select('*', { count: 'exact' });
+    const methodFilter = String(body.method || '');
+    if (methodFilter === 'shamcash' || methodFilter === 'syriatel') {
+      query = query.eq('method', methodFilter);
+    }
+    const statusFilter = String(body.status || '');
+    if (statusFilter === 'completed' || statusFilter === 'failed') {
+      query = query.eq('status', statusFilter);
+    }
+
+    const { data: rows, count, error } = await query
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    if (error) {
+      return jsonResponse({ success: false, message: error.message }, 400);
+    }
+
+    const list = (rows || []).map((r) => {
+      const row = r as Record<string, unknown>;
+      return {
+        id: row.id,
+        createdBy: row.created_by || null,
+        customerId: row.customer_id || null,
+        method: row.method,
+        sourceIdentifier: row.source_identifier || null,
+        recipientIdentifier: row.recipient_identifier,
+        currency: row.currency,
+        amount: Number(row.amount) || 0,
+        note: row.note || null,
+        status: row.status,
+        samMessage: row.sam_message || null,
+        createdAt: row.created_at,
+      };
+    });
+
+    const adminIds = [...new Set(list.map((t) => t.createdBy).filter(Boolean))] as string[];
+    const customerIds = [...new Set(list.map((t) => t.customerId).filter(Boolean))] as string[];
+    let adminsByName: Record<string, { username?: string; name?: string }> = {};
+    let customersByName: Record<string, { username?: string; name?: string }> = {};
+    if (adminIds.length > 0) {
+      const { data: adminRows } = await serviceClient
+        .from('profiles')
+        .select('id, username, name')
+        .in('id', adminIds);
+      for (const r of (adminRows || [])) {
+        const row = r as Record<string, unknown>;
+        adminsByName[String(row.id)] = { username: row.username as string, name: row.name as string };
+      }
+    }
+    if (customerIds.length > 0) {
+      const { data: customerRows } = await serviceClient
+        .from('profiles')
+        .select('id, username, name')
+        .in('id', customerIds);
+      for (const r of (customerRows || [])) {
+        const row = r as Record<string, unknown>;
+        customersByName[String(row.id)] = { username: row.username as string, name: row.name as string };
+      }
+    }
+
+    return jsonResponse({
+      success: true,
+      transfers: list.map((t) => ({
+        ...t,
+        admin: t.createdBy ? adminsByName[t.createdBy] || null : null,
+        customer: t.customerId ? customersByName[t.customerId] || null : null,
+      })),
+      total: Number(count ?? 0),
+      page,
+      pageSize,
+    });
+  }
+
+  if (action === 'clearTransfers') {
+    const { error } = await serviceClient.from('sam_transfers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    if (error) {
+      return jsonResponse({ success: false, message: error.message }, 400);
+    }
+    return jsonResponse({ success: true, message: 'Transfer history cleared' });
   }
 
   return jsonResponse({ success: false, message: `Unknown action: ${action}` }, 400);

@@ -182,7 +182,6 @@ export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved, on
         syriatel_enabled: form.syriatel_enabled,
         syriatel_qr_image_url: form.syriatel_qr_image_url,
         syriatel_pay_code: form.syriatel_pay_code,
-        binance_enabled: false,
         mastercard_enabled: false,
       });
 
@@ -388,7 +387,13 @@ export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved, on
         <div className="space-y-2 text-sm text-[var(--text-sec)]">
           <div className="flex items-center justify-between p-3 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)]">
             <span>Binance Pay (USDT)</span>
-            <span className="text-xs px-2 py-1 rounded-full bg-[var(--bg-elevated)] text-[var(--text-muted)]">{t.comingSoon}</span>
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard/apis/binance')}
+              className="text-xs px-2 py-1 rounded-full bg-[var(--bg-elevated)] text-[var(--accent)] hover:underline"
+            >
+              {t.configure || t.apisOpenHub || 'Configure'}
+            </button>
           </div>
           <div className="flex items-center justify-between p-3 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)]">
             <span>MasterCard / Visa</span>

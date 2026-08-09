@@ -1,7 +1,7 @@
 import { lazy } from 'react';
 
 const CHUNK_RE =
-  /Failed to fetch dynamically imported module|Loading chunk|Importing a module script failed|error loading dynamically imported module/i;
+  /Failed to fetch dynamically imported module|Loading chunk|Importing a module script failed|error loading dynamically imported module|Unable to preload CSS|stylesheet preload/i;
 
 const RELOAD_KEY = 'echocore-chunk-reload';
 const RELOAD_AT_KEY = 'echocore-chunk-reload-at';

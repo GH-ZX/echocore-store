@@ -22,9 +22,17 @@ import {
   isPaymentMethodReady,
 } from '../lib/paymentMethods';
 import { createRechargeInvoice, mapSamRechargeError } from '../lib/samApi';
+import {
+  createBinancePayRechargeOrder,
+  getBinancePayOrderStatus,
+  mapBinancePayError,
+} from '../lib/binancePay';
 import { logClientError } from '../lib/siteLogs';
 import SamInvoicePaymentPanel from '../components/SamInvoicePaymentPanel';
+import BinancePayPaymentPanel from '../components/BinancePayPaymentPanel';
 import PaymentMethodIcon from '../components/ui/PaymentMethodIcon';
+
+const isBinancePayMethod = (methodId) => String(methodId || '').toLowerCase() === 'binance';
 import {
   normalizePayCurrency,
   getSypPerUsd,
@@ -69,7 +77,7 @@ export default function RechargeView({
   const rechargeAllowed = canUserRecharge(user) && !maintenanceBlocked;
 
   const walletMethods = useMemo(
-    () => buildPaymentMethods(t, lang, paymentConfig).filter((m) => m.id === 'ShamCash' || m.id === 'SyriatelCash'),
+    () => buildPaymentMethods(t, lang, paymentConfig).filter((m) => m.id === 'ShamCash' || m.id === 'SyriatelCash' || m.id === 'binance'),
     [t, lang, paymentConfig],
   );
   const usableWalletMethods = walletMethods.filter((m) => !m.disabled);
@@ -99,8 +107,12 @@ export default function RechargeView({
   const { valid: isValidAmount } = validateRechargeAmount(effectiveAmount);
 
   const rechargeSubtitle = isApiMode ? t.rechargeApiSubtitle : t.rechargeSyriaSubtitle;
-  const methodNoteKey = isApiMode ? 'samInvoiceRechargeNote' : 'manualPaymentApprovalNote';
-  const amountFooterNote = isApiMode ? t.samInvoiceRechargeNote : t.rechargeManualNote;
+  const methodNoteKey = isBinancePayMethod(selectedMethod)
+    ? 'binanceRechargeNote'
+    : (isApiMode ? 'samInvoiceRechargeNote' : 'manualPaymentApprovalNote');
+  const amountFooterNote = isBinancePayMethod(selectedMethod)
+    ? t.binanceRechargeNote
+    : (isApiMode ? t.samInvoiceRechargeNote : t.rechargeManualNote);
 
   useEffect(() => {
     if (!usableWalletMethods.some((m) => m.id === selectedMethod)) {
@@ -131,6 +143,32 @@ export default function RechargeView({
         }
 
         const apiWallet = isApiWalletMethod(existing.paymentMethod, paymentConfig);
+        const binanceMethod = isBinancePayMethod(existing.paymentMethod);
+
+        if (binanceMethod) {
+          // Resume an in-flight Binance Pay order from our DB (authoritative).
+          try {
+            const order = await getBinancePayOrderStatus({ requestId: existing.requestId });
+            if (order && order.status !== 'paid' && order.status !== 'expired' && order.status !== 'cancelled') {
+              existing = { ...existing, binanceOrder: order };
+              setActiveRequest(existing);
+              setStep('payment');
+            } else if (order && order.status === 'paid') {
+              // Already credited while away — mark completed.
+              handleInvoicePaid({
+                creditedAmount: order.creditedAmount ?? order.paidAmount ?? existing.amount,
+                requestedAmount: existing.amount,
+                paidAmount: order.paidAmount,
+                payCurrency: order.currency || 'USDT',
+                newBalance: order.newBalance,
+                requestId: existing.requestId,
+              });
+            }
+          } catch (err) {
+            console.error('Failed to resume Binance Pay order:', err);
+          }
+          return;
+        }
 
         if (apiWallet) {
           if (!existing.invoice?.samInvoiceId) {
@@ -206,9 +244,31 @@ export default function RechargeView({
       const result = await createRechargeRequest(
         effectiveAmount,
         selectedMethod,
-        sypRechargeAvailable ? payCurrency : 'USD',
+        isBinancePayMethod(selectedMethod) ? 'USD' : (sypRechargeAvailable ? payCurrency : 'USD'),
       );
       const apiWallet = isApiWalletMethod(selectedMethod, paymentConfig);
+      const binanceMethod = isBinancePayMethod(selectedMethod);
+
+      if (binanceMethod) {
+        try {
+          const order = await createBinancePayRechargeOrder({
+            requestId: result.requestId,
+            amount: effectiveAmount,
+            returnUrl: returnTo || '/recharge',
+          });
+          setActiveRequest({ ...result, binanceOrder: order, paymentMethod: 'binance' });
+          setStep('payment');
+        } catch (orderErr) {
+          await cancelPendingRecharge(result.requestId);
+          notifyError(mapBinancePayError(orderErr, t));
+          logClientError('binance_recharge_order_failed', {
+            severity: 'danger',
+            error: orderErr,
+            metadata: { requestId: result.requestId, amount: effectiveAmount },
+          });
+        }
+        return;
+      }
 
       if (apiWallet) {
         try {
@@ -313,7 +373,7 @@ export default function RechargeView({
   const resetToAmount = async () => {
     if (
       activeRequest?.requestId
-      && isApiWalletMethod(activeRequest.paymentMethod, paymentConfig)
+      && (isApiWalletMethod(activeRequest.paymentMethod, paymentConfig) || isBinancePayMethod(activeRequest.paymentMethod))
       && step !== 'completed'
     ) {
       await cancelPendingRecharge(activeRequest.requestId);
@@ -328,7 +388,9 @@ export default function RechargeView({
   const activeDisplay = getManualPaymentDisplay(paymentConfig, activeMethod);
   const activeMethodLabel = t[activeDisplay.methodLabelKey] || activeMethod;
   const activeIsApiWallet = isApiWalletMethod(activeMethod, paymentConfig);
+  const activeIsBinance = isBinancePayMethod(activeMethod);
   const activeInvoice = activeRequest?.invoice;
+  const activeBinanceOrder = activeRequest?.binanceOrder;
   const activePayCurrency = normalizePayCurrency(activeRequest?.payCurrency || payCurrency);
   const activeSypRate = activeRequest?.sypPerUsd || sypPerUsd;
   const activeSypSendAmount = activePayCurrency === 'SYP' && activeSypRate
@@ -516,7 +578,7 @@ export default function RechargeView({
               </div>
             )}
 
-            {sypRechargeAvailable && (
+            {sypRechargeAvailable && !isBinancePayMethod(selectedMethod) && (
               <div className="mb-6">
                 <div className="text-sm font-semibold mb-3 text-[var(--text-sec)]">{t.rechargePayCurrencyLabel}</div>
                 <div className="grid grid-cols-2 gap-3">
@@ -646,7 +708,30 @@ export default function RechargeView({
               )}
             </div>
 
-            {activeIsApiWallet ? (
+            {activeIsBinance ? (
+              activeBinanceOrder ? (
+                <BinancePayPaymentPanel
+                  t={t}
+                  lang={lang}
+                  order={activeBinanceOrder}
+                  onPaid={handleInvoicePaid}
+                  onExpired={handleInvoiceExpired}
+                  onNotify={onNotify}
+                />
+              ) : (
+                <AlertBanner tone="red" centered>
+                  <AlertCircle className="w-10 h-10 mx-auto text-red-300 mb-3" />
+                  <div className="font-bold">{t.binancePayFailed}</div>
+                  <button
+                    type="button"
+                    onClick={resetToAmount}
+                    className="btn btn-secondary mt-4 px-6 py-2"
+                  >
+                    {t.back}
+                  </button>
+                </AlertBanner>
+              )
+            ) : activeIsApiWallet ? (
               activeInvoice?.samInvoiceId ? (
                 <SamInvoicePaymentPanel
                   t={t}

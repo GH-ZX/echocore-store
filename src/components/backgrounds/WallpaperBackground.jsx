@@ -1,5 +1,3 @@
-import './StoreBackgrounds.css';
-
 /**
  * Wallpaper background — renders an admin-chosen image.
  * The image URL lives on the `--wallpaper-url` CSS custom property and is

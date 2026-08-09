@@ -1,17 +1,22 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Handshake,
+  Layers,
   Loader2,
   Pencil,
   Plus,
   RefreshCw,
+  Repeat,
   Save,
   Ticket,
   Trash2,
+  UserPlus,
+  Users,
   X,
 } from 'lucide-react';
 import {
   adminDeletePartnerTier,
+  adminListPartnerUsers,
   adminSetUserPartnerTier,
   adminUpsertPartnerTier,
   fetchPartnerTiers,
@@ -32,6 +37,11 @@ import {
   getProfileUsername,
 } from '../../lib/username';
 import { useNotify } from '../../hooks/useNotify';
+import { priceFromCost } from '../../lib/offerPricing';
+import {
+  resolveInfluencerCommissionPerUnit,
+  resolveInfluencerUnitPrice,
+} from '../../lib/partnerPricing';
 
 export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) {
   const { notifyError, notifySuccess } = useNotify(onNotify);
@@ -39,6 +49,7 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
   const [loading, setLoading] = useState(true);
   const [tiers, setTiers] = useState([]);
   const [coupons, setCoupons] = useState([]);
+  const [partnerUsers, setPartnerUsers] = useState([]);
   const [savingId, setSavingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
 
@@ -68,12 +79,14 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [tList, cList] = await Promise.all([
+      const [tList, cList, uList] = await Promise.all([
         fetchPartnerTiers(),
-        adminListInfluencerCoupons(40).catch(() => []),
+        adminListInfluencerCoupons(200).catch(() => []),
+        adminListPartnerUsers().catch(() => []),
       ]);
       setTiers(tList);
       setCoupons(cList);
+      setPartnerUsers(uList);
     } catch (e) {
       notifyError(e.message || t.partnerLoadFailed);
     } finally {
@@ -263,6 +276,11 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
     }
   };
 
+  const activeTiers = tiers.filter((x) => x.is_active).length;
+  const activeCoupons = coupons.filter((c) => c.isActive !== false && c.is_active !== false).length;
+  const totalRedemptions = coupons.reduce((sum, c) => sum + Number(c.redemptionCount || 0), 0);
+  const partnerUsersCount = partnerUsers.length;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-[var(--text-muted)] gap-2">
@@ -274,20 +292,38 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-black flex items-center gap-2">
-            <Handshake className="w-5 h-5 text-[var(--accent)]" />
-            {t.partnersTab}
-          </h2>
-          <p className="text-sm text-[var(--text-sec)] mt-1 max-w-2xl leading-relaxed">
-            {t.partnersIntro}
-          </p>
+      <header className="admin-apis-hero">
+        <div className="admin-apis-hero__lead">
+          <span className="admin-apis-hero__badge" aria-hidden>
+            <Handshake className="w-5 h-5" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="admin-apis-hero__title">{t.partnersTab}</h2>
+            <p className="admin-apis-hero__desc">{t.partnersIntro}</p>
+          </div>
         </div>
-        <button type="button" onClick={load} className="btn btn-secondary text-sm py-2 px-3 inline-flex items-center gap-1.5">
-          <RefreshCw className="w-4 h-4" />
-          {t.refresh}
-        </button>
+
+        <div className="admin-partners-stats">
+          <StatChip icon={Layers} value={activeTiers} label={t.partnerStatsTiers} />
+          <StatChip icon={Ticket} value={activeCoupons} label={t.partnerStatsCoupons} />
+          <StatChip icon={Users} value={partnerUsersCount} label={t.partnerStatsUsers} />
+          <StatChip icon={Repeat} value={totalRedemptions} label={t.partnerStatsRedemptions} />
+          <button
+            type="button"
+            onClick={load}
+            className="admin-partners-refresh"
+            aria-label={t.refresh}
+            title={t.refresh}
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <HowCard icon={Layers} title={t.partnerHowTiersTitle} desc={t.partnerHowTiersDesc} />
+        <HowCard icon={Ticket} title={t.partnerHowCouponsTitle} desc={t.partnerHowCouponsDesc} />
+        <HowCard icon={UserPlus} title={t.partnerHowAssignTitle} desc={t.partnerHowAssignDesc} />
       </div>
 
       <div className="rounded-xl border border-[var(--accent)]/25 bg-[var(--accent)]/8 px-4 py-3 text-sm text-[var(--text-sec)] leading-relaxed">
@@ -295,22 +331,30 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
       </div>
 
       {/* Partner tiers */}
-      <section className="card p-5 sm:p-6 space-y-4">
-        <h3 className="font-bold text-lg">{t.partnerTiersTitle}</h3>
-        <p className="text-xs text-[var(--text-muted)]">{t.partnerTiersDbNote}</p>
-        <div className="space-y-3">
-          {tiers.map((tier) => (
-            <TierRow
-              key={tier.id}
-              tier={tier}
-              t={t}
-              saving={savingId === tier.id}
-              deleting={deletingId === tier.id}
-              onSave={(patch) => saveTier(tier, patch)}
-              onRemove={() => removeTier(tier)}
-            />
-          ))}
-        </div>
+      <section className="card p-4 sm:p-6 space-y-4">
+        <SectionHeader
+          icon={Layers}
+          title={t.partnerTiersTitle}
+          note={t.partnerTiersDbNote}
+          count={activeTiers}
+        />
+        {tiers.length === 0 ? (
+          <EmptyState text={t.partnerTiersEmpty} />
+        ) : (
+          <div className="space-y-3">
+            {tiers.map((tier) => (
+              <TierRow
+                key={tier.id}
+                tier={tier}
+                t={t}
+                saving={savingId === tier.id}
+                deleting={deletingId === tier.id}
+                onSave={(patch) => saveTier(tier, patch)}
+                onRemove={() => removeTier(tier)}
+              />
+            ))}
+          </div>
+        )}
 
         <div className="border-t border-[var(--border)] pt-4 mt-2">
           <h4 className="text-sm font-semibold mb-3 flex items-center gap-1.5">
@@ -357,7 +401,7 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
                 type="button"
                 disabled={creatingTier || !newSlug.trim()}
                 onClick={createTier}
-                className="btn btn-primary text-sm py-2 w-full disabled:opacity-50"
+                className="btn btn-primary text-sm py-2 w-full sm:w-auto disabled:opacity-50"
               >
                 {creatingTier ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : t.partnerTierCreate}
               </button>
@@ -367,155 +411,175 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
       </section>
 
       {/* Influencer referral coupons */}
-      <section className="card p-5 sm:p-6 space-y-4">
-        <h3 className="font-bold text-lg flex items-center gap-2">
-          <Ticket className="w-5 h-5 text-[var(--accent)]" />
-          {t.couponAdminTitle}
-        </h3>
-        <p className="text-xs text-[var(--text-muted)] leading-relaxed">{t.couponAdminHelp}</p>
+      <section className="card p-4 sm:p-6 space-y-4">
+        <SectionHeader
+          icon={Ticket}
+          title={t.couponAdminTitle}
+          note={t.couponAdminHelp}
+          count={coupons.length}
+        />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label={t.couponCodeLabel} hint={t.couponCodeHint}>
-            <input
-              className="profile-field-input text-sm w-full font-mono"
-              placeholder="YOUTUBER1"
-              value={couponCode}
-              onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-              dir="ltr"
-            />
-          </Field>
-          <Field label={t.couponNoteLabel} hint={t.couponNoteHint}>
-            <input
-              className="profile-field-input text-sm w-full"
-              value={couponNote}
-              onChange={(e) => setCouponNote(e.target.value)}
-              placeholder={t.couponNotePlaceholder}
-            />
-          </Field>
-          <Field label={t.couponBuyerMarkupLabel} hint={t.couponBuyerMarkupHint}>
-            <input
-              className="profile-field-input text-sm w-full"
-              type="number"
-              min="0"
-              max="500"
-              step="0.1"
-              value={couponBuyerMarkup}
-              onChange={(e) => setCouponBuyerMarkup(e.target.value)}
-              dir="ltr"
-            />
-          </Field>
-          <Field label={t.couponInfluencerMarginLabel} hint={t.couponInfluencerMarginHint}>
-            <input
-              className="profile-field-input text-sm w-full"
-              type="number"
-              min="0"
-              max="100"
-              step="0.1"
-              value={couponInfMargin}
-              onChange={(e) => setCouponInfMargin(e.target.value)}
-              dir="ltr"
-            />
-          </Field>
-        </div>
-        <p className="text-[11px] text-[var(--text-muted)] leading-relaxed border border-[var(--border)] rounded-lg px-3 py-2">
-          {t.couponExampleHelp}
-        </p>
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]/40 p-4 sm:p-5 space-y-4">
+          <h4 className="text-sm font-semibold flex items-center gap-1.5">
+            <Plus className="w-4 h-4" />
+            {t.couponCreate}
+          </h4>
 
-        <div className="space-y-2">
-          <Field label={t.couponInfluencerLabel} hint={t.couponInfluencerHint}>
-            <div className="flex flex-col sm:flex-row gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label={t.couponCodeLabel} hint={t.couponCodeHint}>
               <input
-                className="profile-field-input text-sm flex-1"
-                placeholder={t.partnerSearchPlaceholder}
-                value={couponUserQuery}
-                onChange={(e) => setCouponUserQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    searchCouponInfluencer();
-                  }
-                }}
+                className="profile-field-input text-sm w-full font-mono"
+                placeholder="YOUTUBER1"
+                value={couponCode}
+                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                dir="ltr"
               />
-              <button
-                type="button"
-                disabled={couponUserSearching || !couponUserQuery.trim()}
-                onClick={searchCouponInfluencer}
-                className="btn btn-secondary text-sm py-2 px-4 disabled:opacity-50"
-              >
-                {couponUserSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : (t.search || t.adminUsersSearch)}
-              </button>
-            </div>
-          </Field>
-          {couponUserResults.length > 0 && (
-            <ul className="rounded-xl border border-[var(--border)] divide-y divide-[var(--border)] max-h-40 overflow-y-auto">
-              {couponUserResults.map((u) => {
-                const active = couponInfluencer?.id === u.id;
-                return (
-                  <li key={u.id}>
-                    <button
-                      type="button"
-                      onClick={() => setCouponInfluencer(u)}
-                      className={`w-full text-start px-3 py-2 text-sm hover:bg-[var(--bg-elevated)] ${active ? 'bg-[var(--accent)]/12' : ''}`}
-                    >
-                      <span className="font-mono font-semibold text-[var(--accent)]">
-                        {formatProfileUsername(getProfileUsername(u)) || getProfileAdminLabel(u)}
-                      </span>
-                      {getProfileDisplayName(u) ? (
-                        <span className="text-[var(--text-muted)] ms-2">{getProfileDisplayName(u)}</span>
-                      ) : null}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {couponInfluencer && (
-            <div className="text-sm rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2">
-              {t.couponSelectedInfluencer}:{' '}
-              <strong className="font-mono">
-                {formatProfileUsername(getProfileUsername(couponInfluencer)) || couponInfluencer.email}
-              </strong>
-            </div>
-          )}
+            </Field>
+            <Field label={t.couponNoteLabel} hint={t.couponNoteHint}>
+              <input
+                className="profile-field-input text-sm w-full"
+                value={couponNote}
+                onChange={(e) => setCouponNote(e.target.value)}
+                placeholder={t.couponNotePlaceholder}
+              />
+            </Field>
+            <Field label={t.couponBuyerMarkupLabel} hint={t.couponBuyerMarkupHint}>
+              <input
+                className="profile-field-input text-sm w-full"
+                type="number"
+                min="0"
+                max="500"
+                step="0.1"
+                value={couponBuyerMarkup}
+                onChange={(e) => setCouponBuyerMarkup(e.target.value)}
+                dir="ltr"
+              />
+            </Field>
+            <Field label={t.couponInfluencerMarginLabel} hint={t.couponInfluencerMarginHint}>
+              <input
+                className="profile-field-input text-sm w-full"
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                value={couponInfMargin}
+                onChange={(e) => setCouponInfMargin(e.target.value)}
+                dir="ltr"
+              />
+            </Field>
+          </div>
+          <p className="text-[11px] text-[var(--text-muted)] leading-relaxed border border-[var(--border)] rounded-lg px-3 py-2">
+            {t.couponExampleHelp}
+          </p>
+
+          <CouponMathPreview t={t} buyerMarkup={couponBuyerMarkup} infMargin={couponInfMargin} />
+
+          <div className="space-y-2">
+            <Field label={t.couponInfluencerLabel} hint={t.couponInfluencerHint}>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  className="profile-field-input text-sm flex-1"
+                  placeholder={t.partnerSearchPlaceholder}
+                  value={couponUserQuery}
+                  onChange={(e) => setCouponUserQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      searchCouponInfluencer();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={couponUserSearching || !couponUserQuery.trim()}
+                  onClick={searchCouponInfluencer}
+                  className="btn btn-secondary text-sm py-2 px-4 disabled:opacity-50"
+                >
+                  {couponUserSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : (t.search || t.adminUsersSearch)}
+                </button>
+              </div>
+            </Field>
+            {couponUserResults.length > 0 && (
+              <ul className="rounded-xl border border-[var(--border)] divide-y divide-[var(--border)] max-h-40 overflow-y-auto">
+                {couponUserResults.map((u) => {
+                  const active = couponInfluencer?.id === u.id;
+                  return (
+                    <li key={u.id}>
+                      <button
+                        type="button"
+                        onClick={() => setCouponInfluencer(u)}
+                        className={`w-full text-start px-3 py-2 text-sm hover:bg-[var(--bg-elevated)] ${active ? 'bg-[var(--accent)]/12' : ''}`}
+                      >
+                        <span className="font-mono font-semibold text-[var(--accent)]">
+                          {formatProfileUsername(getProfileUsername(u)) || getProfileAdminLabel(u)}
+                        </span>
+                        {getProfileDisplayName(u) ? (
+                          <span className="text-[var(--text-muted)] ms-2">{getProfileDisplayName(u)}</span>
+                        ) : null}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {couponInfluencer && (
+              <div className="text-sm rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2">
+                {t.couponSelectedInfluencer}:{' '}
+                <strong className="font-mono">
+                  {formatProfileUsername(getProfileUsername(couponInfluencer)) || couponInfluencer.email}
+                </strong>
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            disabled={creatingCoupon || !couponCode.trim() || !couponInfluencer?.id}
+            onClick={createCoupon}
+            className="btn btn-primary text-sm py-2 px-4 w-full sm:w-auto inline-flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {creatingCoupon ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            {t.couponCreate}
+          </button>
         </div>
 
-        <button
-          type="button"
-          disabled={creatingCoupon || !couponCode.trim() || !couponInfluencer?.id}
-          onClick={createCoupon}
-          className="btn btn-primary text-sm py-2 px-4 inline-flex items-center gap-2 disabled:opacity-50"
-        >
-          {creatingCoupon ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-          {t.couponCreate}
-        </button>
-
-        {coupons.length > 0 && (
-          <div className="space-y-2 mt-2">
-            {coupons.map((c) => (
-              <CouponRow
-                key={c.id}
-                coupon={c}
-                t={t}
-                onToggle={() => toggleCoupon(c)}
-                onSaved={async (patch) => {
-                  try {
-                    await adminUpdateInfluencerCoupon(c.id, patch);
-                    notifySuccess(t.couponUpdated);
-                    await load();
-                  } catch (e) {
-                    notifyError(e.message || t.couponCreateFailed);
-                  }
-                }}
-              />
-            ))}
+        <div className="pt-1">
+          <div className="flex items-center gap-2 mb-3">
+            <Ticket className="w-4 h-4 text-[var(--accent)]" />
+            <h4 className="text-sm font-semibold">{t.partnerCouponsListTitle}</h4>
+            <span className="text-xs font-mono font-bold text-[var(--accent)] bg-[var(--accent)]/12 rounded-full px-2 py-0.5">
+              {coupons.length}
+            </span>
           </div>
-        )}
+          {coupons.length > 0 ? (
+            <div className="space-y-2">
+              {coupons.map((c) => (
+                <CouponRow
+                  key={c.id}
+                  coupon={c}
+                  t={t}
+                  onToggle={() => toggleCoupon(c)}
+                  onSaved={async (patch) => {
+                    try {
+                      await adminUpdateInfluencerCoupon(c.id, patch);
+                      notifySuccess(t.couponUpdated);
+                      await load();
+                    } catch (e) {
+                      notifyError(e.message || t.couponCreateFailed);
+                    }
+                  }}
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState text={t.partnerCouponsEmpty} />
+          )}
+        </div>
       </section>
 
       {/* Manual partner assign */}
-      <section className="card p-5 sm:p-6 space-y-4">
-        <h3 className="font-bold text-lg">{t.partnerAssignTitle}</h3>
-        <p className="text-xs text-[var(--text-muted)]">{t.partnerAssignHelp}</p>
+      <section className="card p-4 sm:p-6 space-y-4">
+        <SectionHeader icon={UserPlus} title={t.partnerAssignTitle} note={t.partnerAssignHelp} />
         <div className="flex flex-col sm:flex-row gap-2">
           <input
             className="profile-field-input text-sm flex-1"
@@ -533,7 +597,7 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
             type="button"
             disabled={assignSearching || !assignQuery.trim()}
             onClick={searchUsers}
-            className="btn btn-secondary text-sm py-2 px-4 disabled:opacity-50 inline-flex items-center gap-1.5"
+            className="btn btn-secondary text-sm py-2 px-4 disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
           >
             {assignSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             {t.search || t.adminUsersSearch}
@@ -583,7 +647,7 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
 
         <div className="flex flex-col sm:flex-row gap-2">
           <select
-            className="profile-field-input text-sm sm:w-64"
+            className="profile-field-input text-sm w-full sm:w-64"
             value={assignTierId}
             onChange={(e) => setAssignTierId(e.target.value)}
           >
@@ -598,7 +662,7 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
             type="button"
             disabled={assigning || !selectedUser?.id}
             onClick={assignUser}
-            className="btn btn-primary text-sm py-2 px-4 disabled:opacity-50"
+            className="btn btn-primary text-sm py-2 px-4 w-full sm:w-auto disabled:opacity-50"
           >
             {assigning ? <Loader2 className="w-4 h-4 animate-spin" /> : t.partnerAssignApply}
           </button>
@@ -615,6 +679,59 @@ function Field({ label, hint, className = '', children }) {
       {hint ? <span className="block text-[10px] text-[var(--text-muted)] leading-snug">{hint}</span> : null}
       {children}
     </label>
+  );
+}
+
+function StatChip({ icon: Icon, value, label }) {
+  return (
+    <div className="admin-partners-stat">
+      <span className="admin-partners-stat__top">
+        <Icon className="admin-partners-stat__icon w-3.5 h-3.5" />
+        {label}
+      </span>
+      <span className="admin-partners-stat__num" dir="ltr">{value}</span>
+    </div>
+  );
+}
+
+function HowCard({ icon: Icon, title, desc }) {
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-4 flex items-start gap-3">
+      <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--accent)]/12 text-[var(--accent)] shrink-0">
+        <Icon className="w-4 h-4" />
+      </span>
+      <div className="min-w-0">
+        <h4 className="text-sm font-bold text-[var(--text-primary)] leading-tight">{title}</h4>
+        <p className="text-xs text-[var(--text-muted)] leading-relaxed mt-0.5">{desc}</p>
+      </div>
+    </div>
+  );
+}
+
+function SectionHeader({ icon: Icon, title, note, count }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--accent)]/12 text-[var(--accent)] shrink-0">
+        <Icon className="w-4 h-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <h3 className="font-bold text-base sm:text-lg leading-tight">{title}</h3>
+        {note ? <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">{note}</p> : null}
+      </div>
+      {count != null ? (
+        <span className="text-xs font-mono font-bold text-[var(--accent)] bg-[var(--accent)]/12 rounded-full px-2.5 py-1 shrink-0" dir="ltr">
+          {count}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function EmptyState({ text }) {
+  return (
+    <div className="rounded-xl border border-dashed border-[var(--border)] px-4 py-6 text-center text-sm text-[var(--text-muted)] leading-relaxed">
+      {text}
+    </div>
   );
 }
 
@@ -644,8 +761,11 @@ function TierRow({ tier, t, saving, deleting, onSave, onRemove }) {
   if (!editing) {
     return (
       <div className={`rounded-xl border border-[var(--border)] p-3 sm:p-4 flex flex-wrap items-center gap-3 justify-between ${!tier.is_active ? 'opacity-60' : ''}`}>
-        <div className="min-w-0 space-y-0.5">
+        <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center rounded-lg bg-[var(--accent)]/12 px-2 py-0.5 text-xs font-bold text-[var(--accent)] font-mono" dir="ltr">
+              +{tier.markup_percent}%
+            </span>
             <span className="font-mono text-sm font-bold" dir="ltr">{tier.slug}</span>
             {!tier.is_active && (
               <span className="text-[10px] uppercase tracking-wide text-amber-300/90">{t.couponInactiveShort}</span>
@@ -658,7 +778,10 @@ function TierRow({ tier, t, saving, deleting, onSave, onRemove }) {
             ) : null}
           </div>
           <div className="text-xs text-[var(--text-muted)] font-mono" dir="ltr">
-            {formatMessage(t.partnerPriceExample || 'cost + {pct}%', { pct: tier.markup_percent })}
+            {formatMessage(t.partnerPriceExample || 'cost + {pct}%', {
+              pct: tier.markup_percent,
+              result: priceFromCost(1, Number(tier.markup_percent)).toFixed(2),
+            })}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -870,6 +993,68 @@ function CouponRow({ coupon, t, onToggle, onSaved }) {
           <X className="w-4 h-4" />
         </button>
       </div>
+    </div>
+  );
+}
+
+const MATH_BASE = { price: 1.12, g2bulk_cost_usd: 1.0 };
+
+function CouponMathPreview({ t, buyerMarkup, infMargin }) {
+  const buyerPct = Number(buyerMarkup);
+  const infPct = Number(infMargin);
+  const valid = Number.isFinite(buyerPct) && Number.isFinite(infPct);
+
+  const buyer = valid ? resolveInfluencerUnitPrice(MATH_BASE, buyerPct) : null;
+  const commission = valid ? resolveInfluencerCommissionPerUnit(MATH_BASE, buyer, infPct) : null;
+  const store = buyer != null && commission != null
+    ? Math.max(0, buyer - MATH_BASE.g2bulk_cost_usd - commission)
+    : null;
+  const fmt = (v) => (v == null ? '—' : `$${v.toFixed(2)}`);
+
+  const zeroNote =
+    valid &&
+    commission === 0 &&
+    infPct > 0 &&
+    buyer != null &&
+    buyer - MATH_BASE.g2bulk_cost_usd > 0.005;
+
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+          {t.couponMathPreviewTitle}
+        </span>
+        <span className="text-[10px] font-mono text-[var(--text-muted)]" dir="ltr">
+          {t.couponMathPreviewAssumes}
+        </span>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-sm">
+        <MathCell label={t.couponMathPreviewBuyer} value={fmt(buyer)} />
+        <MathCell
+          label={t.couponMathPreviewInfluencer}
+          value={fmt(commission)}
+          tone={commission != null && commission > 0 ? 'emerald' : 'muted'}
+        />
+        <MathCell label={t.couponMathPreviewStore} value={fmt(store)} tone="accent" />
+      </div>
+      {zeroNote && (
+        <p className="text-[11px] text-amber-300/90 leading-relaxed">{t.couponMathPreviewZeroNote}</p>
+      )}
+    </div>
+  );
+}
+
+function MathCell({ label, value, tone = 'muted' }) {
+  const color =
+    tone === 'emerald'
+      ? 'text-emerald-400'
+      : tone === 'accent'
+        ? 'text-[var(--accent)]'
+        : 'text-[var(--text-primary)]';
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 min-w-0">
+      <span className="block text-[10px] text-[var(--text-muted)] truncate">{label}</span>
+      <span className={`block font-mono font-bold tabular-nums ${color}`} dir="ltr">{value}</span>
     </div>
   );
 }
