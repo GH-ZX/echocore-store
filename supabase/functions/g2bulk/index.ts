@@ -1313,6 +1313,61 @@ function isInsufficientBalanceMessage(msg: unknown): boolean {
   return /insufficient\s+balance|not\s+enough\s+balance|balance\s+too\s+low|insufficient\s+funds|insufficient_supplier_balance|wallet.*(low|insufficient)|not\s+enough\s+funds/.test(s);
 }
 
+function telegramEscapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Fire-and-forget low-wallet Telegram alert (store-level config: one bot token,
+ * one recipient chat, per-event toggle). Never throws — a Telegram outage must
+ * not break the fulfillment write path.
+ */
+async function notifyTelegramLowWallet(
+  serviceClient: ReturnType<typeof createClient>,
+  meta: { orderRef?: string; detail?: string },
+): Promise<void> {
+  try {
+    const { data } = await serviceClient
+      .from('store_settings')
+      .select('telegram_alerts_enabled, telegram_bot_token, telegram_chat_id, telegram_alert_prefs')
+      .eq('id', 1)
+      .maybeSingle();
+    if (!data) return;
+    const row = data as {
+      telegram_alerts_enabled?: boolean;
+      telegram_bot_token?: string | null;
+      telegram_chat_id?: string | null;
+      telegram_alert_prefs?: Record<string, unknown> | null;
+    };
+    if (row.telegram_alerts_enabled !== true) return;
+    const token = String(row.telegram_bot_token ?? '').trim();
+    const chatId = String(row.telegram_chat_id ?? '').trim();
+    if (!token || !chatId) return;
+    if (row.telegram_alert_prefs?.['lowWallet'] === false) return;
+
+    const text = [
+      '<b>G2Bulk wallet is low</b>',
+      'Top up the supplier wallet so fulfillment can continue.',
+      meta.orderRef ? `Order: ${telegramEscapeHtml(meta.orderRef)}` : '',
+      meta.detail ? `Detail: ${telegramEscapeHtml(meta.detail)}` : '',
+    ].filter(Boolean).join('\n');
+
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: text.slice(0, 3900), parse_mode: 'HTML' }),
+    });
+    if (!res.ok) {
+      console.error('telegram lowWallet send failed', res.status, await res.text().catch(() => ''));
+    }
+  } catch (err) {
+    console.error('telegram lowWallet send error', err);
+  }
+}
+
 function sumOrderItemsSupplierCost(items: Json[]): number {
   let total = 0;
   for (const row of items || []) {
@@ -2708,6 +2763,14 @@ Deno.serve(async (req) => {
 
       const firstError = errors[0] || null;
       const walletFail = finalStatus === 'failed' && isInsufficientBalanceMessage(firstError);
+
+      if (walletFail) {
+        await notifyTelegramLowWallet(serviceClient, {
+          orderRef: String((order as { order_ref?: string }).order_ref ?? orderId),
+          detail: firstError || ERR_INSUFFICIENT_SUPPLIER_BALANCE,
+        });
+      }
+
       await serviceClient.rpc('apply_g2bulk_fulfillment', {
         p_order_id: orderId,
         p_fulfillment_status: finalStatus,

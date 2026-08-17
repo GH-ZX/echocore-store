@@ -1358,6 +1358,17 @@ ALTER TABLE public.store_settings
   ADD COLUMN IF NOT EXISTS g2bulk_markup_percent numeric(5,2) NOT NULL DEFAULT 15;
 
 -- ---------------------------------------------------------------------------
+-- 1b. TELEGRAM ADMIN ALERTS — store-level config (one bot, one recipient chat)
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE public.store_settings
+  ADD COLUMN IF NOT EXISTS telegram_alerts_enabled boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS telegram_bot_token text,
+  ADD COLUMN IF NOT EXISTS telegram_bot_username text,
+  ADD COLUMN IF NOT EXISTS telegram_chat_id text,
+  ADD COLUMN IF NOT EXISTS telegram_alert_prefs jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+-- ---------------------------------------------------------------------------
 -- 2. GAMES â€” link to G2Bulk game code for direct top-ups
 -- ---------------------------------------------------------------------------
 
@@ -6252,6 +6263,15 @@ BEGIN
   )
   ON CONFLICT (id) DO NOTHING;
 
+  PERFORM public.notify_admin_telegram(
+    'signup',
+    jsonb_build_object(
+      'name', v_name,
+      'username', v_username,
+      'email', v_email
+    )
+  );
+
   RETURN new;
 END;
 $$;
@@ -6401,6 +6421,15 @@ BEGIN
       'orderId', NEW.order_id
     ),
     '/dashboard/reviews'
+  );
+
+  PERFORM public.notify_admin_telegram(
+    'review',
+    jsonb_build_object(
+      'authorName', NEW.author_name,
+      'rating', NEW.rating,
+      'message', left(coalesce(NEW.content, ''), 200)
+    )
   );
 
   RETURN NEW;
@@ -9112,6 +9141,15 @@ BEGIN
       ),
       v_link
     );
+    PERFORM public.notify_admin_telegram(
+      'fulfillmentFail',
+      jsonb_build_object(
+        'orderRef', NEW.order_ref,
+        'amount', NEW.total,
+        'userName', COALESCE(v_user_name, 'Customer'),
+        'error', COALESCE(NEW.g2bulk_metadata->>'last_error', 'fulfillment failed')
+      )
+    );
     PERFORM public.try_append_site_log(
       'order',
       'fulfillment_failed',
@@ -9233,6 +9271,16 @@ BEGIN
     v_link
   );
 
+  PERFORM public.notify_admin_telegram(
+    'recharge',
+    jsonb_build_object(
+      'amount', v_amount,
+      'reference', NEW.reference,
+      'paymentMethod', NEW.payment_method,
+      'userName', COALESCE(v_user_name, 'Customer')
+    )
+  );
+
   PERFORM public.try_append_site_log(
     'recharge',
     'completed',
@@ -9279,6 +9327,15 @@ BEGIN
     '/dashboard/contact'
   );
 
+  PERFORM public.notify_admin_telegram(
+    'contact',
+    jsonb_build_object(
+      'name', NEW.name,
+      'email', NEW.email,
+      'message', left(coalesce(NEW.message, ''), 200)
+    )
+  );
+
   PERFORM public.try_append_site_log(
     'contact',
     'message_received',
@@ -9301,6 +9358,226 @@ CREATE TRIGGER contact_message_notify_admins
   AFTER INSERT ON public.contact_messages
   FOR EACH ROW
   EXECUTE FUNCTION public.on_contact_message_insert();
+
+-- =============================================================================
+-- 8) TELEGRAM ADMIN ALERTS — send store events to a Telegram chat via pg_net
+-- =============================================================================
+-- Store-level config: one bot token + one recipient chat + per-event toggles
+-- stored on store_settings. Fire-and-forget through pg_net so a Telegram
+-- outage never blocks the triggering transaction (send errors are swallowed).
+
+CREATE OR REPLACE FUNCTION public.telegram_escape(p_text text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT replace(replace(replace(COALESCE(p_text, ''), '&', '&amp;'), '<', '&lt;'), '>', '&gt;');
+$$;
+
+CREATE OR REPLACE FUNCTION public.telegram_alert_message(p_type text, p_metadata jsonb DEFAULT '{}'::jsonb)
+RETURNS text
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT CASE p_type
+    WHEN 'orderPaid' THEN
+        '<b>New order paid</b>' || E'\n'
+      || 'Order: ' || public.telegram_escape(p_metadata->>'orderRef') || E'\n'
+      || 'Amount: ' || public.telegram_escape(p_metadata->>'amount') || E'\n'
+      || 'Payment: ' || public.telegram_escape(p_metadata->>'paymentMethod') || E'\n'
+      || 'Customer: ' || public.telegram_escape(p_metadata->>'userName')
+    WHEN 'fulfillmentFail' THEN
+        '<b>Order fulfillment FAILED</b>' || E'\n'
+      || 'Order: ' || public.telegram_escape(p_metadata->>'orderRef') || E'\n'
+      || 'Amount: ' || public.telegram_escape(p_metadata->>'amount') || E'\n'
+      || 'Customer: ' || public.telegram_escape(p_metadata->>'userName') || E'\n'
+      || 'Error: ' || public.telegram_escape(p_metadata->>'error')
+    WHEN 'recharge' THEN
+        '<b>Recharge approved</b>' || E'\n'
+      || 'Amount: ' || public.telegram_escape(p_metadata->>'amount') || E'\n'
+      || 'Method: ' || public.telegram_escape(p_metadata->>'paymentMethod') || E'\n'
+      || 'Reference: ' || public.telegram_escape(p_metadata->>'reference') || E'\n'
+      || 'Customer: ' || public.telegram_escape(p_metadata->>'userName')
+    WHEN 'contact' THEN
+        '<b>New contact message</b>' || E'\n'
+      || 'From: ' || public.telegram_escape(p_metadata->>'name') || E'\n'
+      || 'Email: ' || public.telegram_escape(p_metadata->>'email') || E'\n'
+      || 'Message: ' || public.telegram_escape(p_metadata->>'message')
+    WHEN 'review' THEN
+        '<b>New customer review</b>' || E'\n'
+      || 'Author: ' || public.telegram_escape(p_metadata->>'authorName') || E'\n'
+      || 'Rating: ' || public.telegram_escape(p_metadata->>'rating') || '/5' || E'\n'
+      || 'Message: ' || public.telegram_escape(p_metadata->>'message')
+    WHEN 'signup' THEN
+        '<b>New customer signup</b>' || E'\n'
+      || 'Name: ' || public.telegram_escape(p_metadata->>'name') || E'\n'
+      || 'Username: ' || public.telegram_escape(p_metadata->>'username') || E'\n'
+      || 'Email: ' || public.telegram_escape(p_metadata->>'email')
+    WHEN 'lowWallet' THEN
+        '<b>G2Bulk wallet is low</b>' || E'\n'
+      || 'Top up the supplier wallet so fulfillment can continue.' || E'\n'
+      || 'Order: ' || public.telegram_escape(p_metadata->>'orderRef') || E'\n'
+      || 'Detail: ' || public.telegram_escape(p_metadata->>'detail')
+    WHEN 'test' THEN
+        '<b>ECHOCORE Telegram alerts — test message</b>' || E'\n'
+      || 'If you can read this, alerts are working.'
+    ELSE
+      NULL
+  END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.notify_admin_telegram(
+  p_type text,
+  p_metadata jsonb DEFAULT '{}'::jsonb
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions AS $$
+DECLARE
+  v_row public.store_settings%ROWTYPE;
+  v_chat text;
+  v_token text;
+  v_text text;
+  v_url text;
+BEGIN
+  SELECT * INTO v_row FROM public.store_settings WHERE id = 1;
+
+  IF NOT COALESCE(v_row.telegram_alerts_enabled, false) THEN
+    RETURN;
+  END IF;
+
+  v_token := nullif(trim(COALESCE(v_row.telegram_bot_token, '')), '');
+  v_chat := nullif(trim(COALESCE(v_row.telegram_chat_id, '')), '');
+  IF v_token IS NULL OR v_chat IS NULL THEN
+    RETURN;
+  END IF;
+
+  IF COALESCE((v_row.telegram_alert_prefs->>p_type)::boolean, true) = false THEN
+    RETURN;
+  END IF;
+
+  v_text := public.telegram_alert_message(p_type, COALESCE(p_metadata, '{}'::jsonb));
+  IF v_text IS NULL OR v_text = '' THEN
+    RETURN;
+  END IF;
+
+  BEGIN
+    v_url := 'https://api.telegram.org/bot' || v_token || '/sendMessage';
+    PERFORM net.http_post(
+      url := v_url,
+      headers := jsonb_build_object('Content-Type', 'application/json'),
+      body := jsonb_build_object(
+        'chat_id', v_chat,
+        'text', left(v_text, 3900),
+        'parse_mode', 'HTML'
+      )
+    );
+    PERFORM public.try_append_site_log(
+      'telegram', p_type, 'info', NULL, NULL,
+      jsonb_build_object('length', length(v_text))
+    );
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+END;
+$$;
+
+-- Admin: read Telegram alert settings (bot token is masked, never returned raw)
+CREATE OR REPLACE FUNCTION public.get_telegram_alerts_settings()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_row public.store_settings%ROWTYPE;
+  v_token text;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  SELECT * INTO v_row FROM public.store_settings WHERE id = 1;
+  v_token := nullif(trim(COALESCE(v_row.telegram_bot_token, '')), '');
+
+  RETURN jsonb_build_object(
+    'telegram_alerts_enabled', COALESCE(v_row.telegram_alerts_enabled, false),
+    'telegram_bot_token_set', v_token IS NOT NULL,
+    'telegram_bot_token_masked', CASE
+      WHEN v_token IS NULL THEN null
+      WHEN length(v_token) <= 8 THEN '********'
+      ELSE substr(v_token, 1, 4) || '…' || substr(v_token, length(v_token) - 3, 4)
+    END,
+    'telegram_bot_username', v_row.telegram_bot_username,
+    'telegram_chat_id', v_row.telegram_chat_id,
+    'telegram_alert_prefs', COALESCE(v_row.telegram_alert_prefs, '{}'::jsonb)
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_telegram_alerts_settings() FROM public;
+GRANT EXECUTE ON FUNCTION public.get_telegram_alerts_settings() TO authenticated;
+
+-- Admin: save Telegram alert settings. Pass bot_token only to change it
+-- (NULL keeps the stored token). chat_id / username / prefs update directly.
+CREATE OR REPLACE FUNCTION public.save_telegram_alerts_settings(
+  p_enabled boolean DEFAULT null,
+  p_bot_token text DEFAULT null,
+  p_bot_username text DEFAULT null,
+  p_chat_id text DEFAULT null,
+  p_alert_prefs jsonb DEFAULT null
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_trim_token text;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  v_trim_token := nullif(trim(p_bot_token), '');
+
+  UPDATE public.store_settings
+  SET
+    telegram_alerts_enabled = COALESCE(p_enabled, telegram_alerts_enabled, false),
+    telegram_bot_username = COALESCE(nullif(trim(p_bot_username), ''), telegram_bot_username),
+    telegram_chat_id = COALESCE(nullif(trim(p_chat_id), ''), telegram_chat_id),
+    telegram_alert_prefs = COALESCE(p_alert_prefs, telegram_alert_prefs, '{}'::jsonb),
+    telegram_bot_token = CASE
+      WHEN p_bot_token IS NOT NULL THEN v_trim_token
+      ELSE telegram_bot_token
+    END,
+    updated_at = now()
+  WHERE id = 1;
+
+  RETURN public.get_telegram_alerts_settings();
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.save_telegram_alerts_settings(boolean, text, text, text, jsonb) FROM public;
+GRANT EXECUTE ON FUNCTION public.save_telegram_alerts_settings(boolean, text, text, text, jsonb) TO authenticated;
+
+-- Admin: send a test alert to verify the bot + chat id are wired correctly.
+CREATE OR REPLACE FUNCTION public.send_test_telegram_alert()
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  PERFORM public.notify_admin_telegram('test', jsonb_build_object('sentAt', now()));
+  RETURN 'sent';
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.send_test_telegram_alert() FROM public;
+GRANT EXECUTE ON FUNCTION public.send_test_telegram_alert() TO authenticated;
 
 -- =============================================================================
 -- 7) Manual payment-sent links → invoice / recharges
@@ -9643,6 +9920,16 @@ BEGIN
       'phase', 'payment'  -- payment only; delivery is a separate notification
     ),
     v_link
+  );
+
+  PERFORM public.notify_admin_telegram(
+    'orderPaid',
+    jsonb_build_object(
+      'orderRef', NEW.order_ref,
+      'amount', NEW.total,
+      'paymentMethod', NEW.payment_method,
+      'userName', COALESCE(v_user_name, 'Customer')
+    )
   );
 
   PERFORM public.try_append_site_log(

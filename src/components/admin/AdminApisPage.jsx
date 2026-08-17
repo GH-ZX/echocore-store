@@ -9,15 +9,18 @@ import {
   Loader2,
   Smartphone,
   Zap,
+  Bell,
 } from 'lucide-react';
 import AdminG2BulkSettings from './AdminG2BulkSettings';
 import AdminIgdbSettings from './AdminIgdbSettings';
 import AdminSamApiPanel from './AdminSamApiPanel';
 import AdminBinanceSettings from './AdminBinanceSettings';
+import AdminTelegramSettings from './AdminTelegramSettings';
 import { fetchG2bulkSettings } from '../../lib/g2bulk';
 import { fetchIgdbSettings } from '../../lib/igdb';
 import { fetchSamApiSettings } from '../../lib/samApi';
 import { fetchBinancePaySettings } from '../../lib/binancePay';
+import { fetchTelegramAlertsSettings } from '../../lib/telegramAlerts';
 import {
   getAdminApisPath,
   isValidAdminApisSection,
@@ -98,16 +101,18 @@ export default function AdminApisPage({
     sam: { ok: false, mode: 'manual' },
     igdb: { ok: false, auto: false },
     binance: { ok: false },
+    telegram: { ok: false },
   });
 
   const refreshStatus = useCallback(async () => {
     setStatusLoading(true);
     try {
-      const [g2, sam, igdb, bin] = await Promise.allSettled([
+      const [g2, sam, igdb, bin, tg] = await Promise.allSettled([
         fetchG2bulkSettings(),
         fetchSamApiSettings(),
         fetchIgdbSettings(),
         fetchBinancePaySettings(),
+        fetchTelegramAlertsSettings(),
       ]);
       setStatus({
         g2bulk: {
@@ -124,6 +129,9 @@ export default function AdminApisPage({
         },
         binance: {
           ok: bin.status === 'fulfilled' && !!(bin.value?.binance_api_key_set && bin.value?.binance_api_secret_set),
+        },
+        telegram: {
+          ok: tg.status === 'fulfilled' && !!tg.value?.telegram_bot_token_set,
         },
       });
     } finally {
@@ -162,7 +170,7 @@ export default function AdminApisPage({
     navigate(getAdminApisPath({ section: next }), { replace: true });
   };
 
-  const readyCount = [status.g2bulk.ok, status.sam.ok, status.igdb.ok, status.binance.ok].filter(Boolean).length;
+  const readyCount = [status.g2bulk.ok, status.sam.ok, status.igdb.ok, status.binance.ok, status.telegram.ok].filter(Boolean).length;
 
   return (
     <div className="admin-apis space-y-5 sm:space-y-6" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
@@ -182,7 +190,7 @@ export default function AdminApisPage({
           <div className="admin-apis-hero__ok">
             <CheckCircle className="w-4 h-4 text-emerald-400" aria-hidden />
             <span>
-              {readyCount}/4 {t.apisReadyCount}
+              {readyCount}/5 {t.apisReadyCount}
             </span>
           </div>
         )}
@@ -269,6 +277,22 @@ export default function AdminApisPage({
               onNotify?.(msg, type);
               if (type === 'success') refreshStatus();
             }}
+          />
+        </ApiSection>
+
+        <ApiSection
+          id="telegram"
+          open={openId === 'telegram'}
+          onToggle={() => setSection('telegram')}
+          icon={Bell}
+          title={t.apisTelegramTitle}
+          description={t.apisTelegramDesc}
+          statusOk={status.telegram.ok}
+          statusLabel={status.telegram.ok ? t.telegramBotConfigured : t.telegramBotNotSet}
+        >
+          <AdminTelegramSettings
+            t={t}
+            embedded
           />
         </ApiSection>
       </div>
