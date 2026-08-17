@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ArrowLeft, Loader2, CheckCircle, Wallet, QrCode, Clock, AlertCircle, Info } from 'lucide-react';
 import { Spinner } from '../components/routing/PageLoader';
@@ -120,6 +120,11 @@ export default function RechargeView({
     }
   }, [walletMethods, usableWalletMethods, selectedMethod]);
 
+  // Latest-ref: the resume effect below runs once (deps: paymentConfig, t,
+  // rechargeAllowed) but may fire the paid-completion handler later — always
+  // call the most recent closure so user/balance/returnTo are never stale.
+  const handleInvoicePaidRef = useRef(null);
+
   useEffect(() => {
     if (!rechargeAllowed) {
       setLoadingRequest(false);
@@ -155,7 +160,7 @@ export default function RechargeView({
               setStep('payment');
             } else if (order && order.status === 'paid') {
               // Already credited while away — mark completed.
-              handleInvoicePaid({
+              handleInvoicePaidRef.current?.({
                 creditedAmount: order.creditedAmount ?? order.paidAmount ?? existing.amount,
                 requestedAmount: existing.amount,
                 paidAmount: order.paidAmount,
@@ -363,6 +368,11 @@ export default function RechargeView({
       }, 1400);
     }
   };
+
+  // Keep the ref pointed at the latest closure after every render.
+  useEffect(() => {
+    handleInvoicePaidRef.current = handleInvoicePaid;
+  });
 
   const handleInvoiceExpired = () => {
     setActiveRequest(null);
