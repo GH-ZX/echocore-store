@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Mail, MessageCircle, MessageSquare, X } from 'lucide-react';
+import { MessageCircle, MessageSquare, X } from 'lucide-react';
 import Modal from '../ui/Modal';
 import SocialLinkIcon from '../social/SocialLinkIcon';
 import { getStoreContactLinks } from '../../lib/socialLinks';
@@ -56,22 +56,11 @@ export default function HomeContactFab({ t = {}, lang = 'ar', stacked = false })
               className="btn btn-secondary w-full py-2.5 gap-2"
               onClick={() => {
                 setOpen(false);
-                navigate('/support');
+                navigate('/contact');
               }}
             >
               <MessageSquare className="w-4 h-4" />
               {t.contactViewMessages}
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary w-full py-2.5 gap-2"
-              onClick={() => {
-                setOpen(false);
-                navigate('/contact');
-              }}
-            >
-              <Mail className="w-4 h-4" />
-              {t.supportNewMessage}
             </button>
             {links.map((link) => (
               <a

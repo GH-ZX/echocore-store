@@ -61,7 +61,7 @@ export default function ProfileOverviewPanel({
     ]
     : [
       { icon: Inbox, label: t.siteInboxTitle, path: '/notifications' },
-      { icon: MessageSquare, label: t.supportMenuLabel, path: '/support' },
+      { icon: MessageSquare, label: t.supportMenuLabel, path: '/contact?tab=my' },
       { icon: ShoppingCart, label: t.cart, path: '/cart' },
       { icon: Wallet, label: t.recharge, action: onRecharge },
     ];

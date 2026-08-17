@@ -65,10 +65,6 @@ export function resolveRouteMeta(pathname, t = {}, lang = 'ar') {
       title: t.seoContactTitle || site,
       description: t.seoContactDescription || t.seoDefaultDescription,
     },
-    '/support': {
-      title: t.seoSupportTitle || site,
-      description: t.seoSupportDescription || t.seoDefaultDescription,
-    },
     '/privacy': {
       title: t.seoPrivacyTitle || site,
       description: t.seoDefaultDescription,

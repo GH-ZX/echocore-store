@@ -9512,7 +9512,8 @@ BEGIN
         'chat_id', v_chat,
         'text', left(v_text, 3900),
         'parse_mode', 'HTML'
-      )
+      ),
+      timeout_milliseconds := 30000
     );
     PERFORM public.try_append_site_log(
       'telegram', p_type, 'info', NULL, NULL,

@@ -356,8 +356,8 @@ export function getNotificationDestination(item, formatted, userRole) {
   if (item?.type === 'contact_reply') {
     const messageId = resolveContactMessageId(item, metadata);
     const path = messageId
-      ? `/support?message=${encodeURIComponent(messageId)}`
-      : '/support';
+      ? `/contact?message=${encodeURIComponent(messageId)}`
+      : '/contact';
     return { path };
   }
 

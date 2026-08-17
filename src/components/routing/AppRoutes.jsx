@@ -23,7 +23,6 @@ const SuggestedOffersView = lazyRetry(() => import('../../views/SuggestedOffersV
 const FAQView = lazyRetry(() => import('../../views/FAQView'));
 const HowItWorksView = lazyRetry(() => import('../../views/HowItWorksView'));
 const ContactView = lazyRetry(() => import('../../views/ContactView'));
-const SupportView = lazyRetry(() => import('../../views/SupportView'));
 const LinksView = lazyRetry(() => import('../../views/LinksView'));
 const DeveloperCreditsView = lazyRetry(() => import('../../views/DeveloperCreditsView'));
 const RechargeView = lazyRetry(() => import('../../views/RechargeView'));
@@ -308,14 +307,7 @@ export default function AppRoutes({
 
         <Route path="/contact" element={<ContactView t={t} lang={lang} user={user} />} />
 
-        <Route
-          path="/support"
-          element={(
-            <Suspense fallback={<PageLoader t={t} />}>
-              <SupportView t={t} lang={lang} user={user} />
-            </Suspense>
-          )}
-        />
+        <Route path="/support" element={<Navigate to="/contact" replace />} />
 
         <Route
           path="/game/:gameSlug/:offerSlug/buy"

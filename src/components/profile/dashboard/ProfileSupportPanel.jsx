@@ -6,7 +6,7 @@ export default function ProfileSupportPanel({ t = {}, navigate }) {
       icon: MessageSquare,
       label: t.supportMenuLabel || t.support,
       desc: t.dashSupportContactDesc,
-      path: '/support',
+      path: '/contact?tab=my',
     },
     {
       icon: HelpCircle,

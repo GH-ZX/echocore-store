@@ -50,9 +50,6 @@ export default function Footer({ lang = 'en', t = {} }) {
                 <Link to="/how" className="hover:text-[var(--accent)] transition-colors">{t.footerLinkHow}</Link>
               </li>
               <li>
-                <Link to="/support" className="hover:text-[var(--accent)] transition-colors">{t.footerLinkSupport}</Link>
-              </li>
-              <li>
                 <Link to="/contact" className="hover:text-[var(--accent)] transition-colors">{t.footerLinkContact}</Link>
               </li>
               <li>
