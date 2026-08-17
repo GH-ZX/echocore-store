@@ -90,6 +90,31 @@ AS $$
   END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.telegram_alert_link(p_type text, p_metadata jsonb DEFAULT '{}'::jsonb)
+RETURNS text
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT CASE p_type
+    WHEN 'orderPaid' THEN
+      'https://www.echocore412.com/dashboard/orders?order=' || public.telegram_escape(p_metadata->>'orderId')
+    WHEN 'fulfillmentFail' THEN
+      'https://www.echocore412.com/dashboard/orders?order=' || public.telegram_escape(p_metadata->>'orderId')
+    WHEN 'recharge' THEN
+      'https://www.echocore412.com/dashboard/recharges'
+    WHEN 'contact' THEN
+      'https://www.echocore412.com/dashboard/contact'
+    WHEN 'review' THEN
+      'https://www.echocore412.com/dashboard/reviews'
+    WHEN 'signup' THEN
+      'https://www.echocore412.com/dashboard/users/' || public.telegram_escape(p_metadata->>'username')
+    WHEN 'lowWallet' THEN
+      'https://www.echocore412.com/dashboard/apis/g2bulk'
+    ELSE
+      NULL
+  END;
+$$;
+
 -- -----------------------------------------------------------------------------
 -- 3. Fire-and-forget sender (gate: enabled + token + chat + per-event pref)
 -- -----------------------------------------------------------------------------
@@ -129,6 +154,11 @@ BEGIN
   IF v_text IS NULL OR v_text = '' THEN
     RETURN;
   END IF;
+
+  v_text := v_text || COALESCE(
+    E'\n\n<a href="' || public.telegram_alert_link(p_type, COALESCE(p_metadata, '{}'::jsonb)) || '">Open in store</a>',
+    ''
+  );
 
   BEGIN
     v_url := 'https://api.telegram.org/bot' || v_token || '/sendMessage';
@@ -301,6 +331,7 @@ BEGIN
   PERFORM public.notify_admin_telegram(
     'orderPaid',
     jsonb_build_object(
+      'orderId', NEW.id,
       'orderRef', NEW.order_ref,
       'amount', NEW.total,
       'paymentMethod', NEW.payment_method,
@@ -390,6 +421,7 @@ BEGIN
     PERFORM public.notify_admin_telegram(
       'fulfillmentFail',
       jsonb_build_object(
+        'orderId', NEW.id,
         'orderRef', NEW.order_ref,
         'amount', NEW.total,
         'userName', COALESCE(v_user_name, 'Customer'),

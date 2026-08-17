@@ -1353,6 +1353,7 @@ async function notifyTelegramLowWallet(
       'Top up the supplier wallet so fulfillment can continue.',
       meta.orderRef ? `Order: ${telegramEscapeHtml(meta.orderRef)}` : '',
       meta.detail ? `Detail: ${telegramEscapeHtml(meta.detail)}` : '',
+      '<a href="https://www.echocore412.com/dashboard/apis/g2bulk">Open G2Bulk wallet</a>',
     ].filter(Boolean).join('\n');
 
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
