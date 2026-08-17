@@ -1339,6 +1339,18 @@ function g2bulkErrorText(data: Json): string {
   return parts.filter((p) => p != null && String(p).trim()).map(String).join(' | ');
 }
 
+/**
+ * A purchase/order POST failure should only hard-fail (→ balance refund) when G2Bulk
+ * definitively REJECTED the request (4xx). A 5xx, network drop, or empty response is
+ * NOT proof the order failed — the supplier may have already accepted + charged it
+ * (the classic "freeze then deliver" case). Treat those as pending so the order stays
+ * fulfilling and a later poll/webhook reconciles it instead of refunding a delivered order.
+ */
+function purchaseHttpIsPending(res: { status: number }): boolean {
+  const s = Number(res?.status) || 0;
+  return s === 0 || s >= 500;
+}
+
 type QuoteResult =
   | {
     ok: true;
@@ -1759,6 +1771,11 @@ async function fulfillG2bulkOrderItem(
           terminal: true,
         };
       }
+      // G2Bulk 5xx / network blip ("freeze") ≠ definite failure — order may still be
+      // charged + delivered. Keep fulfilling so a poll/webhook reconciles (no refund).
+      if (purchaseHttpIsPending(res)) {
+        return { ok: false, error: errText, pending: true };
+      }
       return { ok: false, error: errText };
     }
 
@@ -1852,6 +1869,11 @@ async function fulfillG2bulkOrderItem(
         error: ERR_INSUFFICIENT_SUPPLIER_BALANCE,
         terminal: true,
       };
+    }
+    // G2Bulk 5xx / network blip ("freeze") ≠ definite failure — order may still be
+    // charged + delivered. Keep fulfilling so a poll/webhook reconciles (no refund).
+    if (purchaseHttpIsPending(res)) {
+      return { ok: false, error: errText, pending: true };
     }
     return { ok: false, error: errText };
   }

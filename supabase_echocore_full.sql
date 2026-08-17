@@ -5363,11 +5363,15 @@ BEGIN
 
   -- 2) Only fail actively stuck "fulfilling" — never bare pending/null
   -- (those are often successful legacy completed sales without tracking).
+  -- NOTE: we now keep the order 'fulfilling' and only annotate a stale-supplier
+  -- notice, instead of hard-failing. Hard-failing here marks a paid order failed
+  -- (confusing customers) and, on a later reconcile, can race a webhook into a
+  -- refund while G2Bulk still delivers — free product. A stuck top-up almost
+  -- always completes at the supplier, so let a poll/webhook finish it instead.
   UPDATE public.orders
   SET
-    fulfillment_status = 'failed',
     g2bulk_metadata = COALESCE(g2bulk_metadata, '{}'::jsonb) || jsonb_build_object(
-      'last_error', 'Fulfillment timed out after 15 minutes',
+      'last_error', 'Fulfillment still processing at supplier (auto-noted after 15 minutes)',
       'auto_expired', true,
       'auto_expired_at', now(),
       'auto_expire_reason', 'fulfillment_stuck_fulfilling'
@@ -5380,7 +5384,8 @@ BEGIN
 
   RETURN jsonb_build_object(
     'cancelledPending', v_cancelled,
-    'failedStuckFulfillment', v_fulfill_failed,
+    'notedStuckFulfillment', v_fulfill_failed,
+    'failedStuckFulfillment', 0,
     'maxAgeMinutes', v_minutes,
     'cutoff', v_cutoff
   );
