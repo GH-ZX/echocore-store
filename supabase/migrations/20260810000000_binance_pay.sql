@@ -127,14 +127,21 @@ BEGIN
     RAISE EXCEPTION 'Recharge request is not awaiting payment confirmation';
   END IF;
 
-  v_paid := round(COALESCE(v_ord.paid_amount, v_ord.order_amount)::numeric, 2);
-
-  IF v_paid IS NULL OR v_paid <= 0 THEN
-    RAISE EXCEPTION 'Paid amount is missing or invalid';
+  -- SECURITY: only credit after Binance confirmed the payment via the signed
+  -- /order/query (webhook handler sets paid_amount from that query). Never fall
+  -- back to the requested order amount — a spoofed webhook must not mint balance.
+  IF v_ord.paid_amount IS NULL OR v_ord.paid_amount <= 0 THEN
+    RAISE EXCEPTION 'Paid amount is not confirmed by Binance';
   END IF;
 
-  -- Binance Pay recharges are USD-equivalent USDT. Credit amount = paid USD.
-  v_credit := round(v_paid, 2);
+  IF v_ord.paid_amount < v_ord.order_amount THEN
+    RAISE EXCEPTION 'Paid amount is less than the requested order amount';
+  END IF;
+
+  -- Binance Pay recharges are USD-equivalent USDT. Credit = confirmed paid USD,
+  -- capped at the requested order amount (never credit more than requested).
+  v_paid := round(v_ord.paid_amount::numeric, 2);
+  v_credit := round(LEAST(v_paid, v_ord.order_amount), 2);
 
   IF v_credit < 0.01 THEN
     RAISE EXCEPTION 'Paid amount too small to credit';

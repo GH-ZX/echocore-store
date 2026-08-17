@@ -39,7 +39,7 @@ export function useCatalogState({ isAdmin = false, defaultCatalogOnly = true }) 
       const data = await fetchAllSupabaseRows(
         () => {
           let pageQuery = supabase
-            .from('offers')
+            .from('public_offers')
             .select('*')
             .eq('active', true);
           if (catalogOnly) {

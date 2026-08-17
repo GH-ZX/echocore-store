@@ -23,8 +23,9 @@ export async function refreshGameRegionOffers({
 
   if (isLiveCatalogId(variant.id)) return null;
 
+  // public_offers view: storefront rows without supplier cost / pricing policy
   const { data, error } = await supabase
-    .from('offers')
+    .from('public_offers')
     .select('*')
     .eq('game_id', variant.id)
     .eq('active', true);

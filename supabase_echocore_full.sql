@@ -5440,12 +5440,10 @@ DECLARE
   v_cutoff timestamptz := now() - make_interval(mins => v_minutes);
   v_cancelled int := 0;
   v_ids uuid[] := ARRAY[]::uuid[];
+  v_uid uuid := auth.uid();
+  -- Non-admins may only clean up their OWN stale recharges (never other users').
+  v_own_only boolean := v_uid IS NOT NULL AND NOT public.is_admin();
 BEGIN
-  -- Admins, service role, or authenticated users (cleanup on recharge page load)
-  IF auth.uid() IS NOT NULL AND NOT public.is_admin() THEN
-    -- Allow any signed-in user to run cleanup (idempotent, no data leak)
-    NULL;
-  END IF;
 
   -- 1) pending/payment_sent with expired Sam invoice
   WITH expired_inv AS (
@@ -5455,6 +5453,7 @@ BEGIN
       ON si.entity_type = 'recharge'
      AND si.entity_id = r.id
     WHERE r.status IN ('pending', 'payment_sent')
+      AND (NOT v_own_only OR r.user_id = v_uid)
       AND (
         COALESCE(si.status, '') IN ('expired', 'failed', 'cancelled')
         OR (si.expires_at IS NOT NULL AND si.expires_at <= now())
@@ -5477,6 +5476,7 @@ BEGIN
     UPDATE public.recharge_requests r
     SET status = 'cancelled', updated_at = now()
     WHERE r.status = 'pending'
+      AND (NOT v_own_only OR r.user_id = v_uid)
       AND r.created_at < v_cutoff
       AND r.id <> ALL (v_ids)
     RETURNING r.id
@@ -5492,6 +5492,7 @@ BEGIN
       AND si.entity_id IN (
         SELECT id FROM public.recharge_requests
         WHERE status = 'cancelled'
+          AND (NOT v_own_only OR user_id = v_uid)
           AND updated_at > now() - interval '2 minutes'
       )
       AND COALESCE(si.status, '') NOT IN ('paid', 'completed', 'cancelled', 'expired');
@@ -5716,11 +5717,18 @@ BEGIN
     RAISE EXCEPTION 'Recharge request is not awaiting payment confirmation';
   END IF;
 
-  v_paid := round(COALESCE(v_ord.paid_amount, v_ord.order_amount)::numeric, 2);
-  IF v_paid IS NULL OR v_paid <= 0 THEN
-    RAISE EXCEPTION 'Paid amount is missing or invalid';
+  -- SECURITY: only credit after Binance confirmed the payment via the signed
+  -- /order/query (the webhook handler sets paid_amount from that query). Never
+  -- fall back to the requested order amount — a spoofed webhook must not mint
+  -- balance. Credit is capped at the requested order amount.
+  IF v_ord.paid_amount IS NULL OR v_ord.paid_amount <= 0 THEN
+    RAISE EXCEPTION 'Paid amount is not confirmed by Binance';
   END IF;
-  v_credit := round(v_paid, 2);
+  IF v_ord.paid_amount < v_ord.order_amount THEN
+    RAISE EXCEPTION 'Paid amount is less than the requested order amount';
+  END IF;
+  v_paid := round(v_ord.paid_amount::numeric, 2);
+  v_credit := round(LEAST(v_paid, v_ord.order_amount), 2);
   IF v_credit < 0.01 THEN
     RAISE EXCEPTION 'Paid amount too small to credit';
   END IF;
@@ -6938,155 +6946,8 @@ REVOKE EXECUTE ON FUNCTION public.log_profile_signup_event() FROM public;
 
 
 -- 6. Recharge flows
-CREATE OR REPLACE FUNCTION public.create_recharge_request(
-  p_amount numeric,
-  p_payment_method text DEFAULT 'ShamCash'
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public AS $$
-DECLARE
-  v_user_id uuid := auth.uid();
-  v_amount numeric(10,2);
-  v_reference text;
-  v_request_id uuid;
-  v_method_ready boolean;
-  v_active_count int;
-  v_method text := COALESCE(nullif(trim(p_payment_method), ''), 'ShamCash');
-  v_wallet_mode text;
-  v_user_name text;
-BEGIN
-  IF v_user_id IS NULL THEN
-    RAISE EXCEPTION 'Not authenticated';
-  END IF;
-
-  IF public.is_admin() THEN
-    RAISE EXCEPTION 'Admin accounts cannot recharge store balance from the storefront';
-  END IF;
-
-  BEGIN
-    PERFORM public.assert_user_not_banned(v_user_id);
-    PERFORM public.assert_user_verified_if_required(v_user_id);
-  EXCEPTION
-    WHEN undefined_function THEN
-      NULL;
-  END;
-
-  IF v_method NOT IN ('ShamCash', 'SyriatelCash') THEN
-    RAISE EXCEPTION 'Invalid payment method';
-  END IF;
-
-  v_amount := round(p_amount::numeric, 2);
-
-  IF v_amount < 1 OR v_amount > 500 THEN
-    RAISE EXCEPTION 'Amount must be between $1 and $500';
-  END IF;
-
-  SELECT COALESCE(sam_wallet_mode, 'manual')
-  INTO v_wallet_mode
-  FROM store_settings
-  WHERE id = 1;
-
-  IF v_wallet_mode = 'api' THEN
-    IF v_method = 'ShamCash' THEN
-      SELECT COALESCE((
-        SELECT sam_api_enabled
-          AND sam_wallet_mode = 'api'
-          AND sam_shamcash_wallet_identifier IS NOT NULL
-          AND length(trim(sam_shamcash_wallet_identifier)) > 0
-          AND sam_webhook_secret IS NOT NULL
-          AND length(trim(sam_webhook_secret)) > 0
-        FROM store_settings WHERE id = 1
-      ), false) INTO v_method_ready;
-      IF NOT v_method_ready THEN
-        RAISE EXCEPTION 'Sam API ShamCash recharge is not configured yet';
-      END IF;
-    ELSE
-      SELECT COALESCE((
-        SELECT sam_api_enabled
-          AND sam_wallet_mode = 'api'
-          AND sam_syriatel_wallet_identifier IS NOT NULL
-          AND length(trim(sam_syriatel_wallet_identifier)) > 0
-          AND sam_webhook_secret IS NOT NULL
-          AND length(trim(sam_webhook_secret)) > 0
-        FROM store_settings WHERE id = 1
-      ), false) INTO v_method_ready;
-      IF NOT v_method_ready THEN
-        RAISE EXCEPTION 'Sam API Syriatel Cash recharge is not configured yet';
-      END IF;
-    END IF;
-  ELSE
-    IF v_method = 'ShamCash' THEN
-      SELECT COALESCE((
-        SELECT shamcash_enabled
-          AND shamcash_qr_image_url IS NOT NULL
-          AND length(trim(shamcash_qr_image_url)) > 0
-          AND shamcash_pay_code IS NOT NULL
-          AND length(trim(shamcash_pay_code)) > 0
-        FROM store_settings WHERE id = 1
-      ), false) INTO v_method_ready;
-      IF NOT v_method_ready THEN
-        RAISE EXCEPTION 'Manual ShamCash recharge is not configured yet';
-      END IF;
-    ELSE
-      SELECT COALESCE((
-        SELECT syriatel_enabled
-          AND syriatel_qr_image_url IS NOT NULL
-          AND length(trim(syriatel_qr_image_url)) > 0
-          AND syriatel_pay_code IS NOT NULL
-          AND length(trim(syriatel_pay_code)) > 0
-        FROM store_settings WHERE id = 1
-      ), false) INTO v_method_ready;
-      IF NOT v_method_ready THEN
-        RAISE EXCEPTION 'Manual Syriatel Cash recharge is not configured yet';
-      END IF;
-    END IF;
-  END IF;
-
-  SELECT count(*)::int INTO v_active_count
-  FROM recharge_requests
-  WHERE user_id = v_user_id
-    AND status IN ('pending', 'payment_sent');
-
-  IF v_active_count >= 1 THEN
-    RAISE EXCEPTION 'You already have a pending recharge request';
-  END IF;
-
-  v_reference := 'ECHOCORE-' || upper(substr(replace(v_user_id::text, '-', ''), 1, 6))
-    || '-' || to_char(now(), 'YYMMDD') || '-' || upper(substr(gen_random_uuid()::text, 1, 4));
-
-  INSERT INTO recharge_requests (user_id, amount, reference, status, payment_method)
-  VALUES (v_user_id, v_amount, v_reference, 'pending', v_method)
-  RETURNING id INTO v_request_id;
-
-  SELECT COALESCE(name, 'Customer') INTO v_user_name FROM profiles WHERE id = v_user_id;
-
-  PERFORM public.append_site_log(
-    'recharge',
-    'requested',
-    'info',
-    v_user_id,
-    v_user_id,
-    jsonb_build_object(
-      'requestId', v_request_id,
-      'amount', v_amount,
-      'reference', v_reference,
-      'paymentMethod', v_method,
-      'walletMode', v_wallet_mode,
-      'userName', v_user_name
-    )
-  );
-
-  RETURN jsonb_build_object(
-    'requestId', v_request_id,
-    'reference', v_reference,
-    'amount', v_amount,
-    'status', 'pending',
-    'paymentMethod', v_method
-  );
-END;
-$$;
+-- (duplicate 2-arg create_recharge_request removed — canonical 3-arg version
+-- with p_pay_currency lives in the §26 append; the client always calls it)
 
 CREATE OR REPLACE FUNCTION public.mark_recharge_payment_sent(p_request_id uuid)
 RETURNS jsonb
@@ -10955,11 +10816,16 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- Customer editing own profile: freeze money + role + username
+  -- Customer editing own profile: freeze money + role + username + pricing
+  -- entitlements. partner_tier_id grants near-cost supplier pricing in
+  -- create_order_atomic, and dev_test_balance is mock money — a customer must
+  -- never be able to self-assign either via REST PATCH.
   IF auth.uid() = OLD.id THEN
     NEW.role := OLD.role;
     NEW.balance := OLD.balance;
     NEW.username := OLD.username;
+    NEW.partner_tier_id := OLD.partner_tier_id;
+    NEW.dev_test_balance := OLD.dev_test_balance;
     IF TG_OP = 'UPDATE' THEN
       -- never let client set another user's id
       NEW.id := OLD.id;
@@ -11161,15 +11027,51 @@ ORDER BY policyname;
 -- 3) Partner/influencer display prices via get_my_offer_unit_prices
 -- 4) Client strips g2bulk_cost_usd / pricing_margin_percent on storefront loads
 --
--- True column lockdown without breaking REST needs a public VIEW + client switch
--- (optional follow-up). Until then, never REVOKE SELECT ON public.offers.
---
--- Apply: supabase db query --linked -f scripts/hide-offer-cost-from-public-migration.sql
+-- True column lockdown (safe on modern PostgREST): revoke table-level SELECT
+-- for anon/authenticated and re-grant the safe columns only. g2bulk_cost_usd
+-- and pricing_margin_percent become invisible to REST — any request that asks
+-- for them gets 401, and `select=*` expands to the granted columns only.
+--   • Storefront never touches the table: reads go through public_offers view.
+--   • Admins read cost via admin_get_offer_wholesale (RPC), never REST.
+--   • pricing_mode stays readable because admin pricing tooling selects it
+--     directly from the table (it is a policy flag, not money).
 -- =============================================================================
 
--- Ensure REST can always read offers (fixes empty store if broken earlier)
-GRANT SELECT ON TABLE public.offers TO anon, authenticated;
 GRANT INSERT, UPDATE, DELETE ON TABLE public.offers TO authenticated;
+REVOKE SELECT ON TABLE public.offers FROM anon, authenticated;
+GRANT SELECT (
+  id, game_id, name_en, name_ar, price, amount, region,
+  description_en, description_ar, active,
+  sale_image_url, is_sale, original_price,
+  image_url, image_custom, sale_image_custom,
+  created_at,
+  g2bulk_type, g2bulk_catalogue_name, g2bulk_product_id,
+  catalog_source, g2bulk_catalogue_id, g2bulk_synced_at,
+  pricing_mode
+) ON public.offers TO anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Storefront offers view: every customer-facing column, never supplier cost or
+-- pricing policy. The app reads this for catalog/checkout; admins read
+-- wholesale cost via admin_get_offer_wholesale (RPC).
+-- ---------------------------------------------------------------------------
+-- amount / image_url may predate this bootstrap on live DBs — ensure they exist.
+ALTER TABLE public.offers
+  ADD COLUMN IF NOT EXISTS amount text,
+  ADD COLUMN IF NOT EXISTS image_url text;
+
+CREATE OR REPLACE VIEW public.public_offers AS
+SELECT
+  id, game_id, name_en, name_ar, price, amount, region,
+  description_en, description_ar, active,
+  sale_image_url, is_sale, original_price,
+  image_url, image_custom, sale_image_custom,
+  created_at,
+  g2bulk_type, g2bulk_catalogue_name, g2bulk_product_id,
+  catalog_source, g2bulk_catalogue_id, g2bulk_synced_at
+FROM public.offers;
+
+GRANT SELECT ON public.public_offers TO anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Admin: wholesale map (SECURITY DEFINER — full row access as owner)
@@ -11333,23 +11235,32 @@ COMMENT ON FUNCTION public.get_my_offer_unit_prices(uuid[], text) IS
 
 
 -- -----------------------------------------------------------------------------
--- MERGED FROM: scripts/fix-offers-select-restore-migration.sql
+-- MERGED FROM: scripts/fix-offers-select-restore-migration.sql (superseded)
 -- -----------------------------------------------------------------------------
 -- =============================================================================
--- EMERGENCY FIX: restore public catalog reads on offers
--- The hide-offer-cost migration used column-only GRANTs after REVOKE SELECT.
--- Supabase/PostgREST needs table-level SELECT on offers or the whole table 401s
--- and the storefront appears empty (games ok, offers denied).
---
--- Apply: supabase db query --linked -f scripts/fix-offers-select-restore-migration.sql
+-- SUPERSEDED by the column-level lockdown above. The old emergency restore
+-- re-granted table-level SELECT (which re-exposed g2bulk_cost_usd). Storefront
+-- reads now go through public_offers (view), so the table can stay locked:
+--   • anon/authenticated get SELECT on the safe columns only
+--   • g2bulk_cost_usd / pricing_margin_percent are 401 for REST callers
+--   • admins read cost via admin_get_offer_wholesale (RPC)
+-- These statements are idempotent and keep the final state consistent.
 -- =============================================================================
 
-GRANT SELECT ON TABLE public.offers TO anon, authenticated;
+REVOKE SELECT ON TABLE public.offers FROM anon, authenticated;
+GRANT SELECT (
+  id, game_id, name_en, name_ar, price, amount, region,
+  description_en, description_ar, active,
+  sale_image_url, is_sale, original_price,
+  image_url, image_custom, sale_image_custom,
+  created_at,
+  g2bulk_type, g2bulk_catalogue_name, g2bulk_product_id,
+  catalog_source, g2bulk_catalogue_id, g2bulk_synced_at,
+  pricing_mode
+) ON public.offers TO anon, authenticated;
 GRANT INSERT, UPDATE, DELETE ON TABLE public.offers TO authenticated;
 
--- Keep admin wholesale + unit-price RPCs (safe to re-run if already present)
--- Cost is again readable via PostgREST; client still strips secrets in app code.
--- Safer DB hide = view-based path (see hide-offer-cost-from-public-migration.sql notes).
+-- Admin wholesale + unit-price reads stay RPC-only (safe to re-run if present).
 
 
 

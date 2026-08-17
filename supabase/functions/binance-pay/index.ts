@@ -168,6 +168,98 @@ function binanceErrorMessage(data: Json, fallback: string) {
   return code ? `${code}: ${detail}` : detail;
 }
 
+// ----- Binance webhook signature verification -----
+// Binance signs webhook notifications with their RSA key. The merchant verifies
+// with Binance's public key (fetched from the certificates endpoint, which
+// itself requires a signed request). Signature scheme (per Binance's official
+// examples):
+//   payload  = `${BinancePay-Timestamp}\n${BinancePay-Nonce}\n${rawBody}`
+//   verify   = RSA-SHA256(payload) with Binance's public key
+//   signature = base64-decoded BinancePay-Signature header
+// The webhook body must be signed as the EXACT raw bytes received — never
+// re-serialize the parsed JSON (key order/whitespace would break the check).
+const CERT_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+let certCachePem = '';
+let certCacheAt = 0;
+
+async function getBinanceCertPublic(creds: BinanceCreds): Promise<string> {
+  if (certCachePem && Date.now() - certCacheAt < CERT_CACHE_TTL_MS) {
+    return certCachePem;
+  }
+  const q = await binanceSignedPost(creds, '/binancepay/openapi/certificates', {});
+  const arr = (q.data as Json)?.data;
+  const cert = Array.isArray(arr) && arr.length > 0
+    ? (arr[0] as Json)?.certPublic
+    : null;
+  if (typeof cert === 'string' && cert.trim()) {
+    certCachePem = cert.trim();
+    certCacheAt = Date.now();
+    return certCachePem;
+  }
+  // Never cache a failure — retry on the next webhook.
+  return '';
+}
+
+function pemToSpkiDer(pem: string): Uint8Array | null {
+  const body = pem
+    .replace(/-----BEGIN [^-]+-----/, '')
+    .replace(/-----END [^-]+-----/, '')
+    .replace(/\s+/g, '');
+  if (!body) return null;
+  try {
+    const bin = atob(body);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+function base64ToBytes(b64: string): Uint8Array | null {
+  try {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+async function verifyBinanceWebhookSignature(
+  rawBody: string,
+  timestamp: string,
+  nonce: string,
+  signatureB64: string,
+  creds: BinanceCreds,
+): Promise<boolean> {
+  if (!timestamp || !nonce || !signatureB64) return false;
+  const certPem = await getBinanceCertPublic(creds);
+  const spki = certPem ? pemToSpkiDer(certPem) : null;
+  const sigBytes = base64ToBytes(signatureB64);
+  if (!spki || !sigBytes) return false;
+  try {
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'spki',
+      spki,
+      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+      false,
+      ['verify'],
+    );
+    const payload = `${timestamp}\n${nonce}\n${rawBody}`;
+    return await crypto.subtle.verify(
+      'RSASSA-PKCS1-v1_5',
+      key,
+      sigBytes,
+      enc.encode(payload),
+    );
+  } catch {
+    return false;
+  }
+}
+
 // Build the public webhook URL Binance will POST to.
 function buildWebhookUrl(clientToken: string) {
   const path = '/functions/v1/binance-pay';
@@ -277,9 +369,6 @@ async function createRechargeOrder(service: ReturnType<typeof createClient>, use
   if (!requestId || !UUID_RE.test(requestId)) {
     return jsonResponse({ success: false, message: 'Invalid recharge request id.', code: 'BINANCE_VALIDATION' }, 400);
   }
-  if (!Number.isFinite(rawAmount) || rawAmount < 1 || rawAmount > 500) {
-    return jsonResponse({ success: false, message: 'Amount must be between 1 and 500 USDT.', code: 'BINANCE_VALIDATION' }, 400);
-  }
 
   // Load the recharge request, confirm ownership + pending status.
   const { data: req, error: reqErr } = await service
@@ -291,6 +380,18 @@ async function createRechargeOrder(service: ReturnType<typeof createClient>, use
   if (req.user_id !== userId) return jsonResponse({ success: false, message: 'Not allowed.' }, 403);
   if (req.status !== 'pending' && req.status !== 'payment_sent') {
     return jsonResponse({ success: false, message: 'Recharge request is no longer awaiting payment.' }, 400);
+  }
+
+  // SECURITY: the order amount comes from the stored recharge request — never
+  // from the client body. Otherwise a $1 request could carry a $500 order and
+  // a spoofed/mismatched webhook would credit the larger amount.
+  const amount = Math.round(Number(req.amount) * 100) / 100;
+  if (!Number.isFinite(amount) || amount < 1 || amount > 500) {
+    return jsonResponse({ success: false, message: 'Recharge amount must be between 1 and 500 USDT.', code: 'BINANCE_VALIDATION' }, 400);
+  }
+  // Cross-check the client's claim when provided (defense in depth).
+  if (Number.isFinite(rawAmount) && Math.abs(rawAmount - amount) > 0.01) {
+    return jsonResponse({ success: false, message: 'Amount does not match the recharge request.', code: 'BINANCE_VALIDATION' }, 400);
   }
 
   // De-dup: if an open Binance Pay order already exists for this recharge, return it.
@@ -315,7 +416,6 @@ async function createRechargeOrder(service: ReturnType<typeof createClient>, use
     });
   }
 
-  const amount = Math.round(rawAmount * 100) / 100;
   const merchantTradeNo = makeMerchantTradeNo();
   const webhookSecret = creds.webhookSecret || '';
   const returnUrl = typeof (body as { returnUrl?: string }).returnUrl === 'string'
@@ -379,13 +479,45 @@ async function createRechargeOrder(service: ReturnType<typeof createClient>, use
   });
 }
 
+// Confirm a Binance Pay payment via the signed /order/query endpoint.
+// This is the ONLY trusted source for a paid amount — webhook claims are never
+// taken at face value (a spoofed webhook must still fail this check).
+async function confirmBinancePayment(
+  service: ReturnType<typeof createClient>,
+  merchantTradeNo: string,
+): Promise<{ confirmed: boolean; status: string; paidAmount: number | null; transactionRef: string }> {
+  try {
+    const creds = await resolveBinanceCreds(service);
+    if (!creds) return { confirmed: false, status: '', paidAmount: null, transactionRef: '' };
+    const q = await binanceSignedPost(creds, '/binancepay/openapi/v2/order/query', {
+      merchantTradeNo: merchantTradeNo.trim(),
+    });
+    const inner = (q.data as Json)?.data as Json | undefined;
+    if (!inner) return { confirmed: false, status: '', paidAmount: null, transactionRef: '' };
+    const status = String(inner.status || inner.bizStatus || '').toUpperCase();
+    // Only a real paidAmount/transAmount counts — never fall back to the
+    // requested orderAmount (Binance includes it even for unpaid orders).
+    const rawPaid = inner.paidAmount ?? inner.transAmount ?? 0;
+    const num = Number(rawPaid);
+    const paidAmount = Number.isFinite(num) && num > 0 ? Math.round(num * 100) / 100 : null;
+    return {
+      confirmed: status === 'PAY_SUCCESS' && paidAmount != null && paidAmount > 0,
+      status,
+      paidAmount,
+      transactionRef: String(inner.transactionId || inner.tradeId || ''),
+    };
+  } catch {
+    return { confirmed: false, status: '', paidAmount: null, transactionRef: '' };
+  }
+}
+
 // User / admin: query order status from our DB (authoritative — updated by webhook).
 async function getOrderStatus(service: ReturnType<typeof createClient>, userId: string, body: { requestId?: string; merchantTradeNo?: string }) {
   const requestId = String(body.requestId || '').trim();
   const merchantTradeNo = String(body.merchantTradeNo || '').trim();
   if (!requestId && !merchantTradeNo) return jsonResponse({ success: false, message: 'requestId or merchantTradeNo required.' }, 400);
 
-  let query = service.from('binance_pay_orders').select('id, merchant_trade_no, prepay_id, checkout_url, status, order_amount, paid_amount, currency, biz_status, created_at, updated_at, recharge_request_id');
+  let query = service.from('binance_pay_orders').select('id, merchant_trade_no, prepay_id, checkout_url, status, order_amount, paid_amount, currency, biz_status, created_at, updated_at, recharge_request_id, entity_type, entity_id');
   if (merchantTradeNo) {
     query = query.eq('merchant_trade_no', merchantTradeNo);
   } else if (requestId && UUID_RE.test(requestId)) {
@@ -395,6 +527,53 @@ async function getOrderStatus(service: ReturnType<typeof createClient>, userId: 
   }
   const { data, error } = await query.order('created_at', { ascending: false }).limit(1).maybeSingle();
   if (error || !data) return jsonResponse({ success: false, message: 'Order not found.' }, 404);
+
+  // IDOR guard: only the owner (or an admin) may read a given order.
+  const userIsAdmin = await isAdmin(service, userId);
+  if (!userIsAdmin) {
+    let ownerId: string | null = null;
+    if (data.recharge_request_id) {
+      const { data: reqRow } = await service
+        .from('recharge_requests')
+        .select('user_id')
+        .eq('id', data.recharge_request_id)
+        .maybeSingle();
+      ownerId = reqRow?.user_id ? String(reqRow.user_id) : null;
+    } else if (data.entity_type === 'order' && data.entity_id) {
+      const { data: orderRow } = await service
+        .from('orders')
+        .select('user_id')
+        .eq('id', data.entity_id)
+        .maybeSingle();
+      ownerId = orderRow?.user_id ? String(orderRow.user_id) : null;
+    }
+    if (!ownerId || ownerId !== userId) {
+      return jsonResponse({ success: false, message: 'Order not found.' }, 404);
+    }
+  }
+
+  // Resilience: if the DB still shows a pending order that Binance already
+  // reported as PAY_SUCCESS (webhook missed / verification failed earlier),
+  // re-confirm via the signed query and credit when it checks out.
+  if (data.status !== 'paid' && String(data.biz_status || '').toUpperCase() === 'PAY_SUCCESS') {
+    const confirmation = await confirmBinancePayment(service, String(data.merchant_trade_no || ''));
+    const orderAmount = Number(data.order_amount) || 0;
+    if (confirmation.confirmed && confirmation.paidAmount != null && confirmation.paidAmount >= orderAmount - 0.001) {
+      await service.from('binance_pay_orders').update({
+        status: 'paid',
+        paid_amount: confirmation.paidAmount,
+        transaction_ref: confirmation.transactionRef || null,
+        updated_at: new Date().toISOString(),
+      }).eq('id', data.id);
+      try {
+        await service.rpc('complete_recharge_from_binance_pay_order', { p_merchant_trade_no: String(data.merchant_trade_no).trim() });
+      } catch (e) {
+        console.error('complete_recharge_from_binance_pay_order failed:', (e as Error).message);
+      }
+      data.status = 'paid';
+      data.paid_amount = confirmation.paidAmount;
+    }
+  }
 
   // When paid, also return the credited amount + fresh profile balance so the
   // client can update the wallet without an extra round-trip.
@@ -439,8 +618,9 @@ async function getOrderStatus(service: ReturnType<typeof createClient>, userId: 
 }
 
 // Public webhook: Binance Pay posts payment status notifications here.
-// We verify the shared token in the query string against the stored secret
-// (rejects spoofed calls) and, best-effort, the Binance signature header.
+// Two mandatory gates — the shared token in the query string (rejects spoofed
+// calls) AND Binance's RSA signature over the raw body (BinancePay-Signature,
+// verified with Binance's public key). Both must pass before any processing.
 async function handleWebhook(service: ReturnType<typeof createClient>, req: Request) {
   const url = new URL(req.url);
   const token = url.searchParams.get('token') || '';
@@ -464,6 +644,22 @@ async function handleWebhook(service: ReturnType<typeof createClient>, req: Requ
     payload = text ? JSON.parse(text) : {};
   } catch {
     payload = { raw: text };
+  }
+
+  // Signature gate (fail closed): Binance signs every webhook with their RSA
+  // key. Reject unless the BinancePay-Signature header verifies against
+  // Binance's public key over the raw body. Binance retries failed webhooks,
+  // so a transient rejection is recovered automatically.
+  const creds = await resolveBinanceCreds(service);
+  const sigTimestamp = req.headers.get('BinancePay-Timestamp') || '';
+  const sigNonce = req.headers.get('BinancePay-Nonce') || '';
+  const sigHeader = req.headers.get('BinancePay-Signature') || '';
+  const sigOk = creds
+    ? await verifyBinanceWebhookSignature(text, sigTimestamp, sigNonce, sigHeader, creds)
+    : false;
+  if (!sigOk) {
+    console.warn('Binance Pay webhook rejected: invalid signature');
+    return jsonResponse({ returnCode: 'FAIL', returnMsg: 'Invalid signature' }, 401);
   }
 
   // Binance webhook fields (businessData is a JSON string):
@@ -496,7 +692,7 @@ async function handleWebhook(service: ReturnType<typeof createClient>, req: Requ
   // Resolve the order by merchantTradeNo
   const { data: ord } = await service
     .from('binance_pay_orders')
-    .select('id, merchant_trade_no, status, recharge_request_id, webhook_received_at')
+    .select('id, merchant_trade_no, status, order_amount, recharge_request_id, webhook_received_at')
     .eq('merchant_trade_no', merchantTradeNo)
     .maybeSingle();
 
@@ -506,8 +702,33 @@ async function handleWebhook(service: ReturnType<typeof createClient>, req: Requ
   }
 
   if (ord.status !== 'paid') {
-    // Update the order row with webhook payload + biz status
-    const nextStatus = bizStatus === 'PAY_SUCCESS' ? 'paid' : bizStatus === 'PAY_CLOSED' ? 'expired' : ord.status;
+    let nextStatus = ord.status;
+    let confirmedPaid: number | null = null;
+    let confirmedTransactionRef = '';
+
+    if (bizStatus === 'PAY_SUCCESS') {
+      // CREDIT GATE: never trust a webhook claim. Confirm the payment with the
+      // server-side signed /order/query and require paid >= order amount before
+      // marking paid or crediting balance. Spoofed webhooks fail here.
+      const confirmation = await confirmBinancePayment(service, merchantTradeNo);
+      const orderAmount = Number(ord.order_amount) || 0;
+      if (confirmation.confirmed && confirmation.paidAmount != null && confirmation.paidAmount >= orderAmount - 0.001) {
+        nextStatus = 'paid';
+        confirmedPaid = confirmation.paidAmount;
+        confirmedTransactionRef = confirmation.transactionRef;
+      } else {
+        console.warn('Binance Pay webhook PAY_SUCCESS unconfirmed — no credit', {
+          merchantTradeNo,
+          confirmedStatus: confirmation.status,
+          confirmedPaid: confirmation.paidAmount,
+          orderAmount,
+        });
+      }
+    } else if (bizStatus === 'PAY_CLOSED') {
+      nextStatus = 'expired';
+    }
+
+    // Record what Binance sent (payload + biz status) regardless of outcome.
     await service.from('binance_pay_orders').update({
       biz_status: bizStatus,
       webhook_payload: payload,
@@ -516,27 +737,14 @@ async function handleWebhook(service: ReturnType<typeof createClient>, req: Requ
       updated_at: new Date().toISOString(),
     }).eq('id', ord.id);
 
-    if (bizStatus === 'PAY_SUCCESS') {
-      // Best-effort verification query to Binance for the paid amount + txn id
-      let paidAmount: number | null = null;
-      let transactionRef = '';
-      try {
-        const creds = await resolveBinanceCreds(service);
-        if (creds) {
-          const q = await binanceSignedPost(creds, '/binancepay/openapi/v2/order/query', { merchantTradeNo: merchantTradeNo.trim() });
-          const inner = (q.data as Json)?.data as Json | undefined;
-          if (inner) {
-            paidAmount = Number(inner.paidAmount ?? inner.orderAmount ?? 0) || null;
-            transactionRef = String(inner.transactionId || inner.tradeId || '');
-          }
-        }
-      } catch { /* verification best-effort */ }
+    if (nextStatus === 'paid' && confirmedPaid != null) {
+      await service.from('binance_pay_orders').update({
+        paid_amount: confirmedPaid,
+        transaction_ref: confirmedTransactionRef || null,
+      }).eq('id', ord.id);
 
-      if (paidAmount != null && paidAmount > 0) {
-        await service.from('binance_pay_orders').update({ paid_amount: paidAmount, transaction_ref: transactionRef || null }).eq('id', ord.id);
-      }
-
-      // Credit the customer balance via the SECURITY DEFINER RPC (idempotent).
+      // Credit the customer balance via the SECURITY DEFINER RPC (idempotent;
+      // the RPC itself also refuses to credit an unconfirmed paid amount).
       try {
         await service.rpc('complete_recharge_from_binance_pay_order', { p_merchant_trade_no: merchantTradeNo.trim() });
       } catch (e) {

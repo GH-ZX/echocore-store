@@ -15,7 +15,7 @@ export async function resolveOffersForCheckout(items = [], { onOffersMerged } = 
   const resolved = await Promise.all(list.map(async (item) => {
     const dbId = idMap.get(item.id);
     if (!dbId) return item;
-    const { data } = await supabase.from('offers').select('*').eq('id', dbId).maybeSingle();
+    const { data } = await supabase.from('public_offers').select('*').eq('id', dbId).maybeSingle();
     return data ? stripOfferSecrets(data) : { ...item, id: dbId };
   }));
 

@@ -1123,10 +1123,12 @@ export default function App() {
       : null;
     const payload = buildOfferPayload(productData, { pricingMode, margin, includeGameId: true });
 
+    // Explicit safe column list: offers is column-locked for REST (cost columns
+    // are RPC-only). `.select()` would expand to * and 401.
     const { data, error } = await supabase
       .from('offers')
       .insert(payload)
-      .select()
+      .select('id, game_id, name_en, name_ar, price, amount, region, description_en, description_ar, active, sale_image_url, is_sale, original_price, image_url, image_custom, sale_image_custom, created_at, g2bulk_type, g2bulk_catalogue_name, g2bulk_product_id, catalog_source, g2bulk_catalogue_id, g2bulk_synced_at, pricing_mode')
       .single();
 
     if (error) {
@@ -1182,11 +1184,13 @@ export default function App() {
       includeSaleImageCustom: true,
     });
 
+    // Explicit safe column list: offers is column-locked for REST (cost columns
+    // are RPC-only). `.select()` would expand to * and 401.
     const { data, error } = await supabase
       .from('offers')
       .update(updateRow)
       .eq('id', id)
-      .select()
+      .select('id, game_id, name_en, name_ar, price, amount, region, description_en, description_ar, active, sale_image_url, is_sale, original_price, image_url, image_custom, sale_image_custom, created_at, g2bulk_type, g2bulk_catalogue_name, g2bulk_product_id, catalog_source, g2bulk_catalogue_id, g2bulk_synced_at, pricing_mode')
       .single();
 
     if (error) {
@@ -1606,7 +1610,7 @@ export default function App() {
       }),
       fetchAllSupabaseRows(() => {
         let pageQuery = supabase
-          .from('offers')
+          .from('public_offers')
           .select('*')
           .eq('active', true);
         if (catalogOnly) {
