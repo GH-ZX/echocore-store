@@ -233,7 +233,7 @@ async function resolveApiKeyRaw(serviceClient: ReturnType<typeof createClient>) 
 async function loadStoreSettingsRow(serviceClient: ReturnType<typeof createClient>) {
   const { data, error } = await serviceClient
     .from('store_settings')
-    .select('g2bulk_enabled, g2bulk_markup_percent, g2bulk_catalog_only, g2bulk_catalog_mode, g2bulk_last_sync_at, g2bulk_last_check_at, g2bulk_check_summary, g2bulk_auto_sync_enabled, g2bulk_auto_sync_hour, g2bulk_auto_sync_timezone, g2bulk_auto_approve, g2bulk_pull_selection, g2bulk_api_key')
+    .select('g2bulk_enabled, g2bulk_markup_percent, g2bulk_catalog_only, g2bulk_catalog_mode, g2bulk_last_sync_at, g2bulk_last_check_at, g2bulk_check_summary, g2bulk_auto_sync_enabled, g2bulk_auto_sync_hour, g2bulk_auto_sync_timezone, g2bulk_auto_approve, g2bulk_block_when_wallet_low, g2bulk_pull_selection, g2bulk_api_key')
     .eq('id', 1)
     .maybeSingle();
 
@@ -265,6 +265,7 @@ function buildSettingsEnvelope(row: Json | null | undefined, envKey: string | nu
     g2bulk_auto_sync_hour: Number(settingsRow.g2bulk_auto_sync_hour ?? 5),
     g2bulk_auto_sync_timezone: String(settingsRow.g2bulk_auto_sync_timezone || 'Asia/Damascus'),
     g2bulk_auto_approve: true,
+    g2bulk_block_when_wallet_low: settingsRow.g2bulk_block_when_wallet_low !== false,
     g2bulk_pull_selection: settingsRow.g2bulk_pull_selection || {},
     g2bulk_api_key_set: !!(apiKey || envKeyTrimmed),
     g2bulk_api_key_masked: apiKey
@@ -1705,7 +1706,10 @@ async function evaluateFulfillmentAvailability(
     push('getMe', true, { walletBalance });
 
     // Store G2Bulk wallet must cover supplier cost — not customer product "stock".
-    if (walletBalance + 0.001 < totalSupplierCost) {
+    // Blocked only when the admin toggle is ON (default). When OFF, checkout is
+    // allowed even with a low wallet — failed orders then get refunded instead.
+    const blockWhenWalletLow = settingsRow?.g2bulk_block_when_wallet_low !== false;
+    if (blockWhenWalletLow && walletBalance + 0.001 < totalSupplierCost) {
       return {
         available: false,
         reason: 'insufficient_supplier_balance',
@@ -2187,6 +2191,9 @@ Deno.serve(async (req) => {
     if (payload.autoSyncTimezone !== undefined) {
       updates.g2bulk_auto_sync_timezone = String(payload.autoSyncTimezone || 'Asia/Damascus');
     }
+    if (payload.blockWhenWalletLow !== undefined) {
+      updates.g2bulk_block_when_wallet_low = !!payload.blockWhenWalletLow;
+    }
     const { error } = await serviceClient.from('store_settings').update(updates).eq('id', 1);
     if (error) {
       return jsonResponse({ success: false, message: error.message }, 500);
@@ -2460,7 +2467,9 @@ Deno.serve(async (req) => {
     // Pre-purchase wallet guard: never leave customers spinning on "pending"
     // when G2Bulk cannot charge the supplier cost (e.g. wallet $8.91 < cost $8.99).
     // Skip when a supplier order id already exists — funds may already be reserved/charged.
-    if (!primaryG2bulkOrderId && !pollOnly && requiredSupplierCost > 0) {
+    // Respect the admin toggle: OFF allows the order through (fails and refunds instead).
+    const blockWhenWalletLow = settingsRow?.g2bulk_block_when_wallet_low !== false;
+    if (blockWhenWalletLow && !primaryG2bulkOrderId && !pollOnly && requiredSupplierCost > 0) {
       const walletBalance = await fetchSupplierWalletBalance(apiKey!);
       if (Number.isFinite(walletBalance) && walletBalance + 0.001 < requiredSupplierCost) {
         const failMeta = {

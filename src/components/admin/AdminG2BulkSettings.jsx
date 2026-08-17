@@ -131,6 +131,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     g2bulk_markup_percent: null,
     g2bulk_catalog_only: true,
     g2bulk_catalog_mode: 'sync',
+    g2bulk_block_when_wallet_low: true,
     g2bulk_auto_sync_enabled: true,
     g2bulk_auto_sync_hour: 5,
     g2bulk_auto_sync_timezone: 'Asia/Damascus',
@@ -174,6 +175,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         g2bulk_markup_percent: safeMarkup,
         g2bulk_catalog_only: data.g2bulk_catalog_only ?? true,
         g2bulk_catalog_mode: normalizeCatalogMode(data.g2bulk_catalog_mode),
+        g2bulk_block_when_wallet_low: data.g2bulk_block_when_wallet_low !== false,
         g2bulk_auto_sync_enabled: data.g2bulk_auto_sync_enabled ?? true,
         g2bulk_auto_sync_hour: data.g2bulk_auto_sync_hour ?? 5,
         g2bulk_auto_sync_timezone: data.g2bulk_auto_sync_timezone || 'Asia/Damascus',
@@ -220,6 +222,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
       autoSyncEnabled: payload.g2bulk_auto_sync_enabled,
       autoSyncHour: Number(payload.g2bulk_auto_sync_hour),
       autoSyncTimezone: payload.g2bulk_auto_sync_timezone,
+      blockWhenWalletLow: payload.g2bulk_block_when_wallet_low !== false,
       apiKey: apiKeyInput.trim() ? apiKeyInput.trim() : undefined,
     });
     if (apiKeyInput.trim()) setApiKeyInput('');
@@ -237,6 +240,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
           : prev.g2bulk_markup_percent,
         g2bulk_catalog_only: saved.g2bulk_catalog_only ?? prev.g2bulk_catalog_only,
         g2bulk_catalog_mode: saved.g2bulk_catalog_mode || prev.g2bulk_catalog_mode,
+        g2bulk_block_when_wallet_low: saved.g2bulk_block_when_wallet_low ?? prev.g2bulk_block_when_wallet_low,
         g2bulk_auto_sync_enabled: saved.g2bulk_auto_sync_enabled ?? prev.g2bulk_auto_sync_enabled,
         g2bulk_auto_sync_hour: saved.g2bulk_auto_sync_hour ?? prev.g2bulk_auto_sync_hour,
         g2bulk_auto_sync_timezone: saved.g2bulk_auto_sync_timezone || prev.g2bulk_auto_sync_timezone,
@@ -884,6 +888,20 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
                 || 'When this is off, customers may be blocked from balance checkout. Keep it on if you sell via G2Bulk.'}
             </p>
           )}
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.g2bulk_block_when_wallet_low !== false}
+              onChange={(e) => setForm((p) => ({ ...p, g2bulk_block_when_wallet_low: e.target.checked }))}
+              className="rounded border-[var(--border)]"
+            />
+            <span className="text-sm">
+              {t.g2bulkBlockWhenWalletLow}
+            </span>
+          </label>
+          <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+            {t.g2bulkBlockWhenWalletLowHelp}
+          </p>
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"

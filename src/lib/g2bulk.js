@@ -98,6 +98,7 @@ export async function saveG2bulkSettings({
   autoSyncEnabled,
   autoSyncHour,
   autoSyncTimezone,
+  blockWhenWalletLow,
 }) {
   const data = await invokeG2bulk({
     action: 'saveSettings',
@@ -109,6 +110,7 @@ export async function saveG2bulkSettings({
     autoSyncEnabled: autoSyncEnabled !== undefined ? !!autoSyncEnabled : undefined,
     autoSyncHour: autoSyncHour !== undefined ? Number(autoSyncHour) : undefined,
     autoSyncTimezone: autoSyncTimezone !== undefined ? (autoSyncTimezone?.trim() || null) : undefined,
+    blockWhenWalletLow: blockWhenWalletLow !== undefined ? !!blockWhenWalletLow : undefined,
   });
 
   if (data?.settings) {
