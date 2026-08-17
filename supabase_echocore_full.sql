@@ -6698,7 +6698,7 @@ REVOKE EXECUTE ON FUNCTION public.send_contact_reply(uuid, text) FROM public;
 GRANT EXECUTE ON FUNCTION public.send_contact_reply(uuid, text) TO authenticated;
 
 -- List contact threads for the current registered user
-CREATE OR REPLACE FUNCTION public.get_my_contact_threads(p_limit int DEFAULT 50)
+CREATE OR REPLACE FUNCTION public.get_my_contact_threads(p_limit int DEFAULT 50, p_email text DEFAULT NULL)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -6752,6 +6752,11 @@ BEGIN
         ) AS sort_at
       FROM public.contact_messages cm
       WHERE cm.user_id = auth.uid()
+         OR (
+              p_email IS NOT NULL
+              AND p_email <> ''
+              AND lower(cm.email) = lower(p_email)
+            )
     ) s
     ORDER BY s.sort_at DESC
     LIMIT v_limit
@@ -6761,8 +6766,8 @@ BEGIN
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.get_my_contact_threads(int) FROM public;
-GRANT EXECUTE ON FUNCTION public.get_my_contact_threads(int) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.get_my_contact_threads(int, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.get_my_contact_threads(int, text) TO authenticated;
 
 
 -- -----------------------------------------------------------------------------
@@ -6808,6 +6813,11 @@ BEGIN
   -- Honeypot: bots fill hidden fields — pretend success
   IF p_honeypot IS NOT NULL AND length(trim(p_honeypot)) > 0 THEN
     RETURN jsonb_build_object('ok', true, 'ignored', true);
+  END IF;
+
+  -- Contact requires a signed-in account
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'contact_login_required';
   END IF;
 
   IF v_email = '' OR v_message = '' THEN

@@ -38,13 +38,19 @@ export default function SupportView({ t = {}, lang = 'ar', user = null }) {
     return String(fromQuery || '').trim() || null;
   }, [location.search]);
 
+  const emailRef = useRef(user?.email);
+
+  useEffect(() => {
+    emailRef.current = user?.email;
+  }, [user?.email]);
+
   const textDir = lang === 'ar' ? 'rtl' : 'ltr';
 
   const loadThreads = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const rows = await fetchMyContactThreads({ limit: 50 });
+      const rows = await fetchMyContactThreads({ limit: 50, email: emailRef.current });
       setThreads(rows);
     } catch (err) {
       setError(err.message || t.supportLoadFailed);

@@ -1,7 +1,10 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { MessageSquare } from 'lucide-react';
 import { contactErrorMessage, submitContactMessage } from '../lib/contact';
 
-export default function ContactView({ t = {}, user = null }) {
+export default function ContactView({ t = {}, lang = 'ar', user = null }) {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -21,6 +24,11 @@ export default function ContactView({ t = {}, user = null }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!user) {
+      navigate('/login?redirect=/contact');
+      return;
+    }
 
     if (!formData.email?.trim() || !formData.message?.trim()) {
       setError(t.contactEmailMessageRequired);
@@ -57,8 +65,23 @@ export default function ContactView({ t = {}, user = null }) {
     }
   };
 
+  const textDir = lang === 'ar' ? 'rtl' : 'ltr';
+
+  if (!user) {
+    return (
+      <div className="max-w-lg mx-auto card p-8 text-center" dir={textDir}>
+        <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-40" />
+        <h1 className="text-xl font-black mb-2">{t.contactUs}</h1>
+        <p className="text-sm text-[var(--text-sec)] mb-4">{t.contactLoginRequired}</p>
+        <button type="button" className="btn btn-primary" onClick={() => navigate('/login?redirect=/contact')}>
+          {t.login}
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-xl mx-auto">
+    <div className="max-w-xl mx-auto" dir={textDir}>
       <div className="text-center mb-8">
         <h1 className="text-3xl md:text-4xl font-black mb-2">
           {t.contactUs}
@@ -78,6 +101,13 @@ export default function ContactView({ t = {}, user = null }) {
             <p className="text-[var(--text-secondary)]">
               {t.contactThankYouBody}
             </p>
+            <button
+              type="button"
+              onClick={() => navigate('/support')}
+              className="btn btn-secondary mt-5"
+            >
+              {t.contactViewMessages}
+            </button>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5" autoComplete="on">

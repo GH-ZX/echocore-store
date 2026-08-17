@@ -86,9 +86,10 @@ export async function sendContactReply(messageId, body) {
 }
 
 /** Registered user: list their support threads. */
-export async function fetchMyContactThreads({ limit = 50 } = {}) {
+export async function fetchMyContactThreads({ limit = 50, email = null } = {}) {
   const { data, error } = await supabase.rpc('get_my_contact_threads', {
     p_limit: Math.max(1, Math.min(100, Number(limit) || 50)),
+    p_email: email ? String(email).trim() || null : null,
   });
 
   if (error) throw error;

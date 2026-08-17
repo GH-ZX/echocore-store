@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MessageCircle, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Mail, MessageCircle, MessageSquare, X } from 'lucide-react';
 import Modal from '../ui/Modal';
 import SocialLinkIcon from '../social/SocialLinkIcon';
 import { getStoreContactLinks } from '../../lib/socialLinks';
@@ -8,6 +9,7 @@ import { followUsOnLabel } from '../../lib/i18n';
 
 export default function HomeContactFab({ t = {}, lang = 'ar', stacked = false }) {
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
   const links = getStoreContactLinks();
 
   if (typeof document === 'undefined') return null;
@@ -49,6 +51,28 @@ export default function HomeContactFab({ t = {}, lang = 'ar', stacked = false })
             {t.homeContactModalDesc}
           </p>
           <div className="space-y-3">
+            <button
+              type="button"
+              className="btn btn-secondary w-full py-2.5 gap-2"
+              onClick={() => {
+                setOpen(false);
+                navigate('/support');
+              }}
+            >
+              <MessageSquare className="w-4 h-4" />
+              {t.contactViewMessages}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary w-full py-2.5 gap-2"
+              onClick={() => {
+                setOpen(false);
+                navigate('/contact');
+              }}
+            >
+              <Mail className="w-4 h-4" />
+              {t.supportNewMessage}
+            </button>
             {links.map((link) => (
               <a
                 key={link.id}

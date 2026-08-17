@@ -74,6 +74,9 @@ export async function submitContactMessage({
 
 export function contactErrorMessage(err, t = {}) {
   const code = err?.code || err?.message || '';
+  if (code === 'contact_login_required' || /contact_login_required/i.test(String(code))) {
+    return t.contactLoginRequired || t.contactSubmitFailed;
+  }
   if (code === 'contact_rate_limited' || /contact_rate_limited/i.test(String(code))) {
     return t.contactRateLimited || t.contactSubmitFailed;
   }

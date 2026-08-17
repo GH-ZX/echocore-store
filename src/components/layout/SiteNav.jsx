@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
-  HelpCircle, BookOpen, Mail, Sparkles, Percent,
+  HelpCircle, BookOpen, Mail, Sparkles, Percent, LifeBuoy,
 } from 'lucide-react';
 import {
   CATALOG_NAV_ITEMS,
@@ -34,6 +34,7 @@ export const NAV_ITEMS = [
     content: [
       { path: '/how', icon: BookOpen, labelKey: 'howItWorks', fallbackEn: 'How it Works', fallbackAr: 'كيف يعمل' },
       { path: '/faq', icon: HelpCircle, labelKey: 'faq', fallbackEn: 'FAQ', fallbackAr: 'الأسئلة الشائعة' },
+      { path: '/support', icon: LifeBuoy, labelKey: 'supportTitle', fallbackEn: 'Support', fallbackAr: 'محادثات الدعم' },
       { path: '/contact', icon: Mail, labelKey: 'contact', fallbackEn: 'Contact', fallbackAr: 'اتصل بنا' },
     ],
   },
