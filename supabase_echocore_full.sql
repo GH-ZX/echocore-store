@@ -3350,7 +3350,7 @@ BEGIN
     RETURN NULL;
   END IF;
 
-  SELECT COALESCE(jsonb_agg(to_jsonb(oi.*) ORDER BY oi.created_at), '[]'::jsonb)
+  SELECT COALESCE(jsonb_agg(to_jsonb(oi.*) ORDER BY oi.id), '[]'::jsonb)
   INTO v_items
   FROM public.order_items oi
   WHERE oi.order_id = p_order_id;
@@ -9624,11 +9624,22 @@ BEGIN
     g2bulk_metadata = v_meta
   WHERE id = p_order_id;
 
-  UPDATE public.order_items
-  SET
-    fulfillment_status = p_fulfillment_status,
-    delivery_items = COALESCE(p_delivery_items, delivery_items)
-  WHERE order_id = p_order_id;
+  -- Only push item-level status on terminal states ('fulfilled'/'failed'/'skipped').
+  -- While 'fulfilling', never downgrade already-delivered/skipped items — a later
+  -- "still processing" poll must not regress a top-up G2Bulk already completed.
+  IF p_fulfillment_status = 'fulfilling' THEN
+    UPDATE public.order_items
+    SET fulfillment_status = 'fulfilling'
+    WHERE order_id = p_order_id
+      AND fulfillment_status IS DISTINCT FROM 'fulfilled'
+      AND fulfillment_status IS DISTINCT FROM 'skipped';
+  ELSE
+    UPDATE public.order_items
+    SET
+      fulfillment_status = p_fulfillment_status,
+      delivery_items = COALESCE(p_delivery_items, delivery_items)
+    WHERE order_id = p_order_id;
+  END IF;
 
   v_link := '/invoice/order/' || p_order_id::text;
 
@@ -9649,7 +9660,7 @@ BEGIN
     END IF;
 
     IF NOT v_has_codes THEN
-      SELECT COALESCE(jsonb_agg(to_jsonb(di) ORDER BY oi.created_at), '[]'::jsonb)
+      SELECT COALESCE(jsonb_agg(to_jsonb(di) ORDER BY oi.id), '[]'::jsonb)
       INTO v_codes
       FROM public.order_items oi
       CROSS JOIN LATERAL jsonb_array_elements(

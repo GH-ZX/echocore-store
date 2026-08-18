@@ -59,15 +59,39 @@ describe('admin order status display', () => {
     expect(delivery.tone).toBe('pending');
   });
 
-  it('allows re-check when supplier order id exists even if stuck old', () => {
+  it('keeps delivering when supplier order id exists even if old', () => {
     const order = {
       status: 'completed',
       fulfillment_status: 'fulfilling',
       g2bulk_order_id: '1224697',
       created_at: '2020-01-01T00:00:00Z',
     };
-    expect(getAdminOrderOutcome(order)).toBe('failed');
+    expect(getAdminOrderOutcome(order)).toBe('processing');
     expect(canRetryOrderFulfillment(order)).toBe(true);
+    const delivery = getAdminDeliveryStatusDisplay(order, t);
+    expect(delivery.label).toBe('Delivering');
+    expect(delivery.tone).toBe('pending');
+  });
+
+  it('keeps delivering when supplier id lives in metadata even if old', () => {
+    const order = {
+      status: 'completed',
+      fulfillment_status: 'fulfilling',
+      g2bulk_metadata: { g2bulk_order_id: '1445880', stillPending: true },
+      created_at: '2020-01-01T00:00:00Z',
+    };
+    expect(getAdminOrderOutcome(order)).toBe('processing');
+    expect(canRetryOrderFulfillment(order)).toBe(true);
+  });
+
+  it('keeps pending-completed processing when supplier charged but old', () => {
+    const order = {
+      status: 'completed',
+      fulfillment_status: 'pending',
+      g2bulk_order_id: '1224697',
+      created_at: '2020-01-01T00:00:00Z',
+    };
+    expect(getAdminOrderOutcome(order)).toBe('processing');
   });
 
   it('does not allow new purchase retry on ancient pending without supplier id', () => {

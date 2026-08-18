@@ -22,6 +22,14 @@ function orderAgeMs(order) {
   return Number.isFinite(ms) ? Date.now() - ms : Number.POSITIVE_INFINITY;
 }
 
+/** G2Bulk supplier order id (order row or metadata) — proves the player was charged. */
+function getOrderSupplierOrderId(order) {
+  return order?.g2bulk_order_id
+    || order?.g2bulk_metadata?.g2bulk_order_id
+    || order?.g2bulk_metadata?.g2bulkOrderId
+    || null;
+}
+
 /** Soft G2Bulk poll/abort failures — not a real supplier reject. */
 export function isSoftFulfillmentTimeout(order) {
   const err = String(order?.g2bulk_metadata?.last_error || '');
@@ -59,10 +67,14 @@ export function getAdminOrderOutcome(order) {
     if (fs === 'fulfilled' || fs === 'skipped') return 'success';
 
     const recent = orderAgeMs(order) < FIFTEEN_MIN_MS;
+    // Supplier already charged the player (G2Bulk order id exists) → still delivering,
+    // never "failed" — a poll/webhook/retry reconciles it even if it takes a while.
+    const supplierHeld = !!getOrderSupplierOrderId(order);
 
-    // Only RECENT in-flight work is "processing". Old stuck rows must not flood the queue.
+    // Only RECENT in-flight work is "processing". Old stuck rows without a supplier
+    // trail are the ones that must not flood the queue as success.
     if (fs === 'fulfilling') {
-      return recent ? 'processing' : 'failed';
+      return (recent || supplierHeld) ? 'processing' : 'failed';
     }
 
     if (fs === 'failed') {
@@ -75,7 +87,7 @@ export function getAdminOrderOutcome(order) {
 
     // null / pending on completed
     if (fs === 'pending' || fs == null) {
-      if (recent) return 'processing';
+      if (recent || supplierHeld) return 'processing';
       // Old restored soft-timeouts / abandoned pending → failed (not endless processing)
       if (
         isSoftFulfillmentTimeout(order)
@@ -281,7 +293,7 @@ export function canRetryOrderFulfillment(order) {
 
   // Supplier id known → poll-only resume (never a second purchase). Always allow,
   // even for old stuck "fulfilling" top-ups that completed in the G2Bulk bot.
-  if (order.g2bulk_order_id) return true;
+  if (getOrderSupplierOrderId(order)) return true;
 
   // No supplier id yet: only recent in-flight or hard-failed may start a NEW purchase
   if (fs === 'fulfilling' || fs === 'pending') {

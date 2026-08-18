@@ -1790,6 +1790,63 @@ function normalizeDeliveryItems(raw: unknown): string[] {
   return [...new Set(out)];
 }
 
+/**
+ * Apply an order-level fulfillment state and NEVER leave it silently un-applied.
+ * supabase-js returns RPC errors in the result instead of throwing; ignoring them
+ * stranded delivered orders in 'fulfilling'. On RPC error, fall back to a direct
+ * row update (preserving/merging metadata) so the state always lands.
+ */
+async function applyFulfillmentResult(
+  serviceClient: ReturnType<typeof createClient>,
+  orderId: string,
+  status: 'fulfilled' | 'failed' | 'fulfilling' | 'skipped',
+  {
+    g2bulkOrderId,
+    deliveryItems,
+    metadata,
+    error,
+  }: {
+    g2bulkOrderId?: string | null;
+    deliveryItems?: string[] | null;
+    metadata?: Json;
+    error?: string | null;
+  } = {},
+): Promise<{ ok: boolean; fallback: boolean }> {
+  const rpcParams = {
+    p_order_id: orderId,
+    p_fulfillment_status: status,
+    p_g2bulk_order_id: g2bulkOrderId || undefined,
+    p_delivery_items: deliveryItems?.length ? deliveryItems : null,
+    p_metadata: metadata || {},
+    p_error: error || null,
+  };
+  const { error: rpcError } = await serviceClient.rpc('apply_g2bulk_fulfillment', rpcParams);
+  if (!rpcError) return { ok: true, fallback: false };
+
+  const { data: current } = await serviceClient
+    .from('orders')
+    .select('g2bulk_metadata, g2bulk_order_id')
+    .eq('id', orderId)
+    .maybeSingle();
+  const prevMeta = (current?.g2bulk_metadata && typeof current.g2bulk_metadata === 'object'
+    ? current.g2bulk_metadata as Json
+    : {}) as Json;
+  const mergedMeta: Json = {
+    ...prevMeta,
+    ...(metadata || {}),
+    ...(error ? { last_error: error, failed_at: new Date().toISOString() } : {}),
+  };
+  await serviceClient
+    .from('orders')
+    .update({
+      fulfillment_status: status,
+      g2bulk_order_id: g2bulkOrderId || current?.g2bulk_order_id || null,
+      g2bulk_metadata: mergedMeta,
+    })
+    .eq('id', orderId);
+  return { ok: false, fallback: true };
+}
+
 async function fulfillG2bulkOrderItem(
   apiKey: string,
   orderId: string,
@@ -2657,12 +2714,10 @@ Deno.serve(async (req) => {
             });
           }
           if (resumeCodes.length) allDeliveryItems.push(...resumeCodes);
-          await serviceClient.rpc('apply_g2bulk_fulfillment', {
-            p_order_id: orderId,
-            p_fulfillment_status: 'fulfilled',
-            p_g2bulk_order_id: primaryG2bulkOrderId,
-            p_delivery_items: allDeliveryItems.length ? allDeliveryItems : null,
-            p_metadata: {
+          await applyFulfillmentResult(serviceClient, orderId, 'fulfilled', {
+            g2bulkOrderId: primaryG2bulkOrderId,
+            deliveryItems: allDeliveryItems.length ? allDeliveryItems : null,
+            metadata: {
               resumed: true,
               poll_only: true,
               items: itemResults,
@@ -2687,12 +2742,10 @@ Deno.serve(async (req) => {
         }
         if (resumeTerminal) {
           const resumeIsWallet = isInsufficientBalanceMessage(resumeError);
-          await serviceClient.rpc('apply_g2bulk_fulfillment', {
-            p_order_id: orderId,
-            p_fulfillment_status: 'failed',
-            p_g2bulk_order_id: primaryG2bulkOrderId,
-            p_error: resumeIsWallet ? ERR_INSUFFICIENT_SUPPLIER_BALANCE : resumeError,
-            p_metadata: {
+          await applyFulfillmentResult(serviceClient, orderId, 'failed', {
+            g2bulkOrderId: primaryG2bulkOrderId,
+            error: resumeIsWallet ? ERR_INSUFFICIENT_SUPPLIER_BALANCE : resumeError,
+            metadata: {
               resumed: true,
               poll_only: true,
               terminal: true,
@@ -2713,11 +2766,9 @@ Deno.serve(async (req) => {
           }, resumeIsWallet ? 402 : 500);
         }
         // Still pending at supplier — stay fulfilling, do not re-purchase.
-        await serviceClient.rpc('apply_g2bulk_fulfillment', {
-          p_order_id: orderId,
-          p_fulfillment_status: 'fulfilling',
-          p_g2bulk_order_id: primaryG2bulkOrderId,
-          p_metadata: { resumed: true, poll_only: true, stillPending: true },
+        await applyFulfillmentResult(serviceClient, orderId, 'fulfilling', {
+          g2bulkOrderId: primaryG2bulkOrderId,
+          metadata: { resumed: true, poll_only: true, stillPending: true },
         });
         return jsonResponse({
           success: true,
@@ -2835,12 +2886,10 @@ Deno.serve(async (req) => {
         });
       }
 
-      await serviceClient.rpc('apply_g2bulk_fulfillment', {
-        p_order_id: orderId,
-        p_fulfillment_status: finalStatus,
-        p_g2bulk_order_id: primaryG2bulkOrderId || undefined,
-        p_delivery_items: allDeliveryItems.length ? allDeliveryItems : null,
-        p_metadata: {
+      await applyFulfillmentResult(serviceClient, orderId, finalStatus, {
+        g2bulkOrderId: primaryG2bulkOrderId,
+        deliveryItems: allDeliveryItems.length ? allDeliveryItems : null,
+        metadata: {
           items: itemResults,
           fulfilledCount,
           failedCount,
@@ -2853,7 +2902,7 @@ Deno.serve(async (req) => {
             }
             : {}),
         },
-        p_error: finalStatus === 'failed'
+        error: finalStatus === 'failed'
           ? (walletFail ? ERR_INSUFFICIENT_SUPPLIER_BALANCE : firstError)
           : null,
       });
@@ -2880,12 +2929,10 @@ Deno.serve(async (req) => {
       const message = err instanceof Error ? err.message : 'Fulfillment failed';
       // Keep order fulfilling on abort/timeouts so a retry can finish delivery
       const soft = /abort|timed? ?out|deadline|network/i.test(message);
-      await serviceClient.rpc('apply_g2bulk_fulfillment', {
-        p_order_id: orderId,
-        p_fulfillment_status: soft ? 'fulfilling' : 'failed',
-        p_g2bulk_order_id: primaryG2bulkOrderId || undefined,
-        p_error: message,
-        p_metadata: { softError: soft, items: itemResults },
+      await applyFulfillmentResult(serviceClient, orderId, soft ? 'fulfilling' : 'failed', {
+        g2bulkOrderId: primaryG2bulkOrderId,
+        error: message,
+        metadata: { softError: soft, items: itemResults },
       });
       return jsonResponse({
         success: soft,
