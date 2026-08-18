@@ -1563,7 +1563,8 @@ BEGIN
           LIMIT 1
         )
       ),
-      body := '{}'::jsonb
+      body := '{}'::jsonb,
+      timeout_milliseconds := 180000
     ) AS request_id;
     $job$
   );
@@ -1573,7 +1574,47 @@ EXCEPTION
   WHEN OTHERS THEN
     RAISE NOTICE 'Could not schedule g2bulk auto-sync cron: %', SQLERRM;
 END;
-$cron$$;
+$cron$;
+
+-- -----------------------------------------------------------------------------
+-- pg_cron: reconcile stuck fulfilled-but-pending orders every minute
+-- Calls g2bulk-fulfill-cron, which re-runs the poll-only fulfillOrder path for
+-- paid orders still on fulfillment_status pending/fulfilling with a supplier id.
+-- -----------------------------------------------------------------------------
+
+DO $cron$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'g2bulk-fulfill-tick') THEN
+    PERFORM cron.unschedule('g2bulk-fulfill-tick');
+  END IF;
+
+  PERFORM cron.schedule(
+    'g2bulk-fulfill-tick',
+    '*/5 * * * *',
+    $job$
+    SELECT net.http_post(
+      url := 'https://uaiirtgzqtnrvcrlxstg.supabase.co/functions/v1/g2bulk-fulfill-cron',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'x-g2bulk-cron-secret', (
+          SELECT decrypted_secret
+          FROM vault.decrypted_secrets
+          WHERE name = 'g2bulk_cron_secret'
+          LIMIT 1
+        )
+      ),
+      body := '{}'::jsonb,
+      timeout_milliseconds := 180000
+    ) AS request_id;
+    $job$
+  );
+EXCEPTION
+  WHEN undefined_table THEN
+    RAISE NOTICE 'vault.decrypted_secrets not found â€” create g2bulk_cron_secret in Vault, then re-run the cron.schedule block.';
+  WHEN OTHERS THEN
+    RAISE NOTICE 'Could not schedule g2bulk fulfill cron: %', SQLERRM;
+END;
+$cron$;
 
 -- =============================================================================
 -- Â§10  G2Bulk catalog health check
