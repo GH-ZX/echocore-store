@@ -42,6 +42,23 @@ function StatusPill({ status, t }) {
   );
 }
 
+/**
+ * Summary amount in the invoice's own currency.
+ * credited/requested are stored in USD; when the customer paid in SYP the row
+ * carries syp_per_usd_snapshot so we convert before formatting (else "10 SYP").
+ */
+function displaySummaryAmount(inv) {
+  const isSyp = String(inv?.currency || '').toUpperCase() === 'SYP';
+  const usd = inv?.credited_amount ?? inv?.requested_usd_amount ?? inv?.requested_amount;
+  if (isSyp) {
+    const rate = parseFloat(inv?.syp_per_usd_snapshot);
+    if (Number.isFinite(usd) && Number.isFinite(rate) && rate > 0) {
+      return formatSamCurrencyAmount('SYP', usd * rate);
+    }
+  }
+  return formatSamCurrencyAmount(isSyp ? 'SYP' : 'USD', usd);
+}
+
 function deriveSummaryStatus(inv) {
   if (inv.credit_status === 'credited') return 'completed';
   if (inv.request_status === 'rejected' || inv.payment_status === 'failed') return 'failed';
@@ -310,7 +327,7 @@ export default function AdminSamRechargeHistory({ t = {}, lang = 'ar', onError, 
                   </span>
                   <span className="flex items-center gap-2 shrink-0">
                     <span className="font-mono font-semibold tabular-nums text-sm" dir="ltr">
-                      {formatSamCurrencyAmount(inv.currency, inv.credited_amount ?? inv.requested_amount)}
+                      {displaySummaryAmount(inv)}
                     </span>
                     <ChevronDown
                       className={`w-4 h-4 text-[var(--text-muted)] transition-transform ${expanded ? 'rotate-180' : ''}`}
@@ -352,7 +369,7 @@ export default function AdminSamRechargeHistory({ t = {}, lang = 'ar', onError, 
                       <DetailRow label={t.samHistoryWebhookAt}>{inv.webhook_received_at ? formatDateTime(inv.webhook_received_at, lang) : t.samHistoryNoValue}</DetailRow>
                       {inv.requested_amount != null && (
                         <DetailRow label={t.samHistoryRequestedUsd} mono>
-                          {formatSamCurrencyAmount('USD', inv.requested_amount)}
+                          {formatSamCurrencyAmount('USD', inv.requested_usd_amount ?? inv.requested_amount)}
                         </DetailRow>
                       )}
                       {inv.paid_amount != null && (

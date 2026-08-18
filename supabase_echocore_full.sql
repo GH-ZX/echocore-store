@@ -89,6 +89,8 @@ CREATE TABLE IF NOT EXISTS public.games (
   show_in_carousel boolean DEFAULT true,    -- Toggle carousel visibility
   carousel_badge_en text,                   -- Per-slide carousel badge (EN)
   carousel_badge_ar text,                   -- Per-slide carousel badge (AR)
+  card_badge_en text,                       -- Grid card badge (EN) — shown on game cards
+  card_badge_ar text,                       -- Grid card badge (AR)
   servers jsonb DEFAULT '[]'::jsonb,        -- Selectable servers/regions (e.g. ["Global", "Europe"])
   topup_fields jsonb DEFAULT '[]'::jsonb,   -- G2Bulk /games/fields tokens (e.g. ["userid","serverid"])
   topup_notes text,                         -- G2Bulk /games/fields notes for checkout hints
@@ -111,6 +113,8 @@ CREATE TABLE IF NOT EXISTS public.offers (
   sale_image_url text,          -- Specific cover photo for promotional sales
   is_sale boolean DEFAULT false, -- True if offer is featured as discount / sale
   original_price numeric(10,2),  -- Crossed-out price shown during sales
+  card_badge_en text,            -- Grid card badge (EN) — shown on offer cards
+  card_badge_ar text,            -- Grid card badge (AR)
   created_at timestamptz DEFAULT now()
 );
 
@@ -11044,6 +11048,7 @@ GRANT SELECT (
   description_en, description_ar, active,
   sale_image_url, is_sale, original_price,
   image_url, image_custom, sale_image_custom,
+  card_badge_en, card_badge_ar,
   created_at,
   g2bulk_type, g2bulk_catalogue_name, g2bulk_product_id,
   catalog_source, g2bulk_catalogue_id, g2bulk_synced_at,
@@ -11058,7 +11063,9 @@ GRANT SELECT (
 -- amount / image_url may predate this bootstrap on live DBs — ensure they exist.
 ALTER TABLE public.offers
   ADD COLUMN IF NOT EXISTS amount text,
-  ADD COLUMN IF NOT EXISTS image_url text;
+  ADD COLUMN IF NOT EXISTS image_url text,
+  ADD COLUMN IF NOT EXISTS card_badge_en text,
+  ADD COLUMN IF NOT EXISTS card_badge_ar text;
 
 CREATE OR REPLACE VIEW public.public_offers AS
 SELECT
@@ -11068,7 +11075,8 @@ SELECT
   image_url, image_custom, sale_image_custom,
   created_at,
   g2bulk_type, g2bulk_catalogue_name, g2bulk_product_id,
-  catalog_source, g2bulk_catalogue_id, g2bulk_synced_at
+  catalog_source, g2bulk_catalogue_id, g2bulk_synced_at,
+  card_badge_en, card_badge_ar
 FROM public.offers;
 
 GRANT SELECT ON public.public_offers TO anon, authenticated;
@@ -11253,6 +11261,7 @@ GRANT SELECT (
   description_en, description_ar, active,
   sale_image_url, is_sale, original_price,
   image_url, image_custom, sale_image_custom,
+  card_badge_en, card_badge_ar,
   created_at,
   g2bulk_type, g2bulk_catalogue_name, g2bulk_product_id,
   catalog_source, g2bulk_catalogue_id, g2bulk_synced_at,
@@ -11609,6 +11618,8 @@ STABLE AS $$
       si.paid_at,
       si.webhook_received_at,
       si.expires_at,
+      COALESCE(si.syp_per_usd_snapshot, r.syp_per_usd_snapshot) AS syp_per_usd_snapshot,
+      si.requested_usd_amount AS requested_usd_amount,
       p.name AS customer_name,
       p.username AS customer_username
     FROM public.sam_invoices si
@@ -11667,7 +11678,10 @@ STABLE AS $$
       r.payment_method, r.status, NULL,
       CASE WHEN credit.id IS NOT NULL OR r.credited_amount IS NOT NULL THEN 'credited' ELSE 'not_credited' END,
       NULL, r.created_at, r.updated_at, COALESCE(credit.amount, r.credited_amount), r.reference, r.reviewed_at,
-      NULL, NULL, NULL, p.name, p.username
+      NULL, NULL, NULL,
+      r.syp_per_usd_snapshot,
+      NULL AS requested_usd_amount,
+      p.name, p.username
     FROM public.recharge_requests r
     LEFT JOIN public.profiles p ON p.id = r.user_id
     LEFT JOIN LATERAL (
@@ -11739,7 +11753,9 @@ STABLE AS $$
       'request_status', f.request_status, 'payment_status', f.payment_status,
       'credit_status', f.credit_status, 'transaction_ref', f.transaction_ref,
       'created_at', f.created_at, 'updated_at', f.event_at, 'reviewed_at', f.reviewed_at,
-      'paid_at', f.paid_at, 'webhook_received_at', f.webhook_received_at, 'expires_at', f.expires_at
+      'paid_at', f.paid_at, 'webhook_received_at', f.webhook_received_at, 'expires_at', f.expires_at,
+      'syp_per_usd_snapshot', f.syp_per_usd_snapshot,
+      'requested_usd_amount', f.requested_usd_amount
     )
   FROM filtered f;
 $$;
@@ -11857,6 +11873,43 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text, text) FROM public;
 GRANT EXECUTE ON FUNCTION public.create_order_atomic(uuid, numeric, text, jsonb, text, text, text) TO authenticated;
 
+
+
+-- =============================================================================
+-- §31b RECENT PURCHASE ACTIVITY (anon social-proof ticker)
+-- Anonymized: returns game name + minutes-ago only. No usernames, emails or
+-- amounts — safe for anon/authenticated. Order rows older than 48h are skipped.
+-- =============================================================================
+CREATE OR REPLACE FUNCTION public.list_recent_purchase_activity(p_limit int DEFAULT 6)
+RETURNS jsonb
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE AS $$
+  SELECT COALESCE(jsonb_agg(t.row_data ORDER BY t.row_data->>'created_at' DESC), '[]'::jsonb)
+  FROM (
+    SELECT jsonb_build_object(
+      'game_name_ar', COALESCE(g.name_ar, g.name_en),
+      'game_name_en', g.name_en,
+      'minutes_ago', GREATEST(1, floor(EXTRACT(EPOCH FROM (now() - o.created_at)) / 60))::int,
+      'created_at', o.created_at
+    ) AS row_data
+    FROM public.orders o
+    JOIN public.order_items oi ON oi.order_id = o.id
+    JOIN public.offers f ON f.id = oi.offer_id
+    JOIN public.games g ON g.id = f.game_id
+    WHERE o.status = 'completed'
+      AND (o.fulfillment_status IS NULL OR o.fulfillment_status = 'fulfilled')
+      AND o.created_at > now() - interval '48 hours'
+      AND g.id IS NOT NULL
+    GROUP BY o.id, g.name_ar, g.name_en, o.created_at
+    ORDER BY o.created_at DESC
+    LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 6), 20))
+  ) t;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.list_recent_purchase_activity(int) FROM public;
+GRANT EXECUTE ON FUNCTION public.list_recent_purchase_activity(int) TO anon, authenticated;
 
 
 -- =============================================================================

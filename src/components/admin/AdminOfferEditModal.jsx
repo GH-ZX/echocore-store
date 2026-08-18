@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pencil, X } from 'lucide-react';
+import { Pencil, Tag, X } from 'lucide-react';
 import { uploadImage } from '../../lib/uploadImage';
 import Modal from '../ui/Modal';
 import SiteImagePicker from './SiteImagePicker';
@@ -38,6 +38,8 @@ export default function AdminOfferEditModal({
     g2bulk_catalogue_name: '',
     g2bulk_product_id: '',
     g2bulk_cost_usd: '',
+    card_badge_en: '',
+    card_badge_ar: '',
   });
   const [storeMarkup, setStoreMarkup] = useState(15);
   const [saleCoverFile, setSaleCoverFile] = useState(null);
@@ -95,6 +97,8 @@ export default function AdminOfferEditModal({
         g2bulk_catalogue_name: '',
         g2bulk_product_id: '',
         g2bulk_cost_usd: '',
+        card_badge_en: '',
+        card_badge_ar: '',
       });
     } else {
       setForm({
@@ -112,6 +116,8 @@ export default function AdminOfferEditModal({
         g2bulk_catalogue_name: offer.g2bulk_catalogue_name || '',
         g2bulk_product_id: offer.g2bulk_product_id ?? '',
         g2bulk_cost_usd: offer.g2bulk_cost_usd ?? '',
+        card_badge_en: offer.card_badge_en || '',
+        card_badge_ar: offer.card_badge_ar || '',
       });
     }
 
@@ -260,6 +266,8 @@ export default function AdminOfferEditModal({
         g2bulk_catalogue_name: form.g2bulk_catalogue_name?.trim() || null,
         g2bulk_product_id: form.g2bulk_product_id ? parseInt(form.g2bulk_product_id, 10) : null,
         g2bulk_cost_usd: form.g2bulk_cost_usd ? parseFloat(form.g2bulk_cost_usd) : null,
+        card_badge_en: form.card_badge_en?.trim() || null,
+        card_badge_ar: form.card_badge_ar?.trim() || null,
       });
       if (saved?.id) onPricingSaved?.(saved);
       onClose();
@@ -315,6 +323,31 @@ export default function AdminOfferEditModal({
                 </option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-sec)] mb-1">
+              <Tag className="w-3.5 h-3.5 shrink-0" />
+              {t.cardBadgeSection || 'Card badge'}
+            </label>
+            <p className="text-[11px] text-[var(--text-muted)] mb-2">
+              {t.cardBadgeHelp || 'Short text shown on this offer card in grids. Leave empty to hide.'}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input
+                placeholder={t.cardBadgeEnglish || 'Badge (English)'}
+                value={form.card_badge_en}
+                onChange={(e) => setForm({ ...form, card_badge_en: e.target.value })}
+                className="input"
+              />
+              <input
+                placeholder={t.cardBadgeArabic || 'Badge (Arabic)'}
+                value={form.card_badge_ar}
+                onChange={(e) => setForm({ ...form, card_badge_ar: e.target.value })}
+                className="input"
+                dir={lang === 'ar' ? 'rtl' : 'ltr'}
+              />
+            </div>
           </div>
 
           {/* Pricing policy — values visible; edit only after pencil */}

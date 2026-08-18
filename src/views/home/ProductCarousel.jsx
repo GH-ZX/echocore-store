@@ -202,7 +202,14 @@ export default function ProductCarousel({
           <span>{String(slideCount).padStart(2, '0')}</span>
         </div>
 
-        <div className="overflow-hidden" ref={emblaRef} dir="ltr">
+        <div
+          className="overflow-hidden"
+          ref={emblaRef}
+          dir="ltr"
+          role="region"
+          aria-roledescription="carousel"
+          aria-label={t.carousel || 'Carousel'}
+        >
           <div className="flex" dir="ltr">
             {slides.map((item, slideIndex) => {
               const focusX = item.carousel_focus_x ?? 50;

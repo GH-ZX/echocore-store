@@ -52,6 +52,7 @@ export default function Header({
   onLogout,
   navigate,
   onRecharge = () => {},
+  onOpenCart = null,
   cartRef = null,
   langSwitching = false,
   notifications = [],
@@ -307,7 +308,7 @@ export default function Header({
     <button
       ref={cartRef}
       type="button"
-      onClick={() => navigate('/cart')}
+      onClick={() => (onOpenCart ? onOpenCart() : navigate('/cart'))}
       className={`header-btn header-btn-icon relative ${extraClass}`}
       aria-label={t.cart}
     >

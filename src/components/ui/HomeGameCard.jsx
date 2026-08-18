@@ -32,6 +32,7 @@ export default function HomeGameCard({
 
   const gameName = brandUserText(isAr ? game.name_ar : game.name_en);
   const cardImageUrl = getGameCardImageUrl(game);
+  const cardBadge = (isAr ? game.card_badge_ar : game.card_badge_en) || game.card_badge_en || game.card_badge_ar || null;
 
   const metaLabel = isVoucher
     ? (packs != null
@@ -92,6 +93,11 @@ export default function HomeGameCard({
 
           <div className="absolute top-2 left-2 right-2 flex items-start justify-between gap-1.5">
             <div className="flex items-center gap-1.5 flex-wrap">
+              {!teaser && cardBadge && (
+                <span className="card-grid-badge px-2 py-1 text-[11px] font-bold rounded-md shadow-sm inline-flex items-center gap-1">
+                  {cardBadge}
+                </span>
+              )}
               {isVoucher && (
                 <span
                   className="home-game-card-badge home-game-card-badge--icon home-game-card-badge--voucher"

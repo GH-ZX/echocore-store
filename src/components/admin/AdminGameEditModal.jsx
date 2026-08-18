@@ -77,6 +77,8 @@ export default function AdminGameEditModal({
     carousel_focus_y: 50,
     carousel_badge_en: '',
     carousel_badge_ar: '',
+    card_badge_en: '',
+    card_badge_ar: '',
     g2bulk_game_code: '',
   });
   const [logoFile, setLogoFile] = useState(null);
@@ -130,6 +132,8 @@ export default function AdminGameEditModal({
         carousel_focus_y: 50,
         carousel_badge_en: '',
         carousel_badge_ar: '',
+        card_badge_en: '',
+        card_badge_ar: '',
         g2bulk_game_code: '',
       });
     } else {
@@ -146,6 +150,8 @@ export default function AdminGameEditModal({
         carousel_focus_y: game.carousel_focus_y ?? 50,
         carousel_badge_en: game.carousel_badge_en || '',
         carousel_badge_ar: game.carousel_badge_ar || '',
+        card_badge_en: game.card_badge_en || '',
+        card_badge_ar: game.card_badge_ar || '',
         g2bulk_game_code: game.g2bulk_game_code || '',
       });
     }
@@ -239,6 +245,8 @@ export default function AdminGameEditModal({
         carousel_focus_y: form.carousel_focus_y ?? 50,
         carousel_badge_en: form.carousel_badge_en?.trim() || null,
         carousel_badge_ar: form.carousel_badge_ar?.trim() || null,
+        card_badge_en: form.card_badge_en?.trim() || null,
+        card_badge_ar: form.card_badge_ar?.trim() || null,
         g2bulk_game_code: form.g2bulk_game_code?.trim() || null,
       });
       onClose();
@@ -375,6 +383,43 @@ export default function AdminGameEditModal({
             <button
               type="button"
               onClick={() => setForm((prev) => ({ ...prev, carousel_badge_en: '', carousel_badge_ar: '' }))}
+              className="btn btn-secondary text-sm mt-2 inline-flex items-center gap-1.5"
+            >
+              <EyeOff className="w-3.5 h-3.5" />
+              {t.carouselBadgeHide || 'Hide badge'}
+            </button>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-sec)] mb-2">
+              <Tag className="w-3.5 h-3.5 shrink-0" />
+              {t.cardBadgeSection || 'Card badge'}
+            </label>
+            <p className="text-[11px] text-[var(--text-muted)] mb-2">
+              {t.cardBadgeHelp || 'Short text shown on this game card in grids. Leave empty to hide.'}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <Field icon={Tag} label={t.cardBadgeEnglish || 'Badge (English)'}>
+                <input
+                  placeholder={t.cardBadgeEnglish || 'Badge (English)'}
+                  value={form.card_badge_en}
+                  onChange={(e) => setForm({ ...form, card_badge_en: e.target.value })}
+                  className="input w-full"
+                />
+              </Field>
+              <Field icon={Tag} label={t.cardBadgeArabic || 'Badge (Arabic)'}>
+                <input
+                  placeholder={t.cardBadgeArabic || 'Badge (Arabic)'}
+                  value={form.card_badge_ar}
+                  onChange={(e) => setForm({ ...form, card_badge_ar: e.target.value })}
+                  className="input w-full"
+                  dir={lang === 'ar' ? 'rtl' : 'ltr'}
+                />
+              </Field>
+            </div>
+            <button
+              type="button"
+              onClick={() => setForm((prev) => ({ ...prev, card_badge_en: '', card_badge_ar: '' }))}
               className="btn btn-secondary text-sm mt-2 inline-flex items-center gap-1.5"
             >
               <EyeOff className="w-3.5 h-3.5" />

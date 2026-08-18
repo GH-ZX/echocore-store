@@ -18,6 +18,7 @@ import {
 import { isInvoiceReadyForOrder } from '../../../lib/invoices';
 import { INVOICE_KIND } from '../../../lib/invoiceBuilder';
 import { filterUserOrders, ORDER_STATUS_FILTERS } from '../../../lib/userDashboard';
+import OrderStatusStepper from '../../orders/OrderStatusStepper';
 import { formatDateTime as i18nFormatDateTime, formatMoney } from '../../../lib/i18n';
 
 async function copyText(text) {
@@ -105,6 +106,8 @@ export default function ProfileOrdersPanel({
             {formatMoney(selected.total)}
           </p>
         </div>
+
+        <OrderStatusStepper order={selected} t={t} />
 
         <div className="space-y-2">
           <h3 className="text-sm font-bold">{t.dashOrderItems}</h3>

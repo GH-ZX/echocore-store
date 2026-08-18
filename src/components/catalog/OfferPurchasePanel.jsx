@@ -3,6 +3,7 @@ import AdminOfferCostBadge from '../admin/AdminOfferCostBadge';
 import AdminInlinePriceEdit from '../admin/AdminInlinePriceEdit';
 import { formatPrice, getOfferDiscount, getOfferDisplayName } from '../../lib/offerDisplay';
 import PartnerPriceBadge from '../ui/PartnerPriceBadge';
+import { getSypPriceHint } from '../../lib/sypPriceHint';
 
 export default function OfferPurchasePanel({
   offer,
@@ -58,6 +59,11 @@ export default function OfferPurchasePanel({
               </span>
             )}
           </div>
+          {!isAdmin && getSypPriceHint(offer.price, lang) && (
+            <div className="text-xs text-[var(--text-muted)] tabular-nums mt-1" dir="ltr">
+              {getSypPriceHint(offer.price, lang)}
+            </div>
+          )}
           {!isAdmin && (offer._partnerPriced || offer._influencerPriced) && (
             <div className="mt-2">
               <PartnerPriceBadge offer={offer} t={t} size="lg" />

@@ -364,6 +364,13 @@ html, body {
   transform: scale(0.98);
 }
 
+/* Card hover-lift micro-interaction (ignored while framer-motion layout
+   animations own the transform, e.g. the expandable home grids) */
+.storefront-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-card), 0 10px 30px -12px rgba(0, 0, 0, 0.5);
+}
+
 .btn-ghost {
   background: transparent;
   color: var(--text-secondary);
@@ -449,6 +456,11 @@ html, body {
 .sale-offer-badge {
   background: var(--sale-badge);
   color: var(--sale-badge-text);
+}
+
+.card-grid-badge {
+  background: var(--accent);
+  color: #1d0b2e;
 }
 
 .sale-offer-discount-inline {

@@ -16,6 +16,7 @@ import { Spinner } from '../components/routing/PageLoader';
 import { fetchMyOrderReceipt } from '../lib/orders';
 import { formatDateTime, formatMoney } from '../lib/i18n';
 import CustomerReviewForm from '../components/reviews/CustomerReviewForm';
+import OrderStatusStepper from '../components/orders/OrderStatusStepper';
 import {
   canUserAccessOrderReceipt,
   consumeOrderFulfillMarker,
@@ -356,6 +357,9 @@ export default function SuccessView({
               #{formatOrderDisplayId(orderDetails)}
             </p>
           </div>
+        </div>
+        <div className="mt-5 border-t border-[var(--border)]/60 pt-4">
+          <OrderStatusStepper order={orderDetails} t={t} />
         </div>
       </div>
 

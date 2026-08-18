@@ -101,6 +101,9 @@ import { translations } from './data/translations';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import Header from './components/layout/Header';
+import CartDrawer from './components/layout/CartDrawer';
+import { setSypRate } from './lib/sypPriceHint';
+import { getSypPerUsd } from './lib/rechargeCurrency';
 import Footer from './components/layout/Footer';
 import MobileBottomNav from './components/layout/MobileBottomNav';
 
@@ -313,6 +316,11 @@ export default function App() {
     removedMessage: t.cartItemsRemoved,
   });
 
+  const [cartOpen, setCartOpen] = useState(false);
+  // Keep the SYP hint rate in sync with payment config (module cache for cards)
+  useEffect(() => {
+    setSypRate(getSypPerUsd(paymentConfig));
+  }, [paymentConfig]);
   const { addToCart, getCartTotal, removeCartItem } = useCartActions({
     cart,
     user,
@@ -1791,6 +1799,7 @@ export default function App() {
         partnerTier={partnerTier}
         isInfluencer={isInfluencer}
         cartLength={cart.length}
+        onOpenCart={() => setCartOpen(true)}
         onLogout={handleLogout}
         navigate={navigate}
         onRecharge={user?.role === 'admin' ? undefined : () => navigate('/recharge')}
@@ -1809,6 +1818,22 @@ export default function App() {
         onOpenNotificationsInbox={handleOpenNotificationsInbox}
         hasSaleOffers={hasSaleOffers}
         paymentConfig={paymentConfig}
+      />
+
+      <CartDrawer
+        open={cartOpen}
+        onClose={() => setCartOpen(false)}
+        cart={cart}
+        games={games}
+        offers={storefrontOffers}
+        lang={lang}
+        t={t}
+        getCartTotal={getCartTotal}
+        onRemoveItem={removeCartItem}
+        onCheckout={() => {
+          setCartOpen(false);
+          navigate('/checkout');
+        }}
       />
 
       <MaintenanceBanner

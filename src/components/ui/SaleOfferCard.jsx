@@ -13,6 +13,7 @@ import PartnerPriceBadge from './PartnerPriceBadge';
 import { presetImageUrl } from '../../lib/imageUtils';
 import { formatMoney } from '../../lib/i18n';
 import { getGameCardImageUrl } from '../../lib/gameImages';
+import { getSypPriceHint } from '../../lib/sypPriceHint';
 
 export default function SaleOfferCard({
   offer,
@@ -34,7 +35,9 @@ export default function SaleOfferCard({
   const gameName = isAr ? game.name_ar : game.name_en;
   const fulfillmentGame = getFulfillmentGameForOffer(offer, games) || game;
   const offerName = getOfferDisplayName(offer, lang, { game: fulfillmentGame, games, relatedOffers: offers });
+  const cardBadge = (isAr ? offer.card_badge_ar : offer.card_badge_en) || offer.card_badge_en || offer.card_badge_ar || null;
   const price = formatMoney(offer.price);
+  const sypHint = getSypPriceHint(offer.price, lang);
   const originalPrice = offer.original_price ? formatMoney(offer.original_price) : null;
   const discount = getOfferDiscount(offer);
   const showSale = offer.is_sale && discount != null && discount > 0;
@@ -84,6 +87,11 @@ export default function SaleOfferCard({
 
         <div className="absolute top-2 left-2 right-2 flex items-start justify-between gap-1.5">
           <div className="flex items-center gap-1.5">
+          {cardBadge && (
+            <span className="card-grid-badge px-2 py-1 text-[11px] font-bold rounded-md shadow-sm inline-flex items-center gap-1">
+              {cardBadge}
+            </span>
+          )}
           {showSale && (
             <span className="sale-offer-badge px-2 py-1 text-[11px] font-bold rounded-md shadow-sm inline-flex items-center gap-1">
               <span>{t.sale || 'SALE'}</span>
@@ -130,6 +138,11 @@ export default function SaleOfferCard({
               {price}
             </span>
           </div>
+          {sypHint && (
+            <div className="text-[10px] text-[var(--text-muted)] tabular-nums" dir="ltr">
+              {sypHint}
+            </div>
+          )}
           {!isAdmin && (offer._partnerPriced || offer._influencerPriced) && (
             <PartnerPriceBadge offer={offer} t={t} />
           )}
