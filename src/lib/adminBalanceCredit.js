@@ -46,8 +46,8 @@ export async function adminManualBalanceCredit({
   }
 
   const reasonTrimmed = String(reason || '').trim();
-  if (reasonTrimmed.length < 5) {
-    throw new Error('Reason is required');
+  if (reasonTrimmed && reasonTrimmed.length < 5) {
+    throw new Error('Reason must be at least 5 characters when provided');
   }
 
   const refCheck = validateShamcashTransactionRef(transactionRef);
@@ -74,16 +74,21 @@ export async function adminAdjustUserBalance({
   direction = 'credit',
   reason,
   transactionRef = null,
+  forceZero = false,
 }) {
   const dir = String(direction || 'credit').toLowerCase() === 'debit' ? 'debit' : 'credit';
-  const { valid, value } = validateManualCreditAmount(amount);
-  if (!valid) {
-    throw new Error(`Amount must be between $${ADJUST_MIN} and $${ADJUST_MAX}`);
+  let value = 0;
+  if (!forceZero) {
+    const { valid, value: v } = validateManualCreditAmount(amount);
+    if (!valid) {
+      throw new Error(`Amount must be between $${ADJUST_MIN} and $${ADJUST_MAX}`);
+    }
+    value = v;
   }
 
   const reasonTrimmed = String(reason || '').trim();
-  if (reasonTrimmed.length < 5) {
-    throw new Error('Reason is required');
+  if (reasonTrimmed && reasonTrimmed.length < 5) {
+    throw new Error('Reason must be at least 5 characters when provided');
   }
 
   const refCheck = validateShamcashTransactionRef(transactionRef);
@@ -97,6 +102,7 @@ export async function adminAdjustUserBalance({
     p_direction: dir,
     p_reason: reasonTrimmed,
     p_transaction_ref: refCheck.value || null,
+    p_force_zero: forceZero,
   });
 
   if (error) wrapRpcError(error);

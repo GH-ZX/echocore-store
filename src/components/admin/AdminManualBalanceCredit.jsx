@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Loader2, Search, UserRound, Wallet, AlertCircle, MinusCircle, PlusCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Loader2, Search, UserRound, Wallet, AlertCircle, Minus, Plus } from 'lucide-react';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import { fetchAdminUsers } from '../../lib/adminModeration';
 import {
@@ -8,21 +8,8 @@ import {
   validateManualCreditAmount,
   validateShamcashTransactionRef,
 } from '../../lib/adminBalanceCredit';
-import { RECHARGE_PRESETS } from '../../lib/recharge';
 import { formatMessage, formatMoney } from '../../lib/i18n';
 import { useNotify } from '../../hooks/useNotify';
-
-const REASON_PRESETS_CREDIT = [
-  'shamcashExpiredRecovery',
-  'shamcashLeftPaymentPage',
-  'shamcashVerifyFailed',
-];
-
-const REASON_PRESETS_DEBIT = [
-  'correctionDuplicateTopup',
-  'correctionError',
-  'abuseRecovery',
-];
 
 export default function AdminManualBalanceCredit({
   t = {},
@@ -36,18 +23,18 @@ export default function AdminManualBalanceCredit({
   presetReason = '',
   /** When true, hide user search (user is fixed). */
   embedded = false,
-  /** Allow switching credit/debit (default true). */
+  /** Allow debit (decrease balance). */
   allowDebit = true,
   className = '',
 }) {
   const { notifyError, notifySuccess } = useNotify(onNotify);
 
-  const [direction, setDirection] = useState('credit');
+  const [confirmAction, setConfirmAction] = useState('credit');
   const [searchInput, setSearchInput] = useState('');
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState([]);
   const [selectedUser, setSelectedUser] = useState(presetUser);
-  const [amount, setAmount] = useState(presetAmount != null ? String(presetAmount) : '10');
+  const [amount, setAmount] = useState(presetAmount != null ? String(presetAmount) : '');
   const [transactionRef, setTransactionRef] = useState(presetTransactionRef || '');
   const [reason, setReason] = useState('');
   const [rechargeRequestId, setRechargeRequestId] = useState(presetRequestId || '');
@@ -74,23 +61,16 @@ export default function AdminManualBalanceCredit({
     if (presetReason) setReason(presetReason);
   }, [presetReason]);
 
-  const isDebit = direction === 'debit';
+  const isDebit = confirmAction === 'debit' || confirmAction === 'zero';
+  const isZeroAction = confirmAction === 'zero';
   const { valid: amountValid, value: amountValue } = validateManualCreditAmount(amount);
   const refCheck = validateShamcashTransactionRef(transactionRef);
-  const reasonValid = reason.trim().length >= 5;
-  const canSubmit = !!selectedUser?.id
-    && amountValid
-    && reasonValid
-    && (isDebit || refCheck.valid)
-    && (!isDebit || Number(selectedUser.balance || 0) >= amountValue);
-
-  const reasonPresetOptions = useMemo(() => {
-    const keys = isDebit ? REASON_PRESETS_DEBIT : REASON_PRESETS_CREDIT;
-    return keys.map((key) => ({
-      key,
-      label: t[`adminManualCreditReason_${key}`] || key,
-    }));
-  }, [t, isDebit]);
+  const hasUser = !!selectedUser?.id;
+  const zeroAmount = selectedUser ? Number(selectedUser.balance || 0) : 0;
+  const creditDisabled = !hasUser || !amountValid || saving;
+  const debitDisabled =
+    !hasUser || !amountValid || saving || Number(selectedUser?.balance || 0) < amountValue;
+  const zeroDisabled = !hasUser || saving || zeroAmount <= 0;
 
   const runSearch = async () => {
     const query = searchInput.trim();
@@ -110,7 +90,7 @@ export default function AdminManualBalanceCredit({
 
   const resetForm = () => {
     if (!presetUser) setSelectedUser(null);
-    if (presetAmount == null) setAmount('10');
+    if (presetAmount == null) setAmount('');
     if (!presetRequestId) setRechargeRequestId('');
     if (!presetTransactionRef) setTransactionRef('');
     setReason('');
@@ -118,12 +98,41 @@ export default function AdminManualBalanceCredit({
     setSearchInput('');
   };
 
+  const openConfirm = (dir) => {
+    if (saving) return;
+    if (dir === 'debit' && (!allowDebit || debitDisabled)) return;
+    if (dir === 'credit' && creditDisabled) return;
+    setConfirmAction(dir);
+    setConfirmOpen(true);
+  };
+
+  const openZero = () => {
+    if (saving || zeroDisabled) return;
+    setConfirmAction('zero');
+    setConfirmOpen(true);
+  };
+
   const handleSubmit = async () => {
-    if (!canSubmit) return;
+    if (!hasUser || saving) return;
     setSaving(true);
     try {
       let result;
-      if (isDebit) {
+      if (isZeroAction) {
+        result = await adminAdjustUserBalance({
+          userId: selectedUser.id,
+          amount: 0,
+          direction: 'debit',
+          reason: reason.trim() || t.adminManualCreditReason_zeroed,
+          forceZero: true,
+        });
+        notifySuccess(
+          formatMessage(t.adminManualDebitSuccess, {
+            amount: formatMoney(result.amount),
+            user: result.userName || selectedUser.name || selectedUser.email,
+            balance: formatMoney(result.newBalance || 0),
+          }),
+        );
+      } else if (isDebit) {
         result = await adminAdjustUserBalance({
           userId: selectedUser.id,
           amount: amountValue,
@@ -179,7 +188,7 @@ export default function AdminManualBalanceCredit({
       if (!embedded) resetForm();
       else {
         setReason('');
-        if (presetAmount == null) setAmount('10');
+        setAmount('');
       }
     } catch (err) {
       notifyError(err.message || (isDebit ? t.adminManualDebitFailed : t.adminManualCreditFailed));
@@ -203,27 +212,6 @@ export default function AdminManualBalanceCredit({
       </div>
 
       <div className="space-y-4">
-        {allowDebit && (
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setDirection('credit')}
-              className={`action-chip gap-1.5 text-xs ${!isDebit ? 'border-emerald-500/50 text-emerald-300' : ''}`}
-            >
-              <PlusCircle className="w-3.5 h-3.5" />
-              {t.adminManualWalletCredit}
-            </button>
-            <button
-              type="button"
-              onClick={() => setDirection('debit')}
-              className={`action-chip gap-1.5 text-xs ${isDebit ? 'border-red-500/50 text-red-300' : ''}`}
-            >
-              <MinusCircle className="w-3.5 h-3.5" />
-              {t.adminManualWalletDebit}
-            </button>
-          </div>
-        )}
-
         {!hideSearch && (
           <div>
             <label className="text-xs text-[var(--text-muted)] block mb-1.5">
@@ -290,31 +278,55 @@ export default function AdminManualBalanceCredit({
 
         <div>
           <label className="text-xs text-[var(--text-muted)] block mb-1.5">{t.adminManualCreditAmount}</label>
-          <div className="flex flex-wrap gap-2 mb-2">
-            {RECHARGE_PRESETS.map((preset) => (
+          <div className="flex items-center gap-2">
+            {allowDebit && (
               <button
-                key={preset}
                 type="button"
-                onClick={() => setAmount(String(preset))}
-                className={`action-chip text-xs ${amountValue === preset ? 'border-[var(--accent)] text-[var(--accent)]' : ''}`}
+                onClick={() => openConfirm('debit')}
+                disabled={debitDisabled}
+                title={t.adminManualWalletDebit}
+                aria-label={t.adminManualWalletDebit}
+                className="flex items-center justify-center h-12 w-12 shrink-0 rounded-xl bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                ${preset}
+                {saving && isDebit ? <Loader2 className="w-5 h-5 animate-spin" /> : <Minus className="w-5 h-5" />}
               </button>
-            ))}
+            )}
+            <input
+              type="text"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+              placeholder="0.00"
+              className="flex-1 min-w-0 h-12 text-center text-lg font-mono bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-3 outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => openConfirm('credit')}
+              disabled={creditDisabled}
+              title={t.adminManualWalletCredit}
+              aria-label={t.adminManualWalletCredit}
+              className="flex items-center justify-center h-12 w-12 shrink-0 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {saving && !isDebit ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+            </button>
           </div>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))}
-            className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-2.5 font-mono outline-none"
-          />
           {isDebit && selectedUser && amountValid && Number(selectedUser.balance || 0) < amountValue && (
             <p className="text-[10px] text-red-400 mt-1">{t.adminManualDebitInsufficient}</p>
           )}
+          {allowDebit && hasUser && (
+            <button
+              type="button"
+              onClick={openZero}
+              disabled={zeroDisabled}
+              title={t.adminManualZeroBalance}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-xl border border-[var(--border)] px-3 py-2 text-sm text-[var(--text-muted)] transition-colors hover:border-red-500/40 hover:text-red-300 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {t.adminManualZeroBalance}
+            </button>
+          )}
         </div>
 
-        {!isDebit && (
+        {rechargeRequestId && (
           <div>
             <label className="text-xs text-[var(--text-muted)] block mb-1.5">
               {t.adminManualCreditTransactionRef}
@@ -336,7 +348,7 @@ export default function AdminManualBalanceCredit({
           </div>
         )}
 
-        {rechargeRequestId && !isDebit && (
+        {rechargeRequestId && (
           <div>
             <label className="text-xs text-[var(--text-muted)] block mb-1.5">
               {t.adminManualCreditLinkedRequest}
@@ -352,19 +364,8 @@ export default function AdminManualBalanceCredit({
 
         <div>
           <label className="text-xs text-[var(--text-muted)] block mb-1.5">{t.adminManualCreditReason}</label>
-          <div className="flex flex-wrap gap-2 mb-2">
-            {reasonPresetOptions.map((opt) => (
-              <button
-                key={opt.key}
-                type="button"
-                onClick={() => setReason(opt.label)}
-                className="action-chip text-xs"
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          <textarea
+          <input
+            type="text"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder={
@@ -372,40 +373,26 @@ export default function AdminManualBalanceCredit({
                 ? (t.adminManualDebitReasonPlaceholder || t.adminManualCreditReasonPlaceholder)
                 : t.adminManualCreditReasonPlaceholder
             }
-            rows={3}
-            className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-2.5 text-sm outline-none resize-y"
+            className="w-full bg-[var(--bg-primary)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-2.5 text-sm outline-none"
           />
         </div>
-
-        <button
-          type="button"
-          disabled={!canSubmit || saving}
-          onClick={() => setConfirmOpen(true)}
-          className={`btn w-full sm:w-auto ${isDebit ? 'bg-red-600 hover:bg-red-500 text-white border-red-600' : 'btn-primary'}`}
-        >
-          {saving
-            ? <Loader2 className="w-4 h-4 animate-spin" />
-            : isDebit
-              ? t.adminManualDebitSubmit
-              : t.adminManualCreditSubmit}
-        </button>
       </div>
 
       <ConfirmDialog
         open={confirmOpen}
-        title={isDebit ? t.adminManualDebitConfirmTitle : t.adminManualCreditConfirmTitle}
+        title={isZeroAction ? t.adminManualZeroConfirmTitle : (isDebit ? t.adminManualDebitConfirmTitle : t.adminManualCreditConfirmTitle)}
         message={formatMessage(
-          isDebit ? t.adminManualDebitConfirmBody : t.adminManualCreditConfirmBody,
+          isZeroAction ? t.adminManualZeroConfirmBody : (isDebit ? t.adminManualDebitConfirmBody : t.adminManualCreditConfirmBody),
           {
-            amount: formatMoney(amountValue),
+            amount: formatMoney(isZeroAction ? zeroAmount : amountValue),
             user: selectedUser?.username
               ? `@${selectedUser.username}`
               : (selectedUser?.name || selectedUser?.email || '—'),
           },
         )}
-        confirmLabel={isDebit ? t.adminManualDebitSubmit : t.adminManualCreditSubmit}
+        confirmLabel={isZeroAction ? t.adminManualZeroBalance : (isDebit ? t.adminManualDebitSubmit : t.adminManualCreditSubmit)}
         cancelLabel={t.cancel}
-        variant={isDebit ? 'danger' : 'primary'}
+        variant={isZeroAction || isDebit ? 'danger' : 'primary'}
         loading={saving}
         onConfirm={handleSubmit}
         onCancel={() => !saving && setConfirmOpen(false)}
