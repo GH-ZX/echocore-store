@@ -187,7 +187,7 @@ export default function AdminCustomerBalances({
               <thead>
                 <tr className="border-b border-[var(--border)] text-[var(--text-muted)] text-xs">
                   <th className="text-start p-3">{t.adminRechargeUser}</th>
-                  <th className="text-start p-3">{t.email}</th>
+                  <th className="text-start p-3 hidden md:table-cell">{t.email}</th>
                   <th className="text-end p-3">{t.balance}</th>
                   <th className="text-end p-3" />
                 </tr>
@@ -195,19 +195,19 @@ export default function AdminCustomerBalances({
               <tbody>
                 {users.map((user) => (
                   <tr key={user.id} className="border-b border-[var(--border)] last:border-0 align-middle">
-                    <td className="p-3 min-w-[8rem]">
+                    <td className="p-2.5 sm:p-3 min-w-0 sm:min-w-[8rem]">
                       <div className="font-semibold truncate">{user.name || t.adminUsersUnnamed}</div>
                       {user.username && (
                         <div className="text-[10px] text-[var(--text-muted)] font-mono">@{user.username}</div>
                       )}
                     </td>
-                    <td className="p-3 text-[var(--text-sec)] text-xs break-all max-w-[14rem]">
+                    <td className="p-3 text-[var(--text-sec)] text-xs break-all max-w-[14rem] hidden md:table-cell">
                       {user.email || '—'}
                     </td>
-                    <td className="p-3 text-end font-mono font-bold text-[var(--accent)] whitespace-nowrap">
+                    <td className="p-2.5 sm:p-3 text-end font-mono font-bold text-[var(--accent)] whitespace-nowrap">
                       {formatMoney(user.balance || 0)}
                     </td>
-                    <td className="p-3 text-end">
+                    <td className="p-2.5 sm:p-3 text-end">
                       <div className="inline-flex flex-wrap justify-end gap-1.5">
                         <button
                           type="button"
@@ -216,7 +216,7 @@ export default function AdminCustomerBalances({
                           title={t.adminTrackPurchases}
                         >
                           <History className="w-3.5 h-3.5" />
-                          {t.adminTrackPurchases}
+                          <span className="hidden sm:inline">{t.adminTrackPurchases}</span>
                         </button>
                         {onSelectForCredit && (
                           <button
@@ -226,7 +226,7 @@ export default function AdminCustomerBalances({
                             title={t.adminManualCreditSubmit}
                           >
                             <HandCoins className="w-3.5 h-3.5" />
-                            {t.adminManualCreditSubmit}
+                            <span className="hidden sm:inline">{t.adminManualCreditSubmit}</span>
                           </button>
                         )}
                       </div>
