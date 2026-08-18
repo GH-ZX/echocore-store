@@ -24,6 +24,7 @@ import {
 } from '../../lib/catalogUtils';
 import { pickTopBoughtOffers } from '../../lib/customerReviews';
 import { fetchBestsellingOfferRanks } from '../../lib/bestsellingOffers';
+import { useOfferAffordability } from '../../lib/offerAffordability';
 import { brandUserText } from '../../lib/branding';
 import { getGameMarketingDescription } from '../../lib/gameDescriptions';
 import {
@@ -211,6 +212,21 @@ export default function HomeView({
     return map;
   }, [layout, offersWithGames]);
 
+  // Which offers are actually shown on home (sale + suggested + picks) so we
+  // only ask the edge function about those when painting the red "can't buy" dots.
+  const homeOfferIds = useMemo(() => {
+    const ids = new Set();
+    saleOffersMap.forEach((list) => list.forEach((offer) => ids.add(String(offer.id))));
+    suggestedOffersMap.forEach((list) => list.forEach((offer) => ids.add(String(offer.id))));
+    layout.forEach((section) => {
+      if (section.type === 'offer_picks') {
+        (section.offer_ids || []).forEach((id) => ids.add(String(id)));
+      }
+    });
+    return [...ids];
+  }, [layout, saleOffersMap, suggestedOffersMap]);
+  const { unaffordable } = useOfferAffordability(homeOfferIds.map((id) => ({ id })));
+
   // Include top-up games + redeem codes pinned to the carousel
   const carouselGames = getCarouselGames(games);
 
@@ -373,6 +389,7 @@ export default function HomeView({
               onAddToCart={isTeaser || isAdmin ? undefined : addToCart}
               onEditOffer={isTeaser ? undefined : onEditOffer}
               isAdmin={isAdmin && !isTeaser}
+              unaffordable={unaffordable.has(String(offer.id))}
               className={`w-full min-w-0${isTeaser ? ' storefront-card--teaser pointer-events-none' : ''}`}
             />
           );

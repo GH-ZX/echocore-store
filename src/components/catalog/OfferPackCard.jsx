@@ -21,6 +21,7 @@ export default function OfferPackCard({
   t = {},
   regionLabel,
   isAdmin = false,
+  unaffordable = false,
   onSelect,
   onBuyNow,
   onAddToCart,
@@ -59,12 +60,21 @@ export default function OfferPackCard({
         {/* Name on start side, pencil/logo on end — opposite ends in AR + EN */}
         <div className="flex items-start justify-between gap-2 sm:gap-3 mb-2.5 sm:mb-3">
           <div className="min-w-0 flex-1 pe-1">
-            <OfferPackLabel
-              as="h3"
-              className="font-bold text-sm sm:text-lg leading-snug line-clamp-2 group-hover:text-[var(--accent)] transition-colors"
-            >
-              {offerName}
-            </OfferPackLabel>
+            <div className="flex items-center gap-1.5">
+              {unaffordable && (
+                <span
+                  className="offer-unavailable-indicator"
+                  title={t.offerWalletLow}
+                  aria-label={t.offerWalletLow}
+                />
+              )}
+              <OfferPackLabel
+                as="h3"
+                className="font-bold text-sm sm:text-lg leading-snug line-clamp-2 group-hover:text-[var(--accent)] transition-colors min-w-0"
+              >
+                {offerName}
+              </OfferPackLabel>
+            </div>
             {regionLabel && (
               <p className="text-[11px] text-[var(--text-muted)] mt-1">
                 {t.region || 'Region'}: {regionLabel}
@@ -134,11 +144,12 @@ export default function OfferPackCard({
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    onAddToCart(offer, e);
+                    if (!unaffordable) onAddToCart(offer, e);
                   }}
-                  className="btn btn-secondary p-2 min-h-[40px] min-w-[40px] inline-flex items-center justify-center"
-                  title={t.addToCart}
+                  className="btn btn-secondary p-2 min-h-[40px] min-w-[40px] inline-flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={unaffordable ? t.offerWalletLow : t.addToCart}
                   aria-label={t.addToCart}
+                  disabled={unaffordable}
                 >
                   <ShoppingCart className="w-4 h-4" />
                 </button>
@@ -148,9 +159,11 @@ export default function OfferPackCard({
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  onBuyNow?.(offer);
+                  if (!unaffordable) onBuyNow?.(offer);
                 }}
-                className="btn btn-primary text-xs px-3 py-2 min-h-[40px] flex-1 sm:flex-none"
+                className="btn btn-primary text-xs px-3 py-2 min-h-[40px] flex-1 sm:flex-none disabled:opacity-40 disabled:cursor-not-allowed"
+                title={unaffordable ? t.offerWalletLow : undefined}
+                disabled={unaffordable}
               >
                 {t.buyNow || 'Buy'}
               </button>

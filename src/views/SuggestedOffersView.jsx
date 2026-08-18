@@ -5,6 +5,7 @@ import CatalogGrid from '../components/catalog/CatalogGrid';
 import { getDisplayGameForOffer, offerBelongsToStorefront } from '../lib/gameRegions';
 import { pickTopBoughtOffers } from '../lib/customerReviews';
 import { fetchBestsellingOfferRanks } from '../lib/bestsellingOffers';
+import { useOfferAffordability } from '../lib/offerAffordability';
 
 const PAGE_LIMIT = 50;
 
@@ -48,6 +49,8 @@ export default function SuggestedOffersView({
     [pool, ranks, games],
   );
 
+  const { unaffordable } = useOfferAffordability(suggested);
+
   return (
     <div className="max-w-7xl mx-auto">
       <div className="mb-6 sm:mb-8">
@@ -88,6 +91,7 @@ export default function SuggestedOffersView({
               onAddToCart={handleAddToCart}
               onEditOffer={onEditOffer}
               isAdmin={isAdmin}
+              unaffordable={unaffordable.has(String(offer.id))}
             />
           );
         })}

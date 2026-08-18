@@ -19,6 +19,7 @@ import { resolveOfferRoute } from '../lib/offerRoutes';
 import { formatMoney } from '../lib/i18n';
 import { buildGameBreadcrumb } from '../lib/catalogNav';
 import MobileBuyBar from '../components/catalog/MobileBuyBar';
+import { useOfferAffordability } from '../lib/offerAffordability';
 
 function redemptionMethodLabel(game, t) {
   if (game?.redemption_method === 'uid') return t.redemptionUid;
@@ -50,6 +51,8 @@ export default function OfferDetail({
   const isAdmin = user?.role === 'admin';
   const [editingOffer, setEditingOffer] = useState(false);
   const [editingGame, setEditingGame] = useState(false);
+  const { unaffordable } = useOfferAffordability(offer ? [offer] : []);
+  const offerUnaffordable = !!offer && unaffordable.has(String(offer.id));
 
   if (loadingCatalog || (!offer && offers.length === 0)) {
     return (
@@ -119,6 +122,7 @@ export default function OfferDetail({
           t={t}
           lang={lang}
           isAdmin={isAdmin}
+          unaffordable={offerUnaffordable}
           onBuyNow={onBuyNow}
           onAddToCart={addToCart}
           onPricingSaved={onPricingSaved}
@@ -215,18 +219,21 @@ export default function OfferDetail({
             {!isAdmin && addToCart && (
               <button
                 type="button"
-                onClick={(e) => addToCart(offer, e)}
-                className="btn btn-secondary p-3 shrink-0 touch-manipulation inline-flex items-center justify-center"
-                title={t.addToCart}
+                onClick={(e) => { if (!offerUnaffordable) addToCart(offer, e); }}
+                className="btn btn-secondary p-3 shrink-0 touch-manipulation inline-flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed"
+                title={offerUnaffordable ? t.offerWalletLow : t.addToCart}
                 aria-label={t.addToCart}
+                disabled={offerUnaffordable}
               >
                 <ShoppingCart className="w-5 h-5" />
               </button>
             )}
             <button
               type="button"
-              onClick={() => onBuyNow?.(offer)}
-              className="btn btn-primary catalog-mobile-buybar__btn font-bold shrink-0 touch-manipulation"
+              onClick={() => { if (!offerUnaffordable) onBuyNow?.(offer); }}
+              className="btn btn-primary catalog-mobile-buybar__btn font-bold shrink-0 touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed"
+              title={offerUnaffordable ? t.offerWalletLow : undefined}
+              disabled={offerUnaffordable}
             >
               {isAdmin ? t.giftOffer : t.buyNow}
             </button>

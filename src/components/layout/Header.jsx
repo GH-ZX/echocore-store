@@ -753,18 +753,9 @@ export default function Header({
                         </button>
                       )}
                     </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleNav('/login')}
-                      className="header-btn header-btn--accent w-full h-11 text-sm font-bold justify-center gap-2"
-                    >
-                      <User className="w-4 h-4" strokeWidth={2} />
-                      {t.login}
-                    </button>
-                  )}
+                  ) : null}
 
-                  <div className="header-mobile-divider" />
+                  {user && <div className="header-mobile-divider" />}
 
                   <nav aria-label={t.mainNavigation}>
                     <MobileNavLinks
@@ -838,14 +829,25 @@ export default function Header({
                       </button>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => { closeAll(); onLogout(); }}
-                      className="header-mobile-signout"
-                    >
-                      <LogOut className="w-4 h-4" strokeWidth={2} />
-                      {t.logout}
-                    </button>
+                    {user ? (
+                      <button
+                        type="button"
+                        onClick={() => { closeAll(); onLogout(); }}
+                        className="header-mobile-signout"
+                      >
+                        <LogOut className="w-4 h-4" strokeWidth={2} />
+                        {t.logout}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleNav('/login')}
+                        className="btn btn-primary w-full min-h-[2.75rem] text-sm font-bold inline-flex items-center justify-center gap-2"
+                      >
+                        <User className="w-4 h-4" strokeWidth={2} />
+                        {t.login}
+                      </button>
+                    )}
                   </div>
                 </div>
               </motion.div>

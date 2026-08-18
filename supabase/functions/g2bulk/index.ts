@@ -2098,6 +2098,60 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: true, ...result });
   }
 
+  // Storefront: which offers can the G2Bulk wallet NOT cover right now?
+  // Drives the red "can't buy" dot + disabled buy buttons on store cards.
+  // Uses stored g2bulk_cost_usd vs live wallet balance — only the blocking
+  // toggle + getMe happen here; never leaks cost figures, only offer ids.
+  if (action === 'checkOfferAffordability') {
+    if (!userId) {
+      return jsonResponse({ success: false, message: 'Not authenticated' }, 401);
+    }
+
+    const rawIds = Array.isArray(body.offerIds) ? body.offerIds.map(String) : [];
+    const offerIds = [...new Set(rawIds)].filter(Boolean);
+    if (!offerIds.length) {
+      return jsonResponse({ success: true, blocked: false, unaffordableOfferIds: [] });
+    }
+    if (offerIds.length > 1000) {
+      return jsonResponse({ success: false, message: 'Too many offer ids' }, 400);
+    }
+
+    const settingsRow = await loadStoreSettingsRow(serviceClient);
+    const blockWhenWalletLow = settingsRow?.g2bulk_block_when_wallet_low !== false;
+    if (!apiKey || !blockWhenWalletLow) {
+      // Blocking is OFF (or no supplier) — checkout is allowed, so nothing to mark.
+      return jsonResponse({ success: true, blocked: false, unaffordableOfferIds: [] });
+    }
+
+    let walletBalance: number;
+    try {
+      walletBalance = await fetchSupplierWalletBalance(apiKey);
+    } catch {
+      walletBalance = Number.NaN;
+    }
+    if (!Number.isFinite(walletBalance)) {
+      // Wallet unknown — cannot verify; never scare customers on a guess.
+      return jsonResponse({ success: true, blocked: true, unaffordableOfferIds: [] });
+    }
+
+    const { data: offers, error: offersError } = await serviceClient
+      .from('offers')
+      .select('id, g2bulk_cost_usd')
+      .in('id', offerIds);
+
+    const unaffordableOfferIds: string[] = [];
+    if (!offersError && Array.isArray(offers)) {
+      for (const offer of offers) {
+        const cost = Number(offer?.g2bulk_cost_usd);
+        if (Number.isFinite(cost) && walletBalance + 0.001 < cost) {
+          unaffordableOfferIds.push(String(offer.id));
+        }
+      }
+    }
+
+    return jsonResponse({ success: true, blocked: true, unaffordableOfferIds });
+  }
+
   if (action === 'getMe') {
     if (!(await isAdmin(userClient, userId!))) {
       return jsonResponse({ success: false, message: 'Admin only' }, 403);

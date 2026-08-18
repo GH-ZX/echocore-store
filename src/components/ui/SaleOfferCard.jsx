@@ -27,6 +27,7 @@ export default function SaleOfferCard({
   onAddToCart,
   onEditOffer,
   isAdmin = false,
+  unaffordable = false,
   className = '',
 }) {
   if (!offer || !game) return null;
@@ -87,6 +88,13 @@ export default function SaleOfferCard({
 
         <div className="absolute top-2 left-2 right-2 flex items-start justify-between gap-1.5">
           <div className="flex items-center gap-1.5">
+          {unaffordable && (
+            <span
+              className="offer-unavailable-indicator"
+              title={t.offerWalletLow}
+              aria-label={t.offerWalletLow}
+            />
+          )}
           {cardBadge && (
             <span className="card-grid-badge px-2 py-1 text-[11px] font-bold rounded-md shadow-sm inline-flex items-center gap-1">
               {cardBadge}
@@ -156,11 +164,12 @@ export default function SaleOfferCard({
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                onAddToCart(offer, e);
+                if (!unaffordable) onAddToCart(offer, e);
               }}
-              className="btn btn-secondary p-2 shrink-0 inline-flex items-center justify-center"
-              title={t.addToCart}
+              className="btn btn-secondary p-2 shrink-0 inline-flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed"
+              title={unaffordable ? t.offerWalletLow : t.addToCart}
               aria-label={t.addToCart}
+              disabled={unaffordable}
             >
               <ShoppingCart className="w-3.5 h-3.5" />
             </button>
@@ -170,9 +179,11 @@ export default function SaleOfferCard({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              onBuyNow?.(offer);
+              if (!unaffordable) onBuyNow?.(offer);
             }}
-            className="flex-1 btn btn-primary text-[11px] sm:text-xs py-2 px-2 font-semibold min-w-0"
+            className="flex-1 btn btn-primary text-[11px] sm:text-xs py-2 px-2 font-semibold min-w-0 disabled:opacity-40 disabled:cursor-not-allowed"
+            title={unaffordable ? t.offerWalletLow : undefined}
+            disabled={unaffordable}
           >
             {t.buy}
           </button>

@@ -514,6 +514,11 @@ export async function checkFulfillmentAvailability({ items = [] } = {}) {
   return invokeG2bulk({ action: 'checkFulfillmentAvailability', items }, { sanitizeForUser: true });
 }
 
+/** Storefront: which offer ids can the supplier wallet NOT cover right now? */
+export async function checkOfferAffordability({ offerIds = [] } = {}) {
+  return invokeG2bulk({ action: 'checkOfferAffordability', offerIds }, { sanitizeForUser: true });
+}
+
 /** Admin-only: full step-by-step fulfillment diagnosis for one cart/items payload */
 export async function diagnoseFulfillmentAvailability({ items = [] } = {}) {
   return invokeG2bulk({ action: 'diagnoseFulfillment', items, diagnose: true });

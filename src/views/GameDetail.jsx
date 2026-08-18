@@ -16,6 +16,7 @@ import { resolveStorefrontGame } from '../lib/gameRegions';
 import { sortOffersByPrice } from '../lib/offerDisplay';
 import { buildGameBreadcrumb } from '../lib/catalogNav';
 import { formatCountNoun } from '../lib/i18n';
+import { useOfferAffordability } from '../lib/offerAffordability';
 import {
   buildSearchPath,
   getCatalogSearchQuery,
@@ -57,6 +58,7 @@ export default function GameDetail({
   const gameOffers = sortOffersByPrice(
     offers.filter((offer) => offer.game_id === activeGameId && offer.active !== false),
   );
+  const { unaffordable } = useOfferAffordability(gameOffers);
 
   // Region per card is noise when every offer shares one region (it already
   // shows in the hero badge) — only surface it when regions actually differ.
@@ -237,6 +239,7 @@ export default function GameDetail({
                   t={t}
                   regionLabel={hasMixedRegions ? (offer.region || game.region_label) : null}
                   isAdmin={isAdmin}
+                  unaffordable={unaffordable.has(String(offer.id))}
                   onSelect={onSelectOffer}
                   onBuyNow={onBuyNow}
                   onAddToCart={!isAdmin ? addToCart : undefined}

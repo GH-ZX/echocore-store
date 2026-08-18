@@ -13,6 +13,7 @@ export default function OfferPurchasePanel({
   t = {},
   lang = 'ar',
   isAdmin = false,
+  unaffordable = false,
   onBuyNow,
   onAddToCart,
   onPricingSaved,
@@ -97,18 +98,32 @@ export default function OfferPurchasePanel({
           <span>{t.instantDeliveryNote}</span>
         </div>
 
+        {unaffordable && (
+          <div
+            className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-xs text-red-200/90 flex items-center gap-2"
+            role="status"
+          >
+            <span className="offer-unavailable-indicator offer-unavailable-indicator--static" aria-hidden="true" />
+            <span>{t.offerWalletLow}</span>
+          </div>
+        )}
+
         <div className="hidden lg:flex flex-col gap-2.5 pt-1">
           <button
             type="button"
-            onClick={() => onBuyNow?.(offer)}
-            className="btn btn-primary w-full py-3.5 sm:py-4 text-base font-black touch-manipulation"
+            onClick={() => { if (!unaffordable) onBuyNow?.(offer); }}
+            className="btn btn-primary w-full py-3.5 sm:py-4 text-base font-black touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed"
+            title={unaffordable ? t.offerWalletLow : undefined}
+            disabled={unaffordable}
           >
             {t.buyNow}
           </button>
           <button
             type="button"
-            onClick={(e) => onAddToCart?.(offer, e)}
-            className="btn btn-secondary w-full py-3 text-sm inline-flex items-center justify-center gap-2 touch-manipulation"
+            onClick={(e) => { if (!unaffordable) onAddToCart?.(offer, e); }}
+            className="btn btn-secondary w-full py-3 text-sm inline-flex items-center justify-center gap-2 touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed"
+            title={unaffordable ? t.offerWalletLow : undefined}
+            disabled={unaffordable}
           >
             <ShoppingCart className="w-4 h-4" />
             {t.addToCart}

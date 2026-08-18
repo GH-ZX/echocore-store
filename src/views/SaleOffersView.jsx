@@ -4,6 +4,7 @@ import SaleOfferCard from '../components/ui/SaleOfferCard';
 import CatalogGrid from '../components/catalog/CatalogGrid';
 import { getDisplayGameForOffer } from '../lib/gameRegions';
 import { getSaleOffers } from '../lib/saleOffers';
+import { useOfferAffordability } from '../lib/offerAffordability';
 
 export default function SaleOffersView({
   games = [],
@@ -19,6 +20,7 @@ export default function SaleOffersView({
 }) {
   const handleAddToCart = onAddToCart || addToCart;
   const saleOffers = getSaleOffers(offers);
+  const { unaffordable } = useOfferAffordability(saleOffers);
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -53,6 +55,7 @@ export default function SaleOffersView({
               onAddToCart={handleAddToCart}
               onEditOffer={onEditOffer}
               isAdmin={isAdmin}
+              unaffordable={unaffordable.has(String(offer.id))}
             />
           );
         })}
