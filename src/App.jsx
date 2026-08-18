@@ -52,6 +52,9 @@ import { usePartnerStatus } from './hooks/usePartnerStatus';
 import { useToastState } from './hooks/useToastState';
 import { useSiteStatusPolling } from './hooks/useSiteStatusPolling';
 import { useStorefrontBootstrap } from './hooks/useStorefrontBootstrap';
+import { scheduleRoutePrefetch } from './lib/prefetchRoutes';
+import { routeChunkFactories } from './lib/routeChunkFactories';
+import { adminPanelFactories } from './lib/adminPanelFactories';
 import { mapOffersForCustomer, resolveCustomerUnitPrice } from './lib/partnerPricing';
 import {
   stripOffersSecrets,
@@ -120,35 +123,9 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [routeLoading, setRouteLoading] = useState(false);
-  const routeLocationKey = `${location.pathname}${location.search}${location.hash}`;
   const hasShownLoginToast = useRef(false);
   const lastSyncedUserIdRef = useRef(null);
   const loginLogDedupeRef = useRef({ key: '', at: 0 });
-  const routeLoadingTimerRef = useRef(null);
-  const previousRouteLocationRef = useRef(routeLocationKey);
-
-  useEffect(() => {
-    if (previousRouteLocationRef.current === routeLocationKey) return undefined;
-    previousRouteLocationRef.current = routeLocationKey;
-
-    if (routeLoadingTimerRef.current) {
-      clearTimeout(routeLoadingTimerRef.current);
-    }
-
-    setRouteLoading(true);
-    routeLoadingTimerRef.current = setTimeout(() => {
-      setRouteLoading(false);
-      routeLoadingTimerRef.current = null;
-    }, 650);
-
-    return () => {
-      if (routeLoadingTimerRef.current) {
-        clearTimeout(routeLoadingTimerRef.current);
-        routeLoadingTimerRef.current = null;
-      }
-    };
-  }, [routeLocationKey]);
 
   const cartIconRef = useRef(null);
   const navigateRef = useRef(navigate);
@@ -280,6 +257,30 @@ export default function App() {
   const showNotification = useCallback((msg) => showToast(msg, 'success'), [showToast]);
 
   useSiteStatusPolling({ setSiteStatus, setMaintenanceBannerDismissed });
+
+  // Warm lazy route chunks during browser idle so the first navigation after
+  // load is instant (it used to pay a fetch+parse round trip per session).
+  // InvoiceView is excluded — it pulls the ~600KB PDF/image export vendor
+  // chunk and only matters when a user actually opens an invoice.
+  useEffect(() => {
+    const customerFactories = Object.fromEntries(
+      Object.entries(routeChunkFactories).filter(
+        ([name]) => !name.startsWith('Admin') && name !== 'InvoiceView',
+      ),
+    );
+    scheduleRoutePrefetch(customerFactories);
+  }, []);
+
+  // Admins head straight to the dashboard — warm AdminView + all 13 panels
+  // (incl. the heavy AdminApisPage) as soon as the role resolves.
+  useEffect(() => {
+    if (user?.role !== 'admin') return undefined;
+    scheduleRoutePrefetch(
+      { ...routeChunkFactories, ...adminPanelFactories },
+      { timeoutMs: 1500 },
+    );
+    return undefined;
+  }, [user?.role]);
 
   const {
     notifications,
@@ -1777,16 +1778,6 @@ export default function App() {
       <a href="#main-content" className="skip-to-content">
         {t.skipToContent}
       </a>
-      {routeLoading && (
-        <div
-          className="route-loading-bar"
-          role="progressbar"
-          aria-label={t.openingPage}
-          aria-valuetext={t.openingPage}
-        >
-          <span className="route-loading-bar-indicator" />
-        </div>
-      )}
       <LangSwitchOverlay t={translations[overlayLang] || t} active={langSwitching} />
       <ScrollToTop />
       <DocumentMeta t={t} lang={lang} />

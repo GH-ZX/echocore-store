@@ -22,19 +22,20 @@ import AdminSaleDiscountsManager from '../../components/admin/AdminSaleDiscounts
 import AdminGameEditModal from '../../components/admin/AdminGameEditModal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import { lazyRetry } from '../../lib/lazyRetry';
-const AdminPaymentsSettings = lazyRetry(() => import('../../components/admin/AdminPaymentsSettings'));
-const AdminThemeSettings = lazyRetry(() => import('../../components/admin/AdminThemeSettings'));
-const AdminHomeLayoutSettings = lazyRetry(() => import('../../components/admin/AdminHomeLayoutSettings'));
-const AdminReviewsManager = lazyRetry(() => import('../../components/admin/AdminReviewsManager'));
-const AdminRechargeManager = lazyRetry(() => import('../../components/admin/AdminRechargeManager'));
-const AdminUsersManager = lazyRetry(() => import('../../components/admin/AdminUsersManager'));
-const AdminPartnersManager = lazyRetry(() => import('../../components/admin/AdminPartnersManager'));
-const AdminInboxManager = lazyRetry(() => import('../../components/admin/AdminInboxManager'));
-const AdminContactMessages = lazyRetry(() => import('../../components/admin/AdminContactMessages'));
-const AdminOrdersManager = lazyRetry(() => import('../../components/admin/AdminOrdersManager'));
-const AdminProfitStatsPage = lazyRetry(() => import('../../components/admin/AdminProfitStatsPage'));
-const AdminSiteLogs = lazyRetry(() => import('../../components/admin/AdminSiteLogs'));
-const AdminApisPage = lazyRetry(() => import('../../components/admin/AdminApisPage'));
+import { adminPanelFactories } from '../../lib/adminPanelFactories';
+const AdminPaymentsSettings = lazyRetry(adminPanelFactories.AdminPaymentsSettings);
+const AdminThemeSettings = lazyRetry(adminPanelFactories.AdminThemeSettings);
+const AdminHomeLayoutSettings = lazyRetry(adminPanelFactories.AdminHomeLayoutSettings);
+const AdminReviewsManager = lazyRetry(adminPanelFactories.AdminReviewsManager);
+const AdminRechargeManager = lazyRetry(adminPanelFactories.AdminRechargeManager);
+const AdminUsersManager = lazyRetry(adminPanelFactories.AdminUsersManager);
+const AdminPartnersManager = lazyRetry(adminPanelFactories.AdminPartnersManager);
+const AdminInboxManager = lazyRetry(adminPanelFactories.AdminInboxManager);
+const AdminContactMessages = lazyRetry(adminPanelFactories.AdminContactMessages);
+const AdminOrdersManager = lazyRetry(adminPanelFactories.AdminOrdersManager);
+const AdminProfitStatsPage = lazyRetry(adminPanelFactories.AdminProfitStatsPage);
+const AdminSiteLogs = lazyRetry(adminPanelFactories.AdminSiteLogs);
+const AdminApisPage = lazyRetry(adminPanelFactories.AdminApisPage);
 
 function AdminTabLoader() {
   return (

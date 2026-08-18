@@ -2732,38 +2732,155 @@ html, body {
   border-color: color-mix(in srgb, #ef4444 22%, transparent);
 }
 
-.header-mobile-profile-row {
+.header-mobile-profile-card {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.375rem 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  outline: none;
+  text-align: inherit;
+  transition: opacity 0.15s ease;
+}
+
+.header-mobile-profile-card:hover {
+  opacity: 0.85;
+}
+
+.header-mobile-profile-card:active {
+  opacity: 0.7;
+}
+
+.header-mobile-profile-card .header-avatar {
+  box-shadow:
+    0 0 26px color-mix(in srgb, var(--accent) 38%, transparent),
+    0 6px 18px rgba(0, 0, 0, 0.3);
+}
+
+.header-mobile-profile-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  flex: 1;
+  gap: 0.125rem;
+}
+
+.header-mobile-profile-name {
+  max-width: 100%;
+  font-size: 1.125rem;
+  font-weight: 900;
+  line-height: 1.2;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-mobile-profile-username {
+  max-width: 100%;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-mobile-profile-email {
+  max-width: 100%;
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-mobile-profile-badges {
+  display: flex;
+  margin-top: 0.375rem;
+}
+
+.header-mobile-profile-hairline {
+  height: 1px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, transparent) 0%, color-mix(in srgb, var(--border) 40%, transparent) 70%, transparent 100%);
+}
+
+/* Bottom actions — compact cart + notifications row, wide sign out */
+.header-mobile-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.header-mobile-bottom-row {
   display: flex;
   align-items: stretch;
   gap: 0.5rem;
 }
 
-.header-mobile-profile-card {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
+.header-mobile-bottom-btn {
   flex: 1;
   min-width: 0;
-  padding: 0.625rem 0.75rem;
-  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.375rem;
+  padding: 0.375rem 0.625rem;
   border-radius: 0.75rem;
-  background: color-mix(in srgb, var(--accent) 5%, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  background: color-mix(in srgb, var(--bg-elevated) 45%, transparent);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 700;
   cursor: pointer;
   font-family: inherit;
-  outline: none;
-  transition: border-color 0.12s ease, background-color 0.12s ease;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
 }
 
-.header-mobile-profile-card:hover {
-  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg-surface));
+.header-mobile-bottom-btn:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  color: var(--text-primary);
 }
 
-.header-mobile-logout-btn {
-  width: 2.75rem !important;
-  height: 2.75rem !important;
-  flex-shrink: 0;
-  align-self: center;
+.header-mobile-bottom-btn:active {
+  transform: scale(0.97);
+}
+
+.header-mobile-signout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid color-mix(in srgb, #ef4444 32%, var(--border));
+  background: color-mix(in srgb, #ef4444 8%, var(--bg-elevated));
+  color: #f87171;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+}
+
+.header-mobile-signout:hover {
+  border-color: color-mix(in srgb, #ef4444 50%, var(--border));
+  background: color-mix(in srgb, #ef4444 14%, var(--bg-elevated));
+}
+
+.header-mobile-signout:active {
+  transform: scale(0.98);
 }
 
 /* Grouped toolbar (search + lang + cart) — spacing only, no visible shell */
@@ -2984,27 +3101,40 @@ html, body {
   font-size: 0.75rem;
 }
 
+.header-avatar--xl {
+  font-size: 1.25rem;
+}
+
+/* Drawer profile avatar — scoped so it beats the later .profile-avatar--sm rule */
+.header-mobile-profile-card .header-avatar--xl {
+  width: 4.5rem;
+  height: 4.5rem;
+}
+
 /* ── Mobile drawer ── */
 .header-mobile-backdrop {
   position: fixed;
   inset: 0;
-  top: var(--header-height);
   z-index: var(--z-mobile-backdrop);
-  background: color-mix(in srgb, var(--bg-primary) 55%, transparent);
-  backdrop-filter: blur(4px);
+  background: color-mix(in srgb, var(--bg-primary) 42%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: none;
   cursor: pointer;
 }
 
 .header-mobile-drawer {
   position: fixed;
-  left: 0;
+  top: 0;
   right: 0;
-  top: var(--header-height);
   bottom: 0;
+  width: min(86vw, 340px);
   z-index: var(--z-mobile-drawer);
-  background: var(--bg-header);
-  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-header) 82%, transparent);
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  border-left: 1px solid var(--border);
+  box-shadow: -14px 0 42px rgba(0, 0, 0, 0.5);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -3323,7 +3453,9 @@ html, body {
   max-width: 26rem;
   padding: 0.35rem;
   border-radius: 1.6rem;
-  background: var(--bg-header);
+  background: color-mix(in srgb, var(--bg-header) 72%, transparent);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
   border: 1px solid var(--border);
   box-shadow:
     0 14px 36px color-mix(in srgb, var(--bg-primary) 42%, transparent);
@@ -5667,26 +5799,6 @@ html, body {
   animation: langSwitchProgress 0.9s ease-in-out infinite;
 }
 
-/* Route loading feedback for first-visit lazy chunks */
-.route-loading-bar {
-  position: fixed;
-  inset: 0 0 auto;
-  z-index: 260;
-  height: 3px;
-  overflow: hidden;
-  pointer-events: none;
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-}
-
-.route-loading-bar-indicator {
-  display: block;
-  width: 32%;
-  height: 100%;
-  background: var(--gradient-accent);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 85%, transparent);
-  animation: routeLoadingProgress 0.9s ease-in-out infinite;
-}
-
 .page-loader-card {
   color: var(--text-secondary);
   border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
@@ -5699,20 +5811,9 @@ html, body {
   animation: spin 0.9s linear infinite;
 }
 
-@keyframes routeLoadingProgress {
-  0% { transform: translateX(-120%); }
-  55% { transform: translateX(190%); }
-  100% { transform: translateX(360%); }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .route-loading-bar-indicator,
   .page-loader-spinner {
     animation: none;
-  }
-
-  .route-loading-bar-indicator {
-    width: 100%;
   }
 }
 

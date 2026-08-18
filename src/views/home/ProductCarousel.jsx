@@ -90,6 +90,18 @@ export default function ProductCarousel({
     [placeholderCover],
   );
 
+  // Preload every slide cover up front so a background never pops in (as a
+  // light flash at the image's unfilled edge) when it becomes the active
+  // slide — especially during the slow first load when the main thread is busy.
+  useEffect(() => {
+    slides.forEach((item) => {
+      const url = getCoverUrl(item);
+      if (!url) return;
+      const img = new Image();
+      img.src = url;
+    });
+  }, [slides, getCoverUrl]);
+
   const getLogo = useCallback(
     (item) => item.logo_url || item.logo || null,
     [],

@@ -1,7 +1,7 @@
 import {
   ShoppingCart, User, LogOut, Globe, ShieldCheck, Search, X, Menu,
   Loader2, Wallet, ChevronDown, ChevronRight, ArrowRight,
-  Inbox,
+  Inbox, Bell,
 } from 'lucide-react';
 import {
   formatProfileUsername,
@@ -105,6 +105,8 @@ export default function Header({
   const profileUsername = getProfileUsername(user);
   const profileUsernameLabel = profileUsername ? formatProfileUsername(profileUsername) : '';
   const sypPerUsd = getSypPerUsd(paymentConfig);
+  /** Latin text inside the RTL drawer should render LTR (names/usernames/emails). */
+  const dirForText = (text) => (/[A-Za-z]/.test(String(text || '')) ? 'ltr' : undefined);
 
   const closeAll = useCallback(() => {
     setIsMenuOpen(false);
@@ -674,28 +676,93 @@ export default function Header({
                 role="dialog"
                 aria-modal="true"
                 aria-label={t.navigationMenu}
-                initial={{ opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 34 }}
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'spring', stiffness: 340, damping: 34 }}
                 className="header-mobile-drawer md:hidden"
                 dir={lang === 'ar' ? 'rtl' : 'ltr'}
               >
                 <div className="header-mobile-drawer-inner">
-                  {/* Cart — primary action from burger on mobile */}
-                  <button
-                    type="button"
-                    onClick={() => handleNav('/cart')}
-                    className="header-mobile-action header-mobile-action--cart"
-                  >
-                    <ShoppingCart className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
-                    <span>{t.cart}</span>
-                    {cartLength > 0 ? (
-                      <span className="header-mobile-cart-count" dir="ltr">{cartLength}</span>
-                    ) : (
-                      <span className="header-mobile-action-meta" dir="ltr">0</span>
-                    )}
-                  </button>
+                  {/* Profile — upper section with avatar image */}
+                  {user ? (
+                    <div className="header-mobile-account">
+                      <button
+                        type="button"
+                        onClick={() => handleNav('/profile')}
+                        className="header-mobile-profile-card"
+                        dir="ltr"
+                      >
+                        <ProfileAvatar
+                          name={user.name}
+                          email={user.email}
+                          avatarUrl={user.avatar_url}
+                          size="sm"
+                          className="header-avatar header-avatar--xl flex-shrink-0"
+                        />
+                        <span className="header-mobile-profile-meta" dir="ltr">
+                          <span className="header-mobile-profile-name" dir={dirForText(user.name)}>{user.name}</span>
+                          {profileUsernameLabel ? (
+                            <span className="header-mobile-profile-username" dir={dirForText(profileUsernameLabel)}>{profileUsernameLabel}</span>
+                          ) : null}
+                          <span className="header-mobile-profile-email" dir={dirForText(user.email)}>{user.email}</span>
+                          {!isAdmin && (partnerTier || isInfluencer || user?.verified_at) ? (
+                            <span className="header-mobile-profile-badges">
+                              <UserRoleBadges
+                                t={t}
+                                lang={lang}
+                                partnerTier={partnerTier}
+                                isInfluencer={isInfluencer}
+                                verified={!!user?.verified_at}
+                                size="sm"
+                              />
+                            </span>
+                          ) : null}
+                        </span>
+                      </button>
+                      <div className="header-mobile-profile-hairline" aria-hidden="true" />
+                      {isAdmin ? (
+                        <div className="header-mobile-supplier">
+                          <AdminSupplierWalletsCard
+                            t={t}
+                            variant="compact"
+                            g2bulkBalance={g2bulkWallet != null ? g2bulkWallet.balance : null}
+                            g2bulkError={g2bulkError}
+                            g2bulkFetched={g2bulkFetched}
+                            samWallets={samWallets}
+                            samError={samError}
+                            samNotConfigured={samNotConfigured}
+                            samFetched={samFetched}
+                            loading={supplierWalletsLoading}
+                            idle={supplierWalletsIdle}
+                            sypPerUsd={sypPerUsd}
+                            onOpenDashboard={() => handleNav('/dashboard')}
+                            onOpenPayments={() => handleNav('/dashboard/payments')}
+                            onOpenExchangeRate={openExchangeRateSettings}
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => { onRecharge(); setIsMenuOpen(false); }}
+                          className="header-mobile-action"
+                        >
+                          <Wallet className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
+                          <span>{t.recharge}</span>
+                          <span className="header-balance">{formatMoney(user.balance || 0)}</span>
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleNav('/login')}
+                      className="header-btn header-btn--accent w-full h-11 text-sm font-bold justify-center gap-2"
+                    >
+                      <User className="w-4 h-4" strokeWidth={2} />
+                      {t.login}
+                    </button>
+                  )}
 
                   <div className="header-mobile-divider" />
 
@@ -733,91 +800,53 @@ export default function Header({
 
                   <div className="header-mobile-divider" />
 
-                  {user ? (
-                    <div className="header-mobile-account">
-                      {isAdmin ? (
-                        <div className="header-mobile-supplier">
-                          <AdminSupplierWalletsCard
-                            t={t}
-                            variant="compact"
-                            g2bulkBalance={g2bulkWallet != null ? g2bulkWallet.balance : null}
-                            g2bulkError={g2bulkError}
-                            g2bulkFetched={g2bulkFetched}
-                            samWallets={samWallets}
-                            samError={samError}
-                            samNotConfigured={samNotConfigured}
-                            samFetched={samFetched}
-                            loading={supplierWalletsLoading}
-                            idle={supplierWalletsIdle}
-                            sypPerUsd={sypPerUsd}
-                            onOpenDashboard={() => handleNav('/dashboard')}
-                            onOpenPayments={() => handleNav('/dashboard/payments')}
-                            onOpenExchangeRate={openExchangeRateSettings}
-                          />
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => { onRecharge(); setIsMenuOpen(false); }}
-                          className="header-mobile-action"
-                        >
-                          <Wallet className="w-4 h-4 text-[var(--accent)]" strokeWidth={2} />
-                          <span>{t.recharge}</span>
-                          <span className="header-balance">{formatMoney(user.balance || 0)}</span>
-                        </button>
-                      )}
+                  {/* Bottom — compact cart + notifications, wide sign out */}
+                  <div className="header-mobile-bottom">
+                    <div className="header-mobile-bottom-row">
+                      <button
+                        type="button"
+                        onClick={() => handleNav('/cart')}
+                        className="header-mobile-bottom-btn"
+                        aria-label={t.cart}
+                      >
+                        <span className="relative inline-flex">
+                          <ShoppingCart className="w-[18px] h-[18px] text-[var(--accent)]" strokeWidth={2} />
+                          {cartLength > 0 && (
+                            <span className="header-cart-badge header-cart-badge--burger" dir="ltr" aria-hidden="true">
+                              {cartLength > 99 ? '99+' : cartLength}
+                            </span>
+                          )}
+                        </span>
+                        <span>{t.cart}</span>
+                      </button>
 
-                      <div className="header-mobile-profile-row">
-                        <button
-                          type="button"
-                          onClick={() => handleNav('/profile')}
-                          className="header-mobile-profile-card"
-                        >
-                          <ProfileAvatar
-                            name={user.name}
-                            email={user.email}
-                            avatarUrl={user.avatar_url}
-                            size="sm"
-                            className="header-avatar header-avatar--md flex-shrink-0"
-                          />
-                          <div className="min-w-0 flex-1 text-left">
-                            <div className="text-sm font-bold text-[var(--text-primary)] truncate">{user.name}</div>
-                            <div className="text-[11px] text-[var(--text-muted)] truncate">{user.email}</div>
-                            {!isAdmin && (partnerTier || isInfluencer || user?.verified_at) ? (
-                              <div className="mt-1.5">
-                                <UserRoleBadges
-                                  t={t}
-                                  lang={lang}
-                                  partnerTier={partnerTier}
-                                  isInfluencer={isInfluencer}
-                                  verified={!!user?.verified_at}
-                                  size="sm"
-                                />
-                              </div>
-                            ) : null}
-                          </div>
-                          <ChevronRight className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0" strokeWidth={2} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { closeAll(); onLogout(); }}
-                          className="header-btn header-btn--danger header-btn-icon header-mobile-logout-btn"
-                          aria-label={t.logout}
-                        >
-                          <LogOut className="w-4 h-4" strokeWidth={2} />
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { closeAll(); onOpenNotificationsInbox(); }}
+                        className="header-mobile-bottom-btn"
+                        aria-label={t.notifications}
+                      >
+                        <span className="relative inline-flex">
+                          <Bell className="w-[18px] h-[18px] text-[var(--accent)]" strokeWidth={2} />
+                          {unreadCount > 0 && (
+                            <span className="header-cart-badge header-cart-badge--burger" dir="ltr" aria-hidden="true">
+                              {unreadCount > 99 ? '99+' : unreadCount}
+                            </span>
+                          )}
+                        </span>
+                        <span>{t.notifications}</span>
+                      </button>
                     </div>
-                  ) : (
+
                     <button
                       type="button"
-                      onClick={() => handleNav('/login')}
-                      className="header-btn header-btn--accent w-full h-11 text-sm font-bold justify-center gap-2"
+                      onClick={() => { closeAll(); onLogout(); }}
+                      className="header-mobile-signout"
                     >
-                      <User className="w-4 h-4" strokeWidth={2} />
-                      {t.login}
+                      <LogOut className="w-4 h-4" strokeWidth={2} />
+                      {t.logout}
                     </button>
-                  )}
+                  </div>
                 </div>
               </motion.div>
             </>
