@@ -169,8 +169,8 @@ body.modal-open {
   position: fixed;
   inset: 0;
   background: color-mix(in srgb, #000 70%, transparent);
-  backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
 }
 
 .modal-scrim {
@@ -2248,6 +2248,9 @@ html, body {
   z-index: var(--z-header);
   overflow: visible;
   background: var(--bg-header);
+  background: color-mix(in srgb, var(--bg-header) 86%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
   box-shadow: 0 6px 18px color-mix(in srgb, var(--bg-primary) 22%, transparent);
 }
@@ -3151,9 +3154,10 @@ html, body {
   position: fixed;
   inset: 0;
   z-index: var(--z-mobile-backdrop);
-  background: color-mix(in srgb, var(--bg-primary) 42%, transparent);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: var(--bg-primary);
+  background: color-mix(in srgb, var(--bg-primary) 46%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
   border: none;
   cursor: pointer;
 }
@@ -3165,9 +3169,10 @@ html, body {
   bottom: 0;
   width: min(86vw, 340px);
   z-index: var(--z-mobile-drawer);
-  background: color-mix(in srgb, var(--bg-header) 82%, transparent);
-  backdrop-filter: blur(10px) saturate(1.2);
-  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  background: var(--bg-header);
+  background: color-mix(in srgb, var(--bg-header) 90%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
   border-left: 1px solid var(--border);
   box-shadow: -14px 0 42px rgba(0, 0, 0, 0.5);
   overflow-y: auto;
@@ -3488,9 +3493,10 @@ html, body {
   max-width: 26rem;
   padding: 0.35rem;
   border-radius: 1.6rem;
-  background: color-mix(in srgb, var(--bg-header) 72%, transparent);
-  backdrop-filter: blur(16px) saturate(1.4);
-  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  background: var(--bg-header);
+  background: color-mix(in srgb, var(--bg-header) 90%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
   border: 1px solid var(--border);
   box-shadow:
     0 14px 36px color-mix(in srgb, var(--bg-primary) 42%, transparent);
@@ -5652,8 +5658,8 @@ html, body {
 /* Notification toast */
 .toast {
   background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
-  backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
   border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent),
@@ -8098,8 +8104,8 @@ button.admin-profit-customer-order__id {
       transparent 45%
     ),
     color-mix(in srgb, var(--bg-header) 62%, transparent);
-  backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid color-mix(in srgb, #ffffff 12%, transparent);
   box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 10%, transparent);
 }
@@ -8184,8 +8190,8 @@ button.admin-profit-customer-order__id {
       transparent 50%
     ),
     color-mix(in srgb, var(--bg-header) 58%, transparent);
-  backdrop-filter: blur(20px) saturate(160%);
   -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
 }
 
 /* Desktop uses the sidebar accordion instead (beats the base display:flex) */
@@ -8844,8 +8850,8 @@ button.admin-profit-customer-order__id {
   z-index: 45;
   border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg-surface) 95%, transparent);
-  backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   padding: 0.75rem 1rem;
   padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
   box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.45);
