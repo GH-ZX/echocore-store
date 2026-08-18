@@ -141,7 +141,7 @@ export default function ProductCarousel({
   const slideCount = slides.length;
 
   const sectionClassName = useMemo(
-    () => 'mt-4 sm:mt-8 relative overflow-hidden rounded-[20px] border border-[var(--border-strong)]/60 shadow-[0_8px_32px_rgba(0,0,0,0.4)]',
+    () => 'mt-4 sm:mt-8 relative overflow-hidden rounded-[20px] border border-[var(--border-strong)]/60 shadow-none sm:shadow-[0_8px_32px_rgba(0,0,0,0.4)]',
     [],
   );
 
@@ -347,10 +347,9 @@ export default function ProductCarousel({
 
       {slides.length > 0 && (
       <div
-        className="relative"
+        className="carousel-strip relative"
         style={{
           background: 'transparent',
-          boxShadow: 'var(--carousel-strip-shadow)',
           '--carousel-logo-color': logoLineColor || undefined,
         }}
       >

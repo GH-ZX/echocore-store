@@ -10181,3 +10181,19 @@ button.profile-list-item {
 [data-color-mode='light'] .catalog-hero [class*='text-red-200'] { color: #fecaca; }
 [data-color-mode='light'] .catalog-hero [class*='text-emerald-200'] { color: #a7f3d0; }
 [data-color-mode='light'] .catalog-hero [class*='text-amber-200'] { color: #fde68a; }
+
+/* Carousel strip shadow lives here so mobile can soften it (the big upward
+   glow reads as a heavy blob on small screens). */
+.carousel-strip {
+  box-shadow: var(--carousel-strip-shadow);
+}
+
+@media (max-width: 767px) {
+  .carousel-strip {
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05), 0 -3px 10px rgba(0, 0, 0, 0.22);
+  }
+
+  [data-color-mode='light'] .carousel-strip {
+    box-shadow: 0 1px 0 var(--border), 0 -3px 8px color-mix(in srgb, var(--text-primary) 10%, transparent);
+  }
+}
