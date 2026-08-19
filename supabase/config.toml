@@ -2,12 +2,11 @@
 verify_jwt = false
 
 # Server-side fulfillment reconciliation sweep (pg_cron -> pg_net -> this function).
-# JWT off so pg_net can hit it with x-g2bulk-cron-secret; longer timeout for polling.
+# JWT off so pg_net can hit it with x-g2bulk-cron-secret.
+# NOTE: function timeout is NOT configurable here — set it in the Supabase
+# dashboard (Edge Functions → g2bulk-fulfill-cron → timeout, e.g. 300s).
 [functions.g2bulk-fulfill-cron]
 verify_jwt = false
-
-[functions.g2bulk-fulfill-cron.limits]
-timeout = 300
 
 # App-level auth in the function. JWT off so G2Bulk top-up webhooks can POST without a Supabase token.
 [functions.g2bulk]

@@ -78,6 +78,9 @@ export default function OfferDetail({
   const gameName = displayGame ? getGameDisplayName(displayGame, lang) : '';
   const offerName = getOfferDisplayName(offer, lang, descriptionContext);
   const description = getOfferDescription(offer, lang, descriptionContext, t);
+  const offerInstructions = (lang === 'ar' ? offer.instructions_ar : offer.instructions_en)
+    || (lang === 'ar' ? offer.instructions_en : offer.instructions_ar)
+    || '';
   const steps = getRedemptionSteps(game, t, lang);
   const heroImage = offer.sale_image_url || offer.image_url || displayGame?.image_url;
   const catalogTrail = displayGame
@@ -169,6 +172,20 @@ export default function OfferDetail({
               {description}
             </p>
           </section>
+
+          {offerInstructions && (
+            <section className="card p-5 sm:p-6">
+              <div className="flex items-center justify-between gap-2 mb-4">
+                <h2 className="font-bold text-lg sm:text-xl inline-flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-[var(--accent)] shrink-0" />
+                  {t.offerInstructionsTitle}
+                </h2>
+              </div>
+              <div className="whitespace-pre-wrap text-[var(--text-sec)] leading-relaxed text-sm sm:text-base">
+                {offerInstructions}
+              </div>
+            </section>
+          )}
 
           <section className="card p-5 sm:p-6">
             <h2 className="font-bold text-lg sm:text-xl mb-4">{t.howToApply}</h2>

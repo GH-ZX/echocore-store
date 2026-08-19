@@ -233,7 +233,7 @@ async function resolveApiKeyRaw(serviceClient: ReturnType<typeof createClient>) 
 async function loadStoreSettingsRow(serviceClient: ReturnType<typeof createClient>) {
   const { data, error } = await serviceClient
     .from('store_settings')
-    .select('g2bulk_enabled, g2bulk_markup_percent, g2bulk_catalog_only, g2bulk_catalog_mode, g2bulk_last_sync_at, g2bulk_last_check_at, g2bulk_check_summary, g2bulk_auto_sync_enabled, g2bulk_auto_sync_hour, g2bulk_auto_sync_timezone, g2bulk_auto_approve, g2bulk_block_when_wallet_low, g2bulk_pull_selection, g2bulk_api_key')
+    .select('g2bulk_enabled, g2bulk_markup_percent, g2bulk_catalog_only, g2bulk_catalog_mode, g2bulk_last_sync_at, g2bulk_last_check_at, g2bulk_check_summary, g2bulk_auto_sync_enabled, g2bulk_auto_sync_hour, g2bulk_auto_sync_timezone, g2bulk_auto_approve, g2bulk_block_when_wallet_low, g2bulk_auto_refund_on_fail, g2bulk_pull_selection, g2bulk_api_key')
     .eq('id', 1)
     .maybeSingle();
 
@@ -266,6 +266,7 @@ function buildSettingsEnvelope(row: Json | null | undefined, envKey: string | nu
     g2bulk_auto_sync_timezone: String(settingsRow.g2bulk_auto_sync_timezone || 'Asia/Damascus'),
     g2bulk_auto_approve: true,
     g2bulk_block_when_wallet_low: settingsRow.g2bulk_block_when_wallet_low !== false,
+    g2bulk_auto_refund_on_fail: settingsRow.g2bulk_auto_refund_on_fail !== false,
     g2bulk_pull_selection: settingsRow.g2bulk_pull_selection || {},
     g2bulk_api_key_set: !!(apiKey || envKeyTrimmed),
     g2bulk_api_key_masked: apiKey
@@ -2305,6 +2306,9 @@ Deno.serve(async (req) => {
     if (payload.blockWhenWalletLow !== undefined) {
       updates.g2bulk_block_when_wallet_low = !!payload.blockWhenWalletLow;
     }
+    if (payload.autoRefundOnFail !== undefined) {
+      updates.g2bulk_auto_refund_on_fail = !!payload.autoRefundOnFail;
+    }
     const { error } = await serviceClient.from('store_settings').update(updates).eq('id', 1);
     if (error) {
       return jsonResponse({ success: false, message: error.message }, 500);
@@ -2399,10 +2403,47 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: true, skipped: true, fulfillmentStatus: 'fulfilled' });
     }
 
+    // ── Per-order in-flight lock ──────────────────────────────────────────
+    // Concurrent fulfillOrder invocations (buy-flow call + success-page
+    // auto-fulfill + background poll) raced here: one placed the G2Bulk
+    // purchase while another — having read the order before the supplier id
+    // was persisted — hit the wallet guard on the drained wallet and
+    // auto-refunded. The code was delivered anyway → customer kept the code
+    // AND got a refund. Serialize per order: only one invocation may work.
+    const lockToken = crypto.randomUUID();
+    const { data: lockAcquired, error: lockError } = await serviceClient.rpc(
+      'acquire_order_fulfillment_lock',
+      { p_order_id: orderId, p_token: lockToken, p_stale_seconds: 120 },
+    );
+    if (lockError || lockAcquired !== true) {
+      return jsonResponse({
+        success: true,
+        pending: true,
+        fulfillmentStatus: order.fulfillment_status || 'fulfilling',
+        message: 'Another fulfillment is already running for this order.',
+        reason: 'fulfillment_in_flight',
+        inFlight: true,
+      }, 200);
+    }
+    let lockHeld = true;
+    const releaseFulfillmentLock = async () => {
+      if (!lockHeld) return;
+      lockHeld = false;
+      try {
+        await serviceClient.rpc('release_order_fulfillment_lock', {
+          p_order_id: orderId,
+          p_token: lockToken,
+        });
+      } catch {
+        /* best effort — lock auto-expires after 120s */
+      }
+    };
+
     // Note: do NOT early-return on `fulfilling` — G2Bulk top-ups often need
     // multi-minute polls; a second call continues / re-polls supplier status.
 
-    const orderMeta = (order.g2bulk_metadata && typeof order.g2bulk_metadata === 'object')
+    const runFulfillment = async (): Promise<Response> => {
+      const orderMeta = (order.g2bulk_metadata && typeof order.g2bulk_metadata === 'object')
       ? order.g2bulk_metadata as Json
       : {};
 
@@ -2430,7 +2471,7 @@ Deno.serve(async (req) => {
 
     const existingSupplierId = resolveStoredSupplierOrderId();
     // HARD RULE: any known supplier order id ⇒ poll-only forever (no second top-up/voucher).
-    const pollOnly = clientPollOnly || !!existingSupplierId;
+    let pollOnly = clientPollOnly || !!existingSupplierId;
 
     // CRITICAL: never place a NEW G2Bulk purchase after the customer was refunded.
     // Soft-timeout restore used to re-open refunded rows → free multi-topups.
@@ -2583,33 +2624,59 @@ Deno.serve(async (req) => {
     if (blockWhenWalletLow && !primaryG2bulkOrderId && !pollOnly && requiredSupplierCost > 0) {
       const walletBalance = await fetchSupplierWalletBalance(apiKey!);
       if (Number.isFinite(walletBalance) && walletBalance + 0.001 < requiredSupplierCost) {
-        const failMeta = {
-          reason: REASON_INSUFFICIENT_SUPPLIER_BALANCE,
-          failure_reason: REASON_INSUFFICIENT_SUPPLIER_BALANCE,
-          walletBalance,
-          requiredCost: requiredSupplierCost,
-          detail: `wallet ${walletBalance} < required ${requiredSupplierCost}`,
-        };
-        for (const row of items) {
-          await serviceClient
-            .from('order_items')
-            .update({ fulfillment_status: 'failed' })
-            .eq('id', row.id);
+        // Defense-in-depth: a previous invocation may have placed this order's
+        // purchase but crashed before persisting the supplier id (stale lock).
+        // Never fail+refund in that case — resume poll-only and fetch the codes.
+        const { data: freshOrder } = await serviceClient
+          .from('orders')
+          .select('g2bulk_order_id, g2bulk_metadata')
+          .eq('id', orderId)
+          .maybeSingle();
+        const freshMeta = (freshOrder?.g2bulk_metadata
+          && typeof freshOrder.g2bulk_metadata === 'object')
+          ? freshOrder.g2bulk_metadata as Json
+          : {};
+        const freshSupplierId = String(
+          freshOrder?.g2bulk_order_id
+          || freshMeta.g2bulk_order_id
+          || freshMeta.g2bulkOrderId
+          || freshMeta.supplier_order_id
+          || freshMeta.supplierOrderId
+          || '',
+        ).trim();
+        if (freshSupplierId && freshSupplierId !== 'null' && freshSupplierId !== 'undefined') {
+          primaryG2bulkOrderId = freshSupplierId;
+          pollOnly = true;
+          // Fall through to the poll-only resume path below.
+        } else {
+          const failMeta = {
+            reason: REASON_INSUFFICIENT_SUPPLIER_BALANCE,
+            failure_reason: REASON_INSUFFICIENT_SUPPLIER_BALANCE,
+            walletBalance,
+            requiredCost: requiredSupplierCost,
+            detail: `wallet ${walletBalance} < required ${requiredSupplierCost}`,
+          };
+          for (const row of items) {
+            await serviceClient
+              .from('order_items')
+              .update({ fulfillment_status: 'failed' })
+              .eq('id', row.id);
+          }
+          await serviceClient.rpc('apply_g2bulk_fulfillment', {
+            p_order_id: orderId,
+            p_fulfillment_status: 'failed',
+            p_error: ERR_INSUFFICIENT_SUPPLIER_BALANCE,
+            p_metadata: failMeta,
+          });
+          return jsonResponse({
+            success: false,
+            message: ERR_INSUFFICIENT_SUPPLIER_BALANCE,
+            fulfillmentStatus: 'failed',
+            reason: REASON_INSUFFICIENT_SUPPLIER_BALANCE,
+            walletBalance,
+            requiredCost: requiredSupplierCost,
+          }, 402);
         }
-        await serviceClient.rpc('apply_g2bulk_fulfillment', {
-          p_order_id: orderId,
-          p_fulfillment_status: 'failed',
-          p_error: ERR_INSUFFICIENT_SUPPLIER_BALANCE,
-          p_metadata: failMeta,
-        });
-        return jsonResponse({
-          success: false,
-          message: ERR_INSUFFICIENT_SUPPLIER_BALANCE,
-          fulfillmentStatus: 'failed',
-          reason: REASON_INSUFFICIENT_SUPPLIER_BALANCE,
-          walletBalance,
-          requiredCost: requiredSupplierCost,
-        }, 402);
       }
     }
 
@@ -2940,6 +3007,13 @@ Deno.serve(async (req) => {
         message,
         fulfillmentStatus: soft ? 'fulfilling' : 'failed',
       }, soft ? 200 : 500);
+    }
+    };
+
+    try {
+      return await runFulfillment();
+    } finally {
+      await releaseFulfillmentLock();
     }
   }
 

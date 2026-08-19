@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
-import { Loader2, CheckCircle, User, QrCode, Clock, Ticket, Zap, Gift, Wallet } from 'lucide-react';
+import { Loader2, CheckCircle, User, QrCode, Clock, Ticket, Zap, Gift, Wallet, Info } from 'lucide-react';
 import AlertBanner from '../components/ui/AlertBanner';
 import EmptyState from '../components/ui/EmptyState';
 import CharnameField from '../components/catalog/CharnameField';
@@ -456,6 +456,9 @@ export default function BuyView({
   };
 
   const name = getOfferDisplayName(offer, lang, { game, games, relatedOffers: offers });
+  const offerInstructions = (lang === 'ar' ? offer.instructions_ar : offer.instructions_en)
+    || (lang === 'ar' ? offer.instructions_en : offer.instructions_ar)
+    || '';
   const regionLabel = game?.region_label || offer?.region || null;
   const gameName = brandUserText(lang === 'ar' ? game.name_ar : game.name_en);
   const purchaseSubtitle = regionLabel ? `${gameName} (${regionLabel}) • ${name}` : `${gameName} • ${name}`;
@@ -604,6 +607,18 @@ export default function BuyView({
             </p>
           )}
         </div>
+
+        {offerInstructions && (
+          <div className="mb-6 rounded-2xl border border-[var(--accent)]/25 bg-[var(--accent)]/5 p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-sec)] mb-1">
+              <Info className="w-4 h-4 text-[var(--accent)]" />
+              {t.offerInstructionsTitle}
+            </div>
+            <div className="whitespace-pre-wrap text-[13px] text-[var(--text-sec)] leading-relaxed">
+              {offerInstructions}
+            </div>
+          </div>
+        )}
 
         <div className="flex justify-between items-baseline mb-6 p-4 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)]">
           <div className="text-sm text-[var(--text-muted)]">{t.total}</div>

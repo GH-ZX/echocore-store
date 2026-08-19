@@ -132,6 +132,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     g2bulk_catalog_only: true,
     g2bulk_catalog_mode: 'sync',
     g2bulk_block_when_wallet_low: true,
+    g2bulk_auto_refund_on_fail: true,
     g2bulk_auto_sync_enabled: true,
     g2bulk_auto_sync_hour: 5,
     g2bulk_auto_sync_timezone: 'Asia/Damascus',
@@ -176,6 +177,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         g2bulk_catalog_only: data.g2bulk_catalog_only ?? true,
         g2bulk_catalog_mode: normalizeCatalogMode(data.g2bulk_catalog_mode),
         g2bulk_block_when_wallet_low: data.g2bulk_block_when_wallet_low !== false,
+        g2bulk_auto_refund_on_fail: data.g2bulk_auto_refund_on_fail !== false,
         g2bulk_auto_sync_enabled: data.g2bulk_auto_sync_enabled ?? true,
         g2bulk_auto_sync_hour: data.g2bulk_auto_sync_hour ?? 5,
         g2bulk_auto_sync_timezone: data.g2bulk_auto_sync_timezone || 'Asia/Damascus',
@@ -223,6 +225,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
       autoSyncHour: Number(payload.g2bulk_auto_sync_hour),
       autoSyncTimezone: payload.g2bulk_auto_sync_timezone,
       blockWhenWalletLow: payload.g2bulk_block_when_wallet_low !== false,
+      autoRefundOnFail: payload.g2bulk_auto_refund_on_fail !== false,
       apiKey: apiKeyInput.trim() ? apiKeyInput.trim() : undefined,
     });
     if (apiKeyInput.trim()) setApiKeyInput('');
@@ -241,6 +244,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         g2bulk_catalog_only: saved.g2bulk_catalog_only ?? prev.g2bulk_catalog_only,
         g2bulk_catalog_mode: saved.g2bulk_catalog_mode || prev.g2bulk_catalog_mode,
         g2bulk_block_when_wallet_low: saved.g2bulk_block_when_wallet_low ?? prev.g2bulk_block_when_wallet_low,
+        g2bulk_auto_refund_on_fail: saved.g2bulk_auto_refund_on_fail ?? prev.g2bulk_auto_refund_on_fail,
         g2bulk_auto_sync_enabled: saved.g2bulk_auto_sync_enabled ?? prev.g2bulk_auto_sync_enabled,
         g2bulk_auto_sync_hour: saved.g2bulk_auto_sync_hour ?? prev.g2bulk_auto_sync_hour,
         g2bulk_auto_sync_timezone: saved.g2bulk_auto_sync_timezone || prev.g2bulk_auto_sync_timezone,
@@ -901,6 +905,22 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
           </label>
           <p className="text-xs text-[var(--text-muted)] leading-relaxed">
             {t.g2bulkBlockWhenWalletLowHelp}
+          </p>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.g2bulk_auto_refund_on_fail !== false}
+              onChange={(e) => setForm((p) => ({ ...p, g2bulk_auto_refund_on_fail: e.target.checked }))}
+              className="rounded border-[var(--border)]"
+            />
+            <span className="text-sm">
+              {t.g2bulkAutoRefundOnFail
+                || 'Auto-refund customer on fulfillment failure'}
+            </span>
+          </label>
+          <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+            {t.g2bulkAutoRefundOnFailHelp
+              || 'OFF: failed orders are not refunded automatically — handle them manually (top up G2Bulk wallet and re-fulfill, or refund from admin).'}
           </p>
           <label className="flex items-center gap-3 cursor-pointer">
             <input

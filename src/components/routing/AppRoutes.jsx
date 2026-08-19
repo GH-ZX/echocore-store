@@ -484,6 +484,7 @@ export default function AppRoutes({
                 t={t}
                 lang={lang}
                 user={user}
+                offers={offers}
                 onFulfillOrder={onFulfillOrder}
               />
             </ProtectedRoute>

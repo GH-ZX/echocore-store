@@ -31,6 +31,9 @@ export default function AdminOfferEditModal({
     pricing_mode: 'auto',
     pricing_margin_percent: '',
     description_en: '',
+    description_ar: '',
+    instructions_en: '',
+    instructions_ar: '',
     sale_image_url: '',
     is_sale: false,
     original_price: '',
@@ -90,6 +93,9 @@ export default function AdminOfferEditModal({
         pricing_mode: 'auto',
         pricing_margin_percent: '',
         description_en: '',
+        description_ar: '',
+        instructions_en: '',
+        instructions_ar: '',
         sale_image_url: '',
         is_sale: !!offer.is_sale,
         original_price: '',
@@ -109,6 +115,9 @@ export default function AdminOfferEditModal({
         pricing_mode: normalizePricingMode(offer.pricing_mode),
         pricing_margin_percent: offer.pricing_margin_percent ?? '',
         description_en: offer.description_en || offer.description_ar || '',
+        description_ar: offer.description_ar || offer.description_en || '',
+        instructions_en: offer.instructions_en || offer.instructions_ar || '',
+        instructions_ar: offer.instructions_ar || offer.instructions_en || '',
         sale_image_url: offer.sale_image_url || '',
         is_sale: !!offer.is_sale,
         original_price: offer.original_price || '',
@@ -259,6 +268,8 @@ export default function AdminOfferEditModal({
           : null,
         description_en: desc,
         description_ar: desc,
+        instructions_en: (form.instructions_en || '').trim() || null,
+        instructions_ar: (form.instructions_ar || form.instructions_en || '').trim() || null,
         sale_image_url: finalSaleImage,
         is_sale: !!form.is_sale,
         original_price: form.is_sale ? (parseFloat(form.original_price) || null) : null,
@@ -597,6 +608,30 @@ export default function AdminOfferEditModal({
             />
             <p className="text-[11px] text-[var(--text-muted)] mt-1.5 leading-relaxed">
               {t.offerDescriptionPlaceholderHelp}
+            </p>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 block">
+              {t.offerInstructions || 'Instructions (EN)'}
+            </label>
+            <textarea
+              placeholder={t.offerInstructionsPlaceholder}
+              value={form.instructions_en}
+              onChange={(e) => setForm({ ...form, instructions_en: e.target.value })}
+              className="input w-full h-24 resize-y"
+            />
+            <label className="text-xs font-semibold text-[var(--text-sec)] mb-1 mt-3 block">
+              {t.offerInstructionsAr || 'Instructions (AR)'}
+            </label>
+            <textarea
+              placeholder={t.offerInstructionsArPlaceholder}
+              value={form.instructions_ar}
+              onChange={(e) => setForm({ ...form, instructions_ar: e.target.value })}
+              className="input w-full h-24 resize-y"
+            />
+            <p className="text-[11px] text-[var(--text-muted)] mt-1.5 leading-relaxed">
+              {t.offerInstructionsHelp}
             </p>
           </div>
 

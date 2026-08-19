@@ -1477,6 +1477,11 @@ ALTER TABLE public.offers
   ADD COLUMN IF NOT EXISTS g2bulk_catalogue_id integer,
   ADD COLUMN IF NOT EXISTS g2bulk_synced_at timestamptz;
 
+-- Per-offer "how it works / how to redeem" instructions (editable in admin, shown on product/buy/success pages).
+ALTER TABLE public.offers
+  ADD COLUMN IF NOT EXISTS instructions_en text,
+  ADD COLUMN IF NOT EXISTS instructions_ar text;
+
 CREATE UNIQUE INDEX IF NOT EXISTS games_g2bulk_game_code_uidx
   ON public.games (g2bulk_game_code)
   WHERE g2bulk_game_code IS NOT NULL;
@@ -1521,6 +1526,13 @@ ALTER TABLE public.store_settings
 -- OFF: allow checkout even with a low wallet — failed orders are refunded instead.
 ALTER TABLE public.store_settings
   ADD COLUMN IF NOT EXISTS g2bulk_block_when_wallet_low boolean NOT NULL DEFAULT true;
+
+-- Auto-refund the customer's balance when fulfillment fails.
+-- ON (default): failed balance orders refund automatically (current behavior).
+-- OFF: no auto-refund — order stays failed and an admin handles it manually
+-- (top up G2Bulk wallet + re-fulfill, or refund via admin tools).
+ALTER TABLE public.store_settings
+  ADD COLUMN IF NOT EXISTS g2bulk_auto_refund_on_fail boolean NOT NULL DEFAULT true;
 
 -- Admin settings (extended)
 
@@ -1657,7 +1669,8 @@ CREATE OR REPLACE FUNCTION public.save_g2bulk_settings(
   p_catalog_mode text DEFAULT null,
   p_charm_pricing_enabled boolean DEFAULT null,
   p_auto_approve boolean DEFAULT null,
-  p_block_when_wallet_low boolean DEFAULT null
+  p_block_when_wallet_low boolean DEFAULT null,
+  p_auto_refund_on_fail boolean DEFAULT null
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1684,6 +1697,7 @@ BEGIN
     g2bulk_auto_sync_timezone = COALESCE(nullif(trim(p_auto_sync_timezone), ''), g2bulk_auto_sync_timezone, 'Asia/Damascus'),
     g2bulk_auto_approve = COALESCE(p_auto_approve, g2bulk_auto_approve, true),
     g2bulk_block_when_wallet_low = COALESCE(p_block_when_wallet_low, g2bulk_block_when_wallet_low, true),
+    g2bulk_auto_refund_on_fail = COALESCE(p_auto_refund_on_fail, g2bulk_auto_refund_on_fail, true),
     g2bulk_api_key = CASE
       WHEN p_api_key IS NOT NULL THEN v_trim_key
       ELSE g2bulk_api_key
@@ -1695,8 +1709,8 @@ BEGIN
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.save_g2bulk_settings(boolean, numeric, text, boolean, boolean, smallint, text, text, boolean, boolean, boolean) FROM public;
-GRANT EXECUTE ON FUNCTION public.save_g2bulk_settings(boolean, numeric, text, boolean, boolean, smallint, text, text, boolean, boolean, boolean) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.save_g2bulk_settings(boolean, numeric, text, boolean, boolean, smallint, text, text, boolean, boolean, boolean, boolean) FROM public;
+GRANT EXECUTE ON FUNCTION public.save_g2bulk_settings(boolean, numeric, text, boolean, boolean, smallint, text, text, boolean, boolean, boolean, boolean) TO authenticated;
 
 -- =============================================================================
 -- Â§12  G2Bulk pull selection
@@ -1745,6 +1759,7 @@ BEGIN
     'g2bulk_auto_sync_timezone', COALESCE(v_row.g2bulk_auto_sync_timezone, 'Asia/Damascus'),
     'g2bulk_auto_approve', COALESCE(v_row.g2bulk_auto_approve, true),
     'g2bulk_block_when_wallet_low', COALESCE(v_row.g2bulk_block_when_wallet_low, true),
+    'g2bulk_auto_refund_on_fail', COALESCE(v_row.g2bulk_auto_refund_on_fail, true),
     'g2bulk_pull_selection', COALESCE(v_row.g2bulk_pull_selection, '{}'::jsonb),
     'g2bulk_api_key_set', v_key IS NOT NULL,
     'g2bulk_api_key_masked', CASE
@@ -9659,12 +9674,18 @@ DECLARE
   v_link text;
   v_new_balance numeric;
   v_refunded boolean := false;
+  v_auto_refund boolean := true;
 BEGIN
   SELECT * INTO v_order FROM public.orders WHERE id = p_order_id FOR UPDATE;
 
   IF v_order.id IS NULL THEN
     RAISE EXCEPTION 'Order not found';
   END IF;
+
+  -- Auto-refund toggle: OFF keeps failed orders as-is so an admin handles them
+  -- manually (top up G2Bulk wallet + re-fulfill, or manual refund).
+  SELECT COALESCE(g2bulk_auto_refund_on_fail, true) INTO v_auto_refund
+  FROM public.store_settings WHERE id = 1;
 
   v_prev_status := v_order.fulfillment_status;
   v_meta := COALESCE(v_order.g2bulk_metadata, '{}'::jsonb) || COALESCE(p_metadata, '{}'::jsonb);
@@ -9773,6 +9794,23 @@ BEGIN
     IF v_order.payment_method = 'balance'
        AND COALESCE((v_order.g2bulk_metadata->>'balance_refunded')::boolean, false) = false
     THEN
+      IF NOT v_auto_refund THEN
+        -- Auto-refund disabled (admin setting): do NOT touch the balance.
+        v_meta := v_meta || jsonb_build_object('auto_refund_skipped', true, 'auto_refund_skipped_at', now());
+        UPDATE public.orders
+        SET g2bulk_metadata = v_meta
+        WHERE id = p_order_id;
+        PERFORM public.notify_user(
+          v_order.user_id,
+          'fulfillment_failed',
+          jsonb_build_object(
+            'orderId', p_order_id,
+            'amount', v_order.total,
+            'error', COALESCE(p_error, v_meta->>'last_error')
+          ),
+          v_link
+        );
+      ELSE
       UPDATE public.profiles
       SET balance = COALESCE(balance, 0) + v_order.total
       WHERE id = v_order.user_id
@@ -9814,6 +9852,7 @@ BEGIN
         ),
         v_link
       );
+      END IF;
     ELSE
       PERFORM public.notify_user(
         v_order.user_id,
@@ -9841,6 +9880,88 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.apply_g2bulk_fulfillment(uuid, text, text, jsonb, jsonb, text) FROM public;
 GRANT EXECUTE ON FUNCTION public.apply_g2bulk_fulfillment(uuid, text, text, jsonb, jsonb, text) TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- Per-order fulfillment in-flight lock (serializes concurrent fulfillOrder
+-- invocations so a wallet-guard failure can never race a purchase placement).
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.acquire_order_fulfillment_lock(
+  p_order_id uuid,
+  p_token text,
+  p_stale_seconds int DEFAULT 120
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_meta jsonb;
+  v_active timestamptz;
+BEGIN
+  SELECT g2bulk_metadata INTO v_meta
+  FROM public.orders
+  WHERE id = p_order_id
+  FOR UPDATE;
+
+  IF v_meta IS NULL THEN
+    RETURN false;
+  END IF;
+
+  IF v_meta ? 'in_flight' THEN
+    BEGIN
+      v_active := (v_meta->'in_flight'->>'started_at')::timestamptz;
+    EXCEPTION WHEN OTHERS THEN
+      v_active := NULL;
+    END;
+    IF v_active IS NOT NULL
+       AND v_active > now() - make_interval(secs => p_stale_seconds)
+    THEN
+      RETURN false;
+    END IF;
+  END IF;
+
+  UPDATE public.orders
+  SET g2bulk_metadata = COALESCE(v_meta, '{}'::jsonb) || jsonb_build_object(
+    'in_flight', jsonb_build_object('token', p_token, 'started_at', now())
+  )
+  WHERE id = p_order_id;
+
+  RETURN true;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.release_order_fulfillment_lock(
+  p_order_id uuid,
+  p_token text
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_meta jsonb;
+BEGIN
+  SELECT g2bulk_metadata INTO v_meta
+  FROM public.orders
+  WHERE id = p_order_id;
+
+  IF v_meta IS NULL OR v_meta->'in_flight'->>'token' IS DISTINCT FROM p_token THEN
+    RETURN false;
+  END IF;
+
+  UPDATE public.orders
+  SET g2bulk_metadata = v_meta - 'in_flight'
+  WHERE id = p_order_id;
+
+  RETURN true;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.acquire_order_fulfillment_lock(uuid, text, int) FROM public;
+GRANT EXECUTE ON FUNCTION public.acquire_order_fulfillment_lock(uuid, text, int) TO service_role;
+REVOKE EXECUTE ON FUNCTION public.release_order_fulfillment_lock(uuid, text) FROM public;
+GRANT EXECUTE ON FUNCTION public.release_order_fulfillment_lock(uuid, text) TO service_role;
 
 COMMENT ON FUNCTION public.on_order_completed_notify_admins() IS
   'Notifies all admins when any order becomes completed (balance / Sam / manual).';
@@ -11143,7 +11264,8 @@ SELECT
   created_at,
   g2bulk_type, g2bulk_catalogue_name, g2bulk_product_id,
   catalog_source, g2bulk_catalogue_id, g2bulk_synced_at,
-  card_badge_en, card_badge_ar
+  card_badge_en, card_badge_ar,
+  instructions_en, instructions_ar
 FROM public.offers;
 
 GRANT SELECT ON public.public_offers TO anon, authenticated;

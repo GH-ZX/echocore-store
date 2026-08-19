@@ -1115,6 +1115,8 @@ export default function App() {
     region: source.region || null,
     description_en: source.description_en || '',
     description_ar: source.description_ar || '',
+    instructions_en: source.instructions_en || '',
+    instructions_ar: source.instructions_ar || '',
     sale_image_url: source.sale_image_url || null,
     ...(includeSaleImageCustom ? { sale_image_custom: !!source.sale_image_url } : {}),
     is_sale: !!source.is_sale,
@@ -1137,7 +1139,7 @@ export default function App() {
     const { data, error } = await supabase
       .from('offers')
       .insert(payload)
-      .select('id, game_id, name_en, name_ar, price, amount, region, description_en, description_ar, active, sale_image_url, is_sale, original_price, image_url, image_custom, sale_image_custom, created_at, g2bulk_type, g2bulk_catalogue_name, g2bulk_product_id, catalog_source, g2bulk_catalogue_id, g2bulk_synced_at, pricing_mode')
+      .select('id, game_id, name_en, name_ar, price, amount, region, description_en, description_ar, active, sale_image_url, is_sale, original_price, image_url, image_custom, sale_image_custom, created_at, g2bulk_type, g2bulk_catalogue_name, g2bulk_product_id, catalog_source, g2bulk_catalogue_id, g2bulk_synced_at, pricing_mode, instructions_en, instructions_ar')
       .single();
 
     if (error) {
@@ -1199,7 +1201,7 @@ export default function App() {
       .from('offers')
       .update(updateRow)
       .eq('id', id)
-      .select('id, game_id, name_en, name_ar, price, amount, region, description_en, description_ar, active, sale_image_url, is_sale, original_price, image_url, image_custom, sale_image_custom, created_at, g2bulk_type, g2bulk_catalogue_name, g2bulk_product_id, catalog_source, g2bulk_catalogue_id, g2bulk_synced_at, pricing_mode')
+      .select('id, game_id, name_en, name_ar, price, amount, region, description_en, description_ar, active, sale_image_url, is_sale, original_price, image_url, image_custom, sale_image_custom, created_at, g2bulk_type, g2bulk_catalogue_name, g2bulk_product_id, catalog_source, g2bulk_catalogue_id, g2bulk_synced_at, pricing_mode, instructions_en, instructions_ar')
       .single();
 
     if (error) {
