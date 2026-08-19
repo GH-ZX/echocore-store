@@ -2715,6 +2715,7 @@ BEGIN
           lower(COALESCE(p_balance_filter, 'all')) = 'all'
           OR (lower(p_balance_filter) = 'positive' AND p.balance > 0)
           OR (lower(p_balance_filter) = 'zero' AND p.balance = 0)
+          OR (lower(p_balance_filter) = 'negative' AND p.balance < 0)
         )
         AND (
           lower(COALESCE(p_status_filter, 'all')) = 'all'

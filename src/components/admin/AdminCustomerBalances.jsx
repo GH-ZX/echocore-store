@@ -22,6 +22,7 @@ const BALANCE_FILTERS = [
   { id: 'all', labelKey: 'adminCustomerBalancesFilterAll' },
   { id: 'positive', labelKey: 'adminCustomerBalancesFilterPositive' },
   { id: 'zero', labelKey: 'adminCustomerBalancesFilterZero' },
+  { id: 'negative', labelKey: 'adminCustomerBalancesFilterNegative' },
 ];
 
 export default function AdminCustomerBalances({

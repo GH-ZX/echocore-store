@@ -19,6 +19,7 @@ function applyClientUserFilters(rows, { balanceFilter = 'all', statusFilter = 'a
   const bal = String(balanceFilter || 'all').toLowerCase();
   if (bal === 'positive') list = list.filter((u) => Number(u?.balance || 0) > 0);
   if (bal === 'zero') list = list.filter((u) => Number(u?.balance || 0) === 0);
+  if (bal === 'negative') list = list.filter((u) => Number(u?.balance || 0) < 0);
 
   const status = String(statusFilter || 'all').toLowerCase();
   if (status === 'verified') list = list.filter((u) => !!u?.verified_at);
