@@ -484,6 +484,7 @@ export default function AppRoutes({
                 t={t}
                 lang={lang}
                 user={user}
+                games={games}
                 offers={offers}
                 onFulfillOrder={onFulfillOrder}
               />

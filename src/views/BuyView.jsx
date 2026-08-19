@@ -20,7 +20,7 @@ import PaymentMethodIcon from '../components/ui/PaymentMethodIcon';
 import { formatMessage, formatMoney } from '../lib/i18n';
 import { renderRichTextLinks } from '../lib/richText';
 import { markOrderPaymentSent } from '../lib/orders';
-import { getOfferDisplayName } from '../lib/offerDisplay';
+import { getOfferDisplayName, getOfferHowTo } from '../lib/offerDisplay';
 import { resolveOfferRoute } from '../lib/offerRoutes';
 import { brandUserText } from '../lib/branding';
 import { getSavedGamePlayerEntry } from '../lib/gamePlayerUid';
@@ -457,9 +457,7 @@ export default function BuyView({
   };
 
   const name = getOfferDisplayName(offer, lang, { game, games, relatedOffers: offers });
-  const offerInstructions = (lang === 'ar' ? offer.instructions_ar : offer.instructions_en)
-    || (lang === 'ar' ? offer.instructions_en : offer.instructions_ar)
-    || '';
+  const { text: offerInstructions, steps } = getOfferHowTo(offer, game, lang);
   const regionLabel = game?.region_label || offer?.region || null;
   const gameName = brandUserText(lang === 'ar' ? game.name_ar : game.name_en);
   const purchaseSubtitle = regionLabel ? `${gameName} (${regionLabel}) • ${name}` : `${gameName} • ${name}`;
@@ -609,15 +607,26 @@ export default function BuyView({
           )}
         </div>
 
-        {offerInstructions && (
+        {(offerInstructions || steps.length > 0) && (
           <div className="mb-6 rounded-2xl border border-[var(--accent)]/25 bg-[var(--accent)]/5 p-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-sec)] mb-1">
               <Info className="w-4 h-4 text-[var(--accent)]" />
-              {t.offerInstructionsTitle}
+              {t.howToApply}
             </div>
-            <div className="whitespace-pre-wrap text-[13px] text-[var(--text-sec)] leading-relaxed">
-              {renderRichTextLinks(offerInstructions)}
-            </div>
+            {offerInstructions ? (
+              <div className="whitespace-pre-wrap text-[13px] text-[var(--text-sec)] leading-relaxed">
+                {renderRichTextLinks(offerInstructions)}
+              </div>
+            ) : (
+              <ol className="space-y-2">
+                {steps.map((step, index) => (
+                  <li key={step} className="flex gap-2 text-[13px] text-[var(--text-sec)] leading-relaxed">
+                    <span className="catalog-step-num shrink-0">{index + 1}</span>
+                    <span className="pt-0.5">{step}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
           </div>
         )}
 

@@ -15,6 +15,7 @@ import {
 import { Spinner } from '../components/routing/PageLoader';
 import { fetchMyOrderReceipt } from '../lib/orders';
 import { formatDateTime, formatMoney } from '../lib/i18n';
+import { getOfferHowTo } from '../lib/offerDisplay';
 import { renderRichTextLinks } from '../lib/richText';
 import CustomerReviewForm from '../components/reviews/CustomerReviewForm';
 import OrderStatusStepper from '../components/orders/OrderStatusStepper';
@@ -89,6 +90,7 @@ export default function SuccessView({
   t = {},
   lang = 'ar',
   user,
+  games = [],
   offers = [],
   onFulfillOrder,
 }) {
@@ -314,11 +316,8 @@ export default function SuccessView({
 
   const firstItem = orderItems[0] || {};
   const offerForItem = offers.find((o) => String(o.id) === String(firstItem.offer_id)) || null;
-  const offerInstructions = offerForItem
-    ? ((lang === 'ar' ? offerForItem.instructions_ar : offerForItem.instructions_en)
-      || (lang === 'ar' ? offerForItem.instructions_en : offerForItem.instructions_ar)
-      || '')
-    : '';
+  const gameForItem = games.find((g) => String(g.id) === String(offerForItem?.game_id)) || null;
+  const { text: offerInstructions, steps } = getOfferHowTo(offerForItem, gameForItem, lang);
   const topup = getOrderTopupDeliveryDetails(orderDetails, orderItems);
   const playerUid = topup.playerUid || firstItem.player_uid;
   const playerServer = topup.playerServer || firstItem.player_server;
@@ -490,16 +489,26 @@ export default function SuccessView({
         </div>
       )}
 
-      {hasCodes && offerInstructions && (
+      {hasCodes && (offerInstructions || steps.length > 0) && (
         <div className="card p-6 mb-6 border border-[var(--border)]">
           <div className="flex items-center gap-2 mb-1">
             <AlertTriangle className="w-5 h-5 text-[var(--accent)]" />
-            <h2 className="font-bold text-lg">{t.offerInstructionsSuccessTitle}</h2>
+            <h2 className="font-bold text-lg">{t.howToApply}</h2>
           </div>
-          <p className="text-xs text-[var(--text-muted)] mb-3">{t.offerInstructionsSuccessHint}</p>
-          <div className="whitespace-pre-wrap text-[var(--text-sec)] text-sm leading-relaxed">
-            {renderRichTextLinks(offerInstructions)}
-          </div>
+          {offerInstructions ? (
+            <div className="whitespace-pre-wrap text-[var(--text-sec)] text-sm leading-relaxed mt-3">
+              {renderRichTextLinks(offerInstructions)}
+            </div>
+          ) : (
+            <ol className="space-y-2 mt-3">
+              {steps.map((step, index) => (
+                <li key={step} className="flex gap-2 text-sm text-[var(--text-sec)]">
+                  <span className="catalog-step-num shrink-0">{index + 1}</span>
+                  <span className="pt-0.5">{step}</span>
+                </li>
+              ))}
+            </ol>
+          )}
         </div>
       )}
 

@@ -12,7 +12,7 @@ import OfferPurchasePanel from '../components/catalog/OfferPurchasePanel';
 import {
   getGameDisplayName,
   getOfferDisplayName,
-  getRedemptionSteps,
+  getOfferHowTo,
 } from '../lib/offerDisplay';
 import { getOfferDescription } from '../lib/offerDescriptions';
 import { resolveOfferRoute } from '../lib/offerRoutes';
@@ -79,10 +79,7 @@ export default function OfferDetail({
   const gameName = displayGame ? getGameDisplayName(displayGame, lang) : '';
   const offerName = getOfferDisplayName(offer, lang, descriptionContext);
   const description = getOfferDescription(offer, lang, descriptionContext, t);
-  const offerInstructions = (lang === 'ar' ? offer.instructions_ar : offer.instructions_en)
-    || (lang === 'ar' ? offer.instructions_en : offer.instructions_ar)
-    || '';
-  const steps = getRedemptionSteps(game, t, lang);
+  const { text: offerInstructions, steps } = getOfferHowTo(offer, game, lang);
   const heroImage = offer.sale_image_url || offer.image_url || displayGame?.image_url;
   const catalogTrail = displayGame
     ? buildGameBreadcrumb(displayGame, t, lang, navigate, { offerName })
@@ -174,30 +171,30 @@ export default function OfferDetail({
             </p>
           </section>
 
-          {offerInstructions && (
-            <section className="card p-5 sm:p-6">
-              <div className="flex items-center justify-between gap-2 mb-4">
-                <h2 className="font-bold text-lg sm:text-xl inline-flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-[var(--accent)] shrink-0" />
-                  {t.offerInstructionsTitle}
-                </h2>
-              </div>
+          <section className="card p-5 sm:p-6">
+            <div className="flex items-center justify-between gap-2 mb-4">
+              <h2 className="font-bold text-lg sm:text-xl inline-flex items-center gap-2">
+                <FileText className="w-5 h-5 text-[var(--accent)] shrink-0" />
+                {t.howToApply}
+              </h2>
+              {isAdmin && (
+                <AdminEditButton label={t.edit} onClick={() => setEditingOffer(true)} />
+              )}
+            </div>
+            {offerInstructions ? (
               <div className="whitespace-pre-wrap text-[var(--text-sec)] leading-relaxed text-sm sm:text-base">
                 {renderRichTextLinks(offerInstructions)}
               </div>
-            </section>
-          )}
-
-          <section className="card p-5 sm:p-6">
-            <h2 className="font-bold text-lg sm:text-xl mb-4">{t.howToApply}</h2>
-            <ol className="space-y-3">
-              {steps.map((step, index) => (
-                <li key={step} className="flex gap-3 text-sm text-[var(--text-sec)]">
-                  <span className="catalog-step-num shrink-0">{index + 1}</span>
-                  <span className="pt-0.5">{step}</span>
-                </li>
-              ))}
-            </ol>
+            ) : (
+              <ol className="space-y-3">
+                {steps.map((step, index) => (
+                  <li key={step} className="flex gap-3 text-sm text-[var(--text-sec)]">
+                    <span className="catalog-step-num shrink-0">{index + 1}</span>
+                    <span className="pt-0.5">{step}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
           </section>
 
           {displayGame && (

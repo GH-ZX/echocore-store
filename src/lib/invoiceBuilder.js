@@ -1,5 +1,5 @@
 import { extractDeliveryCodes, formatOrderDisplayId, shortOrderId } from './orderReceipt';
-import { getRedeemInstructions } from './redeemInstructions';
+import { getRedemptionSteps } from './offerDisplay';
 import { formatProfileUsername, getProfileUsername } from './username';
 import { formatMoney as formatMoneyI18n } from './i18n';
 
@@ -83,7 +83,7 @@ function buildOrderLine(item, games, offers, t, lang, fallbackCodes = []) {
     gameName,
     gameSlug: game?.slug || null,
     // Top-ups are already delivered to the UID — no "how to activate" steps.
-    redeemSteps: codes.length > 0 ? getRedeemInstructions(game?.slug, lang) : [],
+    redeemSteps: codes.length > 0 ? getRedemptionSteps(game, t, lang) : [],
     // Editable per-offer instructions (owner-set) — overrides static steps when present.
     instructions: pickOfferInstructions(offer, lang),
     deliveryType: codes.length > 0 ? 'redeem' : hasUid ? 'topup' : 'other',
@@ -103,12 +103,13 @@ export function buildOrderInvoice({
   const lines = items.map((item) => buildOrderLine(item, games, offers, t, lang, orderLevelCodes));
   // If still no per-line codes but order has codes (single pack gift), attach to first line
   if (orderLevelCodes.length > 0 && lines.length > 0 && !lines.some((line) => line.hasCodes)) {
+    const game0 = items[0] ? resolveGameForItem(items[0], games, offers) : null;
     lines[0] = {
       ...lines[0],
       codes: orderLevelCodes,
       hasCodes: true,
       deliveryType: 'redeem',
-      redeemSteps: getRedeemInstructions(lines[0].gameSlug, lang),
+      redeemSteps: getRedemptionSteps(game0, t, lang),
     };
   }
 

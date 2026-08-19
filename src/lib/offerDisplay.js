@@ -218,4 +218,21 @@ export function getRedemptionSteps(game, _t = {}, lang = 'ar') {
     : ['Complete your purchase', 'Use the code or UID from your order receipt', 'Receive delivery right after confirmation'];
 }
 
+/**
+ * Single source of truth for the "how to use" content shown to customers.
+ * Returns the owner-set editable instructions (`text`) when present, else the
+ * default per-game steps (`steps`) as fallback.
+ */
+export function getOfferHowTo(offer, game, lang = 'ar') {
+  const text = offer
+    ? String(
+      lang === 'ar'
+        ? (offer.instructions_ar || offer.instructions_en || '')
+        : (offer.instructions_en || offer.instructions_ar || ''),
+    ).trim()
+    : '';
+  const steps = getRedemptionSteps(game, {}, lang);
+  return { text, steps };
+}
+
 export { isNumericOnlyPackName, isGenericCurrencyLabel };
