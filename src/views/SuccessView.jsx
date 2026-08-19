@@ -15,6 +15,7 @@ import {
 import { Spinner } from '../components/routing/PageLoader';
 import { fetchMyOrderReceipt } from '../lib/orders';
 import { formatDateTime, formatMoney } from '../lib/i18n';
+import { renderRichTextLinks } from '../lib/richText';
 import CustomerReviewForm from '../components/reviews/CustomerReviewForm';
 import OrderStatusStepper from '../components/orders/OrderStatusStepper';
 import {
@@ -497,7 +498,7 @@ export default function SuccessView({
           </div>
           <p className="text-xs text-[var(--text-muted)] mb-3">{t.offerInstructionsSuccessHint}</p>
           <div className="whitespace-pre-wrap text-[var(--text-sec)] text-sm leading-relaxed">
-            {offerInstructions}
+            {renderRichTextLinks(offerInstructions)}
           </div>
         </div>
       )}

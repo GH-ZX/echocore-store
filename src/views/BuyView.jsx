@@ -18,6 +18,7 @@ import {
 import SamInvoicePaymentPanel from '../components/SamInvoicePaymentPanel';
 import PaymentMethodIcon from '../components/ui/PaymentMethodIcon';
 import { formatMessage, formatMoney } from '../lib/i18n';
+import { renderRichTextLinks } from '../lib/richText';
 import { markOrderPaymentSent } from '../lib/orders';
 import { getOfferDisplayName } from '../lib/offerDisplay';
 import { resolveOfferRoute } from '../lib/offerRoutes';
@@ -615,7 +616,7 @@ export default function BuyView({
               {t.offerInstructionsTitle}
             </div>
             <div className="whitespace-pre-wrap text-[13px] text-[var(--text-sec)] leading-relaxed">
-              {offerInstructions}
+              {renderRichTextLinks(offerInstructions)}
             </div>
           </div>
         )}

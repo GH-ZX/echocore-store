@@ -2,6 +2,7 @@ import EchoLogo from '../ui/EchoLogo';
 import { INVOICE_KIND } from '../../lib/invoiceBuilder';
 import { formatInvoiceDate } from '../../lib/invoiceFormat';
 import { formatMessage } from '../../lib/i18n';
+import { renderRichTextLinks } from '../../lib/richText';
 
 function paymentMethodLabel(method, t) {
   if (method === 'balance') return t.payFromBalance;
@@ -111,7 +112,7 @@ function LineDeliveryDetails({ line, t, hideCodes = false }) {
         <div className="invoice-detail-group">
           <div className="invoice-detail-title">{t.invoiceHowToRedeemLabel}</div>
           {hasInstructions ? (
-            <p className="invoice-note invoice-instructions-text whitespace-pre-wrap">{line.instructions}</p>
+            <p className="invoice-note invoice-instructions-text whitespace-pre-wrap">{renderRichTextLinks(line.instructions)}</p>
           ) : (
             <ol className="invoice-detail-steps">
               {line.redeemSteps.map((step) => (

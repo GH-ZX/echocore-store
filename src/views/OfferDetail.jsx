@@ -18,6 +18,7 @@ import { getOfferDescription } from '../lib/offerDescriptions';
 import { resolveOfferRoute } from '../lib/offerRoutes';
 import { formatMoney } from '../lib/i18n';
 import { buildGameBreadcrumb } from '../lib/catalogNav';
+import { renderRichTextLinks } from '../lib/richText';
 import MobileBuyBar from '../components/catalog/MobileBuyBar';
 import { useOfferAffordability } from '../lib/offerAffordability';
 
@@ -182,7 +183,7 @@ export default function OfferDetail({
                 </h2>
               </div>
               <div className="whitespace-pre-wrap text-[var(--text-sec)] leading-relaxed text-sm sm:text-base">
-                {offerInstructions}
+                {renderRichTextLinks(offerInstructions)}
               </div>
             </section>
           )}
