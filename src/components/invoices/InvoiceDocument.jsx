@@ -54,12 +54,14 @@ function LineDeliveryDetails({ line, t, hideCodes = false }) {
   const hasCodes = !hideCodes && line.hasCodes && codes.length > 0;
   // Activation steps only for redeem-code products — not direct UID top-ups
   const hasSteps = !isTopup && Array.isArray(line.redeemSteps) && line.redeemSteps.length > 0;
+  // Editable per-offer instructions (owner-set); shown even without static steps
+  const hasInstructions = !isTopup && !!line.instructions;
   const topupSuccessNote = t.invoiceTopupSentSuccess
     || 'The balance was sent to your game account successfully.';
   const keepInvoiceNote = t.invoiceKeepForSupport
     || 'Keep this invoice for support if you need anything.';
 
-  if (!hasPlayer && !hasCodes && !hasSteps && !isTopup) return null;
+  if (!hasPlayer && !hasCodes && !hasSteps && !hasInstructions && !isTopup) return null;
 
   return (
     <div className="invoice-item-details">
@@ -105,14 +107,18 @@ function LineDeliveryDetails({ line, t, hideCodes = false }) {
         </div>
       )}
 
-      {hasSteps && (
+      {(hasSteps || hasInstructions) && (
         <div className="invoice-detail-group">
           <div className="invoice-detail-title">{t.invoiceHowToRedeemLabel}</div>
-          <ol className="invoice-detail-steps">
-            {line.redeemSteps.map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ol>
+          {hasInstructions ? (
+            <p className="invoice-note invoice-instructions-text whitespace-pre-wrap">{line.instructions}</p>
+          ) : (
+            <ol className="invoice-detail-steps">
+              {line.redeemSteps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+          )}
         </div>
       )}
     </div>

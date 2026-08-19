@@ -34,8 +34,16 @@ function extractRedemptionInfo(item) {
     .map(([key, value]) => ({ key, value: String(value).trim() }));
 }
 
+function pickOfferInstructions(offer, lang) {
+  if (!offer) return '';
+  const en = String(offer.instructions_en || '').trim();
+  const ar = String(offer.instructions_ar || '').trim();
+  return lang === 'ar' ? (ar || en) : (en || ar);
+}
+
 function buildOrderLine(item, games, offers, t, lang, fallbackCodes = []) {
   const game = resolveGameForItem(item, games, offers);
+  const offer = offers.find((row) => row.id === item.offer_id) || null;
   let codes = extractDeliveryCodes([item]);
   // Single-line gift / voucher orders often only stash codes once (item or order meta).
   if (codes.length === 0 && fallbackCodes.length > 0) {
@@ -76,6 +84,8 @@ function buildOrderLine(item, games, offers, t, lang, fallbackCodes = []) {
     gameSlug: game?.slug || null,
     // Top-ups are already delivered to the UID — no "how to activate" steps.
     redeemSteps: codes.length > 0 ? getRedeemInstructions(game?.slug, lang) : [],
+    // Editable per-offer instructions (owner-set) — overrides static steps when present.
+    instructions: pickOfferInstructions(offer, lang),
     deliveryType: codes.length > 0 ? 'redeem' : hasUid ? 'topup' : 'other',
   };
 }
