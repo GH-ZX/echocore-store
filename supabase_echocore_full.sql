@@ -1440,8 +1440,7 @@ GRANT EXECUTE ON FUNCTION public.get_g2bulk_settings() TO authenticated;
 -- ---------------------------------------------------------------------------
 
 
-REVOKE EXECUTE ON FUNCTION public.save_g2bulk_settings(boolean, numeric, text) FROM public;
-GRANT EXECUTE ON FUNCTION public.save_g2bulk_settings(boolean, numeric, text) TO authenticated;
+-- (dropped: save_g2bulk_settings(boolean, numeric, text) — superseded by 12-param version)
 
 -- ---------------------------------------------------------------------------
 -- 8. Persist fulfillment result (edge function uses service role)
@@ -1501,8 +1500,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS offers_game_catalogue_uidx
 -- Admin G2Bulk settings (extended)
 
 
-REVOKE EXECUTE ON FUNCTION public.save_g2bulk_settings(boolean, numeric, text, boolean) FROM public;
-GRANT EXECUTE ON FUNCTION public.save_g2bulk_settings(boolean, numeric, text, boolean) TO authenticated;
+-- (dropped: save_g2bulk_settings(boolean, numeric, text, boolean) — superseded by 12-param version)
 
 -- =============================================================================
 -- Â§09  G2Bulk auto-sync (pg_cron)
@@ -1540,8 +1538,7 @@ DROP FUNCTION IF EXISTS public.save_g2bulk_settings(boolean, numeric, text, bool
 DROP FUNCTION IF EXISTS public.save_g2bulk_settings(boolean, numeric, text, boolean, boolean);
 
 
-REVOKE EXECUTE ON FUNCTION public.save_g2bulk_settings(boolean, numeric, text, boolean, boolean, smallint, text) FROM public;
-GRANT EXECUTE ON FUNCTION public.save_g2bulk_settings(boolean, numeric, text, boolean, boolean, smallint, text) TO authenticated;
+-- (dropped: save_g2bulk_settings(boolean, numeric, text, boolean, boolean, smallint, text) — superseded by 12-param version)
 
 -- -----------------------------------------------------------------------------
 -- pg_cron: invoke g2bulk-sync-cron every 2 minutes
@@ -9374,6 +9371,20 @@ AS $$
       || 'Top up the supplier wallet so fulfillment can continue.' || E'\n'
       || 'Order: ' || public.telegram_escape(p_metadata->>'orderRef') || E'\n'
       || 'Detail: ' || public.telegram_escape(p_metadata->>'detail')
+    WHEN 'invariantViolation' THEN
+        '<b>⚠️ Invariant violation</b>' || E'\n'
+      || 'Fulfilled order has a refund transaction.' || E'\n'
+      || 'Count: ' || public.telegram_escape(p_metadata->>'count') || E'\n'
+      || 'Detail: ' || public.telegram_escape(p_metadata->>'detail')
+    WHEN 'stuckFulfillment' THEN
+        '<b>⏳ Orders stuck fulfilling</b>' || E'\n'
+      || public.telegram_escape(p_metadata->>'count') || ' order(s) stuck >30 min.' || E'\n'
+      || 'Oldest: ' || public.telegram_escape(p_metadata->>'oldestRef') || E'\n'
+      || 'Detail: ' || public.telegram_escape(p_metadata->>'detail')
+    WHEN 'recentFailures' THEN
+        '<b>❌ Recent fulfillment failures</b>' || E'\n'
+      || public.telegram_escape(p_metadata->>'count') || ' failure(s) in the last 24h.' || E'\n'
+      || 'Detail: ' || public.telegram_escape(p_metadata->>'detail')
     WHEN 'test' THEN
         '<b>ECHOCORE Telegram alerts — test message</b>' || E'\n'
       || 'If you can read this, alerts are working.'
@@ -9402,6 +9413,12 @@ AS $$
       'https://www.echocore412.com/dashboard/users/' || public.telegram_escape(p_metadata->>'username')
     WHEN 'lowWallet' THEN
       'https://www.echocore412.com/dashboard/apis/g2bulk'
+    WHEN 'invariantViolation' THEN
+      'https://www.echocore412.com/dashboard/orders'
+    WHEN 'stuckFulfillment' THEN
+      'https://www.echocore412.com/dashboard/orders?status=fulfilling'
+    WHEN 'recentFailures' THEN
+      'https://www.echocore412.com/dashboard/orders?status=failed'
     ELSE
       NULL
   END;
@@ -9688,6 +9705,33 @@ BEGIN
   FROM public.store_settings WHERE id = 1;
 
   v_prev_status := v_order.fulfillment_status;
+
+  -- ─── Terminal-state guard ────────────────────────────────────────────────
+  -- Once fulfilled, never regress to failed. Late supplier retries, cron
+  -- retries, or manual admin RPCs must not undo a completed delivery.
+  -- The FOR UPDATE lock above serializes concurrent callers, so this
+  -- holds even if the edge function's in-flight lock was bypassed.
+  IF v_prev_status = 'fulfilled' AND p_fulfillment_status = 'failed' THEN
+    v_meta := COALESCE(v_order.g2bulk_metadata, '{}'::jsonb)
+      || COALESCE(p_metadata, '{}'::jsonb)
+      || jsonb_build_object(
+        'ignored_late_failure', true,
+        'ignored_late_failure_at', now(),
+        'ignored_late_failure_prev_g2bulk_order_id', v_order.g2bulk_order_id
+      );
+    UPDATE public.orders
+    SET g2bulk_metadata = v_meta
+    WHERE id = p_order_id;
+    RETURN jsonb_build_object(
+      'orderId', p_order_id,
+      'fulfillmentStatus', v_prev_status,
+      'g2bulkOrderId', v_order.g2bulk_order_id,
+      'deliveryItems', null,
+      'balanceRefunded', false,
+      'ignoredLateFailure', true
+    );
+  END IF;
+
   v_meta := COALESCE(v_order.g2bulk_metadata, '{}'::jsonb) || COALESCE(p_metadata, '{}'::jsonb);
 
   IF p_error IS NOT NULL THEN
@@ -9791,7 +9835,34 @@ BEGIN
     AND v_prev_status IS DISTINCT FROM 'failed'
     AND v_order.user_id IS NOT NULL
   THEN
-    IF v_order.payment_method = 'balance'
+    -- Secondary guard: refuse refund when any item already has delivery
+    -- evidence (codes delivered). The ELSE branch unconditionally overwrites
+    -- item fulfillment_status; we must not refund if product was delivered.
+    IF EXISTS (
+      SELECT 1 FROM public.order_items
+      WHERE order_id = p_order_id
+        AND delivery_items IS NOT NULL
+        AND jsonb_typeof(delivery_items) = 'array'
+        AND jsonb_array_length(delivery_items) > 0
+    ) THEN
+      v_meta := v_meta || jsonb_build_object(
+        'refund_blocked_delivery_evidence', true,
+        'refund_blocked_at', now()
+      );
+      UPDATE public.orders
+      SET g2bulk_metadata = v_meta
+      WHERE id = p_order_id;
+      PERFORM public.notify_user(
+        v_order.user_id,
+        'fulfillment_failed',
+        jsonb_build_object(
+          'orderId', p_order_id,
+          'amount', v_order.total,
+          'error', COALESCE(p_error, v_meta->>'last_error')
+        ),
+        v_link
+      );
+    ELSIF v_order.payment_method = 'balance'
        AND COALESCE((v_order.g2bulk_metadata->>'balance_refunded')::boolean, false) = false
     THEN
       IF NOT v_auto_refund THEN
@@ -9962,6 +10033,91 @@ REVOKE EXECUTE ON FUNCTION public.acquire_order_fulfillment_lock(uuid, text, int
 GRANT EXECUTE ON FUNCTION public.acquire_order_fulfillment_lock(uuid, text, int) TO service_role;
 REVOKE EXECUTE ON FUNCTION public.release_order_fulfillment_lock(uuid, text) FROM public;
 GRANT EXECUTE ON FUNCTION public.release_order_fulfillment_lock(uuid, text) TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- Fulfillment invariant monitors
+-- ---------------------------------------------------------------------------
+-- 1) Fulfilled + refunded: orders that reached 'fulfilled' but also carry a
+--    refund transaction.  Should always return 0 rows.  If the terminal-state
+--    guard ever regresses, this query surfaces it within one cron cycle.
+-- 2) Stuck fulfilling: orders stuck on 'fulfilling' for >30 min.
+-- 3) Recent failures: fulfillment failures in the last 24 hours.
+-- All three are SECURITY DEFINER so they can be called by pg_cron / edge
+-- functions without RLS interference.
+
+CREATE OR REPLACE FUNCTION public.check_fulfillment_invariants()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_fulfilled_refunded jsonb;
+  v_stuck jsonb;
+  v_recent_failures jsonb;
+BEGIN
+  -- 1) Fulfilled orders that also have a refund transaction
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+    'orderId', o.id,
+    'orderRef', o.order_ref,
+    'total', o.total,
+    'userName', COALESCE(p.username, p.name, 'Customer'),
+    'refundedAt', t.created_at,
+    'refundAmount', t.amount
+  ) ORDER BY o.created_at DESC), '[]'::jsonb)
+  INTO v_fulfilled_refunded
+  FROM public.orders o
+  JOIN public.transactions t
+    ON t.user_id = o.user_id
+    AND t.type = 'refund'
+    AND t.reference LIKE 'FULFILL-REFUND-' || upper(left(replace(o.id::text, '-', ''), 8)) || '%'
+    AND t.status = 'completed'
+  LEFT JOIN public.profiles p ON p.id = o.user_id
+  WHERE o.fulfillment_status = 'fulfilled';
+
+  -- 2) Orders stuck on 'fulfilling' for more than 30 minutes
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+    'orderId', o.id,
+    'orderRef', o.order_ref,
+    'total', o.total,
+    'userName', COALESCE(p.username, p.name, 'Customer'),
+    'stuckSince', o.updated_at,
+    'minutesStuck', EXTRACT(EPOCH FROM (now() - o.updated_at)) / 60
+  ) ORDER BY o.updated_at ASC), '[]'::jsonb)
+  INTO v_stuck
+  FROM public.orders o
+  LEFT JOIN public.profiles p ON p.id = o.user_id
+  WHERE o.fulfillment_status = 'fulfilling'
+    AND o.updated_at < now() - make_interval(mins => 30);
+
+  -- 3) Fulfillment failures in the last 24 hours
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+    'orderId', o.id,
+    'orderRef', o.order_ref,
+    'total', o.total,
+    'userName', COALESCE(p.username, p.name, 'Customer'),
+    'failedAt', o.updated_at,
+    'error', o.g2bulk_metadata->>'last_error'
+  ) ORDER BY o.updated_at DESC), '[]'::jsonb)
+  INTO v_recent_failures
+  FROM public.orders o
+  LEFT JOIN public.profiles p ON p.id = o.user_id
+  WHERE o.fulfillment_status = 'failed'
+    AND o.updated_at > now() - make_interval(hours => 24);
+
+  RETURN jsonb_build_object(
+    'fulfilledAndRefunded', v_fulfilled_refunded,
+    'fulfilledAndRefundedCount', jsonb_array_length(v_fulfilled_refunded),
+    'stuckFulfilling', v_stuck,
+    'stuckFulfillingCount', jsonb_array_length(v_stuck),
+    'recentFailures', v_recent_failures,
+    'recentFailuresCount', jsonb_array_length(v_recent_failures),
+    'checkedAt', now()
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.check_fulfillment_invariants() FROM public;
+GRANT EXECUTE ON FUNCTION public.check_fulfillment_invariants() TO service_role, authenticated;
 
 COMMENT ON FUNCTION public.on_order_completed_notify_admins() IS
   'Notifies all admins when any order becomes completed (balance / Sam / manual).';

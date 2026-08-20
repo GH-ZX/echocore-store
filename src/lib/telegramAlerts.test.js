@@ -11,6 +11,9 @@ describe('TELEGRAM_ALERT_EVENTS', () => {
     expect(TELEGRAM_ALERT_EVENTS).toContain('recharge');
     expect(TELEGRAM_ALERT_EVENTS).toContain('fulfillmentFail');
     expect(TELEGRAM_ALERT_EVENTS).toContain('lowWallet');
+    expect(TELEGRAM_ALERT_EVENTS).toContain('invariantViolation');
+    expect(TELEGRAM_ALERT_EVENTS).toContain('stuckFulfillment');
+    expect(TELEGRAM_ALERT_EVENTS).toContain('recentFailures');
     expect(TELEGRAM_ALERT_EVENTS).toContain('contact');
     expect(TELEGRAM_ALERT_EVENTS).toContain('review');
     expect(TELEGRAM_ALERT_EVENTS).toContain('signup');
