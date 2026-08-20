@@ -74,6 +74,8 @@ export function getAdminOrderOutcome(order) {
     // Only RECENT in-flight work is "processing". Old stuck rows without a supplier
     // trail are the ones that must not flood the queue as success.
     if (fs === 'fulfilling') {
+      // A supplier id means G2Bulk may already have charged/delivered the player.
+      // Keep the outcome as processing to prevent unsafe automatic refunds.
       return (recent || supplierHeld) ? 'processing' : 'failed';
     }
 
@@ -226,10 +228,13 @@ export function getAdminDeliveryStatusDisplay(order, t = {}) {
 
   // processing
   if (fs === 'fulfilling') {
+    const stale = orderAgeMs(order) >= FIFTEEN_MIN_MS;
     return {
-      label: t.fulfillmentInProgress || 'Delivering',
-      tone: 'pending',
-      hint: null,
+      label: stale
+        ? (t.fulfillmentStuck || 'Delivery stuck — sync required')
+        : (t.fulfillmentInProgress || 'Delivering'),
+      tone: stale ? 'warning' : 'pending',
+      hint: stale ? (t.adminOrdersSoftTimeoutHint || 'Supplier status has not changed; run Force Sync.') : null,
     };
   }
   if (fs === 'failed' && isSoftFulfillmentTimeout(order) && !refunded) {
@@ -268,6 +273,21 @@ export function getOrderStatusFilterOptions(t = {}) {
     { id: ORDER_STATUS_FILTER_IDS.FAILED, label: t.adminOrdersOutcomeFailed },
     { id: ORDER_STATUS_FILTER_IDS.CANCELLED, label: t.adminOrdersOutcomeCancelled },
   ];
+}
+
+/** Admin can force sync G2Bulk when there is a supplier order id and it is not already success/refunded */
+export function canSyncOrder(order) {
+  if (!order || order.status !== 'completed') return false;
+  if (isOrderBalanceRefunded(order)) return false;
+  
+  const fs = order.fulfillment_status == null || order.fulfillment_status === ''
+    ? 'pending'
+    : String(order.fulfillment_status);
+    
+  if (fs === 'fulfilled' || fs === 'skipped') return false;
+  
+  // Must have a supplier order id to sync
+  return !!getOrderSupplierOrderId(order);
 }
 
 /** Admin can retry G2Bulk when paid + not delivered + not refunded. Never on success. */

@@ -3017,6 +3017,87 @@ Deno.serve(async (req) => {
     }
   }
 
+  if (action === 'syncOrder') {
+    const orderId = String(body.orderId || '');
+    if (!orderId) {
+      return jsonResponse({ success: false, message: 'orderId required' }, 400);
+    }
+    
+    const { data: order, error: orderErr } = await serviceClient
+      .from('orders')
+      .select('id, user_id, total, status, fulfillment_status, g2bulk_order_id, g2bulk_metadata')
+      .eq('id', orderId)
+      .maybeSingle();
+
+    if (orderErr || !order) {
+      return jsonResponse({ success: false, message: 'Order not found' }, 404);
+    }
+
+    const g2bulkOrderId = order.g2bulk_order_id 
+      || (order.g2bulk_metadata as Record<string, any>)?.g2bulk_order_id 
+      || (order.g2bulk_metadata as Record<string, any>)?.g2bulkOrderId;
+
+    if (!g2bulkOrderId) {
+      return jsonResponse({ success: false, message: 'Order has no G2Bulk supplier ID to sync' }, 400);
+    }
+
+    // Try polling the supplier directly to get the real status
+    const metaType = (order.g2bulk_metadata as Record<string, any>)?.type;
+    let finalStatus: 'fulfilled' | 'failed' | 'fulfilling' = 'fulfilling';
+    let deliveryItems: string[] = [];
+    let polledError: string | undefined = undefined;
+
+    if (metaType === 'voucher') {
+      const polled = await pollVoucherDelivery(apiKey!, Number(g2bulkOrderId));
+      if (polled.ok) {
+        finalStatus = 'fulfilled';
+        deliveryItems = normalizeDeliveryItems(polled.items);
+      } else {
+        if (polled.terminal) finalStatus = 'failed';
+        else finalStatus = 'fulfilling'; // still pending
+        polledError = polled.error;
+      }
+    } else {
+      // Top-up
+      const polled = await pollGameOrderStatus(apiKey!, Number(g2bulkOrderId));
+      if (polled.ok) {
+        finalStatus = 'fulfilled';
+      } else {
+        if (polled.terminal) finalStatus = 'failed';
+        else finalStatus = 'fulfilling';
+        polledError = polled.error;
+      }
+    }
+
+    // Apply the outcome using the existing webhook-like mechanism
+    if (finalStatus === 'fulfilled' || finalStatus === 'failed') {
+      await serviceClient.rpc('apply_g2bulk_fulfillment', {
+        p_order_id: orderId,
+        p_fulfillment_status: finalStatus,
+        p_g2bulk_order_id: String(g2bulkOrderId),
+        p_delivery_items: deliveryItems.length > 0 ? deliveryItems : undefined,
+        p_error: polledError,
+        p_metadata: {
+          ...((order.g2bulk_metadata as Record<string, any>) || {}),
+          sync_forced_at: new Date().toISOString(),
+          terminal: finalStatus === 'failed'
+        },
+      });
+      
+      return jsonResponse({ 
+        success: true, 
+        fulfillmentStatus: finalStatus,
+        message: `Order synced and marked as ${finalStatus}`
+      });
+    }
+
+    return jsonResponse({ 
+      success: true, 
+      fulfillmentStatus: 'fulfilling',
+      message: 'Order is still processing at supplier'
+    });
+  }
+
   if (action === 'syncCatalog') {
     if (!cronAuth && !serviceAuth && !(await isAdmin(userClient, userId!))) {
       return jsonResponse({ success: false, message: 'Admin only' }, 403);

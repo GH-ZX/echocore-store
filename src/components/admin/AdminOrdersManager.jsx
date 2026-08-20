@@ -15,6 +15,7 @@ import { Spinner } from '../routing/PageLoader';
 import {
   ORDER_STATUS_FILTER_IDS,
   canRetryOrderFulfillment,
+  canSyncOrder,
   countOrdersForFilter,
   filterAdminOrders,
   getAdminDeliveryStatusDisplay,
@@ -56,6 +57,7 @@ import {
   profileNamesDiffer,
 } from '../../lib/username';
 import { useNotify } from '../../hooks/useNotify';
+import { supabase } from '../../lib/supabase';
 
 function formatOrderDate(value, lang) {
   if (!value) return '—';
@@ -306,6 +308,7 @@ export default function AdminOrdersManager({
     const softTimeout = isSoftFulfillmentTimeout(order);
     const refunded = isOrderBalanceRefunded(order);
     const canRetry = canRetryOrderFulfillment(order) && typeof onFulfillOrder === 'function';
+    const canSync = canSyncOrder(order);
     const topup = getOrderTopupDeliveryDetails(order, items);
     const paymentStatusLabel = getAdminPaymentStatusLabel(order, t);
     const paymentStatusTone = getAdminPaymentStatusTone(order);
@@ -472,13 +475,48 @@ export default function AdminOrdersManager({
               {fulfillingId === order.id
                 ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 : <RotateCcw className="w-3.5 h-3.5" />}
-              {(
-                order.g2bulk_order_id
-                || order.g2bulk_metadata?.g2bulk_order_id
-                || order.g2bulk_metadata?.g2bulkOrderId
-              )
-                ? (t.adminOrdersRetryFulfillPoll || t.adminOrdersRetryFulfill)
-                : t.adminOrdersRetryFulfill}
+              {t.adminOrdersRetryFulfill}
+            </button>
+          )}
+          {canSync && (
+            <button
+              type="button"
+              disabled={fulfillingId === order.id}
+              onClick={async () => {
+                if (!window.confirm('Force sync status from G2Bulk?')) return;
+                setFulfillingId(order.id);
+                try {
+                  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+                  const { data: sessionData } = await supabase.auth.getSession();
+                  const accessToken = sessionData?.session?.access_token;
+                  if (!accessToken) throw new Error(t.loginRequired || 'Admin session expired');
+                  const res = await fetch(`${SUPABASE_URL}/functions/v1/g2bulk`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      Authorization: `Bearer ${accessToken}`,
+                    },
+                    body: JSON.stringify({ action: 'syncOrder', orderId: order.id })
+                  });
+                  const data = await res.json();
+                  if (data.success) {
+                    onNotify?.(data.message || 'Sync successful', 'success');
+                    await refreshOrders?.();
+                  } else {
+                    onNotify?.(data.message || 'Sync failed', 'error');
+                  }
+                } catch (err) {
+                  onNotify?.(err.message || 'Sync failed', 'error');
+                } finally {
+                  setFulfillingId(null);
+                }
+              }}
+              className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5"
+            >
+              {fulfillingId === order.id
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <RefreshCw className="w-3.5 h-3.5" />}
+              {t.adminOrdersForceSync || 'Force Sync'}
             </button>
           )}
           {isInvoiceReadyForOrder(order, {

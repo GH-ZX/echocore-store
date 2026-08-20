@@ -59,7 +59,7 @@ describe('admin order status display', () => {
     expect(delivery.tone).toBe('pending');
   });
 
-  it('keeps delivering when supplier order id exists even if old', () => {
+  it('shows stale supplier order as stuck without changing processing outcome', () => {
     const order = {
       status: 'completed',
       fulfillment_status: 'fulfilling',
@@ -69,8 +69,8 @@ describe('admin order status display', () => {
     expect(getAdminOrderOutcome(order)).toBe('processing');
     expect(canRetryOrderFulfillment(order)).toBe(true);
     const delivery = getAdminDeliveryStatusDisplay(order, t);
-    expect(delivery.label).toBe('Delivering');
-    expect(delivery.tone).toBe('pending');
+    expect(delivery.label).toBe('Delivery stuck');
+    expect(delivery.tone).toBe('warning');
   });
 
   it('keeps delivering when supplier id lives in metadata even if old', () => {
