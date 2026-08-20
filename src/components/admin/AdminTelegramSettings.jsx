@@ -8,6 +8,11 @@ import {
   Bell,
   MessageSquare,
   Lock,
+  Bot,
+  Link2,
+  Users,
+  Webhook,
+  RefreshCw,
 } from 'lucide-react';
 import AdminApiKeyField from './AdminApiKeyField';
 import ConfirmDialog from '../ui/ConfirmDialog';
@@ -16,6 +21,9 @@ import {
   fetchTelegramAlertsSettings,
   saveTelegramAlertsSettings,
   sendTestTelegramAlert,
+  fetchTelegramBotInfo,
+  setupTelegramWebhook,
+  setTelegramBotCommands,
 } from '../../lib/telegramAlerts';
 
 const EVENT_KEYS = {
@@ -40,6 +48,8 @@ export default function AdminTelegramSettings({ t = {}, embedded = false }) {
   const [deleteKeyOpen, setDeleteKeyOpen] = useState(false);
   const [deletingKey, setDeletingKey] = useState(false);
   const [tokenInput, setTokenInput] = useState('');
+  const [setupLoading, setSetupLoading] = useState('');
+  const [botInfo, setBotInfo] = useState(null);
   const [form, setForm] = useState({
     telegram_alerts_enabled: false,
     telegram_bot_token_set: false,
@@ -56,6 +66,8 @@ export default function AdminTelegramSettings({ t = {}, embedded = false }) {
       const data = await fetchTelegramAlertsSettings();
       setForm(data);
       setTokenInput('');
+      // Load bot info in background (non-blocking)
+      fetchTelegramBotInfo().then(setBotInfo).catch(() => {});
     } catch (err) {
       setError(err.message || t.telegramLoadFailed);
     } finally {
@@ -138,6 +150,39 @@ export default function AdminTelegramSettings({ t = {}, embedded = false }) {
         [key]: prev.telegram_alert_prefs[key] !== false,
       },
     }));
+  };
+
+  const handleSetupWebhook = async () => {
+    setSetupLoading('webhook');
+    setError('');
+    setSuccess('');
+    try {
+      const result = await setupTelegramWebhook();
+      setSuccess(t.telegramWebhookSetup || 'Webhook configured successfully');
+      if (result?.secret) {
+        setBotInfo((prev) => ({ ...prev, telegram_webhook_secret_set: true }));
+      }
+      setTimeout(() => setSuccess(''), 4000);
+    } catch (err) {
+      setError(err.message || t.telegramWebhookFailed || 'Webhook setup failed');
+    } finally {
+      setSetupLoading('');
+    }
+  };
+
+  const handleSetCommands = async () => {
+    setSetupLoading('commands');
+    setError('');
+    setSuccess('');
+    try {
+      await setTelegramBotCommands();
+      setSuccess(t.telegramCommandsSet || 'Bot commands registered');
+      setTimeout(() => setSuccess(''), 4000);
+    } catch (err) {
+      setError(err.message || t.telegramCommandsFailed || 'Failed to set commands');
+    } finally {
+      setSetupLoading('');
+    }
   };
 
   const botUsername = form.telegram_bot_username;
@@ -297,6 +342,70 @@ export default function AdminTelegramSettings({ t = {}, embedded = false }) {
           >
             {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             {t.telegramTestSend}
+          </button>
+        </div>
+      </section>
+
+      {/* Bot Setup Section */}
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)]/60 p-5 sm:p-6 space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="p-2 rounded-xl bg-[var(--bg-primary)] text-[var(--text-sec)]">
+            <Bot className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="font-semibold text-base">{t.telegramBotSetup || 'Bot Setup'}</h3>
+            <p className="text-sm text-[var(--text-sec)] mt-0.5 leading-relaxed">
+              {t.telegramBotSetupDesc || 'Configure the interactive bot with commands, buttons, and webhook.'}
+            </p>
+          </div>
+        </div>
+
+        {botInfo && (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]/30 px-4 py-3">
+              <div className="flex items-center gap-2 mb-1">
+                <Users className="w-4 h-4 text-[var(--text-sec)]" />
+                <span className="text-xs font-medium text-[var(--text-sec)]">{t.telegramLinkedUsers || 'Linked Users'}</span>
+              </div>
+              <span className="text-lg font-semibold">{botInfo.linked_users_count ?? 0}</span>
+            </div>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]/30 px-4 py-3">
+              <div className="flex items-center gap-2 mb-1">
+                <Link2 className="w-4 h-4 text-[var(--text-sec)]" />
+                <span className="text-xs font-medium text-[var(--text-sec)]">{t.telegramLinkedAdmins || 'Linked Admins'}</span>
+              </div>
+              <span className="text-lg font-semibold">{botInfo.linked_admins_count ?? 0}</span>
+            </div>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]/30 px-4 py-3">
+              <div className="flex items-center gap-2 mb-1">
+                <Webhook className="w-4 h-4 text-[var(--text-sec)]" />
+                <span className="text-xs font-medium text-[var(--text-sec)]">{t.telegramWebhook || 'Webhook'}</span>
+              </div>
+              <span className={`text-lg font-semibold ${botInfo.telegram_webhook_secret_set ? 'text-green-400' : 'text-yellow-400'}`}>
+                {botInfo.telegram_webhook_secret_set ? '✓ Active' : '⚠ Not set'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[var(--border)]">
+          <button
+            type="button"
+            onClick={handleSetupWebhook}
+            disabled={!!setupLoading || !form.telegram_bot_token_set}
+            className="btn btn-primary action-chip gap-2 !border-0 disabled:opacity-50"
+          >
+            {setupLoading === 'webhook' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Webhook className="w-4 h-4" />}
+            {t.telegramSetupWebhook || 'Setup Webhook'}
+          </button>
+          <button
+            type="button"
+            onClick={handleSetCommands}
+            disabled={!!setupLoading || !form.telegram_bot_token_set}
+            className="btn btn-secondary action-chip gap-2 disabled:opacity-50"
+          >
+            {setupLoading === 'commands' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            {t.telegramSetCommands || 'Set Bot Commands'}
           </button>
         </div>
       </section>

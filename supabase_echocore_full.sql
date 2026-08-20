@@ -1370,7 +1370,8 @@ ALTER TABLE public.store_settings
   ADD COLUMN IF NOT EXISTS telegram_bot_token text,
   ADD COLUMN IF NOT EXISTS telegram_bot_username text,
   ADD COLUMN IF NOT EXISTS telegram_chat_id text,
-  ADD COLUMN IF NOT EXISTS telegram_alert_prefs jsonb NOT NULL DEFAULT '{}'::jsonb;
+  ADD COLUMN IF NOT EXISTS telegram_alert_prefs jsonb NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS telegram_webhook_secret text;
 
 -- ---------------------------------------------------------------------------
 -- 2. GAMES â€” link to G2Bulk game code for direct top-ups
@@ -3482,6 +3483,15 @@ ALTER TABLE public.profiles
 
 CREATE INDEX IF NOT EXISTS profiles_partner_tier_idx ON public.profiles (partner_tier_id)
   WHERE partner_tier_id IS NOT NULL;
+
+-- Telegram bot: link a customer's Telegram chat to their store account
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS telegram_chat_id text,
+  ADD COLUMN IF NOT EXISTS telegram_linked_at timestamptz;
+
+CREATE UNIQUE INDEX IF NOT EXISTS profiles_telegram_chat_id_unique
+  ON public.profiles (telegram_chat_id)
+  WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id <> '';
 
 ALTER TABLE public.partner_tiers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.partner_invites ENABLE ROW LEVEL SECURITY;
@@ -9582,6 +9592,170 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.send_test_telegram_alert() FROM public;
 GRANT EXECUTE ON FUNCTION public.send_test_telegram_alert() TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Telegram bot: link / unlink account, bot info RPC
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.link_telegram_account(p_username text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_chat_id text;
+  v_target public.profiles%ROWTYPE;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  v_chat_id := nullif(current_setting('echocore.telegram_chat_id', true), '');
+  IF v_chat_id IS NULL OR v_chat_id = '' THEN
+    RAISE EXCEPTION 'Telegram chat ID not provided. Use the bot /link command instead.';
+  END IF;
+
+  SELECT * INTO v_target FROM public.profiles WHERE lower(username) = lower(trim(p_username));
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'No account found with that username';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM public.profiles WHERE telegram_chat_id = v_chat_id AND id <> v_target.id) THEN
+    RAISE EXCEPTION 'This Telegram account is already linked to another user';
+  END IF;
+
+  UPDATE public.profiles SET telegram_chat_id = v_chat_id, telegram_linked_at = now() WHERE id = v_target.id;
+  RETURN jsonb_build_object('ok', true, 'username', v_target.username, 'linkedAt', now());
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.link_telegram_account(text) FROM public;
+GRANT EXECUTE ON FUNCTION public.link_telegram_account(text) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.unlink_telegram_account()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+  UPDATE public.profiles SET telegram_chat_id = NULL, telegram_linked_at = NULL WHERE id = auth.uid();
+  RETURN jsonb_build_object('ok', true, 'unlinked', true);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.unlink_telegram_account() FROM public;
+GRANT EXECUTE ON FUNCTION public.unlink_telegram_account() TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.get_telegram_bot_info()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_row public.store_settings%ROWTYPE;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+  SELECT * INTO v_row FROM public.store_settings WHERE id = 1;
+  RETURN jsonb_build_object(
+    'telegram_bot_token_set', nullif(trim(v_row.telegram_bot_token), '') IS NOT NULL,
+    'telegram_bot_username', v_row.telegram_bot_username,
+    'telegram_chat_id', v_row.telegram_chat_id,
+    'telegram_webhook_secret_set', nullif(trim(v_row.telegram_webhook_secret), '') IS NOT NULL,
+    'telegram_alerts_enabled', COALESCE(v_row.telegram_alerts_enabled, false),
+    'linked_users_count', (SELECT COUNT(*)::int FROM public.profiles WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id <> '' AND role = 'user'),
+    'linked_admins_count', (SELECT COUNT(*)::int FROM public.profiles WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id <> '' AND role = 'admin')
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_telegram_bot_info() FROM public;
+GRANT EXECUTE ON FUNCTION public.get_telegram_bot_info() TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Telegram bot: notify linked users on fulfillment (DM with inline buttons)
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.notify_linked_user_telegram()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions AS $$
+DECLARE
+  v_chat_id text;
+  v_token text;
+  v_text text;
+  v_url text;
+  v_order_ref text;
+  v_error text;
+BEGIN
+  IF OLD.fulfillment_status IS NOT DISTINCT FROM NEW.fulfillment_status THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.user_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT telegram_chat_id INTO v_chat_id
+  FROM public.profiles WHERE id = NEW.user_id AND telegram_chat_id IS NOT NULL AND telegram_chat_id <> '';
+  IF v_chat_id IS NULL THEN RETURN NEW; END IF;
+
+  SELECT telegram_bot_token INTO v_token
+  FROM public.store_settings WHERE id = 1 AND telegram_alerts_enabled = true;
+  IF v_token IS NULL OR trim(v_token) = '' THEN RETURN NEW; END IF;
+
+  v_order_ref := COALESCE(NEW.order_ref, LEFT(NEW.id::text, 8));
+  v_error := NEW.g2bulk_metadata->>'last_error';
+
+  IF NEW.fulfillment_status = 'fulfilled' THEN
+    v_text := '<b>🎉 Order Delivered!</b>' || E'\n'
+      || 'Order: <b>' || v_order_ref || '</b>' || E'\n'
+      || 'Amount: <b>$' || NEW.total::text || '</b>' || E'\n\n'
+      || 'View your invoice:';
+  ELSIF NEW.fulfillment_status = 'failed' THEN
+    v_text := '<b>❌ Order Failed</b>' || E'\n'
+      || 'Order: <b>' || v_order_ref || '</b>' || E'\n'
+      || 'Amount: <b>$' || NEW.total::text || '</b>';
+    IF v_error IS NOT NULL THEN v_text := v_text || E'\nError: ' || v_error; END IF;
+    IF COALESCE((NEW.g2bulk_metadata->>'balance_refunded')::boolean, false) THEN
+      v_text := v_text || E'\n\n💰 Your balance has been refunded.';
+    END IF;
+  ELSE
+    RETURN NEW;
+  END IF;
+
+  BEGIN
+    v_url := 'https://api.telegram.org/bot' || trim(v_token) || '/sendMessage';
+    PERFORM net.http_post(
+      url := v_url,
+      headers := jsonb_build_object('Content-Type', 'application/json'),
+      body := jsonb_build_object('chat_id', v_chat_id, 'text', left(v_text, 3900), 'parse_mode', 'HTML')
+        || CASE WHEN NEW.fulfillment_status = 'fulfilled'
+            THEN jsonb_build_object('reply_markup', jsonb_build_object('inline_keyboard', jsonb_build_array(jsonb_build_array(jsonb_build_object('text', '📄 View Invoice', 'url', 'https://www.echocore412.com/invoice/order/' || NEW.id::text)))))
+            WHEN NEW.fulfillment_status = 'failed' AND COALESCE((NEW.g2bulk_metadata->>'balance_refunded')::boolean, false)
+            THEN jsonb_build_object('reply_markup', jsonb_build_object('inline_keyboard', jsonb_build_array(jsonb_build_array(jsonb_build_object('text', '💰 Recharge', 'url', 'https://www.echocore412.com/recharge')))))
+            ELSE '{}'::jsonb END,
+      timeout_milliseconds := 10000
+    );
+    PERFORM public.try_append_site_log('telegram', 'customer_fulfillment_' || NEW.fulfillment_status, 'info', NEW.user_id, NULL, jsonb_build_object('orderId', NEW.id, 'orderRef', v_order_ref, 'chatId', v_chat_id));
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS notify_linked_user_telegram_on_fulfillment ON public.orders;
+CREATE TRIGGER notify_linked_user_telegram_on_fulfillment
+  AFTER UPDATE OF fulfillment_status ON public.orders
+  FOR EACH ROW
+  EXECUTE FUNCTION public.notify_linked_user_telegram();
 
 -- =============================================================================
 -- 7) Manual payment-sent links → invoice / recharges

@@ -41,6 +41,7 @@ const GamingAccountsView = lazyRetry(routeChunkFactories.GamingAccountsView);
 const GameDetail = lazyRetry(routeChunkFactories.GameDetail);
 const OfferDetail = lazyRetry(routeChunkFactories.OfferDetail);
 const BuyView = lazyRetry(routeChunkFactories.BuyView);
+const TelegramLinkView = lazyRetry(routeChunkFactories.TelegramLinkView);
 
 export default function AppRoutes({
   t,
@@ -574,6 +575,18 @@ export default function AppRoutes({
                 />
               )}
             </ProtectedRoute>
+          )}
+        />
+
+        <Route
+          path="/telegram-link"
+          element={(
+            <TelegramLinkView
+              t={t}
+              lang={lang}
+              user={user}
+              navigate={navigate}
+            />
           )}
         />
 

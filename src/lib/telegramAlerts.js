@@ -76,3 +76,43 @@ export async function sendTestTelegramAlert() {
   }
   return data === 'sent';
 }
+
+/** Admin: get Telegram bot info (linked users, webhook status). */
+export async function fetchTelegramBotInfo() {
+  const { data, error } = await supabase.rpc('get_telegram_bot_info');
+  if (error) {
+    if (isMissingRpc(error)) return null;
+    throw error;
+  }
+  return data || null;
+}
+
+/** Admin: set up the Telegram webhook via the edge function. */
+export async function setupTelegramWebhook() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  const baseUrl = supabase.supabaseUrl;
+  const res = await fetch(`${baseUrl}/functions/v1/telegram-bot?action=setup-webhook`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: supabase.supabaseKey,
+    },
+  });
+  if (!res.ok) throw new Error(`Webhook setup failed: ${res.status}`);
+  return res.json();
+}
+
+/** Admin: register bot commands with Telegram. */
+export async function setTelegramBotCommands() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  const baseUrl = supabase.supabaseUrl;
+  const res = await fetch(`${baseUrl}/functions/v1/telegram-bot?action=set-commands`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: supabase.supabaseKey,
+    },
+  });
+  if (!res.ok) throw new Error(`Set commands failed: ${res.status}`);
+  return res.json();
+}

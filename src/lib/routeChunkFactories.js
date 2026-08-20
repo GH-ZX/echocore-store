@@ -39,4 +39,5 @@ export const routeChunkFactories = {
   GameDetail: () => import('../views/GameDetail'),
   OfferDetail: () => import('../views/OfferDetail'),
   BuyView: () => import('../views/BuyView'),
+  TelegramLinkView: () => import('../views/TelegramLinkView'),
 };

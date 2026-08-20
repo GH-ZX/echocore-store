@@ -12,6 +12,11 @@ verify_jwt = false
 [functions.g2bulk]
 verify_jwt = false
 
+# Telegram bot webhook — receives updates from Telegram servers.
+# JWT off so Telegram can POST directly without a Supabase token.
+[functions.telegram-bot]
+verify_jwt = false
+
 # Binance Pay merchant integration: signing (HMAC-SHA512) is app-level; the
 # webhook delivery from Binance carries no Supabase JWT so JWT must be off.
 [functions.binance-pay]
