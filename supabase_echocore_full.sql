@@ -8527,7 +8527,7 @@ GRANT EXECUTE ON FUNCTION public.log_dev_event(text, text, jsonb) TO authenticat
 -- Apply: supabase db query --linked -f scripts/admin-balance-adjust-migration.sql
 -- =============================================================================
 
--- Signed adjust: positive = credit, negative = debit (cannot go below 0)
+-- Signed adjust: positive = credit, negative = debit (admin can push balance negative)
 DROP FUNCTION IF EXISTS public.admin_adjust_user_balance(uuid, numeric, text, text, text);
 CREATE OR REPLACE FUNCTION public.admin_adjust_user_balance(
   p_user_id uuid,
@@ -8607,16 +8607,15 @@ BEGIN
     v_removed := p_amount;
     v_delta := CASE WHEN v_dir = 'debit' THEN -p_amount ELSE p_amount END;
 
-    IF v_dir = 'debit' AND v_old_balance < p_amount THEN
-      RAISE EXCEPTION 'Insufficient balance (current $%)', to_char(v_old_balance, 'FM999990.00');
-    END IF;
+    -- NOTE: removed insufficient-balance guard — admin can now push balance negative
   END IF;
 
   -- Allow admin balance writes
   PERFORM set_config('echocore.allow_balance_change', '1', true);
 
+  -- No more GREATEST(0, ...) — allow negative balances
   UPDATE public.profiles
-  SET balance = GREATEST(0, COALESCE(balance, 0) + v_delta)
+  SET balance = COALESCE(balance, 0) + v_delta
   WHERE id = p_user_id
   RETURNING balance INTO v_new_balance;
 

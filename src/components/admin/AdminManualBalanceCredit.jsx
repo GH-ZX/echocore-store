@@ -69,7 +69,7 @@ export default function AdminManualBalanceCredit({
   const zeroAmount = selectedUser ? Number(selectedUser.balance || 0) : 0;
   const creditDisabled = !hasUser || !amountValid || saving;
   const debitDisabled =
-    !hasUser || !amountValid || saving || Number(selectedUser?.balance || 0) < amountValue;
+    !hasUser || !amountValid || saving;
   const zeroDisabled = !hasUser || saving || zeroAmount <= 0;
 
   const runSearch = async () => {
@@ -311,7 +311,9 @@ export default function AdminManualBalanceCredit({
             </button>
           </div>
           {isDebit && selectedUser && amountValid && Number(selectedUser.balance || 0) < amountValue && (
-            <p className="text-[10px] text-red-400 mt-1">{t.adminManualDebitInsufficient}</p>
+            <p className="text-[10px] text-amber-400 mt-1">
+              {t.adminManualDebitExceedsBalance}
+            </p>
           )}
           {allowDebit && hasUser && (
             <button
