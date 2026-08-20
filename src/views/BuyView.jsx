@@ -152,8 +152,8 @@ export default function BuyView({
 
   const paymentMethods = useMemo(
     () => (isValidOffer
-      ? buildPaymentMethods(t, lang, paymentConfig, { includeBalance: true, currentBalance: hasEnough ? currentBalance : 0 })
-        .filter((m) => m.id === 'balance' || m.id === 'ShamCash' || m.id === 'SyriatelCash')
+      ? buildPaymentMethods(t, lang, paymentConfig, { includeBalance: true, currentBalance: hasEnough ? currentBalance : 0, isCheckout: true })
+        .filter((m) => m.id === 'balance' || m.id === 'WalletRecharge')
       : []),
     [t, lang, paymentConfig, hasEnough, currentBalance, isValidOffer],
   );
@@ -161,14 +161,14 @@ export default function BuyView({
   const usableMethods = paymentMethods.filter((m) => !m.disabled && !m.comingSoon);
 
   const [selectedMethod, setSelectedMethod] = useState(() => {
-    const methods = buildPaymentMethods(t, lang, paymentConfig, { includeBalance: true, currentBalance });
-    return currentBalance >= (offer ? parseFloat(offer.price) : 0) ? 'balance' : getDefaultPaymentMethod(methods);
+    const methods = buildPaymentMethods(t, lang, paymentConfig, { includeBalance: true, currentBalance, isCheckout: true });
+    return currentBalance >= (offer ? parseFloat(offer.price) : 0) ? 'balance' : 'WalletRecharge';
   });
 
   useEffect(() => {
     if (!isValidOffer) return;
     if (!usableMethods.some((m) => m.id === selectedMethod)) {
-      setSelectedMethod(hasEnough ? 'balance' : getDefaultPaymentMethod(paymentMethods));
+      setSelectedMethod(hasEnough ? 'balance' : 'WalletRecharge');
     }
   }, [paymentMethods, selectedMethod, usableMethods, hasEnough, isValidOffer]);
 
@@ -372,6 +372,12 @@ export default function BuyView({
   const methodReady = isPaymentMethodReady(selectedMethod, paymentConfig);
   const startPurchase = async () => {
     if (!user?.id || !canProceed) return;
+    
+    // If the user selected the WalletRecharge redirect button, send them to recharge
+    if (selectedMethod === 'WalletRecharge') {
+      goRecharge();
+      return;
+    }
 
     if (showRecipientFields && playerUid.trim()) {
       try {

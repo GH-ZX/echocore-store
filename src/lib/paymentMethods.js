@@ -222,7 +222,7 @@ export function buildPaymentMethods(t, lang, paymentConfig = {}, options = {}) {
       const def = PAYMENT_METHOD_DEFS.WalletRecharge;
       methods.push({
         ...def,
-        id: 'ShamCash', // Keep id as ShamCash so it triggers the manual flow if they click it, or we can handle it in UI
+        id: 'WalletRecharge', // Use WalletRecharge so BuyView handles it as a redirect
         name: label(def),
         desc: desc(def),
         disabled: false,
