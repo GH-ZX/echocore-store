@@ -77,7 +77,7 @@ export default function RechargeView({
   const rechargeAllowed = canUserRecharge(user) && !maintenanceBlocked;
 
   const walletMethods = useMemo(
-    () => buildPaymentMethods(t, lang, paymentConfig).filter((m) => m.id === 'ShamCash' || m.id === 'SyriatelCash' || m.id === 'binance'),
+    () => buildPaymentMethods(t, lang, paymentConfig, { isCheckout: false }).filter((m) => m.id === 'ShamCash' || m.id === 'SyriatelCash' || m.id === 'binance'),
     [t, lang, paymentConfig],
   );
   const usableWalletMethods = walletMethods.filter((m) => !m.disabled);

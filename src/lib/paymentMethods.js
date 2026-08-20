@@ -27,6 +27,16 @@ export const PAYMENT_METHOD_DEFS = {
     descAr: 'ادفع عبر تطبيق ShamCash',
     manualOnlyKey: 'shamcashManualOnly',
   },
+  WalletRecharge: {
+    id: 'WalletRecharge',
+    icon: Wallet,
+    color: 'text-green-500',
+    nameKey: 'walletRecharge',
+    fallbackEn: 'Wallet (ShamCash / Binance)',
+    fallbackAr: 'المحفظة (شام كاش / بايننس)',
+    descEn: 'Top up your wallet to purchase',
+    descAr: 'عبّئ محفظتك لتتمكن من الشراء',
+  },
   SyriatelCash: {
     id: 'SyriatelCash',
     icon: Smartphone,
@@ -179,7 +189,7 @@ export function hasAnyManualWalletReady(paymentConfig = {}) {
 
 export function buildPaymentMethods(t, lang, paymentConfig = {}, options = {}) {
   const isAr = lang === 'ar';
-  const { includeBalance = false, currentBalance = 0 } = options;
+  const { includeBalance = false, currentBalance = 0, isCheckout = false } = options;
 
   const enabled = {
     shamcash: isPaymentMethodReady('ShamCash', paymentConfig),
@@ -205,15 +215,31 @@ export function buildPaymentMethods(t, lang, paymentConfig = {}, options = {}) {
 
   const isApiMode = isApiWalletMode(paymentConfig);
 
-  if (enabled.shamcash) {
-    const def = PAYMENT_METHOD_DEFS.ShamCash;
-    methods.push({
-      ...def,
-      name: label(def),
-      desc: desc(def),
-      disabled: false,
-      manualOnlyKey: isApiMode ? null : def.manualOnlyKey,
-    });
+  if (enabled.shamcash || enabled.binance) {
+    if (isCheckout) {
+      // In checkout, we combine them into a single "Recharge Wallet" option
+      // which redirects the user mentally to the recharge flow, but for now we just label it as Wallet.
+      const def = PAYMENT_METHOD_DEFS.WalletRecharge;
+      methods.push({
+        ...def,
+        id: 'ShamCash', // Keep id as ShamCash so it triggers the manual flow if they click it, or we can handle it in UI
+        name: label(def),
+        desc: desc(def),
+        disabled: false,
+        isMultiLogo: true, // Custom flag for UI to render multiple logos
+      });
+    } else {
+      if (enabled.shamcash) {
+        const def = PAYMENT_METHOD_DEFS.ShamCash;
+        methods.push({
+          ...def,
+          name: label(def),
+          desc: desc(def),
+          disabled: false,
+          manualOnlyKey: isApiMode ? null : def.manualOnlyKey,
+        });
+      }
+    }
   }
 
   if (enabled.syriatel) {
@@ -227,18 +253,20 @@ export function buildPaymentMethods(t, lang, paymentConfig = {}, options = {}) {
     });
   }
 
-  if (enabled.binance) {
-    const def = PAYMENT_METHOD_DEFS.binance;
-    methods.push({ ...def, name: label(def), desc: desc(def), disabled: false, comingSoon: false });
-  } else {
-    const def = PAYMENT_METHOD_DEFS.binance;
-    methods.push({
-      ...def,
-      name: label(def),
-      desc: isAr ? 'قريباً' : 'Coming soon',
-      disabled: true,
-      comingSoon: true,
-    });
+  if (!isCheckout) {
+    if (enabled.binance) {
+      const def = PAYMENT_METHOD_DEFS.binance;
+      methods.push({ ...def, name: label(def), desc: desc(def), disabled: false, comingSoon: false });
+    } else {
+      const def = PAYMENT_METHOD_DEFS.binance;
+      methods.push({
+        ...def,
+        name: label(def),
+        desc: isAr ? 'قريباً' : 'Coming soon',
+        disabled: true,
+        comingSoon: true,
+      });
+    }
   }
 
   if (enabled.mastercard) {
