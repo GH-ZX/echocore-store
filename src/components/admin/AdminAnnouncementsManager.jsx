@@ -6,6 +6,7 @@ import InboxNotificationRow from '../notifications/InboxNotificationRow';
 import InboxPager from '../notifications/InboxPager';
 import InboxSearchBar from '../notifications/InboxSearchBar';
 import {
+  fetchAdminAnnouncements,
   formatNotification,
   getNotificationDestination,
 } from '../../lib/notifications';
@@ -13,38 +14,39 @@ import { paginateInboxItems, searchInboxNotifications } from '../../lib/inboxLis
 import { formatMessage } from '../../lib/i18n';
 import { getAdminDashboardPath, navigateTo } from '../../lib/adminRoutes';
 
-const ANNOUNCEMENT_TYPES = new Set([
-  'admin_announcement',
-  'admin_warning',
-  'admin_maintenance_notice',
-]);
-
 const PAGE_SIZE = 25;
 
 export default function AdminAnnouncementsManager({
   t = {},
   lang = 'ar',
-  notifications = [],
-  loading = false,
-  onRefresh,
   onMarkRead,
 }) {
   const navigate = useNavigate();
+  const [announcements, setAnnouncements] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
 
+  const loadAnnouncements = useCallback(async () => {
+    setLoading(true);
+    try {
+      const items = await fetchAdminAnnouncements(500);
+      setAnnouncements(items);
+    } catch (err) {
+      console.error('Failed to load admin announcements:', err);
+      setAnnouncements([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    onRefresh?.();
-  }, [onRefresh]);
+    loadAnnouncements();
+  }, [loadAnnouncements]);
 
   useEffect(() => {
     setPage(1);
   }, [searchQuery]);
-
-  const announcements = useMemo(
-    () => notifications.filter((item) => ANNOUNCEMENT_TYPES.has(item?.type)),
-    [notifications],
-  );
 
   const searched = useMemo(
     () => searchInboxNotifications(announcements, searchQuery, t, lang),
@@ -101,7 +103,7 @@ export default function AdminAnnouncementsManager({
               <Eye className="w-3.5 h-3.5" />
               {t.adminAnnouncementsPreview}
             </a>
-            <button type="button" onClick={onRefresh} className="action-chip gap-1.5 text-xs">
+            <button type="button" onClick={loadAnnouncements} className="action-chip gap-1.5 text-xs">
               <RefreshCw className="w-3.5 h-3.5" />
               {t.refresh}
             </button>

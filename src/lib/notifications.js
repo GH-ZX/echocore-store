@@ -467,6 +467,16 @@ export async function fetchNotifications(limit = 30) {
   return Array.isArray(data) ? data : [];
 }
 
+/** Admin-only: fetch all broadcast announcements across all users. */
+export async function fetchAdminAnnouncements(limit = 100) {
+  const { data, error } = await supabase.rpc('get_admin_announcements', { p_limit: limit });
+  if (error) {
+    if (isMissingRpc(error)) throw new Error(RPC_SETUP_MSG);
+    throw error;
+  }
+  return Array.isArray(data) ? data : [];
+}
+
 export async function fetchUnreadCount() {
   const { data, error } = await supabase.rpc('get_unread_notification_count');
   if (error) {

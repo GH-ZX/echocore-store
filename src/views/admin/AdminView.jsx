@@ -847,9 +847,6 @@ export default function AdminView({
           <AdminAnnouncementsManager
             t={t}
             lang={lang}
-            notifications={notifications}
-            loading={notificationsLoading}
-            onRefresh={onRefreshInbox}
             onMarkRead={onNotificationMarkRead}
           />
         </Suspense>
