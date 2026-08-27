@@ -14,6 +14,7 @@ export const adminPanelFactories = {
   AdminUsersManager: () => import('../components/admin/AdminUsersManager'),
   AdminPartnersManager: () => import('../components/admin/AdminPartnersManager'),
   AdminInboxManager: () => import('../components/admin/AdminInboxManager'),
+  AdminAnnouncementsManager: () => import('../components/admin/AdminAnnouncementsManager'),
   AdminContactMessages: () => import('../components/admin/AdminContactMessages'),
   AdminOrdersManager: () => import('../components/admin/AdminOrdersManager'),
   AdminProfitStatsPage: () => import('../components/admin/AdminProfitStatsPage'),
