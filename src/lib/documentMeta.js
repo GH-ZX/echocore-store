@@ -101,6 +101,10 @@ export function resolveRouteMeta(pathname, t = {}, lang = 'ar') {
       title: t.seoNotificationsTitle || site,
       description: t.seoDefaultDescription,
     },
+    '/announcements': {
+      title: t.seoAnnouncementsTitle || site,
+      description: t.seoDefaultDescription,
+    },
   };
 
   let meta = map[path];

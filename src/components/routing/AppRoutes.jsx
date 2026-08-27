@@ -22,6 +22,7 @@ const DeveloperCreditsView = lazyRetry(routeChunkFactories.DeveloperCreditsView)
 const RechargeView = lazyRetry(routeChunkFactories.RechargeView);
 const ProfileView = lazyRetry(routeChunkFactories.ProfileView);
 const NotificationsView = lazyRetry(routeChunkFactories.NotificationsView);
+const AnnouncementsView = lazyRetry(routeChunkFactories.AnnouncementsView);
 const BannedView = lazyRetry(routeChunkFactories.BannedView);
 const AdminView = lazyRetry(routeChunkFactories.AdminView);
 const AdminGiftView = lazyRetry(routeChunkFactories.AdminGiftView);
@@ -516,6 +517,26 @@ export default function AppRoutes({
           element={(
             <ProtectedRoute user={user} loadingAuth={loadingAuth} lang={lang}>
               <NotificationsView
+                t={t}
+                lang={lang}
+                user={user}
+                notifications={notifications}
+                unreadCount={unreadCount}
+                loading={notificationsLoading}
+                onRefresh={handleRefreshInbox}
+                onMarkRead={handleNotificationMarkRead}
+                onMarkAllRead={handleNotificationsMarkAllRead}
+                onNavigate={handleNotificationNavigate}
+              />
+            </ProtectedRoute>
+          )}
+        />
+
+        <Route
+          path="/announcements"
+          element={(
+            <ProtectedRoute user={user} loadingAuth={loadingAuth} lang={lang}>
+              <AnnouncementsView
                 t={t}
                 lang={lang}
                 user={user}

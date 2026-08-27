@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, ExternalLink, FileText, RefreshCw, ShoppingCart, Wallet } from 'lucide-react';
+import { Bell, ExternalLink, FileText, Eye, RefreshCw, ShoppingCart, Wallet } from 'lucide-react';
 import { Spinner } from '../routing/PageLoader';
 import InboxNotificationRow from '../notifications/InboxNotificationRow';
 import InboxPager from '../notifications/InboxPager';
@@ -129,6 +129,18 @@ export default function AdminInboxManager({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {activeFilter === INBOX_FILTER_IDS.ANNOUNCEMENTS && (
+              <a
+                href="/announcements"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="action-chip gap-1.5 text-xs"
+                title={t.adminAnnouncementsPreviewHint}
+              >
+                <Eye className="w-3.5 h-3.5" />
+                {t.adminAnnouncementsPreview}
+              </a>
+            )}
             <button
               type="button"
               onClick={() => navigate(getAdminDashboardPath('orders'))}

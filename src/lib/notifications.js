@@ -446,7 +446,7 @@ export function getNotificationDestination(item, formatted, userRole) {
     return { path: item?.link || '/catalog' };
   }
   if (item?.type === 'admin_announcement' || item?.type === 'admin_warning' || item?.type === 'admin_maintenance_notice') {
-    return { path: item?.link || '/notifications' };
+    return { path: item?.link || `/announcements?id=${item?.id}` };
   }
   if (item?.link) {
     return { path: item.link };

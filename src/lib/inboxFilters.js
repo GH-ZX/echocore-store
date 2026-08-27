@@ -7,6 +7,7 @@ export const INBOX_FILTER_IDS = {
   INVOICES: 'invoices',
   ADMIN: 'admin',
   MESSAGES: 'messages',
+  ANNOUNCEMENTS: 'announcements',
 };
 
 const ORDER_TYPES = new Set([
@@ -75,6 +76,12 @@ const MESSAGE_TYPES = new Set([
   'contact_reply',
 ]);
 
+const ANNOUNCEMENT_TYPES = new Set([
+  'admin_announcement',
+  'admin_warning',
+  'admin_maintenance_notice',
+]);
+
 /** Store activity: sales, recharges, contact, fulfillment — everything admin cares about. */
 export function matchesAdminActivityFilter(item) {
   return ORDER_TYPES.has(item?.type)
@@ -112,6 +119,7 @@ export function getAdminInboxFilterOptions(t = {}) {
     { id: INBOX_FILTER_IDS.ORDERS, label: t.inboxFilterOrders },
     { id: INBOX_FILTER_IDS.INVOICES, label: t.inboxFilterInvoices },
     { id: INBOX_FILTER_IDS.MESSAGES, label: t.inboxFilterMessages },
+    { id: INBOX_FILTER_IDS.ANNOUNCEMENTS, label: t.adminInboxFilterAnnouncements },
     { id: INBOX_FILTER_IDS.ALL, label: t.inboxFilterAll },
   ];
 }
@@ -134,6 +142,8 @@ export function matchesInboxFilter(item, filterId = INBOX_FILTER_IDS.ALL) {
       return ADMIN_TYPES.has(item.type);
     case INBOX_FILTER_IDS.MESSAGES:
       return MESSAGE_TYPES.has(item.type);
+    case INBOX_FILTER_IDS.ANNOUNCEMENTS:
+      return ANNOUNCEMENT_TYPES.has(item.type);
     default:
       return true;
   }
@@ -164,6 +174,8 @@ export function getInboxEmptyMessageKey(filterId = INBOX_FILTER_IDS.ALL) {
       return 'inboxEmptyAdmin';
     case INBOX_FILTER_IDS.MESSAGES:
       return 'inboxEmptyMessages';
+    case INBOX_FILTER_IDS.ANNOUNCEMENTS:
+      return 'inboxEmptyAnnouncements';
     default:
       return 'noNotifications';
   }
