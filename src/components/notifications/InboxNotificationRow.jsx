@@ -1,4 +1,4 @@
-import { X } from 'lucide-react';
+import { ExternalLink, X } from 'lucide-react';
 import { formatNotificationRelativeTime } from '../../lib/notificationTime';
 
 const toneClasses = {
@@ -120,9 +120,21 @@ export default function InboxNotificationRow({
             )}
           </div>
         </button>
-        {footerActions ? (
+        {footerActions || item?.link ? (
           <div className="inbox-notification-footer">
             {footerActions}
+            {item?.link ? (
+              <a
+                href={item.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="action-chip gap-1.5 text-xs"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                {t.notifExternalLink || 'Link'}
+              </a>
+            ) : null}
           </div>
         ) : null}
       </div>

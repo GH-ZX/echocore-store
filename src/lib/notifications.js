@@ -446,7 +446,9 @@ export function getNotificationDestination(item, formatted, userRole) {
     return { path: item?.link || '/catalog' };
   }
   if (item?.type === 'admin_announcement' || item?.type === 'admin_warning' || item?.type === 'admin_maintenance_notice') {
-    return { path: item?.link || `/announcements?id=${item?.id}` };
+    // Always route to the announcements page; external links (e.g. Telegram)
+    // are shown as a separate button in the notification row.
+    return { path: `/announcements?id=${item?.id}` };
   }
   if (item?.link) {
     return { path: item.link };
