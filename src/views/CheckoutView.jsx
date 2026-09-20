@@ -361,12 +361,20 @@ export default function CheckoutView({
                       </span>
                     )}
                   </div>
+                  {method.desc && (
+                    <div className="text-xs text-[var(--text-sec)] mt-0.5">{method.desc}</div>
+                  )}
                   {isBalance && (
-                    <div className="text-[10px] text-emerald-400">{t.balanceUsed}</div>
+                    <div className="text-[10px] text-emerald-400 mt-0.5">{t.balanceUsed}</div>
                   )}
                 </div>
                 {isBalance && !hasEnoughBalance && (
                   <div className="text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-400">{t.insufficientBalance}</div>
+                )}
+                {method.id === 'WalletRecharge' && (
+                  <div className="text-xs font-semibold text-[var(--accent)] shrink-0 hidden sm:inline">
+                    {t.recharge || (lang === 'ar' ? 'شحن' : 'Recharge')}
+                  </div>
                 )}
               </div>
             );
@@ -408,7 +416,13 @@ export default function CheckoutView({
           }
           className="btn btn-primary w-full py-5 text-xl font-black disabled:opacity-60"
         >
-          {isProcessing ? t.processing : (selectedMethod === 'balance' ? t.payFromBalance : t.payNow)}
+          {isProcessing
+            ? t.processing
+            : selectedMethod === 'balance'
+              ? t.payFromBalance
+              : selectedMethod === 'WalletRecharge'
+                ? (t.walletRechargeBtn || (lang === 'ar' ? 'شحن المحفظة للمتابعة' : 'Recharge Wallet to Continue'))
+                : t.payNow}
         </button>
 
         <div className="text-center text-xs text-[var(--text-muted)] mt-4">

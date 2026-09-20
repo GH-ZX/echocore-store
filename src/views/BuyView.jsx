@@ -897,15 +897,25 @@ export default function BuyView({
                         </span>
                       )}
                     </div>
+                    {m.desc && (
+                      <div className="text-xs text-[var(--text-sec)] mt-0.5">{m.desc}</div>
+                    )}
                   </div>
                   {isBalance && (
-                    <div className="ml-auto flex flex-col items-end gap-1">
+                    <div className="ms-auto flex flex-col items-end gap-1">
                       <div className="text-xs text-emerald-400">({formatMoney(currentBalance)})</div>
                       {!hasEnough && (
                         <div className="text-[10px] px-2 py-0.5 rounded bg-red-500/10 text-red-400">
                           {t.insufficientBalance}
                         </div>
                       )}
+                    </div>
+                  )}
+                  {m.id === 'WalletRecharge' && (
+                    <div className="ms-auto flex items-center gap-1.5 shrink-0">
+                      <span className="text-xs font-semibold text-[var(--accent)] hidden sm:inline">
+                        {t.recharge || (lang === 'ar' ? 'شحن' : 'Recharge')}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -958,6 +968,10 @@ export default function BuyView({
           {isProcessing ? (
             <span className="flex items-center justify-center gap-2">
               <Loader2 className="animate-spin w-5 h-5" /> {t.processing}
+            </span>
+          ) : selectedMethod === 'WalletRecharge' ? (
+            <span className="flex items-center justify-center gap-2">
+              <Wallet className="w-5 h-5" /> {t.walletRechargeBtn || (lang === 'ar' ? 'شحن المحفظة للمتابعة' : 'Recharge Wallet to Continue')}
             </span>
           ) : (
             `${t.buyNow} • $${total}`

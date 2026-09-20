@@ -31,11 +31,12 @@ export const PAYMENT_METHOD_DEFS = {
     id: 'WalletRecharge',
     icon: Wallet,
     color: 'text-green-500',
-    nameKey: 'walletRecharge',
-    fallbackEn: 'Wallet (ShamCash / Binance)',
-    fallbackAr: 'المحفظة (شام كاش / بايننس)',
-    descEn: 'Top up your wallet to purchase',
-    descAr: 'عبّئ محفظتك لتتمكن من الشراء',
+    nameKey: 'walletRechargeTitle',
+    fallbackEn: 'Recharge Wallet (ShamCash / Binance)',
+    fallbackAr: 'شحن المحفظة (شام كاش / بايننس)',
+    descKey: 'walletRechargeDesc',
+    descEn: 'Top up your wallet balance to complete purchase',
+    descAr: 'اشحن رصيد محفظتك لمتابعة الشراء',
   },
   SyriatelCash: {
     id: 'SyriatelCash',
@@ -51,6 +52,7 @@ export const PAYMENT_METHOD_DEFS = {
   binance: {
     id: 'binance',
     icon: Bitcoin,
+    logoSrc: '/binance-pay-logo.svg',
     color: 'text-[#FCD535]',
     nameKey: 'binance',
     fallbackEn: 'Binance Pay (USDT)',
@@ -217,16 +219,32 @@ export function buildPaymentMethods(t, lang, paymentConfig = {}, options = {}) {
 
   if (enabled.shamcash || enabled.binance) {
     if (isCheckout) {
-      // In checkout, we combine them into a single "Recharge Wallet" option
-      // which redirects the user mentally to the recharge flow, but for now we just label it as Wallet.
       const def = PAYMENT_METHOD_DEFS.WalletRecharge;
+      const both = enabled.shamcash && enabled.binance;
+      const onlySham = enabled.shamcash && !enabled.binance;
+      const onlyBin = !enabled.shamcash && enabled.binance;
+
+      let name = label(def);
+      if (both) {
+        name = t.walletRechargeTitle || (isAr ? 'شحن المحفظة (شام كاش / بايننس)' : 'Recharge Wallet (ShamCash / Binance)');
+      } else if (onlySham) {
+        name = t.walletRechargeTitleOnlySham || (isAr ? 'شحن المحفظة (شام كاش)' : 'Recharge Wallet (ShamCash)');
+      } else if (onlyBin) {
+        name = t.walletRechargeTitleOnlyBinance || (isAr ? 'شحن المحفظة (بايننس باي)' : 'Recharge Wallet (Binance Pay)');
+      }
+
+      const activeLogos = [];
+      if (enabled.shamcash) activeLogos.push('/shamcash-logo.svg');
+      if (enabled.binance) activeLogos.push('/binance-pay-logo.svg');
+
       methods.push({
         ...def,
         id: 'WalletRecharge', // Use WalletRecharge so BuyView handles it as a redirect
-        name: label(def),
-        desc: desc(def),
+        name,
+        desc: t.walletRechargeDesc || desc(def),
         disabled: false,
-        isMultiLogo: true, // Custom flag for UI to render multiple logos
+        logos: activeLogos,
+        isMultiLogo: activeLogos.length > 1,
       });
     } else {
       if (enabled.shamcash) {

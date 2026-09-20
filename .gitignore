@@ -49,3 +49,7 @@ terminals/
 
 # Supabase CLI local state
 supabase/.temp/
+
+# Office temporary lock files
+~$*
+

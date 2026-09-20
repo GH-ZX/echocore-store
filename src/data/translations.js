@@ -1487,6 +1487,11 @@ export const translations = {
     useBalance: "استخدم الرصيد",
     rechargeHistory: "سجل الشحنات",
     payFromBalance: "الدفع من الرصيد",
+    walletRechargeTitle: "شحن المحفظة (شام كاش / بايننس)",
+    walletRechargeTitleOnlySham: "شحن المحفظة (شام كاش)",
+    walletRechargeTitleOnlyBinance: "شحن المحفظة (بايننس باي)",
+    walletRechargeDesc: "اشحن رصيد محفظتك لمتابعة الشراء",
+    walletRechargeBtn: "شحن المحفظة للمتابعة",
 
     /* GAME SERVERS / REGIONS */
     selectRegion: "اختر المنطقة",
@@ -3754,6 +3759,11 @@ export const translations = {
     useBalance: "Use Balance",
     rechargeHistory: "Recharge History",
     payFromBalance: "Pay from Balance",
+    walletRechargeTitle: "Recharge Wallet (ShamCash / Binance)",
+    walletRechargeTitleOnlySham: "Recharge Wallet (ShamCash)",
+    walletRechargeTitleOnlyBinance: "Recharge Wallet (Binance Pay)",
+    walletRechargeDesc: "Top up your wallet balance to complete purchase",
+    walletRechargeBtn: "Recharge Wallet to Continue",
 
     /* GAME SERVERS / REGIONS */
     selectRegion: "Select region",
