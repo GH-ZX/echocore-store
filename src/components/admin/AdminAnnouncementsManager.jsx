@@ -6,6 +6,7 @@ import InboxNotificationRow from '../notifications/InboxNotificationRow';
 import InboxPager from '../notifications/InboxPager';
 import InboxSearchBar from '../notifications/InboxSearchBar';
 import {
+  deduplicateBroadcastAnnouncements,
   fetchAdminAnnouncements,
   formatNotification,
   getNotificationDestination,
@@ -31,7 +32,7 @@ export default function AdminAnnouncementsManager({
     setLoading(true);
     try {
       const items = await fetchAdminAnnouncements(500);
-      setAnnouncements(items);
+      setAnnouncements(deduplicateBroadcastAnnouncements(items));
     } catch (err) {
       console.error('Failed to load admin announcements:', err);
       setAnnouncements([]);

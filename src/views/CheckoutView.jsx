@@ -3,7 +3,6 @@ import { useLocation } from 'react-router-dom';
 import { Loader2, QrCode, Clock, CheckCircle, Gift, Wallet } from 'lucide-react';
 import {
   buildPaymentMethods,
-  getDefaultPaymentMethod,
   getManualPaymentDisplay,
   isManualWalletMethod,
   isApiWalletMethod,
@@ -54,20 +53,19 @@ export default function CheckoutView({
   const goRecharge = () => navigate('/recharge', { state: { returnTo: location.pathname } });
 
   const allMethods = useMemo(
-    () => buildPaymentMethods(t, lang, paymentConfig, { includeBalance: true, currentBalance: hasEnoughBalance ? currentBalance : 0 }),
+    () => buildPaymentMethods(t, lang, paymentConfig, { includeBalance: true, currentBalance: hasEnoughBalance ? currentBalance : 0, isCheckout: true }),
     [t, lang, paymentConfig, hasEnoughBalance, currentBalance],
   );
 
   const usableMethods = allMethods.filter((m) => !m.disabled && !m.comingSoon);
 
   useEffect(() => {
-    const methods = buildPaymentMethods(t, lang, paymentConfig, { includeBalance: true, currentBalance });
-    setSelectedMethod(hasEnoughBalance ? 'balance' : getDefaultPaymentMethod(methods));
-  }, [t, lang, paymentConfig, hasEnoughBalance, currentBalance]);
+    setSelectedMethod(hasEnoughBalance ? 'balance' : 'WalletRecharge');
+  }, [hasEnoughBalance]);
 
   useEffect(() => {
     if (!usableMethods.some((m) => m.id === selectedMethod)) {
-      setSelectedMethod(hasEnoughBalance ? 'balance' : getDefaultPaymentMethod(allMethods));
+      setSelectedMethod(hasEnoughBalance ? 'balance' : 'WalletRecharge');
     }
   }, [allMethods, selectedMethod, usableMethods, hasEnoughBalance]);
 
@@ -119,6 +117,12 @@ export default function CheckoutView({
       return;
     }
     checkoutClickLock.locked = true;
+
+    if (selectedMethod === 'WalletRecharge') {
+      checkoutClickLock.locked = false;
+      goRecharge();
+      return;
+    }
 
     if (selectedMethod === 'balance') {
       setIsProcessing(true);

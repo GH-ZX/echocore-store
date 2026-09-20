@@ -4,6 +4,7 @@ import { Bell, Megaphone } from 'lucide-react';
 import { Spinner } from '../components/routing/PageLoader';
 import InboxNotificationRow from '../components/notifications/InboxNotificationRow';
 import {
+  deduplicateBroadcastAnnouncements,
   formatNotification,
   getNotificationDestination,
 } from '../lib/notifications';
@@ -44,7 +45,7 @@ export default function AnnouncementsView({
   }, [unreadCount, onMarkAllRead]);
 
   const announcements = useMemo(
-    () => notifications.filter((item) => BROADCAST_TYPES.has(item?.type)),
+    () => deduplicateBroadcastAnnouncements(notifications.filter((item) => BROADCAST_TYPES.has(item?.type))),
     [notifications],
   );
 

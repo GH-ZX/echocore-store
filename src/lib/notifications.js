@@ -467,14 +467,39 @@ export async function fetchNotifications(limit = 30) {
   return Array.isArray(data) ? data : [];
 }
 
-/** Admin-only: fetch all broadcast announcements across all users. */
+/**
+ * Deduplicates broadcast notifications by content and timestamp window.
+ * When an announcement is broadcast to all users, each user receives a separate row.
+ * This collapses identical broadcast batch rows into a single unique announcement.
+ */
+export function deduplicateBroadcastAnnouncements(items) {
+  if (!Array.isArray(items)) return [];
+  if (items.length <= 1) return items;
+  const seen = new Set();
+  const deduped = [];
+  for (const item of items) {
+    if (!item) continue;
+    const title = String(item?.metadata?.title || '').trim();
+    const body = String(item?.metadata?.body || '').trim();
+    const kind = String(item?.metadata?.kind || item?.type || '').trim();
+    const timeKey = item?.created_at ? item.created_at.slice(0, 16) : '';
+    const key = `${kind}:::${title}:::${body}:::${timeKey}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(item);
+    }
+  }
+  return deduped;
+}
+
+/** Admin-only: fetch all broadcast announcements across all users (deduplicated). */
 export async function fetchAdminAnnouncements(limit = 100) {
   const { data, error } = await supabase.rpc('get_admin_announcements', { p_limit: limit });
   if (error) {
     if (isMissingRpc(error)) throw new Error(RPC_SETUP_MSG);
     throw error;
   }
-  return Array.isArray(data) ? data : [];
+  return deduplicateBroadcastAnnouncements(Array.isArray(data) ? data : []);
 }
 
 export async function fetchUnreadCount() {

@@ -266,7 +266,7 @@ function buildSettingsEnvelope(row: Json | null | undefined, envKey: string | nu
     g2bulk_auto_sync_timezone: String(settingsRow.g2bulk_auto_sync_timezone || 'Asia/Damascus'),
     g2bulk_auto_approve: true,
     g2bulk_block_when_wallet_low: settingsRow.g2bulk_block_when_wallet_low !== false,
-    g2bulk_auto_refund_on_fail: settingsRow.g2bulk_auto_refund_on_fail !== false,
+    g2bulk_auto_refund_on_fail: settingsRow.g2bulk_auto_refund_on_fail === true,
     g2bulk_pull_selection: settingsRow.g2bulk_pull_selection || {},
     g2bulk_api_key_set: !!(apiKey || envKeyTrimmed),
     g2bulk_api_key_masked: apiKey

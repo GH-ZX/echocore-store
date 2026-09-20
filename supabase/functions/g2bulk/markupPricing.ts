@@ -33,11 +33,14 @@ export function resolveSyncedPrice(
 
   if (sale || mode === 'fixed') {
     const locked = Number(existing?.price);
+    const costCeil = Math.ceil(cost * 100) / 100;
+    // Hard rule: fixed/sale price must never fall below wholesale supplier cost
+    const safePrice = Number.isFinite(locked) && locked >= costCeil
+      ? locked
+      : priceFromCost(cost, storeMarkupPercent);
     return {
-      price: Number.isFinite(locked) && locked > 0
-        ? locked
-        : priceFromCost(cost, storeMarkupPercent),
-      preservePrice: true,
+      price: safePrice,
+      preservePrice: safePrice === locked,
     };
   }
 

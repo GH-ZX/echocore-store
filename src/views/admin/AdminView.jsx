@@ -7,7 +7,7 @@ import {
   isValidAdminTabSegment,
   resolveAdminTabFromPath,
 } from '../../lib/adminRoutes';
-import { Trash2, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Percent, PanelLeftClose, PanelLeftOpen, Users, ScrollText, Bell, Mail, TrendingUp, Cable, Settings, Handshake, Megaphone } from 'lucide-react';
+import { Trash2, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Percent, PanelLeftClose, PanelLeftOpen, Users, ScrollText, Bell, Mail, TrendingUp, Cable, Settings, Handshake, Megaphone, ChevronDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 import { centerActiveMobileTab, resetPageHorizontalScroll } from '../../lib/adminMobileNav';
@@ -93,8 +93,8 @@ function buildAdminNavGroups(t) {
     { id: 'insights', label: t.adminGroupOverview, shortLabel: t.tabOverviewShort, icon: BarChart3, tabs: ['overview', 'profits', 'logs'] },
     { id: 'sales', label: t.adminGroupSales, shortLabel: t.adminGroupSales, icon: ShoppingCart, tabs: ['orders'] },
     { id: 'catalog', label: t.adminGroupCatalog, shortLabel: t.adminGroupCatalog, icon: Package, tabs: ['products', 'home'] },
-    { id: 'customers', label: t.adminGroupCustomers, shortLabel: t.adminGroupCustomers, icon: Users, tabs: ['users', 'partners', 'inbox', 'announcements', 'contact', 'reviews', 'recharges'] },
-    { id: 'settings', label: t.adminGroupSettings, shortLabel: t.adminGroupSettings, icon: Settings, tabs: ['payments', 'apis', 'theme'] },
+    { id: 'customers', label: t.adminGroupCustomers, shortLabel: t.adminGroupCustomers, icon: Users, tabs: ['users', 'partners', 'recharges', 'contact', 'reviews'] },
+    { id: 'settings', label: t.adminGroupSettings, shortLabel: t.adminGroupSettings, icon: Settings, tabs: ['payments', 'apis', 'theme', 'inbox', 'announcements'] },
   ];
 }
 
@@ -159,6 +159,16 @@ export default function AdminView({
   const mobileNavRef = useRef(null);
   // Remember the last visited tab per group so switching groups restores it
   const lastTabPerGroupRef = useRef({});
+
+  const [alertsExpanded, setAlertsExpanded] = useState(
+    () => activeTab === 'inbox' || activeTab === 'announcements',
+  );
+
+  useEffect(() => {
+    if (activeTab === 'inbox' || activeTab === 'announcements') {
+      setAlertsExpanded(true);
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (activeGroup.tabs.includes(activeTab)) {
@@ -413,6 +423,66 @@ export default function AdminView({
                 {groupTabs.length > 1 && (
                   <div className="admin-nav-group__tabs">
                     {groupTabs.map((tab) => {
+                      if (tab.id === 'announcements') return null;
+
+                      if (tab.id === 'inbox') {
+                        const isInboxActive = activeTab === 'inbox';
+                        const isAnnouncementsActive = activeTab === 'announcements';
+                        const announcementsTab = adminNavItems.find((item) => item.id === 'announcements');
+                        const AnnouncementIcon = announcementsTab?.icon || Megaphone;
+
+                        return (
+                          <div key="inbox-nested-wrapper" className="space-y-0.5">
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setAdminTab('inbox')}
+                                className={`admin-nav-subbtn flex-1 min-w-0${isInboxActive ? ' admin-nav-subbtn--active' : ''}`}
+                                aria-current={isInboxActive ? 'page' : undefined}
+                              >
+                                <tab.icon className="admin-nav-subbtn__icon" aria-hidden="true" />
+                                <span className="truncate">{tab.label}</span>
+                                {inboxUnreadCount > 0 ? (
+                                  <span className="admin-nav-badge admin-nav-badge--subtab">
+                                    {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
+                                  </span>
+                                ) : null}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAlertsExpanded((prev) => !prev);
+                                }}
+                                className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] rounded-md transition-colors flex-shrink-0"
+                                title={alertsExpanded ? (t.collapseShort || 'Collapse') : (t.expandShort || 'Expand')}
+                                aria-expanded={alertsExpanded}
+                              >
+                                <ChevronDown
+                                  className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                                    alertsExpanded ? '' : '-rotate-90 rtl:rotate-90'
+                                  }`}
+                                />
+                              </button>
+                            </div>
+
+                            {alertsExpanded && announcementsTab && (
+                              <div className="ps-3.5 rtl:pr-3.5 ltr:pl-3.5 pt-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setAdminTab('announcements')}
+                                  className={`admin-nav-subbtn w-full text-xs${isAnnouncementsActive ? ' admin-nav-subbtn--active' : ''}`}
+                                  aria-current={isAnnouncementsActive ? 'page' : undefined}
+                                >
+                                  <AnnouncementIcon className="admin-nav-subbtn__icon w-3.5 h-3.5 opacity-80" aria-hidden="true" />
+                                  <span className="truncate">{announcementsTab.label}</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+
                       const TabIcon = tab.icon;
                       const isTabActive = activeTab === tab.id;
                       return (

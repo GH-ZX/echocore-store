@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, ExternalLink, FileText, Eye, RefreshCw, ShoppingCart, Wallet } from 'lucide-react';
+import { Bell, ChevronDown, ExternalLink, FileText, Eye, Megaphone, RefreshCw, ShoppingCart, Wallet } from 'lucide-react';
 import { Spinner } from '../routing/PageLoader';
+import AdminAnnouncementsManager from './AdminAnnouncementsManager';
 import InboxNotificationRow from '../notifications/InboxNotificationRow';
 import InboxPager from '../notifications/InboxPager';
 import InboxSearchBar from '../notifications/InboxSearchBar';
@@ -39,6 +40,7 @@ export default function AdminInboxManager({
   const [activeFilter, setActiveFilter] = useState(INBOX_FILTER_IDS.UNREAD);
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
+  const [announcementsExpanded, setAnnouncementsExpanded] = useState(false);
 
   useEffect(() => {
     onRefresh?.();
@@ -293,6 +295,50 @@ export default function AdminInboxManager({
           />
         </>
       )}
+
+      {/* Expandable Announcements Section */}
+      <div className="mt-8 border border-[var(--border)] rounded-2xl bg-[var(--surface-card)] overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setAnnouncementsExpanded((prev) => !prev)}
+          className="w-full flex items-center justify-between p-4 sm:p-5 text-start hover:bg-[var(--surface-hover)]/40 transition-colors"
+          aria-expanded={announcementsExpanded}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
+              <Megaphone className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="font-bold text-sm sm:text-base text-[var(--text)]">
+                {t.adminAnnouncementsTab || 'Announcements'}
+              </h3>
+              <p className="text-xs text-[var(--text-sec)] truncate mt-0.5">
+                {t.adminAnnouncementsSub || t.announcementsSub || 'Manage system broadcasts and customer notices'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs font-semibold text-[var(--text-sec)] hidden sm:inline">
+              {announcementsExpanded ? (t.collapseShort || 'Collapse') : (t.expandShort || 'Expand')}
+            </span>
+            <ChevronDown
+              className={`w-5 h-5 text-[var(--text-sec)] transition-transform duration-200 ${
+                announcementsExpanded ? 'rotate-180' : ''
+              }`}
+            />
+          </div>
+        </button>
+
+        {announcementsExpanded && (
+          <div className="border-t border-[var(--border)] p-4 sm:p-6 bg-[var(--surface)]/30">
+            <AdminAnnouncementsManager
+              t={t}
+              lang={lang}
+              onMarkRead={onMarkRead}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

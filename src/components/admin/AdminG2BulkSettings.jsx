@@ -132,7 +132,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     g2bulk_catalog_only: true,
     g2bulk_catalog_mode: 'sync',
     g2bulk_block_when_wallet_low: true,
-    g2bulk_auto_refund_on_fail: true,
+    g2bulk_auto_refund_on_fail: false,
     g2bulk_auto_sync_enabled: true,
     g2bulk_auto_sync_hour: 5,
     g2bulk_auto_sync_timezone: 'Asia/Damascus',
@@ -177,7 +177,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         g2bulk_catalog_only: data.g2bulk_catalog_only ?? true,
         g2bulk_catalog_mode: normalizeCatalogMode(data.g2bulk_catalog_mode),
         g2bulk_block_when_wallet_low: data.g2bulk_block_when_wallet_low !== false,
-        g2bulk_auto_refund_on_fail: data.g2bulk_auto_refund_on_fail !== false,
+        g2bulk_auto_refund_on_fail: data.g2bulk_auto_refund_on_fail === true,
         g2bulk_auto_sync_enabled: data.g2bulk_auto_sync_enabled ?? true,
         g2bulk_auto_sync_hour: data.g2bulk_auto_sync_hour ?? 5,
         g2bulk_auto_sync_timezone: data.g2bulk_auto_sync_timezone || 'Asia/Damascus',
@@ -225,7 +225,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
       autoSyncHour: Number(payload.g2bulk_auto_sync_hour),
       autoSyncTimezone: payload.g2bulk_auto_sync_timezone,
       blockWhenWalletLow: payload.g2bulk_block_when_wallet_low !== false,
-      autoRefundOnFail: payload.g2bulk_auto_refund_on_fail !== false,
+      autoRefundOnFail: payload.g2bulk_auto_refund_on_fail === true,
       apiKey: apiKeyInput.trim() ? apiKeyInput.trim() : undefined,
     });
     if (apiKeyInput.trim()) setApiKeyInput('');
@@ -909,7 +909,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"
-              checked={form.g2bulk_auto_refund_on_fail !== false}
+              checked={form.g2bulk_auto_refund_on_fail === true}
               onChange={(e) => setForm((p) => ({ ...p, g2bulk_auto_refund_on_fail: e.target.checked }))}
               className="rounded border-[var(--border)]"
             />

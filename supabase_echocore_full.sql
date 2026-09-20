@@ -1,4 +1,4 @@
-﻿-- =============================================================================
+-- =============================================================================
 -- ECHOCORE STORE â€” COMPLETE SUPABASE SETUP (single file)
 -- =============================================================================
 -- Version: 0.7.1 — single file, functions deduped (last overload wins), dollar-quotes fixed
@@ -1531,7 +1531,7 @@ ALTER TABLE public.store_settings
 -- OFF: no auto-refund — order stays failed and an admin handles it manually
 -- (top up G2Bulk wallet + re-fulfill, or refund via admin tools).
 ALTER TABLE public.store_settings
-  ADD COLUMN IF NOT EXISTS g2bulk_auto_refund_on_fail boolean NOT NULL DEFAULT true;
+  ADD COLUMN IF NOT EXISTS g2bulk_auto_refund_on_fail boolean NOT NULL DEFAULT false;
 
 -- Admin settings (extended)
 
@@ -1695,7 +1695,7 @@ BEGIN
     g2bulk_auto_sync_timezone = COALESCE(nullif(trim(p_auto_sync_timezone), ''), g2bulk_auto_sync_timezone, 'Asia/Damascus'),
     g2bulk_auto_approve = COALESCE(p_auto_approve, g2bulk_auto_approve, true),
     g2bulk_block_when_wallet_low = COALESCE(p_block_when_wallet_low, g2bulk_block_when_wallet_low, true),
-    g2bulk_auto_refund_on_fail = COALESCE(p_auto_refund_on_fail, g2bulk_auto_refund_on_fail, true),
+    g2bulk_auto_refund_on_fail = COALESCE(p_auto_refund_on_fail, g2bulk_auto_refund_on_fail, false),
     g2bulk_api_key = CASE
       WHEN p_api_key IS NOT NULL THEN v_trim_key
       ELSE g2bulk_api_key
@@ -1757,7 +1757,7 @@ BEGIN
     'g2bulk_auto_sync_timezone', COALESCE(v_row.g2bulk_auto_sync_timezone, 'Asia/Damascus'),
     'g2bulk_auto_approve', COALESCE(v_row.g2bulk_auto_approve, true),
     'g2bulk_block_when_wallet_low', COALESCE(v_row.g2bulk_block_when_wallet_low, true),
-    'g2bulk_auto_refund_on_fail', COALESCE(v_row.g2bulk_auto_refund_on_fail, true),
+    'g2bulk_auto_refund_on_fail', COALESCE(v_row.g2bulk_auto_refund_on_fail, false),
     'g2bulk_pull_selection', COALESCE(v_row.g2bulk_pull_selection, '{}'::jsonb),
     'g2bulk_api_key_set', v_key IS NOT NULL,
     'g2bulk_api_key_masked', CASE
@@ -8999,6 +8999,50 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.get_my_notifications(int) FROM public;
 GRANT EXECUTE ON FUNCTION public.get_my_notifications(int) TO authenticated;
 
+-- Admin RPC: return all broadcast-type notifications across all users,
+-- deduplicated by broadcast (so 1 broadcast sent to N users shows as 1 announcement).
+CREATE OR REPLACE FUNCTION public.get_admin_announcements(p_limit int DEFAULT 100)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+STABLE AS $$
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  RETURN COALESCE((
+    SELECT json_agg(row_to_json(q) ORDER BY q.created_at DESC)
+    FROM (
+      SELECT id, type, metadata, link, read_at, bell_hidden_at, created_at
+      FROM (
+        SELECT DISTINCT ON (
+          type,
+          COALESCE(metadata->>'title', ''),
+          COALESCE(metadata->>'body', ''),
+          date_trunc('minute', created_at)
+        )
+          id, type, metadata, link, read_at, bell_hidden_at, created_at
+        FROM public.notifications
+        WHERE type IN ('admin_announcement', 'admin_warning', 'admin_maintenance_notice')
+        ORDER BY
+          type,
+          COALESCE(metadata->>'title', ''),
+          COALESCE(metadata->>'body', ''),
+          date_trunc('minute', created_at),
+          created_at DESC
+      ) deduped
+      ORDER BY deduped.created_at DESC
+      LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 100), 500))
+    ) q
+  ), '[]'::json);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_admin_announcements(int) FROM public;
+GRANT EXECUTE ON FUNCTION public.get_admin_announcements(int) TO authenticated;
+
 -- =============================================================================
 -- 2) Helper: safe site log (no-op if append_site_log missing)
 -- =============================================================================
@@ -9865,7 +9909,7 @@ DECLARE
   v_link text;
   v_new_balance numeric;
   v_refunded boolean := false;
-  v_auto_refund boolean := true;
+  v_auto_refund boolean := false;
 BEGIN
   SELECT * INTO v_order FROM public.orders WHERE id = p_order_id FOR UPDATE;
 
@@ -9875,7 +9919,7 @@ BEGIN
 
   -- Auto-refund toggle: OFF keeps failed orders as-is so an admin handles them
   -- manually (top up G2Bulk wallet + re-fulfill, or manual refund).
-  SELECT COALESCE(g2bulk_auto_refund_on_fail, true) INTO v_auto_refund
+  SELECT COALESCE(g2bulk_auto_refund_on_fail, false) INTO v_auto_refund
   FROM public.store_settings WHERE id = 1;
 
   v_prev_status := v_order.fulfillment_status;
@@ -10219,6 +10263,9 @@ GRANT EXECUTE ON FUNCTION public.release_order_fulfillment_lock(uuid, text) TO s
 -- All three are SECURITY DEFINER so they can be called by pg_cron / edge
 -- functions without RLS interference.
 
+ALTER TABLE public.orders
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
+
 CREATE OR REPLACE FUNCTION public.check_fulfillment_invariants()
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -10254,14 +10301,14 @@ BEGIN
     'orderRef', o.order_ref,
     'total', o.total,
     'userName', COALESCE(p.username, p.name, 'Customer'),
-    'stuckSince', o.updated_at,
-    'minutesStuck', EXTRACT(EPOCH FROM (now() - o.updated_at)) / 60
-  ) ORDER BY o.updated_at ASC), '[]'::jsonb)
+    'stuckSince', COALESCE(o.updated_at, o.created_at),
+    'minutesStuck', EXTRACT(EPOCH FROM (now() - COALESCE(o.updated_at, o.created_at))) / 60
+  ) ORDER BY COALESCE(o.updated_at, o.created_at) ASC), '[]'::jsonb)
   INTO v_stuck
   FROM public.orders o
   LEFT JOIN public.profiles p ON p.id = o.user_id
   WHERE o.fulfillment_status = 'fulfilling'
-    AND o.updated_at < now() - make_interval(mins => 30);
+    AND COALESCE(o.updated_at, o.created_at) < now() - make_interval(mins => 30);
 
   -- 3) Fulfillment failures in the last 24 hours
   SELECT COALESCE(jsonb_agg(jsonb_build_object(
@@ -10269,14 +10316,14 @@ BEGIN
     'orderRef', o.order_ref,
     'total', o.total,
     'userName', COALESCE(p.username, p.name, 'Customer'),
-    'failedAt', o.updated_at,
+    'failedAt', COALESCE((o.g2bulk_metadata->>'failed_at')::timestamptz, o.updated_at, o.created_at),
     'error', o.g2bulk_metadata->>'last_error'
-  ) ORDER BY o.updated_at DESC), '[]'::jsonb)
+  ) ORDER BY COALESCE((o.g2bulk_metadata->>'failed_at')::timestamptz, o.updated_at, o.created_at) DESC), '[]'::jsonb)
   INTO v_recent_failures
   FROM public.orders o
   LEFT JOIN public.profiles p ON p.id = o.user_id
   WHERE o.fulfillment_status = 'failed'
-    AND o.updated_at > now() - make_interval(hours => 24);
+    AND COALESCE((o.g2bulk_metadata->>'failed_at')::timestamptz, o.updated_at, o.created_at) > now() - make_interval(hours => 24);
 
   RETURN jsonb_build_object(
     'fulfilledAndRefunded', v_fulfilled_refunded,
@@ -11933,6 +11980,12 @@ BEGIN
       END IF;
     ELSE
       v_expected := v_offer_price;
+    END IF;
+
+    -- HARD INVARIANT: Selling below supplier wholesale cost is strictly forbidden
+    IF v_offer_cost IS NOT NULL AND v_offer_cost > 0 AND v_expected < v_offer_cost THEN
+      RAISE EXCEPTION 'Offer price (%) is below supplier wholesale cost (%) for offer %',
+        v_expected, v_offer_cost, v_item->>'offer_id';
     END IF;
 
     IF ABS(v_expected - (v_item->>'price')::numeric) > 0.001 THEN

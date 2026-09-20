@@ -245,6 +245,16 @@ export default function AdminOfferEditModal({
       }
     }
 
+    const priceVal = parseFloat(form.price);
+    const costVal = form.g2bulk_cost_usd ? parseFloat(form.g2bulk_cost_usd) : null;
+    if (costVal != null && Number.isFinite(costVal) && costVal > 0 && priceVal < costVal) {
+      setError(
+        t.offerPriceBelowCost
+        || `Price ($${priceVal}) cannot be less than wholesale supplier cost ($${costVal}). This would lose money on every order.`
+      );
+      return;
+    }
+
     setSaving(true);
     try {
       let finalSaleImage = form.sale_image_url || null;
