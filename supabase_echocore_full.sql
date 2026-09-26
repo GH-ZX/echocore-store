@@ -518,11 +518,23 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('product-images', 'product-images', true)
 ON CONFLICT (id) DO NOTHING;
 
--- 1. Public read for all images (so product urls work for everyone, including anonymous visitors)
+-- 1. Public bucket read access:
+-- Note: 'product-images' is a public bucket (public = true), so image assets are directly accessible
+-- via their public URL (/storage/v1/object/public/product-images/...) without a broad SELECT policy on storage.objects.
+-- Dropping the broad SELECT policy prevents anonymous clients from listing all files (resolving lint 0025).
 DROP POLICY IF EXISTS "Public read product-images" ON storage.objects;
-CREATE POLICY "Public read product-images"
+
+DROP POLICY IF EXISTS "Admins can list product-images" ON storage.objects;
+CREATE POLICY "Admins can list product-images"
   ON storage.objects FOR SELECT
-  USING (bucket_id = 'product-images');
+  TO authenticated
+  USING (
+    bucket_id = 'product-images' 
+    AND EXISTS (
+      SELECT 1 FROM public.profiles 
+      WHERE profiles.id = auth.uid() AND profiles.role = 'admin'
+    )
+  );
 
 -- 2. Admin-only upload (INSERT)
 DROP POLICY IF EXISTS "Admins can upload to product-images" ON storage.objects;
@@ -982,25 +994,32 @@ SECURITY DEFINER
 SET search_path = public AS $$
 DECLARE
   v_user_id uuid := auth.uid();
+  v_is_admin boolean := false;
   v_row public.notifications%ROWTYPE;
 BEGIN
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
+  v_is_admin := public.is_admin();
+
+  -- Allow the recipient or an admin to mark read
   UPDATE public.notifications
-    SET read_at = now()
-    WHERE id = p_notification_id AND user_id = v_user_id AND read_at IS NULL
+    SET read_at = COALESCE(read_at, now())
+    WHERE id = p_notification_id
+      AND (user_id = v_user_id OR v_is_admin)
     RETURNING * INTO v_row;
 
   IF NOT FOUND THEN
     SELECT * INTO v_row
     FROM public.notifications
-    WHERE id = p_notification_id AND user_id = v_user_id;
+    WHERE id = p_notification_id
+      AND (user_id = v_user_id OR v_is_admin);
   END IF;
 
+  -- Return gracefully even if not found or already deleted, avoiding fatal P0001 exceptions in server logs
   IF v_row.id IS NULL THEN
-    RAISE EXCEPTION 'Notification not found';
+    RETURN jsonb_build_object('id', p_notification_id, 'readAt', now(), 'notFound', true);
   END IF;
 
   RETURN jsonb_build_object('id', v_row.id, 'readAt', v_row.read_at);
@@ -2946,6 +2965,7 @@ SELECT setval(
 CREATE OR REPLACE FUNCTION public.assign_order_ref()
 RETURNS trigger
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 BEGIN
   IF NEW.order_ref IS NULL OR trim(NEW.order_ref) = '' THEN
@@ -2954,6 +2974,8 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+REVOKE EXECUTE ON FUNCTION public.assign_order_ref() FROM public, anon;
 
 DROP TRIGGER IF EXISTS orders_assign_ref ON public.orders;
 CREATE TRIGGER orders_assign_ref
@@ -3532,6 +3554,7 @@ CREATE OR REPLACE FUNCTION public.partner_price_from_cost(p_cost numeric, p_mark
 RETURNS numeric
 LANGUAGE plpgsql
 IMMUTABLE
+SET search_path = public
 AS $$
 DECLARE
   v_cost numeric := COALESCE(p_cost, 0);
@@ -3794,6 +3817,7 @@ CREATE OR REPLACE FUNCTION public.influencer_price_from_public(
 RETURNS numeric
 LANGUAGE plpgsql
 IMMUTABLE
+SET search_path = public
 AS $$
 DECLARE
   v_public numeric := COALESCE(p_public, 0);
@@ -4156,6 +4180,7 @@ CREATE OR REPLACE FUNCTION public.influencer_buyer_price(
 RETURNS numeric
 LANGUAGE plpgsql
 IMMUTABLE
+SET search_path = public
 AS $$
 DECLARE
   v_public numeric := COALESCE(p_public, 0);
@@ -4199,6 +4224,7 @@ CREATE OR REPLACE FUNCTION public.influencer_commission_per_unit(
 RETURNS numeric
 LANGUAGE plpgsql
 IMMUTABLE
+SET search_path = public
 AS $$
 DECLARE
   v_public numeric := COALESCE(p_public, 0);
@@ -5257,6 +5283,7 @@ CREATE OR REPLACE FUNCTION public.is_soft_fulfillment_error(p_error text)
 RETURNS boolean
 LANGUAGE sql
 IMMUTABLE
+SET search_path = public
 AS $$
   SELECT p_error IS NOT NULL AND (
     p_error ILIKE '%timed out%'
@@ -6446,18 +6473,21 @@ SECURITY DEFINER
 SET search_path = public AS $$
 DECLARE
   v_user_id uuid := auth.uid();
+  v_is_admin boolean := false;
   v_updated int;
 BEGIN
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
+  v_is_admin := public.is_admin();
+
   UPDATE public.notifications
   SET
     bell_hidden_at = now(),
     read_at = COALESCE(read_at, now())
   WHERE id = p_notification_id
-    AND user_id = v_user_id
+    AND (user_id = v_user_id OR v_is_admin)
     AND bell_hidden_at IS NULL;
 
   GET DIAGNOSTICS v_updated = ROW_COUNT;
@@ -9377,14 +9407,19 @@ CREATE OR REPLACE FUNCTION public.telegram_escape(p_text text)
 RETURNS text
 LANGUAGE sql
 IMMUTABLE
+SET search_path = public
 AS $$
   SELECT replace(replace(replace(COALESCE(p_text, ''), '&', '&amp;'), '<', '&lt;'), '>', '&gt;');
 $$;
+
+REVOKE EXECUTE ON FUNCTION public.telegram_escape(text) FROM public, anon;
+GRANT EXECUTE ON FUNCTION public.telegram_escape(text) TO authenticated, service_role;
 
 CREATE OR REPLACE FUNCTION public.telegram_alert_message(p_type text, p_metadata jsonb DEFAULT '{}'::jsonb)
 RETURNS text
 LANGUAGE sql
 STABLE
+SET search_path = public
 AS $$
   SELECT CASE p_type
     WHEN 'orderPaid' THEN
@@ -9447,10 +9482,14 @@ AS $$
   END;
 $$;
 
+REVOKE EXECUTE ON FUNCTION public.telegram_alert_message(text, jsonb) FROM public, anon;
+GRANT EXECUTE ON FUNCTION public.telegram_alert_message(text, jsonb) TO authenticated, service_role;
+
 CREATE OR REPLACE FUNCTION public.telegram_alert_link(p_type text, p_metadata jsonb DEFAULT '{}'::jsonb)
 RETURNS text
 LANGUAGE sql
 STABLE
+SET search_path = public
 AS $$
   SELECT CASE p_type
     WHEN 'orderPaid' THEN
@@ -9477,6 +9516,9 @@ AS $$
       NULL
   END;
 $$;
+
+REVOKE EXECUTE ON FUNCTION public.telegram_alert_link(text, jsonb) FROM public, anon;
+GRANT EXECUTE ON FUNCTION public.telegram_alert_link(text, jsonb) TO authenticated, service_role;
 
 CREATE OR REPLACE FUNCTION public.notify_admin_telegram(
   p_type text,
@@ -11617,7 +11659,7 @@ GRANT SELECT (
   created_at,
   g2bulk_type, g2bulk_catalogue_name, g2bulk_product_id,
   catalog_source, g2bulk_catalogue_id, g2bulk_synced_at,
-  pricing_mode
+  pricing_mode, instructions_en, instructions_ar
 ) ON public.offers TO anon, authenticated;
 
 -- ---------------------------------------------------------------------------
@@ -11632,7 +11674,8 @@ ALTER TABLE public.offers
   ADD COLUMN IF NOT EXISTS card_badge_en text,
   ADD COLUMN IF NOT EXISTS card_badge_ar text;
 
-CREATE OR REPLACE VIEW public.public_offers AS
+CREATE OR REPLACE VIEW public.public_offers
+WITH (security_invoker = false) AS
 SELECT
   id, game_id, name_en, name_ar, price, amount, region,
   description_en, description_ar, active,
