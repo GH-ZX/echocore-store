@@ -12793,5 +12793,99 @@ REVOKE EXECUTE ON FUNCTION public.get_admin_site_logs(int, int, text) FROM publi
 GRANT EXECUTE ON FUNCTION public.get_admin_site_logs(int, int, text) TO authenticated;
 
 
+-- ============================================================================
+-- LINTER HARDENING SWEEP
+-- Mirrors supabase/migrations/20260921013000_resolve_all_supabase_linter_warnings.sql
+-- (sections 2, 6 and 7). Kept here so a fresh bootstrap lands in the same
+-- hardened state as the live database. Applied last on purpose: it sweeps
+-- AFTER every explicit GRANT above, so it only ever removes access that
+-- should not exist and re-grants the public storefront surface.
+-- Idempotent — safe to re-run.
+-- ============================================================================
+
+-- 1. Games table read access. All columns are storefront-safe (no supplier
+--    cost, no internal flags); `offers` below stays column-restricted.
+GRANT SELECT ON TABLE public.games TO anon, authenticated;
+
+-- 2. Revoke anon execution of admin & internal SECURITY DEFINER functions.
+--    Anything a LOGGED-OUT visitor legitimately calls must stay in the
+--    allowlist, otherwise the storefront breaks:
+--      is_admin                    -> used by 47 RLS policies
+--      get_site_status/theme       -> public site chrome
+--      get_home_layout             -> public home page
+--      get_payment_methods         -> public checkout
+--      get_bestselling_offer_ids   -> public home carousel
+--      get_approved_customer_reviews-> public reviews
+--      list_recent_purchase_activity-> public social proof
+--      submit_contact_message      -> public contact form
+--      check_username_available    -> src/views/auth/LoginView.jsx (PRE-auth)
+--      log_client_error            -> src/main.jsx global handler (anon errors)
+DO $$
+DECLARE
+  f record;
+BEGIN
+  FOR f IN
+    SELECT n.nspname, p.proname, pg_get_function_identity_arguments(p.oid) as args
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.prosecdef = true
+      AND p.proname NOT IN (
+        'is_admin',
+        'get_site_status',
+        'get_site_theme',
+        'get_home_layout',
+        'get_payment_methods',
+        'get_bestselling_offer_ids',
+        'get_approved_customer_reviews',
+        'list_recent_purchase_activity',
+        'submit_contact_message',
+        'check_username_available',
+        'log_client_error'
+      )
+  LOOP
+    EXECUTE format('REVOKE EXECUTE ON FUNCTION %I.%I(%s) FROM anon, public', f.nspname, f.proname, f.args);
+    -- handle_new_user / assign_order_ref are trigger + trigger-fn: no client
+    -- role ever calls them directly, so they get no authenticated grant.
+    IF f.proname NOT IN ('handle_new_user', 'assign_order_ref') THEN
+      EXECUTE format('GRANT EXECUTE ON FUNCTION %I.%I(%s) TO authenticated', f.nspname, f.proname, f.args);
+    END IF;
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %I.%I(%s) TO service_role', f.nspname, f.proname, f.args);
+  END LOOP;
+END $$;
+
+-- 3. Re-grant the public storefront RPC surface explicitly, so it does not
+--    depend on the allowlist above staying in sync.
+GRANT EXECUTE ON FUNCTION public.is_admin() TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.get_site_status() TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.get_site_theme() TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.get_home_layout() TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.get_payment_methods() TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.get_bestselling_offer_ids(integer) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.get_approved_customer_reviews() TO anon, authenticated, service_role;
+
+-- Pre-auth callers: must keep anon EXECUTE or the login screen and
+-- logged-out error logging break. GRANT is idempotent, so restating the
+-- existing grants above is harmless and makes this block self-sufficient.
+GRANT EXECUTE ON FUNCTION public.check_username_available(text) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.log_client_error(text, text, jsonb) TO anon, authenticated, service_role;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname = 'list_recent_purchase_activity'
+  ) THEN
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.list_recent_purchase_activity(integer) TO anon, authenticated, service_role';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname = 'submit_contact_message'
+  ) THEN
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.submit_contact_message(text, text, text, text) TO anon, authenticated, service_role';
+  END IF;
+END $$;
+
 -- END OF ECHOCORE SUPABASE SETUP
 -- =============================================================================
