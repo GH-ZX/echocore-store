@@ -2090,13 +2090,13 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, message: 'Cron auth only allowed for syncCatalog/checkCatalog' }, 403);
   } else if (
     serviceAuth
-    && !['syncCatalog', 'checkCatalog', 'fulfillOrder', 'lookupPlayerGameOrders'].includes(action)
+    && !['syncCatalog', 'checkCatalog', 'fulfillOrder', 'lookupPlayerGameOrders', 'syncOrder'].includes(action)
   ) {
-    return jsonResponse({ success: false, message: 'Service auth only allowed for syncCatalog/checkCatalog/fulfillOrder/lookupPlayerGameOrders' }, 403);
+    return jsonResponse({ success: false, message: 'Service auth only allowed for syncCatalog/checkCatalog/fulfillOrder/lookupPlayerGameOrders/syncOrder' }, 403);
   }
 
   const apiKey = await resolveApiKeyRaw(serviceClient);
-  if (['getMe', 'fulfillOrder', 'lookupPlayerGameOrders'].includes(action) && !apiKey) {
+  if (['getMe', 'fulfillOrder', 'lookupPlayerGameOrders', 'syncOrder'].includes(action) && !apiKey) {
     return jsonResponse({ success: false, message: 'G2Bulk API key not configured' }, 400);
   }
 
@@ -3018,6 +3018,10 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'syncOrder') {
+    if (!serviceAuth && !(userId && await isAdmin(userClient, userId))) {
+      return jsonResponse({ success: false, message: 'Admin only' }, 403);
+    }
+
     const orderId = String(body.orderId || '');
     if (!orderId) {
       return jsonResponse({ success: false, message: 'orderId required' }, 400);

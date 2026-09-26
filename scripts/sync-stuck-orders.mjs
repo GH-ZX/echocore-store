@@ -30,7 +30,9 @@ async function main() {
   }
   
   console.log(`Found ${orders.length} stuck orders.`);
-  
+
+  let failed = 0;
+
   for (const order of orders) {
     const g2bulkOrderId = order.g2bulk_order_id || order.g2bulk_metadata?.g2bulk_order_id || order.g2bulk_metadata?.g2bulkOrderId;
     
@@ -54,14 +56,27 @@ async function main() {
         })
       });
       
-      const data = await res.json();
-      console.log(`Result for ${order.id}:`, data);
+      const data = await res.json().catch(() => ({}));
+      
+      if (!res.ok || data.success === false) {
+        failed += 1;
+        console.error(`FAILED order ${order.id}: HTTP ${res.status} ${data.message || ''}`.trim());
+      } else {
+        console.log(`OK order ${order.id}: HTTP ${res.status} - ${data.message || data.fulfillmentStatus || 'processed'}`);
+      }
     } catch (err) {
-      console.error(`Failed to sync order ${order.id}:`, err);
+      failed += 1;
+      console.error(`THREW order ${order.id}: ${err instanceof Error ? err.message : err}`);
     }
   }
   
-  console.log('Done.');
+  console.log(`Done. ${orders.length - failed}/${orders.length} succeeded, ${failed} failed.`);
+  if (failed > 0) {
+    process.exit(1);
+  }
 }
 
-main();
+main().catch((err) => {
+  console.error('sync-stuck-orders crashed:', err);
+  process.exit(1);
+});
