@@ -49,6 +49,8 @@ interface BotContext {
   adminProfileId: string | null;
   isGroup: boolean;
   callbackQueryId?: string;
+  /** Message holding the tapped button — replies edit it in place. */
+  messageId?: number;
 }
 
 const STORE_URL = 'https://www.echocore412.com';
@@ -83,6 +85,41 @@ async function answerCallback(token: string, callbackQueryId: string, text?: str
     text: text || undefined,
     show_alert: !!text,
   });
+}
+
+const BACK_ROW = [{ text: '⬅️ Back to menu', callback_data: 'menu' }];
+
+/**
+ * Reply to the user. Button taps edit the same message (clean navigation);
+ * typed commands send a new one. Every screen except the menu gets a Back row.
+ */
+async function reply(
+  ctx: BotContext,
+  text: string,
+  extra: Record<string, unknown> = {},
+  { back = true }: { back?: boolean } = {},
+) {
+  const markup = (extra.reply_markup as { inline_keyboard?: unknown[][] } | undefined) ?? {};
+  const rows = Array.isArray(markup.inline_keyboard) ? [...markup.inline_keyboard] : [];
+  if (back && !ctx.isGroup) rows.push(BACK_ROW);
+  const payload = {
+    ...extra,
+    ...(rows.length ? { reply_markup: { ...markup, inline_keyboard: rows } } : {}),
+  };
+  if (ctx.messageId) {
+    const edited = await tgApi(ctx.botToken, 'editMessageText', {
+      chat_id: ctx.chatId,
+      message_id: ctx.messageId,
+      text: text.slice(0, 4096),
+      parse_mode: 'HTML',
+      disable_web_page_preview: true,
+      ...payload,
+    });
+    if (edited?.ok) return edited;
+    // Same content: nothing to do. Anything else (too old, etc.): send fresh.
+    if (String(edited?.description || '').includes('message is not modified')) return edited;
+  }
+  return sendMessage(ctx.botToken, ctx.chatId, text, { disable_web_page_preview: true, ...payload });
 }
 
 function esc(s: string | null | undefined): string {
@@ -191,31 +228,49 @@ async function findUserByTelegramChat(supabase: ReturnType<typeof createClient>,
 async function cmdStart(ctx: BotContext) {
   const linked = await findUserByTelegramChat(ctx.supabase, ctx.chatId);
 
-  const storeUrl = STORE_URL;
-
-  if (linked) {
-    const balance = money(linked.balance);
-    await sendMessage(ctx.botToken, ctx.chatId,
-      `👋 <b>Welcome back, ${esc(linked.username || linked.name || ctx.firstName)}!</b>\n\n` +
-      `💰 Balance: <b>${balance}</b>\n\n` +
-      `Use the buttons below or type /help to see all commands.`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '🛒 Browse Store', url: storeUrl },
-              { text: '💰 My Balance', callback_data: 'my_balance' },
-            ],
-            [
-              { text: '📦 My Orders', callback_data: 'my_orders' },
-              { text: '🔄 Track Order', callback_data: 'track_order' },
-            ],
-            [
-              { text: '❓ Help', callback_data: 'show_help' },
-            ],
-          ],
-        },
-      },
+  // A linked account never sees the "link" prompt again: straight to the menu.
+  if (linked || ctx.isAdmin) {
+    const name = linked?.username || linked?.name || ctx.firstName;
+    const rows: Array<Array<Record<string, string>>> = [
+      [
+        { text: '💰 My Balance', callback_data: 'my_balance' },
+        { text: '📦 My Orders', callback_data: 'my_orders' },
+      ],
+      [
+        { text: '🔄 Track Order', callback_data: 'track_order' },
+        { text: '➕ Recharge', url: `${STORE_URL}/recharge` },
+      ],
+      [
+        { text: '🎮 Games', callback_data: 'browse_games' },
+        { text: '🎟 Vouchers', callback_data: 'browse_vouchers' },
+      ],
+      [
+        { text: '🛒 Open Store', url: STORE_URL },
+        { text: '💬 Support', url: `${STORE_URL}/contact` },
+      ],
+      [
+        { text: '⚙️ My Account', callback_data: 'account' },
+        { text: '❓ Help', callback_data: 'show_help' },
+      ],
+    ];
+    if (ctx.isAdmin && !ctx.isGroup) {
+      rows.push(
+        [
+          { text: '📊 Stats', callback_data: 'admin_stats' },
+          { text: '⏳ Pending Recharges', callback_data: 'admin_pending' },
+        ],
+        [
+          { text: '🕒 Latest Orders', callback_data: 'admin_recent' },
+          { text: '⚠️ Failed Orders', callback_data: 'admin_failed' },
+        ],
+      );
+    }
+    await reply(ctx,
+      `👋 <b>Welcome back, ${esc(name)}!</b>\n\n` +
+      (linked ? `💰 Balance: <b>${money(linked.balance)}</b>\n\n` : '') +
+      `Choose an option below.`,
+      { reply_markup: { inline_keyboard: rows } },
+      { back: false },
     );
   } else {
     await sendLinkPrompt(ctx, `👋 <b>Welcome to ECHOCORE Store!</b>\n\n` +
@@ -226,7 +281,7 @@ async function cmdStart(ctx: BotContext) {
 /** Sends the "Link My Account" button carrying a fresh single-use token. */
 async function sendLinkPrompt(ctx: BotContext, intro: string) {
   if (ctx.isGroup) {
-    await sendMessage(ctx.botToken, ctx.chatId, `Please message me in a private chat to link your account.`);
+    await reply(ctx, `Please message me in a private chat to link your account.`);
     return;
   }
   const displayName = [ctx.firstName, ctx.username ? `(@${ctx.username})` : ''].filter(Boolean).join(' ') || `Telegram ${ctx.userId}`;
@@ -239,12 +294,13 @@ async function sendLinkPrompt(ctx: BotContext, intro: string) {
     { text: '🛒 Browse Store', url: STORE_URL },
     { text: '❓ Help', callback_data: 'show_help' },
   ]);
-  await sendMessage(ctx.botToken, ctx.chatId,
+  await reply(ctx,
     intro +
     (token
       ? `Tap the button below and log in to the store to link your account. The link works once and expires in 15 minutes.`
       : `⚠️ Couldn't create a link right now. Please try again in a moment.`),
     { reply_markup: { inline_keyboard: rows } },
+    { back: false },
   );
 }
 
@@ -276,7 +332,7 @@ async function cmdHelp(ctx: BotContext) {
     `<i>Tap a button or type a command to begin.</i>`,
   );
 
-  await sendMessage(ctx.botToken, ctx.chatId, lines.join('\n'));
+  await reply(ctx, lines.join('\n'));
 }
 
 async function cmdLink(ctx: BotContext) {
@@ -284,7 +340,7 @@ async function cmdLink(ctx: BotContext) {
   // Linking now requires logging in to the store through a single-use link.
   const linked = await findUserByTelegramChat(ctx.supabase, ctx.chatId);
   if (linked) {
-    await sendMessage(ctx.botToken, ctx.chatId,
+    await reply(ctx,
       `✅ Already linked to <b>${esc(linked.username || linked.name)}</b>. Use /unlink to disconnect.`);
     return;
   }
@@ -294,7 +350,7 @@ async function cmdLink(ctx: BotContext) {
 async function cmdUnlink(ctx: BotContext) {
   const user = await findUserByTelegramChat(ctx.supabase, ctx.chatId);
   if (!user) {
-    await sendMessage(ctx.botToken, ctx.chatId, `You don't have a linked account.`);
+    await reply(ctx, `You don't have a linked account.`);
     return;
   }
 
@@ -304,11 +360,11 @@ async function cmdUnlink(ctx: BotContext) {
     .eq('id', user.id);
 
   if (error) {
-    await sendMessage(ctx.botToken, ctx.chatId, `❌ Failed to unlink. Try again later.`);
+    await reply(ctx, `❌ Failed to unlink. Try again later.`);
     return;
   }
 
-  await sendMessage(ctx.botToken, ctx.chatId,
+  await reply(ctx,
     `✅ Account unlinked. You won't receive delivery notifications here anymore.\n\n` +
     `Use /link to re-link anytime.`,
   );
@@ -317,13 +373,13 @@ async function cmdUnlink(ctx: BotContext) {
 async function cmdBalance(ctx: BotContext) {
   const user = await findUserByTelegramChat(ctx.supabase, ctx.chatId);
   if (!user) {
-    await sendMessage(ctx.botToken, ctx.chatId,
+    await reply(ctx,
       `🔗 Link your account first with /link`,
     );
     return;
   }
 
-  await sendMessage(ctx.botToken, ctx.chatId,
+  await reply(ctx,
     `💰 <b>Wallet Balance</b>\n\n` +
     `Balance: <b>${money(user.balance)}</b>\n` +
     `Account: <b>${esc(user.username || user.name)}</b>`,
@@ -367,7 +423,7 @@ function shortDate(iso: string, withYear = false): string {
 async function cmdOrders(ctx: BotContext) {
   const user = await findUserByTelegramChat(ctx.supabase, ctx.chatId);
   if (!user) {
-    await sendMessage(ctx.botToken, ctx.chatId,
+    await reply(ctx,
       `🔗 Link your account first with /link`,
       { reply_markup: { inline_keyboard: [[{ text: '🔗 Link my account', callback_data: 'link_account' }]] } },
     );
@@ -382,7 +438,7 @@ async function cmdOrders(ctx: BotContext) {
     .limit(5);
 
   if (!orders || orders.length === 0) {
-    await sendMessage(ctx.botToken, ctx.chatId,
+    await reply(ctx,
       `📦 No orders yet.\n\nBrowse the store to make your first purchase!`,
       { reply_markup: { inline_keyboard: [[{ text: '🛒 Browse Store', url: STORE_URL }]] } },
     );
@@ -412,7 +468,7 @@ async function cmdOrders(ctx: BotContext) {
     return `${emoji} <b>${esc(o.order_ref)}</b> — ${money(o.total)} · ${shortDate(o.created_at)}${productLine}`;
   });
 
-  await sendMessage(ctx.botToken, ctx.chatId,
+  await reply(ctx,
     `📦 <b>Your Recent Orders</b>\n\n${lines.join('\n\n')}\n\nTap an order to see details.`,
     {
       reply_markup: {
@@ -474,7 +530,7 @@ async function sendOrderDetail(ctx: BotContext, order: {
     { text: '🛒 Browse Store', url: STORE_URL },
   ]);
 
-  await sendMessage(ctx.botToken, ctx.chatId, lines.join('\n'), {
+  await reply(ctx, lines.join('\n'), {
     reply_markup: { inline_keyboard: buttons },
   });
 }
@@ -482,7 +538,7 @@ async function sendOrderDetail(ctx: BotContext, order: {
 async function cmdTrack(ctx: BotContext, args: string) {
   const ref = args.trim();
   if (!ref) {
-    await sendMessage(ctx.botToken, ctx.chatId,
+    await reply(ctx,
       `Usage: <code>/track ORDER-REF</code>\n\nExample: <code>/track EC-2401-A1B2</code>`,
       { reply_markup: { inline_keyboard: [[{ text: '📦 My Orders', callback_data: 'my_orders' }]] } },
     );
@@ -491,12 +547,12 @@ async function cmdTrack(ctx: BotContext, args: string) {
 
   const { order, needsLink } = await loadVisibleOrder(ctx, { ref });
   if (needsLink) {
-    await sendMessage(ctx.botToken, ctx.chatId, `🔗 Link your account first with /link`,
+    await reply(ctx, `🔗 Link your account first with /link`,
       { reply_markup: { inline_keyboard: [[{ text: '🔗 Link my account', callback_data: 'link_account' }]] } });
     return;
   }
   if (!order) {
-    await sendMessage(ctx.botToken, ctx.chatId, `❌ Order <b>${esc(ref)}</b> not found.`);
+    await reply(ctx, `❌ Order <b>${esc(ref)}</b> not found.`);
     return;
   }
   await sendOrderDetail(ctx, order);
@@ -507,11 +563,11 @@ async function cmdTrack(ctx: BotContext, args: string) {
 /** Admin commands only run for a linked admin, in a private chat. */
 async function requireAdmin(ctx: BotContext): Promise<boolean> {
   if (!ctx.isAdmin || !ctx.adminProfileId) {
-    await sendMessage(ctx.botToken, ctx.chatId, `⛔ Admin only.`);
+    await reply(ctx, `⛔ Admin only.`);
     return false;
   }
   if (ctx.isGroup) {
-    await sendMessage(ctx.botToken, ctx.chatId, `⛔ Admin commands only work in a private chat with the bot.`);
+    await reply(ctx, `⛔ Admin commands only work in a private chat with the bot.`);
     return false;
   }
   return true;
@@ -530,7 +586,7 @@ async function cmdPending(ctx: BotContext) {
     .limit(10);
 
   if (!recharges || recharges.length === 0) {
-    await sendMessage(ctx.botToken, ctx.chatId, `✅ No pending recharges.`);
+    await reply(ctx, `✅ No pending recharges.`);
     return;
   }
 
@@ -549,7 +605,7 @@ async function cmdPending(ctx: BotContext) {
     return `${i + 1}. <b>${esc(name)}</b> — ${money(r.amount)} · ${date}\n   <code>${esc(r.reference)}</code>`;
   });
 
-  await sendMessage(ctx.botToken, ctx.chatId,
+  await reply(ctx,
     `⏳ <b>Pending Recharges (${recharges.length})</b>\n\n${lines.join('\n\n')}`,
     {
       reply_markup: {
@@ -570,11 +626,11 @@ async function cmdApprove(ctx: BotContext, args: string) {
 
   const id = args.trim();
   if (!id) {
-    await sendMessage(ctx.botToken, ctx.chatId, `Usage: <code>/approve &lt;recharge_id&gt;</code>`);
+    await reply(ctx, `Usage: <code>/approve &lt;recharge_id&gt;</code>`);
     return;
   }
   if (!UUID_RE.test(id)) {
-    await sendMessage(ctx.botToken, ctx.chatId, `❌ Invalid recharge ID.`);
+    await reply(ctx, `❌ Invalid recharge ID.`);
     return;
   }
 
@@ -586,7 +642,7 @@ async function cmdApprove(ctx: BotContext, args: string) {
 
   if (error || !data) {
     console.error('approve error:', error);
-    await sendMessage(ctx.botToken, ctx.chatId,
+    await reply(ctx,
       `⚠️ Could not approve. It may not exist or was already handled. Check /pending.`);
     return;
   }
@@ -615,7 +671,7 @@ async function cmdApprove(ctx: BotContext, args: string) {
     );
   }
 
-  await sendMessage(ctx.botToken, ctx.chatId,
+  await reply(ctx,
     `✅ <b>Recharge approved</b>\n\n` +
     `Amount: ${money(result.amount)}\n` +
     `New balance: ${money(result.newBalance)}`,
@@ -628,11 +684,11 @@ async function cmdReject(ctx: BotContext, args: string) {
 
   const id = args.trim();
   if (!id) {
-    await sendMessage(ctx.botToken, ctx.chatId, `Usage: <code>/reject &lt;recharge_id&gt;</code>`);
+    await reply(ctx, `Usage: <code>/reject &lt;recharge_id&gt;</code>`);
     return;
   }
   if (!UUID_RE.test(id)) {
-    await sendMessage(ctx.botToken, ctx.chatId, `❌ Invalid recharge ID.`);
+    await reply(ctx, `❌ Invalid recharge ID.`);
     return;
   }
 
@@ -643,7 +699,7 @@ async function cmdReject(ctx: BotContext, args: string) {
 
   if (error || !data) {
     console.error('reject error:', error);
-    await sendMessage(ctx.botToken, ctx.chatId,
+    await reply(ctx,
       `⚠️ Could not reject. It may not exist or was already handled. Check /pending.`);
     return;
   }
@@ -665,7 +721,7 @@ async function cmdReject(ctx: BotContext, args: string) {
     );
   }
 
-  await sendMessage(ctx.botToken, ctx.chatId, `❌ Recharge rejected.`,
+  await reply(ctx, `❌ Recharge rejected.`,
     { reply_markup: { inline_keyboard: [[{ text: '⏳ Pending', callback_data: 'admin_pending' }]] } });
 }
 
@@ -684,7 +740,7 @@ async function cmdStats(ctx: BotContext) {
   const totalRevenue = (revenueRes.data ?? []).reduce((sum: number, o: { total: number }) => sum + (o.total ?? 0), 0);
   const pendingCount = pendingRes.count ?? 0;
 
-  await sendMessage(ctx.botToken, ctx.chatId,
+  await reply(ctx,
     `📊 <b>Store Stats</b>\n\n` +
     `👥 Users: <b>${totalUsers}</b>\n` +
     `📦 Orders: <b>${totalOrders}</b>\n` +
@@ -706,7 +762,7 @@ async function cmdBroadcast(ctx: BotContext, args: string) {
 
   const msg = args.trim();
   if (!msg) {
-    await sendMessage(ctx.botToken, ctx.chatId,
+    await reply(ctx,
       `Usage: <code>/broadcast Your announcement message</code>`,
     );
     return;
@@ -719,7 +775,7 @@ async function cmdBroadcast(ctx: BotContext, args: string) {
     .not('telegram_chat_id', 'is', null);
 
   if (!users || users.length === 0) {
-    await sendMessage(ctx.botToken, ctx.chatId, `No linked users to broadcast to.`);
+    await reply(ctx, `No linked users to broadcast to.`);
     return;
   }
 
@@ -736,8 +792,111 @@ async function cmdBroadcast(ctx: BotContext, args: string) {
     await new Promise((r) => setTimeout(r, 50));
   }
 
-  await sendMessage(ctx.botToken, ctx.chatId,
+  await reply(ctx,
     `📢 Broadcast delivered to <b>${sent}</b> user(s).${failed ? ` Failed: ${failed}` : ''}`,
+  );
+}
+
+// ─── Menu screens ───────────────────────────────────────────────────────────
+
+/** Store games or vouchers as link buttons (two per row). */
+async function cmdBrowse(ctx: BotContext, kind: 'games' | 'vouchers') {
+  let q = ctx.supabase
+    .from('games')
+    .select('slug, name_en')
+    .eq('active', true)
+    .order('name_en', { ascending: true })
+    .limit(24);
+  q = kind === 'vouchers' ? q.eq('redemption_method', 'redeem_code') : q.neq('redemption_method', 'redeem_code');
+  const { data: games } = await q;
+
+  if (!games || games.length === 0) {
+    await reply(ctx, kind === 'vouchers' ? `🎟 No vouchers available right now.` : `🎮 No games available right now.`);
+    return;
+  }
+
+  const rows: Array<Array<Record<string, string>>> = [];
+  for (let i = 0; i < games.length; i += 2) {
+    rows.push(games.slice(i, i + 2).map((g) => ({
+      text: String(g.name_en || g.slug).trim().slice(0, 30),
+      url: `${STORE_URL}/game/${g.slug}`,
+    })));
+  }
+  await reply(ctx,
+    kind === 'vouchers'
+      ? `🎟 <b>Gift Cards & Vouchers</b>\n\nTap one to open it in the store.`
+      : `🎮 <b>Game Top-Ups</b>\n\nTap a game to open it in the store.`,
+    { reply_markup: { inline_keyboard: rows } },
+  );
+}
+
+async function cmdAccount(ctx: BotContext) {
+  const user = await findUserByTelegramChat(ctx.supabase, ctx.chatId);
+  if (!user) {
+    await sendLinkPrompt(ctx, `🔗 <b>Link your account</b>\n\n`);
+    return;
+  }
+  await reply(ctx,
+    `⚙️ <b>My Account</b>\n\n` +
+    `Account: <b>${esc(user.username || user.name)}</b>\n` +
+    `Balance: <b>${money(user.balance)}</b>\n\n` +
+    `This Telegram receives your order and recharge notifications.`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '👤 Open my profile', url: `${STORE_URL}/profile` }],
+          [{ text: '🔓 Unlink Telegram', callback_data: 'unlink_ask' }],
+        ],
+      },
+    },
+  );
+}
+
+async function cmdUnlinkAsk(ctx: BotContext) {
+  await reply(ctx,
+    `🔓 <b>Unlink this Telegram?</b>\n\nYou'll stop getting order notifications here. You can link again anytime.`,
+    {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '✅ Yes, unlink', callback_data: 'unlink_yes' },
+          { text: '✖️ Cancel', callback_data: 'account' },
+        ]],
+      },
+    },
+  );
+}
+
+/** Admin: latest orders, or failed ones from the last 30 days. */
+async function cmdAdminOrders(ctx: BotContext, failedOnly: boolean) {
+  if (!(await requireAdmin(ctx))) return;
+  let q = ctx.supabase
+    .from('orders')
+    .select('id, order_ref, total, status, fulfillment_status, created_at')
+    .order('created_at', { ascending: false })
+    .limit(8);
+  if (failedOnly) {
+    q = q.eq('status', 'completed').eq('fulfillment_status', 'failed')
+      .gte('created_at', new Date(Date.now() - 30 * 86400000).toISOString());
+  }
+  const { data: orders } = await q;
+  if (!orders || orders.length === 0) {
+    await reply(ctx, failedOnly ? `✅ No failed orders in the last 30 days.` : `No orders yet.`);
+    return;
+  }
+  const lines = orders.map((o) => {
+    const emoji = ORDER_STATUS_EMOJI[o.fulfillment_status] || ORDER_STATUS_EMOJI[o.status] || '❓';
+    return `${emoji} <b>${esc(o.order_ref)}</b> — ${money(o.total)} · ${shortDate(o.created_at)}`;
+  });
+  await reply(ctx,
+    `${failedOnly ? '⚠️ <b>Failed Orders (30 days)</b>' : '🕒 <b>Latest Orders</b>'}\n\n${lines.join('\n')}`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          ...orders.map((o) => [{ text: `📍 ${o.order_ref}`, callback_data: `track:${o.id}` }]),
+          [{ text: '🔎 Open dashboard', url: `${STORE_URL}/dashboard/orders` }],
+        ],
+      },
+    },
   );
 }
 
@@ -747,8 +906,36 @@ async function handleCallback(ctx: BotContext, data: string) {
   // Always acknowledge once so the button spinner clears.
   await answerCallback(ctx.botToken, ctx.callbackQueryId!);
 
-  if (data === 'my_balance') {
+  if (data === 'menu') {
+    await cmdStart(ctx);
+  }
+
+  else if (data === 'my_balance') {
     await cmdBalance(ctx);
+  }
+
+  else if (data === 'browse_games' || data === 'browse_vouchers') {
+    await cmdBrowse(ctx, data === 'browse_games' ? 'games' : 'vouchers');
+  }
+
+  else if (data === 'account') {
+    await cmdAccount(ctx);
+  }
+
+  else if (data === 'unlink_ask') {
+    await cmdUnlinkAsk(ctx);
+  }
+
+  else if (data === 'unlink_yes') {
+    await cmdUnlink(ctx);
+  }
+
+  else if (data === 'admin_stats') {
+    await cmdStats(ctx);
+  }
+
+  else if (data === 'admin_recent' || data === 'admin_failed') {
+    await cmdAdminOrders(ctx, data === 'admin_failed');
   }
 
   else if (data === 'my_orders') {
@@ -760,7 +947,7 @@ async function handleCallback(ctx: BotContext, data: string) {
   }
 
   else if (data === 'track_order') {
-    await sendMessage(ctx.botToken, ctx.chatId,
+    await reply(ctx,
       `📍 Send: <code>/track ORDER-REF</code>\n\nExample: <code>/track EC-2401-A1B2</code>`,
       { reply_markup: { inline_keyboard: [[{ text: '📦 My Orders', callback_data: 'my_orders' }]] } },
     );
@@ -779,11 +966,11 @@ async function handleCallback(ctx: BotContext, data: string) {
     if (!UUID_RE.test(orderId)) return;
     const { order, needsLink } = await loadVisibleOrder(ctx, { id: orderId });
     if (needsLink) {
-      await sendMessage(ctx.botToken, ctx.chatId, `🔗 Link your account first with /link`);
+      await reply(ctx, `🔗 Link your account first with /link`);
       return;
     }
     if (!order) {
-      await sendMessage(ctx.botToken, ctx.chatId, `❌ Order not found.`);
+      await reply(ctx, `❌ Order not found.`);
       return;
     }
     await sendOrderDetail(ctx, order);
@@ -935,7 +1122,10 @@ Deno.serve(async (req) => {
                   { text: '📦 My Orders', callback_data: 'my_orders' },
                   { text: '💰 My Balance', callback_data: 'my_balance' },
                 ],
-                [{ text: '🛒 Browse Store', url: STORE_URL }],
+                [
+                  { text: '🏠 Menu', callback_data: 'menu' },
+                  { text: '🛒 Browse Store', url: STORE_URL },
+                ],
               ],
             },
           },
@@ -1029,6 +1219,7 @@ Deno.serve(async (req) => {
       adminProfileId: null,
       isGroup: chat.type !== 'private',
       callbackQueryId: cb?.id,
+      messageId: cb?.message?.message_id,
     };
 
     ctx.adminProfileId = await findAdminProfileId(supabase, ctx.userId);
@@ -1073,6 +1264,7 @@ Deno.serve(async (req) => {
 
     switch (cmd.toLowerCase()) {
       case 'start':
+      case 'menu':
         await cmdStart(ctx);
         break;
       case 'help':
