@@ -69,7 +69,7 @@ export default function HomeGameCard({
       <CardElement
         {...(teaser ? {} : { to: gamePath })}
         onClick={teaser ? undefined : handleOpen}
-        className={`storefront-card home-game-card group flex flex-col transition-all duration-300 ${
+        className={`storefront-card home-game-card${isVoucher ? ' home-game-card--ticket' : ''} group flex flex-col transition-all duration-300 ${
           teaser
             ? 'storefront-card--teaser home-game-card--teaser pointer-events-none select-none'
             : 'cursor-pointer active:scale-[0.99]'
