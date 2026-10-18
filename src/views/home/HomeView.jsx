@@ -142,6 +142,13 @@ export default function HomeView({
   const [bestsellerRanks, setBestsellerRanks] = useState([]);
 
   const layout = useMemo(() => normalizeHomeLayout(homeLayout), [homeLayout]);
+  // Games + Vouchers share one section with a two-button switch (games first).
+  const hasLaneTabs = useMemo(
+    () => layout.some((s) => s.type === 'games' && s.enabled)
+      && layout.some((s) => s.type === 'gift_cards' && s.enabled),
+    [layout],
+  );
+  const [homeLane, setHomeLane] = useState('games');
 
   useEffect(() => {
     let cancelled = false;
@@ -488,6 +495,43 @@ export default function HomeView({
           title_en: section.title_en || t.g2bulkTopupsNav || t.chooseGame,
           title_ar: section.title_ar || t.g2bulkTopupsNav || t.chooseGame,
         };
+        if (hasLaneTabs) {
+          const giftSection = layout.find((s) => s.type === 'gift_cards') || {};
+          const lanes = [
+            { id: 'games', label: t.homeLaneGames, count: topupGamesWithStats.length },
+            { id: 'vouchers', label: t.homeLaneVouchers, count: voucherGames.length },
+          ];
+          const showVouchers = homeLane === 'vouchers';
+          const laneContent = showVouchers
+            ? renderGamesExpandable({ ...giftSection, id: giftSection.id || 'gift_cards' }, voucherGames, { showAll: true, layoutId: 'dense-vouchers' })
+            : renderGamesExpandable(gamesSection, topupGamesWithStats, { showAll: true });
+          return (
+            <div className="home-section games-section home-games-section">
+              <div className="home-lane-tabs" role="tablist" aria-label={t.homeLaneTabsLabel}>
+                {lanes.map((lane) => {
+                  const active = homeLane === lane.id;
+                  return (
+                    <button
+                      key={lane.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      className={`home-lane-tab${active ? ' home-lane-tab--active' : ''}`}
+                      onClick={() => setHomeLane(lane.id)}
+                    >
+                      <span>{lane.label}</span>
+                      {!loading && <span className="home-lane-tab__count">{lane.count}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              {renderSectionSubtitle(showVouchers ? t.g2bulkVouchersDesc : t.g2bulkTopupsDesc)}
+              <div role="tabpanel" key={homeLane} className="animate-fade-in">
+                {laneContent}
+              </div>
+            </div>
+          );
+        }
         // All games visible at once — no teaser fade, no show-more
         const gamesContent = renderGamesExpandable(gamesSection, topupGamesWithStats, { showAll: true });
         if (!gamesContent) return null;
@@ -500,6 +544,7 @@ export default function HomeView({
       }
 
       case 'gift_cards': {
+        if (hasLaneTabs) return null; // shown as the "Vouchers" tab of the games section
         const giftSection = {
           ...section,
           title_en: section.title_en || t.g2bulkVouchersNav || t.giftCards,
