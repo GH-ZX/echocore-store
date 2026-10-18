@@ -52,6 +52,7 @@ import { usePartnerStatus } from './hooks/usePartnerStatus';
 import { useToastState } from './hooks/useToastState';
 import { useSiteStatusPolling } from './hooks/useSiteStatusPolling';
 import { useStorefrontBootstrap } from './hooks/useStorefrontBootstrap';
+import { hideSplash } from './lib/splash';
 import { scheduleRoutePrefetch } from './lib/prefetchRoutes';
 import { routeChunkFactories } from './lib/routeChunkFactories';
 import { adminPanelFactories } from './lib/adminPanelFactories';
@@ -1698,6 +1699,12 @@ export default function App() {
     refreshHomeLayout,
     refreshReviews,
   });
+
+  // Boot splash: wait for the first catalog load on the storefront; the dashboard has its own loaders.
+  const splashReady = !loadingGames || location.pathname.startsWith('/dashboard');
+  useEffect(() => {
+    if (splashReady) hideSplash();
+  }, [splashReady]);
 
   // Load orders when the admin dashboard becomes visible (as admin)
   useEffect(() => {
