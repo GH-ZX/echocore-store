@@ -193,7 +193,20 @@ Deno.serve(async (req) => {
         includeGiftCards,
       });
 
+      // init stored the selected games (type/gameEntries/pullSelection) in
+      // g2bulk_sync_state; keep them, or the games phase falls back to the
+      // first N supplier games instead of the admin's selection.
+      const { data: initRow } = await serviceClient
+        .from('store_settings')
+        .select('g2bulk_sync_state')
+        .eq('id', 1)
+        .maybeSingle();
+      const initState = (initRow?.g2bulk_sync_state && typeof initRow.g2bulk_sync_state === 'object')
+        ? initRow.g2bulk_sync_state as Json
+        : {};
+
       state = {
+        ...initState,
         in_progress: true,
         phase: 'games',
         offset: 0,

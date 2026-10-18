@@ -24,9 +24,13 @@ export function hasDistinctGameLogo(game) {
   return normalizeImageUrl(logo) !== normalizeImageUrl(cover);
 }
 
-/** Mini logo when uploaded separately; otherwise fall back to cover */
+/**
+ * Mini logo when an admin uploaded one separately; otherwise the cover.
+ * Catalog sync also copies the square supplier art into logo_url
+ * (logo_custom = false) — that must not shadow a wide cover on the card.
+ */
 export function getGameCardImageUrl(game) {
-  if (hasDistinctGameLogo(game)) return game.logo_url;
+  if (hasDistinctGameLogo(game) && game?.logo_custom !== false) return game.logo_url;
   return game?.image_url || null;
 }
 

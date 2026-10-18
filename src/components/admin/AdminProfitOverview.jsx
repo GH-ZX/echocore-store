@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { formatMessage } from '../../lib/i18n';
 import { computeAdminProfitMetrics } from '../../lib/adminProfitMetrics';
+import { useProfitCostOffers } from '../../hooks/useProfitCostOffers';
 import AdminDashSection from './AdminDashSection';
 import AdminDashStatCard from './AdminDashStatCard';
 import AdminDashGoTo from './AdminDashGoTo';
@@ -24,15 +25,17 @@ export default function AdminProfitOverview({
 }) {
   const [chartView, setChartView] = useState('stacked');
 
+  const costOffers = useProfitCostOffers(orders, offers);
+
   const metrics = useMemo(
-    () => computeAdminProfitMetrics(orders, offers, {
+    () => computeAdminProfitMetrics(orders, costOffers, {
       periodDays: null,
       chartDays: 7,
       games,
       lang,
       topLimit: 5,
     }),
-    [orders, offers, games, lang],
+    [orders, costOffers, games, lang],
   );
 
   const marginLabel = metrics.marginPercent != null ? `${metrics.marginPercent}%` : '—';

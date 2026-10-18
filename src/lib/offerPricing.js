@@ -1,13 +1,31 @@
-/** Customer price from supplier cost + markup percent (ceil to cents). */
-export function applyMarkup(cost, markupPercent) {
-  const base = Number(cost);
-  if (!Number.isFinite(base) || base <= 0) return 0.01;
-  const marked = base * (1 + Number(markupPercent) / 100);
-  return Math.ceil(marked * 100) / 100;
+/** Store-wide rounding steps (0 = cents only). Mirrors the DB check + edge fn. */
+export const PRICE_ROUND_STEPS = [0, 0.05, 0.1, 0.25, 0.5, 1];
+
+export function normalizeRoundStep(step) {
+  const n = Number(step);
+  return PRICE_ROUND_STEPS.find((s) => Math.abs(s - n) < 1e-9) ?? 0;
 }
 
-export function priceFromCost(cost, markupPercent) {
-  return applyMarkup(cost, markupPercent);
+/** Round a price UP to the next multiple of `step` (e.g. 0.05: 1.08 → 1.10). */
+export function roundUpToStep(price, step) {
+  const stepCents = Math.round(normalizeRoundStep(step) * 100);
+  const cents = Math.round(Number(price) * 100);
+  if (!stepCents || !Number.isFinite(cents)) return cents / 100;
+  return (Math.ceil(cents / stepCents) * stepCents) / 100;
+}
+
+/** Customer price from supplier cost + markup percent (ceil to cents, then step). */
+export function applyMarkup(cost, markupPercent, roundStep = 0) {
+  const base = Number(cost);
+  if (!Number.isFinite(base) || base <= 0) return 0.01;
+  // cost × (100 + markup) is the price in cents; trim float noise before the
+  // ceil so 1.00 at 10% is 1.10, not 1.11.
+  const cents = Math.ceil(Number((base * (100 + Number(markupPercent))).toFixed(6)));
+  return roundUpToStep(cents / 100, roundStep);
+}
+
+export function priceFromCost(cost, markupPercent, roundStep = 0) {
+  return applyMarkup(cost, markupPercent, roundStep);
 }
 
 export const PRICING_MODES = ['auto', 'margin', 'fixed'];

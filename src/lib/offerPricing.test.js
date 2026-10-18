@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyMarkup,
+  normalizeRoundStep,
   normalizePricingMode,
   pricingModeLabel,
   priceFromCost,
   resolveOfferPrice,
+  roundUpToStep,
 } from './offerPricing';
 
 describe('applyMarkup', () => {
@@ -93,5 +95,40 @@ describe('pricingModeLabel', () => {
   it('falls back to English defaults', () => {
     expect(pricingModeLabel('fixed')).toBe('Fixed price');
     expect(pricingModeLabel('unknown')).toBe('Store default');
+  });
+});
+
+describe('markup float safety', () => {
+  it('does not overcharge a cent on exact results', () => {
+    expect(applyMarkup(1, 10)).toBe(1.1);
+    expect(applyMarkup(1.1, 0)).toBe(1.1);
+    expect(applyMarkup(2.2, 0)).toBe(2.2);
+  });
+});
+
+describe('price round step', () => {
+  it('rounds up to the next step', () => {
+    expect(roundUpToStep(1.08, 0.05)).toBe(1.1);
+    expect(roundUpToStep(1.08, 0.1)).toBe(1.1);
+    expect(roundUpToStep(1.01, 0.05)).toBe(1.05);
+    expect(roundUpToStep(1.1, 0.05)).toBe(1.1);
+    expect(roundUpToStep(3.84, 0.25)).toBe(4);
+    expect(roundUpToStep(3.84, 1)).toBe(4);
+  });
+
+  it('is a no-op when off or invalid', () => {
+    expect(roundUpToStep(1.08, 0)).toBe(1.08);
+    expect(roundUpToStep(1.08, 0.07)).toBe(1.08);
+    expect(normalizeRoundStep('0.10')).toBe(0.1);
+    expect(normalizeRoundStep('abc')).toBe(0);
+  });
+
+  it('applies after markup and never lowers the price', () => {
+    expect(applyMarkup(0.96, 12, 0.05)).toBe(1.1);
+    expect(applyMarkup(0.96, 12)).toBe(1.08);
+    for (let c = 1; c <= 2000; c += 1) {
+      const cost = c / 100;
+      expect(applyMarkup(cost, 12, 0.05)).toBeGreaterThanOrEqual(applyMarkup(cost, 12));
+    }
   });
 });

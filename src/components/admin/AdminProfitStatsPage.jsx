@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useProfitCostOffers } from '../../hooks/useProfitCostOffers';
 import {
   TrendingUp,
   Package,
@@ -522,15 +523,17 @@ export default function AdminProfitStatsPage({
   const [rankBy, setRankBy] = useState('units');
   const [customerRankBy, setCustomerRankBy] = useState('revenue');
 
+  const costOffers = useProfitCostOffers(orders, offers);
+
   const metrics = useMemo(
-    () => computeAdminProfitMetrics(orders, offers, {
+    () => computeAdminProfitMetrics(orders, costOffers, {
       periodDays,
       chartDays: periodDays == null ? 30 : periodDays,
       games,
       lang,
       topLimit: 12,
     }),
-    [orders, offers, games, periodDays, lang],
+    [orders, costOffers, games, periodDays, lang],
   );
 
   const marginLabel = metrics.marginPercent != null ? `${metrics.marginPercent}%` : '—';
