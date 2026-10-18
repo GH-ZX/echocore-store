@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, Gamepad2, Ticket } from 'lucide-react';
 import ProductCarousel from './ProductCarousel';
 import SaleOfferCard from '../../components/ui/SaleOfferCard';
 import HomeGameCard from '../../components/ui/HomeGameCard';
@@ -498,8 +498,8 @@ export default function HomeView({
         if (hasLaneTabs) {
           const giftSection = layout.find((s) => s.type === 'gift_cards') || {};
           const lanes = [
-            { id: 'games', label: t.homeLaneGames, count: topupGamesWithStats.length },
-            { id: 'vouchers', label: t.homeLaneVouchers, count: voucherGames.length },
+            { id: 'games', label: t.homeLaneGames, count: topupGamesWithStats.length, Icon: Gamepad2 },
+            { id: 'vouchers', label: t.homeLaneVouchers, count: voucherGames.length, Icon: Ticket },
           ];
           const showVouchers = homeLane === 'vouchers';
           const laneContent = showVouchers
@@ -519,6 +519,7 @@ export default function HomeView({
                       className={`home-lane-tab${active ? ' home-lane-tab--active' : ''}`}
                       onClick={() => setHomeLane(lane.id)}
                     >
+                      <lane.Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
                       <span>{lane.label}</span>
                       {!loading && <span className="home-lane-tab__count">{lane.count}</span>}
                     </button>
