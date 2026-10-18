@@ -1390,8 +1390,11 @@ async function notifyTelegramLowWallet(
     };
     if (row.telegram_alerts_enabled !== true) return;
     const token = String(row.telegram_bot_token ?? '').trim();
-    const chatId = String(row.telegram_chat_id ?? '').trim();
-    if (!token || !chatId) return;
+    // Several admin chats allowed: "6392329080, 123456789"
+    const chatIds = [...new Set(
+      String(row.telegram_chat_id ?? '').split(/[\s,;]+/).filter((id) => /^-?\d+$/.test(id)),
+    )];
+    if (!token || chatIds.length === 0) return;
     if (row.telegram_alert_prefs?.['lowWallet'] === false) return;
 
     const text = [
@@ -1402,13 +1405,15 @@ async function notifyTelegramLowWallet(
       '<a href="https://www.echocore412.com/dashboard/apis/g2bulk">Open G2Bulk wallet</a>',
     ].filter(Boolean).join('\n');
 
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text: text.slice(0, 3900), parse_mode: 'HTML' }),
-    });
-    if (!res.ok) {
-      console.error('telegram lowWallet send failed', res.status, await res.text().catch(() => ''));
+    for (const chatId of chatIds) {
+      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text: text.slice(0, 3900), parse_mode: 'HTML' }),
+      });
+      if (!res.ok) {
+        console.error('telegram lowWallet send failed', res.status, await res.text().catch(() => ''));
+      }
     }
   } catch (err) {
     console.error('telegram lowWallet send error', err);
