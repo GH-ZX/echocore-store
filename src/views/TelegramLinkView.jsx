@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Loader2, CheckCircle, AlertCircle, MessageSquare, Link2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
-const STORAGE_KEY = 'echocore_telegram_chat_id';
+const STORAGE_KEY = 'echocore_telegram_link_token';
 
 export default function TelegramLinkView({ t = {}, lang, user, navigate }) {
   const [searchParams] = useSearchParams();
@@ -11,26 +11,27 @@ export default function TelegramLinkView({ t = {}, lang, user, navigate }) {
   const [message, setMessage] = useState('');
   const [linking, setLinking] = useState(false);
 
-  const chatId = searchParams.get('chat_id');
+  const linkToken = searchParams.get('token');
+  const attempted = useRef(false);
 
-  // Store chat_id in sessionStorage on mount (before any redirect)
+  // Store token in sessionStorage on mount (before any redirect)
   useEffect(() => {
-    if (chatId) {
-      sessionStorage.setItem(STORAGE_KEY, chatId);
+    if (linkToken) {
+      sessionStorage.setItem(STORAGE_KEY, linkToken);
     }
-  }, [chatId]);
+  }, [linkToken]);
 
   // Try to link if user is already logged in
-  const doLink = useCallback(async (uid, cid) => {
+  const doLink = useCallback(async (tokenValue) => {
     setLinking(true);
     try {
-      // Use the edge function directly since the RPC needs service_role
+      // The edge function verifies the session JWT and consumes the single-use token
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
 
       // Call the edge function to link
       const res = await fetch(
-        `${supabase.supabaseUrl}/functions/v1/telegram-bot?action=link&chat_id=${cid}`,
+        `${supabase.supabaseUrl}/functions/v1/telegram-bot?action=link&token=${encodeURIComponent(tokenValue)}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -55,28 +56,31 @@ export default function TelegramLinkView({ t = {}, lang, user, navigate }) {
     }
   }, [t]);
 
-  // Check auth + chat_id on mount / user change
+  // Check auth + token on mount / user change
   useEffect(() => {
-    const cid = chatId || sessionStorage.getItem(STORAGE_KEY);
+    const tokenValue = linkToken || sessionStorage.getItem(STORAGE_KEY);
 
-    if (!cid) {
+    if (!tokenValue) {
       setStatus('error');
       setMessage(t.telegramLinkNoChatId || 'No Telegram chat ID found. Please start the bot and tap "Link My Account".');
       return;
     }
 
     if (user) {
-      doLink(user.id, cid);
+      // Tokens are single-use: never retry on re-render.
+      if (attempted.current) return;
+      attempted.current = true;
+      doLink(tokenValue);
     } else if (!user) {
       setStatus('need_login');
       setMessage(t.telegramLinkLoginRequired || 'Please log in to link your Telegram account.');
     }
-  }, [user, chatId, doLink, t]);
+  }, [user, linkToken, doLink, t]);
 
   const handleLogin = () => {
-    // Store chat_id again before redirect
-    const cid = chatId || sessionStorage.getItem(STORAGE_KEY);
-    if (cid) sessionStorage.setItem(STORAGE_KEY, cid);
+    // Store token again before redirect
+    const tokenValue = linkToken || sessionStorage.getItem(STORAGE_KEY);
+    if (tokenValue) sessionStorage.setItem(STORAGE_KEY, tokenValue);
     navigate('/login');
   };
 

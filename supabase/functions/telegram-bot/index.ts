@@ -30,8 +30,8 @@ interface TelegramUpdate {
   };
   callback_query?: {
     id: string;
-    from: { id: number; first_name?: string; username?: string };
-    message?: { message_id: number; chat: { id: number }; text?: string };
+    from: { id: number; first_name?: string; username?: string; is_bot?: boolean };
+    message?: { message_id: number; chat: { id: number; type?: string }; text?: string };
     data?: string;
   };
 }
@@ -46,8 +46,12 @@ interface BotContext {
   firstName: string;
   username: string;
   isAdmin: boolean;
+  adminProfileId: string | null;
   isGroup: boolean;
+  callbackQueryId?: string;
 }
+
+const STORE_URL = 'https://www.echocore412.com';
 
 // ─── Telegram API helpers ───────────────────────────────────────────────────
 
@@ -105,13 +109,72 @@ async function resolveAdminChatId(supabase: ReturnType<typeof createClient>): Pr
   return (settings?.telegram_chat_id ?? '').trim();
 }
 
-async function isAdminUser(supabase: ReturnType<typeof createClient>, telegramUserId: number): Promise<boolean> {
+/** Returns the admin's profile id when this Telegram user is a linked admin, else null. */
+async function findAdminProfileId(supabase: ReturnType<typeof createClient>, telegramUserId: number): Promise<string | null> {
   const { data } = await supabase
     .from('profiles')
-    .select('role')
+    .select('id, role')
     .eq('telegram_chat_id', String(telegramUserId))
     .maybeSingle();
+  return data?.role === 'admin' ? data.id : null;
+}
+
+/**
+ * Verifies the caller's Supabase JWT with the auth server (signature checked —
+ * the function runs with verify_jwt = false so Telegram can reach the webhook).
+ */
+async function getVerifiedUser(supabase: ReturnType<typeof createClient>, req: Request) {
+  const jwt = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '').trim();
+  if (!jwt) return null;
+  const { data, error } = await supabase.auth.getUser(jwt);
+  if (error || !data?.user) return null;
+  return data.user;
+}
+
+async function isAdminProfile(supabase: ReturnType<typeof createClient>, userId: string): Promise<boolean> {
+  const { data } = await supabase.from('profiles').select('role').eq('id', userId).maybeSingle();
   return data?.role === 'admin';
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+/** One-time link token: the chat_id never travels through a user-editable URL. */
+async function createLinkToken(supabase: ReturnType<typeof createClient>, chatId: number): Promise<string | null> {
+  const token = crypto.randomUUID().replace(/-/g, '');
+  const { error } = await supabase
+    .from('telegram_link_tokens')
+    .insert({ token, chat_id: String(chatId) });
+  if (error) {
+    console.error('createLinkToken error:', error);
+    return null;
+  }
+  return token;
+}
+
+/** Order lines like "• 2× Product" — product names for customer/admin views. */
+async function orderItemsText(supabase: ReturnType<typeof createClient>, orderId: string): Promise<string> {
+  const { data } = await supabase
+    .from('order_items')
+    .select('name_snapshot, quantity')
+    .eq('order_id', orderId)
+    .order('id', { ascending: true })
+    .limit(8);
+  return (data ?? [])
+    .map((i: { name_snapshot: string | null; quantity: number | null }) =>
+      `• ${i.quantity ?? 1}× ${esc((i.name_snapshot ?? '—').slice(0, 80))}`)
+    .join('\n');
 }
 
 async function findUserByTelegramChat(supabase: ReturnType<typeof createClient>, telegramChatId: number) {
@@ -123,23 +186,12 @@ async function findUserByTelegramChat(supabase: ReturnType<typeof createClient>,
   return data;
 }
 
-async function findUserByUsername(supabase: ReturnType<typeof createClient>, username: string) {
-  const { data } = await supabase
-    .from('profiles')
-    .select('id, name, username, role, balance, telegram_chat_id')
-    .ilike('username', username)
-    .maybeSingle();
-  return data;
-}
-
 // ─── Command handlers ───────────────────────────────────────────────────────
 
 async function cmdStart(ctx: BotContext) {
   const linked = await findUserByTelegramChat(ctx.supabase, ctx.chatId);
 
-  const storeUrl = 'https://www.echocore412.com';
-
-  const linkUrl = `${storeUrl}/telegram-link?chat_id=${ctx.chatId}`;
+  const storeUrl = STORE_URL;
 
   if (linked) {
     const balance = money(linked.balance);
@@ -166,25 +218,33 @@ async function cmdStart(ctx: BotContext) {
       },
     );
   } else {
-    await sendMessage(ctx.botToken, ctx.chatId,
-      `👋 <b>Welcome to ECHOCORE Store!</b>\n\n` +
-      `I help you track orders, check your balance, and get notified about deliveries.\n\n` +
-      `Tap the button below to link your account. You'll be taken to the store to log in.`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '🔗 Link My Account', url: linkUrl },
-            ],
-            [
-              { text: '🛒 Browse Store', url: storeUrl },
-              { text: '❓ Help', callback_data: 'show_help' },
-            ],
-          ],
-        },
-      },
-    );
+    await sendLinkPrompt(ctx, `👋 <b>Welcome to ECHOCORE Store!</b>\n\n` +
+      `I help you track orders, check your balance, and get notified about deliveries.\n\n`);
   }
+}
+
+/** Sends the "Link My Account" button carrying a fresh single-use token. */
+async function sendLinkPrompt(ctx: BotContext, intro: string) {
+  if (ctx.isGroup) {
+    await sendMessage(ctx.botToken, ctx.chatId, `Please message me in a private chat to link your account.`);
+    return;
+  }
+  const token = await createLinkToken(ctx.supabase, ctx.chatId);
+  const rows: Array<Array<Record<string, string>>> = [];
+  if (token) {
+    rows.push([{ text: '🔗 Link My Account', url: `${STORE_URL}/telegram-link?token=${token}` }]);
+  }
+  rows.push([
+    { text: '🛒 Browse Store', url: STORE_URL },
+    { text: '❓ Help', callback_data: 'show_help' },
+  ]);
+  await sendMessage(ctx.botToken, ctx.chatId,
+    intro +
+    (token
+      ? `Tap the button below and log in to the store to link your account. The link works once and expires in 15 minutes.`
+      : `⚠️ Couldn't create a link right now. Please try again in a moment.`),
+    { reply_markup: { inline_keyboard: rows } },
+  );
 }
 
 async function cmdHelp(ctx: BotContext) {
@@ -206,7 +266,7 @@ async function cmdHelp(ctx: BotContext) {
   lines.push(
     `/start — Welcome + quick actions`,
     `/help — This message`,
-    `/link &lt;username&gt; — Link your store account`,
+    `/link — Link your store account`,
     `/unlink — Unlink your Telegram`,
     `/orders — Your recent orders`,
     `/balance — Check wallet balance`,
@@ -218,63 +278,16 @@ async function cmdHelp(ctx: BotContext) {
   await sendMessage(ctx.botToken, ctx.chatId, lines.join('\n'));
 }
 
-async function cmdLink(ctx: BotContext, args: string) {
-  const username = args.trim().replace(/^@/, '');
-  if (!username) {
+async function cmdLink(ctx: BotContext) {
+  // Linking by typing a username let anyone claim someone else's account notifications.
+  // Linking now requires logging in to the store through a single-use link.
+  const linked = await findUserByTelegramChat(ctx.supabase, ctx.chatId);
+  if (linked) {
     await sendMessage(ctx.botToken, ctx.chatId,
-      `Usage: <code>/link your_username</code>\n\nFind your username on your profile page.`,
-    );
+      `✅ Already linked to <b>${esc(linked.username || linked.name)}</b>. Use /unlink to disconnect.`);
     return;
   }
-
-  const user = await findUserByUsername(ctx.supabase, username);
-  if (!user) {
-    await sendMessage(ctx.botToken, ctx.chatId,
-      `❌ No account found with username <b>${esc(username)}</b>.\n\nCheck your username on the profile page and try again.`,
-    );
-    return;
-  }
-
-  if (user.telegram_chat_id && user.telegram_chat_id !== String(ctx.chatId)) {
-    await sendMessage(ctx.botToken, ctx.chatId,
-      `⚠️ This username is already linked to another Telegram account.\n\nUnlink it first from Telegram or contact support.`,
-    );
-    return;
-  }
-
-  const { error } = await ctx.supabase
-    .from('profiles')
-    .update({
-      telegram_chat_id: String(ctx.chatId),
-      telegram_linked_at: new Date().toISOString(),
-    })
-    .eq('id', user.id);
-
-  if (error) {
-    console.error('link error:', error);
-    await sendMessage(ctx.botToken, ctx.chatId, `❌ Failed to link account. Please try again later.`);
-    return;
-  }
-
-  await sendMessage(ctx.botToken, ctx.chatId,
-    `✅ <b>Account linked!</b>\n\n` +
-    `Welcome, <b>${esc(user.username || user.name || username)}</b>.\n` +
-    `Balance: <b>${money(user.balance)}</b>\n\n` +
-    `You'll now receive delivery notifications here.`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '🛒 Browse Store', url: 'https://www.echocore412.com' },
-            { text: '💰 My Balance', callback_data: 'my_balance' },
-          ],
-          [
-            { text: '📦 My Orders', callback_data: 'my_orders' },
-          ],
-        ],
-      },
-    },
-  );
+  await sendLinkPrompt(ctx, `🔗 <b>Link your account</b>\n\n`);
 }
 
 async function cmdUnlink(ctx: BotContext) {
@@ -296,7 +309,7 @@ async function cmdUnlink(ctx: BotContext) {
 
   await sendMessage(ctx.botToken, ctx.chatId,
     `✅ Account unlinked. You won't receive delivery notifications here anymore.\n\n` +
-    `Use <code>/link username</code> to re-link anytime.`,
+    `Use /link to re-link anytime.`,
   );
 }
 
@@ -304,7 +317,7 @@ async function cmdBalance(ctx: BotContext) {
   const user = await findUserByTelegramChat(ctx.supabase, ctx.chatId);
   if (!user) {
     await sendMessage(ctx.botToken, ctx.chatId,
-      `🔗 Link your account first: <code>/link your_username</code>`,
+      `🔗 Link your account first with /link`,
     );
     return;
   }
@@ -326,18 +339,43 @@ async function cmdBalance(ctx: BotContext) {
   );
 }
 
+const ORDER_STATUS_EMOJI: Record<string, string> = {
+  pending: '⏳',
+  completed: '✅',
+  failed: '❌',
+  fulfilling: '🔄',
+  fulfilled: '🎉',
+};
+
+const ORDER_STATUS_LABEL: Record<string, string> = {
+  pending: '⏳ Pending payment',
+  completed: '✅ Paid',
+  fulfilling: '🔄 Fulfilling…',
+  fulfilled: '🎉 Delivered',
+  failed: '❌ Failed',
+};
+
+function shortDate(iso: string, withYear = false): string {
+  return new Date(iso).toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    ...(withYear ? { year: 'numeric' as const } : {}),
+  });
+}
+
 async function cmdOrders(ctx: BotContext) {
   const user = await findUserByTelegramChat(ctx.supabase, ctx.chatId);
   if (!user) {
     await sendMessage(ctx.botToken, ctx.chatId,
-      `🔗 Link your account first: <code>/link your_username</code>`,
+      `🔗 Link your account first with /link`,
+      { reply_markup: { inline_keyboard: [[{ text: '🔗 Link my account', callback_data: 'link_account' }]] } },
     );
     return;
   }
 
   const { data: orders } = await ctx.supabase
     .from('orders')
-    .select('id, order_ref, total, status, fulfillment_status, created_at, payment_method')
+    .select('id, order_ref, total, status, fulfillment_status, created_at')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
     .limit(5);
@@ -345,40 +383,99 @@ async function cmdOrders(ctx: BotContext) {
   if (!orders || orders.length === 0) {
     await sendMessage(ctx.botToken, ctx.chatId,
       `📦 No orders yet.\n\nBrowse the store to make your first purchase!`,
-      {
-        reply_markup: {
-          inline_keyboard: [[{ text: '🛒 Browse Store', url: 'https://www.echocore412.com' }]],
-        },
-      },
+      { reply_markup: { inline_keyboard: [[{ text: '🛒 Browse Store', url: STORE_URL }]] } },
     );
     return;
   }
 
-  const statusEmoji: Record<string, string> = {
-    pending: '⏳',
-    completed: '✅',
-    failed: '❌',
-    fulfilling: '🔄',
-    fulfilled: '🎉',
-  };
+  const { data: items } = await ctx.supabase
+    .from('order_items')
+    .select('order_id, name_snapshot, quantity')
+    .in('order_id', orders.map((o) => o.id))
+    .order('id', { ascending: true });
+
+  const itemsByOrder = new Map<string, Array<{ name_snapshot: string | null; quantity: number | null }>>();
+  for (const it of items ?? []) {
+    const list = itemsByOrder.get(it.order_id) ?? [];
+    list.push(it);
+    itemsByOrder.set(it.order_id, list);
+  }
 
   const lines = orders.map((o) => {
-    const emoji = statusEmoji[o.fulfillment_status] || statusEmoji[o.status] || '❓';
-    const date = new Date(o.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-    return `${emoji} <b>${esc(o.order_ref)}</b> — ${money(o.total)} · ${date}`;
+    const emoji = ORDER_STATUS_EMOJI[o.fulfillment_status] || ORDER_STATUS_EMOJI[o.status] || '❓';
+    const its = itemsByOrder.get(o.id) ?? [];
+    const first = its[0];
+    const productLine = first
+      ? `\n   ${first.quantity ?? 1}× ${esc((first.name_snapshot ?? '—').slice(0, 60))}${its.length > 1 ? ` +${its.length - 1} more` : ''}`
+      : '';
+    return `${emoji} <b>${esc(o.order_ref)}</b> — ${money(o.total)} · ${shortDate(o.created_at)}${productLine}`;
   });
 
   await sendMessage(ctx.botToken, ctx.chatId,
-    `📦 <b>Your Recent Orders</b>\n\n${lines.join('\n')}\n\n` +
-    `Tap an order to track it, or type /track &lt;ref&gt;`,
+    `📦 <b>Your Recent Orders</b>\n\n${lines.join('\n\n')}\n\nTap an order to see details.`,
     {
       reply_markup: {
-        inline_keyboard: orders.slice(0, 3).map((o) => [
-          { text: `📍 ${esc(o.order_ref)}`, callback_data: `track:${o.id}` },
-        ]),
+        inline_keyboard: [
+          ...orders.map((o) => [{ text: `📍 ${o.order_ref}`, callback_data: `track:${o.id}` }]),
+          [{ text: '🛒 Browse Store', url: STORE_URL }],
+        ],
       },
     },
   );
+}
+
+/** Loads an order the caller may see: own orders for customers, any order for admins (private chat). */
+async function loadVisibleOrder(ctx: BotContext, filter: { id?: string; ref?: string }) {
+  const user = await findUserByTelegramChat(ctx.supabase, ctx.chatId);
+  const adminView = ctx.isAdmin && !ctx.isGroup;
+  if (!user && !adminView) return { order: null, needsLink: true };
+
+  let q = ctx.supabase
+    .from('orders')
+    .select('id, order_ref, total, status, fulfillment_status, g2bulk_metadata, created_at, payment_method, user_id');
+  if (filter.id) q = q.eq('id', filter.id);
+  // Escape LIKE wildcards: /track % must not match every order.
+  if (filter.ref) q = q.ilike('order_ref', filter.ref.replace(/[\\%_]/g, '\\$&'));
+  if (!adminView && user) q = q.eq('user_id', user.id);
+
+  const { data } = await q.limit(1).maybeSingle();
+  return { order: data, needsLink: false };
+}
+
+async function sendOrderDetail(ctx: BotContext, order: {
+  id: string; order_ref: string; total: number; status: string; fulfillment_status: string;
+  g2bulk_metadata: unknown; created_at: string; payment_method: string;
+}) {
+  const meta = (order.g2bulk_metadata || {}) as Record<string, unknown>;
+  const items = await orderItemsText(ctx.supabase, order.id);
+  const refunded = !!meta.balance_refunded;
+
+  // Internal error text is never shown in Telegram.
+  const lines = [
+    `📍 <b>Order ${esc(order.order_ref)}</b>`,
+    ``,
+    ...(items ? [items, ``] : []),
+    `Status: <b>${ORDER_STATUS_LABEL[order.fulfillment_status] || ORDER_STATUS_LABEL[order.status] || esc(order.status)}</b>`,
+    `Amount: <b>${money(order.total)}</b>`,
+    `Payment: ${esc(order.payment_method)}`,
+    `Date: ${shortDate(order.created_at, true)}`,
+  ];
+  if (refunded) lines.push(``, `💰 <i>Balance refunded: ${money(order.total)}</i>`);
+
+  const buttons: Array<Array<Record<string, string>>> = [];
+  if (order.fulfillment_status === 'fulfilled') {
+    buttons.push([{ text: '📄 View Invoice', url: `${STORE_URL}/invoice/order/${order.id}` }]);
+  } else if (order.fulfillment_status === 'failed') {
+    buttons.push([{ text: '💬 Contact Support', url: `${STORE_URL}/contact` }]);
+  }
+  buttons.push([
+    { text: '📦 My Orders', callback_data: 'my_orders' },
+    { text: '🛒 Browse Store', url: STORE_URL },
+  ]);
+
+  await sendMessage(ctx.botToken, ctx.chatId, lines.join('\n'), {
+    reply_markup: { inline_keyboard: buttons },
+  });
 }
 
 async function cmdTrack(ctx: BotContext, args: string) {
@@ -386,70 +483,48 @@ async function cmdTrack(ctx: BotContext, args: string) {
   if (!ref) {
     await sendMessage(ctx.botToken, ctx.chatId,
       `Usage: <code>/track ORDER-REF</code>\n\nExample: <code>/track EC-2401-A1B2</code>`,
+      { reply_markup: { inline_keyboard: [[{ text: '📦 My Orders', callback_data: 'my_orders' }]] } },
     );
     return;
   }
 
-  const { data: order } = await ctx.supabase
-    .from('orders')
-    .select('id, order_ref, total, status, fulfillment_status, g2bulk_metadata, created_at, payment_method')
-    .ilike('order_ref', ref)
-    .maybeSingle();
-
+  const { order, needsLink } = await loadVisibleOrder(ctx, { ref });
+  if (needsLink) {
+    await sendMessage(ctx.botToken, ctx.chatId, `🔗 Link your account first with /link`,
+      { reply_markup: { inline_keyboard: [[{ text: '🔗 Link my account', callback_data: 'link_account' }]] } });
+    return;
+  }
   if (!order) {
     await sendMessage(ctx.botToken, ctx.chatId, `❌ Order <b>${esc(ref)}</b> not found.`);
     return;
   }
-
-  const meta = (order.g2bulk_metadata || {}) as Record<string, unknown>;
-  const statusLabel: Record<string, string> = {
-    pending: '⏳ Pending Payment',
-    completed: '✅ Paid',
-    fulfilling: '🔄 Fulfilling…',
-    fulfilled: '🎉 Delivered',
-    failed: '❌ Failed',
-  };
-
-  const lines = [
-    `📍 <b>Order ${esc(order.order_ref)}</b>`,
-    ``,
-    `Status: <b>${statusLabel[order.fulfillment_status] || statusLabel[order.status] || order.status}</b>`,
-    `Amount: <b>${money(order.total)}</b>`,
-    `Payment: ${esc(order.payment_method)}`,
-    `Date: ${new Date(order.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`,
-  ];
-
-  if (meta.balance_refunded) {
-    lines.push(``, `💰 <i>Balance refunded: ${money(order.total)}</i>`);
-  }
-  if (meta.last_error) {
-    lines.push(``, `⚠️ Error: <i>${esc(String(meta.last_error))}</i>`);
-  }
-
-  const buttons = [];
-  if (order.fulfillment_status === 'fulfilled') {
-    buttons.push([{ text: '📄 View Invoice', url: `https://www.echocore412.com/invoice/order/${order.id}` }]);
-  } else if (order.fulfillment_status === 'failed' && meta.balance_refunded) {
-    buttons.push([{ text: '💰 Recharge', url: 'https://www.echocore412.com/recharge' }]);
-  }
-
-  await sendMessage(ctx.botToken, ctx.chatId, lines.join('\n'), {
-    reply_markup: buttons.length ? { inline_keyboard: buttons } : undefined,
-  });
+  await sendOrderDetail(ctx, order);
 }
 
 // ─── Admin command handlers ─────────────────────────────────────────────────
 
-async function cmdPending(ctx: BotContext) {
-  if (!ctx.isAdmin) {
+/** Admin commands only run for a linked admin, in a private chat. */
+async function requireAdmin(ctx: BotContext): Promise<boolean> {
+  if (!ctx.isAdmin || !ctx.adminProfileId) {
     await sendMessage(ctx.botToken, ctx.chatId, `⛔ Admin only.`);
-    return;
+    return false;
   }
+  if (ctx.isGroup) {
+    await sendMessage(ctx.botToken, ctx.chatId, `⛔ Admin commands only work in a private chat with the bot.`);
+    return false;
+  }
+  return true;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+async function cmdPending(ctx: BotContext) {
+  if (!(await requireAdmin(ctx))) return;
 
   const { data: recharges } = await ctx.supabase
     .from('recharge_requests')
     .select('id, user_id, amount, reference, payment_method, status, created_at')
-    .eq('status', 'pending')
+    .in('status', ['pending', 'payment_sent'])
     .order('created_at', { ascending: true })
     .limit(10);
 
@@ -458,7 +533,6 @@ async function cmdPending(ctx: BotContext) {
     return;
   }
 
-  // Fetch usernames
   const userIds = [...new Set(recharges.map((r) => r.user_id))];
   const { data: profiles } = await ctx.supabase
     .from('profiles')
@@ -478,182 +552,130 @@ async function cmdPending(ctx: BotContext) {
     `⏳ <b>Pending Recharges (${recharges.length})</b>\n\n${lines.join('\n\n')}`,
     {
       reply_markup: {
-        inline_keyboard: recharges.map((r) => [
-          { text: `✅ Approve ${money(r.amount)}`, callback_data: `approve:${r.id}` },
-          { text: `❌ Reject`, callback_data: `reject:${r.id}` },
-        ]),
+        inline_keyboard: [
+          ...recharges.map((r, i) => [
+            { text: `✅ #${i + 1} Approve ${money(r.amount)}`, callback_data: `approve:${r.id}` },
+            { text: `❌ #${i + 1} Reject`, callback_data: `reject:${r.id}` },
+          ]),
+          [{ text: '🔎 Open dashboard', url: `${STORE_URL}/dashboard/recharges` }],
+        ],
       },
     },
   );
 }
 
 async function cmdApprove(ctx: BotContext, args: string) {
-  if (!ctx.isAdmin) {
-    await sendMessage(ctx.botToken, ctx.chatId, `⛔ Admin only.`);
-    return;
-  }
+  if (!(await requireAdmin(ctx))) return;
 
   const id = args.trim();
   if (!id) {
     await sendMessage(ctx.botToken, ctx.chatId, `Usage: <code>/approve &lt;recharge_id&gt;</code>`);
     return;
   }
-
-  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  if (!uuidRe.test(id)) {
+  if (!UUID_RE.test(id)) {
     await sendMessage(ctx.botToken, ctx.chatId, `❌ Invalid recharge ID.`);
     return;
   }
 
-  const { data: recharge } = await ctx.supabase
-    .from('recharge_requests')
-    .select('id, user_id, amount, status')
-    .eq('id', id)
-    .maybeSingle();
-
-  if (!recharge) {
-    await sendMessage(ctx.botToken, ctx.chatId, `❌ Recharge not found.`);
-    return;
-  }
-
-  if (recharge.status !== 'pending') {
-    await sendMessage(ctx.botToken, ctx.chatId, `⚠️ Recharge is already <b>${recharge.status}</b>.`);
-    return;
-  }
-
-  // Approve: credit balance + mark approved
-  const { data: profile } = await ctx.supabase
-    .from('profiles')
-    .select('balance')
-    .eq('id', recharge.user_id)
-    .maybeSingle();
-
-  const newBalance = (profile?.balance ?? 0) + recharge.amount;
-
-  const { error: updateErr } = await ctx.supabase
-    .from('profiles')
-    .update({ balance: newBalance })
-    .eq('id', recharge.user_id);
-
-  if (updateErr) {
-    await sendMessage(ctx.botToken, ctx.chatId, `❌ Failed to credit balance: ${updateErr.message}`);
-    return;
-  }
-
-  await ctx.supabase.from('transactions').insert({
-    user_id: recharge.user_id,
-    type: 'recharge',
-    amount: recharge.amount,
-    balance_after: newBalance,
-    payment_method: 'manual',
-    reference: recharge.reference,
-    status: 'completed',
+  // Row-locked, atomic: the same credit path the dashboard uses (no read-modify-write here).
+  const { data, error } = await ctx.supabase.rpc('telegram_approve_recharge', {
+    p_request_id: id,
+    p_admin_id: ctx.adminProfileId,
   });
 
-  await ctx.supabase
-    .from('recharge_requests')
-    .update({ status: 'approved', reviewed_at: new Date().toISOString() })
-    .eq('id', id);
+  if (error || !data) {
+    console.error('approve error:', error);
+    await sendMessage(ctx.botToken, ctx.chatId,
+      `⚠️ Could not approve. It may not exist or was already handled. Check /pending.`);
+    return;
+  }
 
-  // Notify customer
-  await ctx.supabase.from('notifications').insert({
-    user_id: recharge.user_id,
-    type: 'recharge_approved',
-    metadata: { amount: recharge.amount, newBalance },
-    link: '/profile',
-  });
+  const result = data as { userId: string; amount: number; newBalance: number };
 
-  // Notify customer via Telegram if linked
   const { data: customer } = await ctx.supabase
     .from('profiles')
-    .select('telegram_chat_id, username')
-    .eq('id', recharge.user_id)
+    .select('telegram_chat_id')
+    .eq('id', result.userId)
     .maybeSingle();
 
   if (customer?.telegram_chat_id) {
     await sendMessage(ctx.botToken, Number(customer.telegram_chat_id),
-      `✅ <b>Recharge Approved!</b>\n\n` +
-      `Amount: <b>${money(recharge.amount)}</b>\n` +
-      `New Balance: <b>${money(newBalance)}</b>`,
+      `✅ <b>Recharge approved!</b>\n\n` +
+      `Amount: <b>${money(result.amount)}</b>\n` +
+      `New balance: <b>${money(result.newBalance)}</b>`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🛒 Shop now', url: STORE_URL },
+            { text: '💰 My Balance', callback_data: 'my_balance' },
+          ]],
+        },
+      },
     );
   }
 
-  await answerCallback(ctx.botToken, '', `✅ Approved: ${money(recharge.amount)}`);
   await sendMessage(ctx.botToken, ctx.chatId,
-    `✅ <b>Recharge approved!</b>\n\n` +
-    `Amount: ${money(recharge.amount)}\n` +
-    `New balance: ${money(newBalance)}`,
+    `✅ <b>Recharge approved</b>\n\n` +
+    `Amount: ${money(result.amount)}\n` +
+    `New balance: ${money(result.newBalance)}`,
+    { reply_markup: { inline_keyboard: [[{ text: '⏳ Pending', callback_data: 'admin_pending' }]] } },
   );
 }
 
 async function cmdReject(ctx: BotContext, args: string) {
-  if (!ctx.isAdmin) {
-    await sendMessage(ctx.botToken, ctx.chatId, `⛔ Admin only.`);
-    return;
-  }
+  if (!(await requireAdmin(ctx))) return;
 
   const id = args.trim();
   if (!id) {
     await sendMessage(ctx.botToken, ctx.chatId, `Usage: <code>/reject &lt;recharge_id&gt;</code>`);
     return;
   }
-
-  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  if (!uuidRe.test(id)) {
+  if (!UUID_RE.test(id)) {
     await sendMessage(ctx.botToken, ctx.chatId, `❌ Invalid recharge ID.`);
     return;
   }
 
-  const { data: recharge } = await ctx.supabase
-    .from('recharge_requests')
-    .select('id, user_id, amount, status')
-    .eq('id', id)
-    .maybeSingle();
+  const { data, error } = await ctx.supabase.rpc('telegram_reject_recharge', {
+    p_request_id: id,
+    p_admin_id: ctx.adminProfileId,
+  });
 
-  if (!recharge) {
-    await sendMessage(ctx.botToken, ctx.chatId, `❌ Recharge not found.`);
+  if (error || !data) {
+    console.error('reject error:', error);
+    await sendMessage(ctx.botToken, ctx.chatId,
+      `⚠️ Could not reject. It may not exist or was already handled. Check /pending.`);
     return;
   }
 
-  if (recharge.status !== 'pending') {
-    await sendMessage(ctx.botToken, ctx.chatId, `⚠️ Recharge is already <b>${recharge.status}</b>.`);
-    return;
-  }
+  const result = data as { userId: string; amount: number };
 
-  await ctx.supabase
-    .from('recharge_requests')
-    .update({ status: 'rejected', reviewed_at: new Date().toISOString() })
-    .eq('id', id);
-
-  // Notify customer via Telegram if linked
   const { data: customer } = await ctx.supabase
     .from('profiles')
     .select('telegram_chat_id')
-    .eq('id', recharge.user_id)
+    .eq('id', result.userId)
     .maybeSingle();
 
   if (customer?.telegram_chat_id) {
     await sendMessage(ctx.botToken, Number(customer.telegram_chat_id),
-      `❌ <b>Recharge Rejected</b>\n\n` +
-      `Amount: ${money(recharge.amount)}\n\n` +
-      `Contact support if you believe this is an error.`,
+      `❌ <b>Recharge rejected</b>\n\n` +
+      `Amount: ${money(result.amount)}\n\n` +
+      `Contact support if you believe this is a mistake.`,
+      { reply_markup: { inline_keyboard: [[{ text: '💬 Contact Support', url: `${STORE_URL}/contact` }]] } },
     );
   }
 
-  await sendMessage(ctx.botToken, ctx.chatId, `❌ Recharge rejected.`);
+  await sendMessage(ctx.botToken, ctx.chatId, `❌ Recharge rejected.`,
+    { reply_markup: { inline_keyboard: [[{ text: '⏳ Pending', callback_data: 'admin_pending' }]] } });
 }
 
 async function cmdStats(ctx: BotContext) {
-  if (!ctx.isAdmin) {
-    await sendMessage(ctx.botToken, ctx.chatId, `⛔ Admin only.`);
-    return;
-  }
+  if (!(await requireAdmin(ctx))) return;
 
   const [ordersRes, usersRes, revenueRes, pendingRes] = await Promise.all([
     ctx.supabase.from('orders').select('id', { count: 'exact', head: true }).eq('status', 'completed'),
     ctx.supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'user'),
     ctx.supabase.from('orders').select('total').eq('status', 'completed'),
-    ctx.supabase.from('recharge_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+    ctx.supabase.from('recharge_requests').select('id', { count: 'exact', head: true }).in('status', ['pending', 'payment_sent']),
   ]);
 
   const totalOrders = ordersRes.count ?? 0;
@@ -668,18 +690,18 @@ async function cmdStats(ctx: BotContext) {
     `💰 Revenue: <b>${money(totalRevenue)}</b>\n` +
     `⏳ Pending recharges: <b>${pendingCount}</b>`,
     {
-      reply_markup: pendingCount > 0
-        ? { inline_keyboard: [[{ text: `⏳ View Pending (${pendingCount})`, callback_data: 'admin_pending' }]] }
-        : undefined,
+      reply_markup: {
+        inline_keyboard: [
+          ...(pendingCount > 0 ? [[{ text: `⏳ View Pending (${pendingCount})`, callback_data: 'admin_pending' }]] : []),
+          [{ text: '🔎 Open dashboard', url: `${STORE_URL}/dashboard` }],
+        ],
+      },
     },
   );
 }
 
 async function cmdBroadcast(ctx: BotContext, args: string) {
-  if (!ctx.isAdmin) {
-    await sendMessage(ctx.botToken, ctx.chatId, `⛔ Admin only.`);
-    return;
-  }
+  if (!(await requireAdmin(ctx))) return;
 
   const msg = args.trim();
   if (!msg) {
@@ -704,133 +726,80 @@ async function cmdBroadcast(ctx: BotContext, args: string) {
   let failed = 0;
   for (const u of users) {
     if (!u.telegram_chat_id) continue;
-    try {
-      await sendMessage(ctx.botToken, Number(u.telegram_chat_id),
-        `📢 <b>Store Announcement</b>\n\n${esc(msg)}`,
-      );
-      sent++;
-    } catch {
-      failed++;
-    }
+    // sendMessage never throws: count by Telegram's ok flag. Pace sends (~20/s) to stay under limits.
+    const res = await sendMessage(ctx.botToken, Number(u.telegram_chat_id),
+      `📢 <b>Store Announcement</b>\n\n${esc(msg)}`,
+      { reply_markup: { inline_keyboard: [[{ text: '🛒 Open store', url: STORE_URL }]] } },
+    );
+    if (res?.ok) sent++; else failed++;
+    await new Promise((r) => setTimeout(r, 50));
   }
 
   await sendMessage(ctx.botToken, ctx.chatId,
-    `📢 Broadcast sent to <b>${sent}</b> user(s).${failed ? ` Failed: ${failed}` : ''}`,
+    `📢 Broadcast delivered to <b>${sent}</b> user(s).${failed ? ` Failed: ${failed}` : ''}`,
   );
 }
 
 // ─── Callback query handler ─────────────────────────────────────────────────
 
 async function handleCallback(ctx: BotContext, data: string) {
+  // Always acknowledge once so the button spinner clears.
+  await answerCallback(ctx.botToken, ctx.callbackQueryId!);
+
   if (data === 'my_balance') {
-    const user = await findUserByTelegramChat(ctx.supabase, ctx.chatId);
-    if (!user) {
-      await answerCallback(ctx.botToken, ctx.callbackQueryId!, 'Link your account first');
-      return;
-    }
-    await answerCallback(ctx.botToken, ctx.callbackQueryId!);
     await cmdBalance(ctx);
   }
 
   else if (data === 'my_orders') {
-    await answerCallback(ctx.botToken, ctx.callbackQueryId!);
     await cmdOrders(ctx);
   }
 
+  else if (data === 'link_account') {
+    await cmdLink(ctx);
+  }
+
   else if (data === 'track_order') {
-    await answerCallback(ctx.botToken, ctx.callbackQueryId!, 'Send: /track ORDER-REF');
     await sendMessage(ctx.botToken, ctx.chatId,
       `📍 Send: <code>/track ORDER-REF</code>\n\nExample: <code>/track EC-2401-A1B2</code>`,
+      { reply_markup: { inline_keyboard: [[{ text: '📦 My Orders', callback_data: 'my_orders' }]] } },
     );
   }
 
   else if (data === 'show_help') {
-    await answerCallback(ctx.botToken, ctx.callbackQueryId!);
     await cmdHelp(ctx);
   }
 
   else if (data === 'admin_pending') {
-    if (!ctx.isAdmin) {
-      await answerCallback(ctx.botToken, ctx.callbackQueryId!, 'Admin only');
-      return;
-    }
-    await answerCallback(ctx.botToken, ctx.callbackQueryId!);
     await cmdPending(ctx);
   }
 
   else if (data.startsWith('track:')) {
     const orderId = data.slice(6);
-    await answerCallback(ctx.botToken, ctx.callbackQueryId!);
-
-    const { data: order } = await ctx.supabase
-      .from('orders')
-      .select('id, order_ref, total, status, fulfillment_status, g2bulk_metadata, created_at, payment_method')
-      .eq('id', orderId)
-      .maybeSingle();
-
+    if (!UUID_RE.test(orderId)) return;
+    const { order, needsLink } = await loadVisibleOrder(ctx, { id: orderId });
+    if (needsLink) {
+      await sendMessage(ctx.botToken, ctx.chatId, `🔗 Link your account first with /link`);
+      return;
+    }
     if (!order) {
       await sendMessage(ctx.botToken, ctx.chatId, `❌ Order not found.`);
       return;
     }
-
-    const meta = (order.g2bulk_metadata || {}) as Record<string, unknown>;
-    const statusLabel: Record<string, string> = {
-      pending: '⏳ Pending Payment',
-      completed: '✅ Paid',
-      fulfilling: '🔄 Fulfilling…',
-      fulfilled: '🎉 Delivered',
-      failed: '❌ Failed',
-    };
-
-    const lines = [
-      `📍 <b>Order ${esc(order.order_ref)}</b>`,
-      ``,
-      `Status: <b>${statusLabel[order.fulfillment_status] || statusLabel[order.status] || order.status}</b>`,
-      `Amount: <b>${money(order.total)}</b>`,
-    ];
-
-    if (meta.balance_refunded) {
-      lines.push(`💰 <i>Refunded: ${money(order.total)}</i>`);
-    }
-
-    const buttons = [];
-    if (order.fulfillment_status === 'fulfilled') {
-      buttons.push([{ text: '📄 Invoice', url: `https://www.echocore412.com/invoice/order/${order.id}` }]);
-    }
-
-    await sendMessage(ctx.botToken, ctx.chatId, lines.join('\n'), {
-      reply_markup: buttons.length ? { inline_keyboard: buttons } : undefined,
-    });
+    await sendOrderDetail(ctx, order);
   }
 
   else if (data.startsWith('approve:')) {
-    const rechargeId = data.slice(8);
-    if (!ctx.isAdmin) {
-      await answerCallback(ctx.botToken, ctx.callbackQueryId!, 'Admin only');
-      return;
-    }
-    await answerCallback(ctx.botToken, ctx.callbackQueryId!);
-    await cmdApprove(ctx, rechargeId);
+    await cmdApprove(ctx, data.slice(8));
   }
 
   else if (data.startsWith('reject:')) {
-    const rechargeId = data.slice(7);
-    if (!ctx.isAdmin) {
-      await answerCallback(ctx.botToken, ctx.callbackQueryId!, 'Admin only');
-      return;
-    }
-    await answerCallback(ctx.botToken, ctx.callbackQueryId!);
-    await cmdReject(ctx, rechargeId);
-  }
-
-  else {
-    await answerCallback(ctx.botToken, ctx.callbackQueryId!, 'Unknown action');
+    await cmdReject(ctx, data.slice(7));
   }
 }
 
-// ─── Bot commands registration (called on first deploy or /setcommands) ─────
+// ─── Bot commands registration ──────────────────────────────────────────────
 
-async function setBotCommands(token: string) {
+async function setBotCommands(supabase: ReturnType<typeof createClient>, token: string) {
   const commands = [
     { command: 'start', description: 'Start the bot / quick actions' },
     { command: 'help', description: 'Show all commands' },
@@ -849,11 +818,23 @@ async function setBotCommands(token: string) {
     { command: 'broadcast', description: '[Admin] Send announcement' },
   ];
 
-  await tgApi(token, 'setMyCommands', { commands });
-  // Admin commands are set separately so they only show for admins
-  // (Telegram doesn't support per-user command menus natively,
-  //  but we set them anyway so admins see them in autocomplete)
-  await tgApi(token, 'setMyCommands', { commands: [...commands, ...adminCommands] });
+  const results: unknown[] = [await tgApi(token, 'setMyCommands', { commands })];
+
+  // Admin commands are scoped to linked admins' private chats only.
+  const { data: admins } = await supabase
+    .from('profiles')
+    .select('telegram_chat_id')
+    .eq('role', 'admin')
+    .not('telegram_chat_id', 'is', null);
+
+  for (const a of admins ?? []) {
+    if (!a.telegram_chat_id) continue;
+    results.push(await tgApi(token, 'setMyCommands', {
+      commands: [...commands, ...adminCommands],
+      scope: { type: 'chat', chat_id: Number(a.telegram_chat_id) },
+    }));
+  }
+  return results;
 }
 
 // ─── Webhook setup endpoint ─────────────────────────────────────────────────
@@ -881,7 +862,7 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // ── GET: setup webhook or set commands (admin only) ──
+    // ── GET: account linking (any logged-in user) + setup actions (admin only) ──
     if (req.method === 'GET') {
       const url = new URL(req.url);
       const action = url.searchParams.get('action');
@@ -889,107 +870,74 @@ Deno.serve(async (req) => {
       const token = settings?.telegram_bot_token?.trim();
 
       if (!token) {
-        return new Response(JSON.stringify({ error: 'No bot token configured' }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return json({ error: 'No bot token configured' }, 400);
+      }
+
+      // The function runs with verify_jwt = false (Telegram can't send one), so every
+      // GET action verifies the caller's JWT with the auth server itself.
+      const caller = await getVerifiedUser(supabase, req);
+      if (!caller) {
+        return json({ error: 'Authentication required' }, 401);
       }
 
       if (action === 'link') {
-      // Link a Telegram chat to the authenticated user
-      const chatIdParam = url.searchParams.get('chat_id');
-      if (!chatIdParam) {
-        return new Response(JSON.stringify({ error: 'chat_id required' }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      // Verify the caller has a valid Supabase JWT
-      const authHeader = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '').trim();
-      if (!authHeader) {
-        return new Response(JSON.stringify({ error: 'Authentication required' }), {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      // Decode JWT to get user ID
-      let userId: string | null = null;
-      try {
-        const parts = authHeader.split('.');
-        if (parts.length === 3) {
-          let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-          const pad = b64.length % 4;
-          if (pad) b64 += '='.repeat(4 - pad);
-          const payload = JSON.parse(atob(b64));
-          userId = payload.sub || null;
+        const linkToken = url.searchParams.get('token')?.trim() ?? '';
+        if (!/^[0-9a-f]{32}$/i.test(linkToken)) {
+          return json({ error: 'Invalid or expired link. Send /start to the bot again.' }, 400);
         }
-      } catch {
-        // ignore
-      }
 
-      if (!userId) {
-        return new Response(JSON.stringify({ error: 'Invalid token' }), {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        const { data: result, error } = await supabase.rpc('consume_telegram_link_token', {
+          p_token: linkToken,
+          p_user_id: caller.id,
         });
+
+        if (error) {
+          console.error('link error:', error);
+          return json({ error: 'Could not link your account. Please try again.' }, 500);
+        }
+        if (!result?.ok) {
+          return json({
+            error: result?.reason === 'chat_taken'
+              ? 'This Telegram account is already linked to another user.'
+              : 'Invalid or expired link. Send /start to the bot again.',
+          }, result?.reason === 'chat_taken' ? 409 : 400);
+        }
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username, name')
+          .eq('id', caller.id)
+          .maybeSingle();
+
+        await sendMessage(token, Number(result.chat_id),
+          `✅ <b>Account linked!</b>\n\n` +
+          `Welcome, <b>${esc(profile?.username || profile?.name || 'User')}</b>.\n` +
+          `You'll now receive order notifications here.`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: '📦 My Orders', callback_data: 'my_orders' },
+                  { text: '💰 My Balance', callback_data: 'my_balance' },
+                ],
+                [{ text: '🛒 Browse Store', url: STORE_URL }],
+              ],
+            },
+          },
+        );
+
+        return json({ ok: true, linked: true });
       }
 
-      // Check if this chat is already linked to someone else
-      const { data: existing } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('telegram_chat_id', chatIdParam)
-        .neq('id', userId)
-        .maybeSingle();
-
-      if (existing) {
-        return new Response(JSON.stringify({ error: 'This Telegram account is already linked to another user' }), {
-          status: 409,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+      // Everything below changes bot configuration: admins only.
+      if (!(await isAdminProfile(supabase, caller.id))) {
+        return json({ error: 'Admin only' }, 403);
       }
 
-      // Link
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          telegram_chat_id: chatIdParam,
-          telegram_linked_at: new Date().toISOString(),
-        })
-        .eq('id', userId);
-
-      if (error) {
-        return new Response(JSON.stringify({ error: error.message }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      // Notify the user via Telegram
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('username, name')
-        .eq('id', userId)
-        .maybeSingle();
-
-      await sendMessage(token, Number(chatIdParam),
-        `✅ <b>Account linked!</b>\n\n` +
-        `Welcome, <b>${esc(profile?.username || profile?.name || 'User')}</b>.\n` +
-        `You'll now receive order notifications here.`,
-      );
-
-      return new Response(JSON.stringify({ ok: true, linked: true }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    if (action === 'setup-webhook') {
+      if (action === 'setup-webhook') {
         const secret = settings?.telegram_webhook_secret?.trim() || crypto.randomUUID();
         const webhookUrl = `${supabaseUrl}/functions/v1/telegram-bot`;
 
-        // Save secret if new
         if (!settings?.telegram_webhook_secret) {
           await supabase
             .from('store_settings')
@@ -997,39 +945,34 @@ Deno.serve(async (req) => {
             .eq('id', 1);
         }
 
+        // The secret is never echoed back to the browser.
         const result = await setupWebhook(token, webhookUrl, secret);
-        return new Response(JSON.stringify({ webhook: result, secret }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return json({ webhook: result });
       }
 
       if (action === 'set-commands') {
-        const result = await setBotCommands(token);
-        return new Response(JSON.stringify({ commands: result }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        const result = await setBotCommands(supabase, token);
+        return json({ commands: result });
       }
 
       if (action === 'get-info') {
         const me = await tgApi(token, 'getMe', {});
-        return new Response(JSON.stringify({ bot: me.result, webhook_secret_set: !!settings?.telegram_webhook_secret }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return json({ bot: me.result, webhook_secret_set: !!settings?.telegram_webhook_secret });
       }
 
-      return new Response(JSON.stringify({ error: 'Unknown action' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ error: 'Unknown action' }, 400);
     }
 
     // ── POST: Telegram webhook ──
-    // Verify webhook secret
-    const webhookSecret = req.headers.get('x-telegram-bot-secret')?.trim();
+    // Fail closed: without a configured secret anyone could forge updates (e.g. admin approvals).
+    const webhookSecret = req.headers.get('x-telegram-bot-secret')?.trim() ?? '';
     const settings = await getStoreSettings(supabase);
-    const expectedSecret = settings?.telegram_webhook_secret?.trim();
+    const expectedSecret = settings?.telegram_webhook_secret?.trim() ?? '';
 
-    if (expectedSecret && webhookSecret !== expectedSecret) {
+    if (!expectedSecret) {
+      return new Response('Webhook secret not configured', { status: 503 });
+    }
+    if (!timingSafeEqual(webhookSecret, expectedSecret)) {
       return new Response('Unauthorized', { status: 401 });
     }
 
@@ -1040,7 +983,6 @@ Deno.serve(async (req) => {
 
     const update: TelegramUpdate = await req.json();
 
-    // Build context
     const msg = update.message;
     const cb = update.callback_query;
     const from = cb?.from || msg?.from;
@@ -1059,17 +1001,19 @@ Deno.serve(async (req) => {
       supabase,
       botToken: token,
       adminChatId: (settings?.telegram_chat_id ?? '').trim(),
-      webhookSecret: expectedSecret || '',
+      webhookSecret: expectedSecret,
       chatId: chat.id,
       userId: from.id,
       firstName: from.first_name || '',
       username: from.username || '',
       isAdmin: false,
+      adminProfileId: null,
       isGroup: chat.type !== 'private',
+      callbackQueryId: cb?.id,
     };
 
-    // Check admin status
-    ctx.isAdmin = await isAdminUser(supabase, ctx.userId);
+    ctx.adminProfileId = await findAdminProfileId(supabase, ctx.userId);
+    ctx.isAdmin = !!ctx.adminProfileId;
 
     // ── Handle callback query ──
     if (cb?.data) {
@@ -1083,13 +1027,23 @@ Deno.serve(async (req) => {
       return new Response('ok');
     }
 
-    // Parse command
-    const match = text.match(/^\/(\w+)(?:\s+(.*))?$/s);
+    // Parse command (supports /cmd@BotName in groups)
+    const match = text.match(/^\/(\w+)(?:@\w+)?(?:\s+(.*))?$/s);
     if (!match) {
-      // Non-command text in private chat — show help
       if (!ctx.isGroup) {
         await sendMessage(token, ctx.chatId,
-          `🤔 I'm not sure what you mean. Type /help to see what I can do!`,
+          `🤔 I'm not sure what you mean. Pick an option below or type /help.`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: '📦 My Orders', callback_data: 'my_orders' },
+                  { text: '💰 My Balance', callback_data: 'my_balance' },
+                ],
+                [{ text: '❓ Help', callback_data: 'show_help' }],
+              ],
+            },
+          },
         );
       }
       return new Response('ok');
@@ -1106,7 +1060,7 @@ Deno.serve(async (req) => {
         await cmdHelp(ctx);
         break;
       case 'link':
-        await cmdLink(ctx, args);
+        await cmdLink(ctx);
         break;
       case 'unlink':
         await cmdUnlink(ctx);

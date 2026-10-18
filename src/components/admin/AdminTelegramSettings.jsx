@@ -159,7 +159,7 @@ export default function AdminTelegramSettings({ t = {}, embedded = false }) {
     try {
       const result = await setupTelegramWebhook();
       setSuccess(t.telegramWebhookSetup || 'Webhook configured successfully');
-      if (result?.secret) {
+      if (result?.webhook?.ok) {
         setBotInfo((prev) => ({ ...prev, telegram_webhook_secret_set: true }));
       }
       setTimeout(() => setSuccess(''), 4000);
