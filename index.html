@@ -44,12 +44,114 @@
           if (theme['background-type']) {
             document.documentElement.setAttribute('data-background-type', theme['background-type']);
           }
+          var hex = /^#[0-9a-f]{3,8}$/i;
+          if (hex.test(theme['bg-primary'] || '')) {
+            document.documentElement.style.setProperty('--splash-bg', theme['bg-primary']);
+          }
+          if (hex.test(theme.accent || '')) {
+            document.documentElement.style.setProperty('--splash-accent', theme.accent);
+          }
+          var logo = String(theme['logo-url'] || '').trim();
+          if (/^(https:\/\/|\/)/.test(logo)) window.__echoSplashLogo = logo;
         } catch (e) {}
       })();
     </script>
+    <style>
+      /* Boot splash — shown before the JS bundle loads; hidden by src/lib/splash.js. */
+      #echo-splash {
+        --sb: var(--splash-bg, #07030f);
+        --sa: var(--splash-accent, #8b5cf6);
+        position: fixed;
+        inset: 0;
+        z-index: 2147483000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        background: var(--sb);
+        opacity: 1;
+        transition: opacity 320ms ease, visibility 0s linear 320ms;
+      }
+      html[data-color-mode='light'] #echo-splash {
+        --sb: var(--splash-bg, #f7f4fd);
+        --sa: var(--splash-accent, #7c3aed);
+      }
+      #echo-splash.is-hidden {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      #echo-splash img {
+        display: block;
+        width: 112px;
+        height: 112px;
+        filter: drop-shadow(0 0 22px color-mix(in srgb, var(--sa) 45%, transparent));
+        animation: echo-splash-in 420ms ease-out both;
+      }
+      #echo-splash .echo-splash-strip {
+        position: relative;
+        width: 128px;
+        height: 3px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: color-mix(in srgb, var(--sa) 18%, transparent);
+      }
+      #echo-splash .echo-splash-strip::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 40%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, transparent, var(--sa), transparent);
+        animation: echo-splash-strip 1.1s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+      }
+      @keyframes echo-splash-strip {
+        from { transform: translateX(-100%); }
+        to { transform: translateX(250%); }
+      }
+      @keyframes echo-splash-in {
+        from { opacity: 0; transform: scale(0.94); }
+        to { opacity: 1; transform: scale(1); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #echo-splash { transition-duration: 0ms; }
+        #echo-splash img { animation: none; }
+        #echo-splash .echo-splash-strip::after {
+          animation: none;
+          width: 100%;
+          background: var(--sa);
+          opacity: 0.6;
+        }
+      }
+    </style>
   </head>
   <body>
     <!-- ECHOCORE Store v0.5.0 | Developed by Ahmed Ghawi (@ahmedghx) -->
+    <div id="echo-splash" aria-hidden="true">
+      <img src="/src/assets/echo-core-logo-sm.webp" width="112" height="112" alt="" decoding="async" fetchpriority="high" />
+      <div class="echo-splash-strip"></div>
+    </div>
+    <script>
+      (function () {
+        window.__echoSplashStart = performance.now();
+        if (window.__echoSplashLogo) {
+          var splashImg = document.querySelector('#echo-splash img');
+          var splashFallback = splashImg.src;
+          splashImg.onerror = function () { splashImg.onerror = null; splashImg.src = splashFallback; };
+          splashImg.src = window.__echoSplashLogo;
+        }
+        // Safety cap: never keep the splash longer than 4 s, even if the app never signals ready.
+        setTimeout(function () {
+          var el = document.getElementById('echo-splash');
+          if (!el) return;
+          el.classList.add('is-hidden');
+          setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 400);
+        }, 4000);
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
