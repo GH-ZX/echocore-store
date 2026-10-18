@@ -10203,3 +10203,43 @@ button.profile-list-item {
     box-shadow: 0 1px 0 var(--border), 0 -3px 8px color-mix(in srgb, var(--text-primary) 10%, transparent);
   }
 }
+
+/* Home: Games | Vouchers switch (replaces the two separate section headings) */
+.home-lane-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 0 auto 1.25rem;
+  padding: 0.3rem;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-surface) 80%, transparent);
+}
+.home-lane-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0 1.4rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text-sec);
+  transition: background-color 0.2s, color 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.home-lane-tab:hover { color: var(--text-primary); }
+.home-lane-tab--active {
+  background: var(--accent);
+  color: #fff;
+}
+.home-lane-tab__count {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 18%, transparent);
+  font-variant-numeric: tabular-nums;
+}
