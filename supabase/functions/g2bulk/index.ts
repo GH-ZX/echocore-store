@@ -2191,7 +2191,8 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'checkFulfillmentAvailability' || action === 'diagnoseFulfillment') {
-    if (!userId) {
+    // Service callers (Telegram bot checkout) may run the plain availability check.
+    if (!userId && !(serviceAuth && action === 'checkFulfillmentAvailability')) {
       return jsonResponse({ success: false, message: 'Not authenticated' }, 401);
     }
 
