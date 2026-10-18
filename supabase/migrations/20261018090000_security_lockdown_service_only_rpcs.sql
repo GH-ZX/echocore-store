@@ -47,7 +47,13 @@ BEGIN
         'append_site_log',
         'try_append_site_log',
         'check_fulfillment_invariants',
-        'deduct_user_balance'
+        'deduct_user_balance',
+        -- Telegram bot RPCs trust a caller-supplied admin id / token: service only.
+        'telegram_approve_recharge',
+        'telegram_reject_recharge',
+        'telegram_order_items_text',
+        'consume_telegram_link_token',
+        'peek_telegram_link_token'
       )
   LOOP
     EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM public, anon, authenticated', f.sig);
