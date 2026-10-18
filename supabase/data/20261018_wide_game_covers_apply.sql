@@ -54,3 +54,16 @@ FROM (VALUES
 ) AS v(slug)
 WHERE g.slug = v.slug
   AND COALESCE(g.image_custom, false) = false;
+
+-- Follow-up (same day): cards keep the square art, only the carousel / game
+-- page hero use the wide cover. Keep the old square image as logo_url.
+WITH old AS (
+  SELECT DISTINCT ON (game_id) game_id, image_url FROM echocore_backup.game_image_snapshots
+  WHERE label = '2026-10-18-before-wide-covers' ORDER BY game_id, taken_at
+)
+UPDATE public.games g SET logo_url = old.image_url
+FROM old
+WHERE g.id = old.game_id
+  AND g.image_url LIKE 'https://www.echocore412.com/game-covers/%'
+  AND old.image_url IS NOT NULL
+  AND g.logo_url IS NULL;

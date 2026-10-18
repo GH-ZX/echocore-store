@@ -25,12 +25,11 @@ export function hasDistinctGameLogo(game) {
 }
 
 /**
- * Mini logo when an admin uploaded one separately; otherwise the cover.
- * Catalog sync also copies the square supplier art into logo_url
- * (logo_custom = false) — that must not shadow a wide cover on the card.
+ * Cards show the square logo when one exists; the wide cover (image_url) is
+ * for the home carousel and game page hero.
  */
 export function getGameCardImageUrl(game) {
-  if (hasDistinctGameLogo(game) && game?.logo_custom !== false) return game.logo_url;
+  if (hasDistinctGameLogo(game)) return game.logo_url;
   return game?.image_url || null;
 }
 
