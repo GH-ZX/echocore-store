@@ -21,3 +21,7 @@ verify_jwt = false
 # webhook delivery from Binance carries no Supabase JWT so JWT must be off.
 [functions.binance-pay]
 verify_jwt = false
+# Sam API: invoice webhooks carry no Supabase JWT (token in callback URL is
+# checked in code); browser calls are verified in code via auth.getUser().
+[functions.sam-api]
+verify_jwt = false

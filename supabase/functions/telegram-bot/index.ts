@@ -7,7 +7,7 @@
  *   Callback: order detail, approve/reject recharge, track order
  *
  * Webhook: set via BotFather → POST to /functions/v1/telegram-bot
- * Secret:  x-telegram-bot-secret header validated against store_settings.telegram_webhook_secret
+ * Secret:  X-Telegram-Bot-Api-Secret-Token header validated against store_settings.telegram_webhook_secret
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -980,7 +980,11 @@ Deno.serve(async (req) => {
 
     // ── POST: Telegram webhook ──
     // Fail closed: without a configured secret anyone could forge updates (e.g. admin approvals).
-    const webhookSecret = req.headers.get('x-telegram-bot-secret')?.trim() ?? '';
+    // Telegram sends setWebhook's secret_token in X-Telegram-Bot-Api-Secret-Token.
+    const webhookSecret = (
+      req.headers.get('x-telegram-bot-api-secret-token')
+      ?? req.headers.get('x-telegram-bot-secret')
+    )?.trim() ?? '';
     const settings = await getStoreSettings(supabase);
     const expectedSecret = settings?.telegram_webhook_secret?.trim() ?? '';
 

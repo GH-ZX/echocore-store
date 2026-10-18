@@ -4,7 +4,7 @@ import {
   formatCatalogueOfferName,
   resolvePointsName,
 } from './gameCurrency.ts';
-import { priceFromCost, resolveSyncedPrice } from './markupPricing.ts';
+import { normalizeRoundStep, priceFromCost, resolveSyncedPrice } from './markupPricing.ts';
 import {
   loadIgdbAutoCoverConfig,
   maybeApplyIgdbAutoCover,
@@ -24,30 +24,28 @@ const corsHeaders = {
 function isCronAuthorized(req: Request): boolean {
   const secret = Deno.env.get('G2BULK_CRON_SECRET')?.trim();
   const header = req.headers.get('x-g2bulk-cron-secret')?.trim();
-  return !!(secret && header && secret === header);
+  return !!(secret && header && timingSafeEqualStr(secret, header));
 }
 
-function isServiceRoleAuthorized(req: Request, supabaseUrl: string) {
+function timingSafeEqualStr(a: string, b: string) {
+  const enc = new TextEncoder();
+  const x = enc.encode(a);
+  const y = enc.encode(b);
+  let diff = x.length ^ y.length;
+  const len = Math.max(x.length, y.length);
+  for (let i = 0; i < len; i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
+
+// Exact match against this function's own service-role secret only. Every
+// internal caller (crons, sam-api, scripts) sends SUPABASE_SERVICE_ROLE_KEY.
+// Never decode an unverified JWT payload here: its signature is not checked,
+// so `{"role":"service_role"}` would be trivially forgeable.
+function isServiceRoleAuthorized(req: Request, _supabaseUrl: string) {
   const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
   if (!token) return false;
-
-  // Prefer exact match against the function's service role secret (most reliable).
   const envServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim();
-  if (envServiceKey && token === envServiceKey) return true;
-
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return false;
-    // JWT payloads are base64url; pad for atob.
-    let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const pad = b64.length % 4;
-    if (pad) b64 += '='.repeat(4 - pad);
-    const payload = JSON.parse(atob(b64));
-    const projectRef = String(supabaseUrl).replace(/^https?:\/\//, '').split('.')[0];
-    return payload.role === 'service_role' && payload.ref === projectRef;
-  } catch {
-    return false;
-  }
+  return !!envServiceKey && timingSafeEqualStr(token, envServiceKey);
 }
 
 type Json = Record<string, unknown>;
@@ -119,6 +117,7 @@ async function updateOfferPreservingPricing(
   offerId: string,
   offerRow: Record<string, unknown>,
   storeMarkupPercent: number,
+  roundStep: number = 0,
 ) {
   const { data: existing } = await serviceClient
     .from('offers')
@@ -136,6 +135,7 @@ async function updateOfferPreservingPricing(
     existing,
     Number.isFinite(cost) ? cost : 0,
     storeMarkupPercent,
+    roundStep,
   );
 
   if (resolved.preservePrice) {
@@ -165,8 +165,9 @@ async function updateOfferPreservingSale(
   offerId: string,
   offerRow: Record<string, unknown>,
   storeMarkupPercent = 15,
+  roundStep = 0,
 ) {
-  return updateOfferPreservingPricing(serviceClient, offerId, offerRow, storeMarkupPercent);
+  return updateOfferPreservingPricing(serviceClient, offerId, offerRow, storeMarkupPercent, roundStep);
 }
 
 async function readJson(req: Request) {
@@ -233,7 +234,7 @@ async function resolveApiKeyRaw(serviceClient: ReturnType<typeof createClient>) 
 async function loadStoreSettingsRow(serviceClient: ReturnType<typeof createClient>) {
   const { data, error } = await serviceClient
     .from('store_settings')
-    .select('g2bulk_enabled, g2bulk_markup_percent, g2bulk_catalog_only, g2bulk_catalog_mode, g2bulk_last_sync_at, g2bulk_last_check_at, g2bulk_check_summary, g2bulk_auto_sync_enabled, g2bulk_auto_sync_hour, g2bulk_auto_sync_timezone, g2bulk_auto_approve, g2bulk_block_when_wallet_low, g2bulk_auto_refund_on_fail, g2bulk_pull_selection, g2bulk_api_key')
+    .select('g2bulk_enabled, g2bulk_markup_percent, g2bulk_catalog_only, g2bulk_catalog_mode, g2bulk_last_sync_at, g2bulk_last_check_at, g2bulk_check_summary, g2bulk_auto_sync_enabled, g2bulk_auto_sync_hour, g2bulk_auto_sync_timezone, g2bulk_auto_approve, g2bulk_block_when_wallet_low, g2bulk_auto_refund_on_fail, g2bulk_pull_selection, g2bulk_price_round_step, g2bulk_api_key')
     .eq('id', 1)
     .maybeSingle();
 
@@ -256,6 +257,7 @@ function buildSettingsEnvelope(row: Json | null | undefined, envKey: string | nu
       return Number.isFinite(n) ? n : 15;
     })(),
 
+    g2bulk_price_round_step: normalizeRoundStep(settingsRow.g2bulk_price_round_step),
     g2bulk_catalog_only: settingsRow.g2bulk_catalog_only !== false,
     g2bulk_catalog_mode: String(settingsRow.g2bulk_catalog_mode || 'sync'),
     g2bulk_last_sync_at: settingsRow.g2bulk_last_sync_at || null,
@@ -303,24 +305,25 @@ async function loadStorePricingSettings(serviceClient: ReturnType<typeof createC
   const fallback = 12;
   const { data: settings, error } = await serviceClient
     .from('store_settings')
-    .select('g2bulk_markup_percent')
+    .select('g2bulk_markup_percent, g2bulk_price_round_step')
     .eq('id', 1)
     .maybeSingle();
 
   if (error || !settings) {
-    return { markup: fallback };
+    return { markup: fallback, roundStep: 0 };
   }
 
+  const roundStep = normalizeRoundStep(settings.g2bulk_price_round_step);
   // Never treat null/NaN as 0 (Number(null) === 0 would reprice at cost).
   const raw = settings.g2bulk_markup_percent;
   if (raw == null || raw === '') {
-    return { markup: fallback };
+    return { markup: fallback, roundStep };
   }
   const n = Number(raw);
   if (!Number.isFinite(n) || n < 0) {
-    return { markup: fallback };
+    return { markup: fallback, roundStep };
   }
-  return { markup: n };
+  return { markup: n, roundStep };
 }
 
 const GAMING_ACCOUNT_KEYWORDS = [
@@ -343,10 +346,28 @@ function classifyVoucherSegment(title = '') {
   return 'gift_card';
 }
 
+/**
+ * Public supplier list fetch that fails loudly. A 5xx/429/timeout must abort
+ * the sync instead of reading as "empty catalog" (which deactivates games and
+ * offers across the store).
+ */
+async function fetchSupplierList(path: string, listKey: string, { allowEmpty = false } = {}) {
+  let res: Response;
+  try {
+    res = await fetch(`${G2BULK_BASE}${path}`, { signal: AbortSignal.timeout(20000) });
+  } catch (err) {
+    throw new Error(`Supplier ${path} unreachable (${err instanceof Error ? err.message : 'network error'}) — sync aborted, nothing was disabled`);
+  }
+  const payload = await res.json().catch(() => null) as Json | null;
+  const list = payload && Array.isArray(payload[listKey]) ? payload[listKey] as Json[] : null;
+  if (!res.ok || !list || (!allowEmpty && list.length === 0)) {
+    throw new Error(`Supplier ${path} unavailable (HTTP ${res.status}) — sync aborted, nothing was disabled`);
+  }
+  return list;
+}
+
 async function fetchG2GamesPublic() {
-  const gamesRes = await fetch(`${G2BULK_BASE}/games`);
-  const gamesPayload = await gamesRes.json().catch(() => ({}));
-  return Array.isArray(gamesPayload.games) ? gamesPayload.games as Json[] : [];
+  return fetchSupplierList('/games', 'games');
 }
 
 function filterValidG2Games(g2Games: Json[]) {
@@ -1126,7 +1147,6 @@ async function handleG2bulkTopupWebhook(
 ) {
   const g2IdRaw = body.order_id ?? body.orderId;
   const g2Id = String(g2IdRaw ?? '').trim();
-  const status = String(body.status || '').trim().toUpperCase();
   const remarkOrderId = parseEchoCoreOrderIdFromRemark(body.remark);
 
   let order: Json | null = null;
@@ -1170,10 +1190,34 @@ async function handleG2bulkTopupWebhook(
     });
   }
 
+  // The webhook is unauthenticated, so never trust the posted status. Only act
+  // on orders we already placed under this supplier id, and re-read the real
+  // status from G2Bulk before changing anything (cron reconciles the rest).
+  const g2Num = Number(g2Id);
+  if (!g2Id || !Number.isFinite(g2Num) || String(order.g2bulk_order_id ?? '') !== g2Id) {
+    return jsonResponse({
+      success: true,
+      ignored: true,
+      message: 'Webhook order id does not match a placed supplier order',
+      orderId,
+    });
+  }
+  const apiKey = await resolveApiKeyRaw(serviceClient);
+  if (!apiKey) {
+    return jsonResponse({ success: false, message: 'G2Bulk API key not configured' }, 503);
+  }
+  const verified = await fetchGameOrderStatusOnce(apiKey, g2Num);
+  const verifiedStatus = String((verified as { status?: string }).status || '').trim().toUpperCase();
+  const status = verified.ok || (verified as { terminal?: boolean }).terminal
+    ? verifiedStatus
+    : 'PROCESSING';
+  const verifiedData = (verified.data && typeof verified.data === 'object' ? verified.data : {}) as Json;
+
   const playerNickname = String(
-    body.player_name || body.player_nickname || body.nickname || '',
+    verifiedData.player_name || verifiedData.player_nickname || verifiedData.nickname
+      || body.player_name || body.player_nickname || body.nickname || '',
   ).trim();
-  const supplierAmount = Number(body.price ?? body.amount ?? body.total_price);
+  const supplierAmount = Number(verifiedData.price ?? verifiedData.amount ?? verifiedData.total_price);
   const metaBase: Json = {
     webhook: true,
     webhook_at: new Date().toISOString(),
@@ -1225,7 +1269,7 @@ async function handleG2bulkTopupWebhook(
       p_order_id: orderId,
       p_fulfillment_status: 'failed',
       p_g2bulk_order_id: g2Id || order.g2bulk_order_id || undefined,
-      p_error: String(body.message || `Top-up ${status.toLowerCase()}`),
+      p_error: String((verified as { error?: string }).error || `Top-up ${status.toLowerCase()}`),
       p_metadata: {
         ...metaBase,
         terminal: true,
@@ -2309,6 +2353,9 @@ Deno.serve(async (req) => {
     if (payload.autoRefundOnFail !== undefined) {
       updates.g2bulk_auto_refund_on_fail = !!payload.autoRefundOnFail;
     }
+    if (payload.priceRoundStep !== undefined && payload.priceRoundStep !== null) {
+      updates.g2bulk_price_round_step = normalizeRoundStep(payload.priceRoundStep);
+    }
     const { error } = await serviceClient.from('store_settings').update(updates).eq('id', 1);
     if (error) {
       return jsonResponse({ success: false, message: error.message }, 500);
@@ -2317,6 +2364,72 @@ Deno.serve(async (req) => {
     const row = await loadStoreSettingsRow(serviceClient);
     const envKey = Deno.env.get('G2BULK_API_KEY')?.trim();
     return jsonResponse({ success: true, settings: buildSettingsEnvelope(row, envKey) });
+  }
+
+  // Apply the current store markup + rounding step to every auto / custom-margin
+  // pack now (instead of waiting for the next catalog sync). Fixed-price and
+  // sale packs are left alone. Prices are snapshotted first so the admin can undo.
+  if (action === 'repriceOffers') {
+    if (!(await isAdmin(userClient, userId!))) {
+      return jsonResponse({ success: false, message: 'Admin only' }, 403);
+    }
+    const { markup, roundStep } = await loadStorePricingSettings(serviceClient);
+
+    const snapshotLabel = `reprice-${new Date().toISOString()}`;
+    const { error: snapError } = await serviceClient.rpc('snapshot_offer_prices', { p_label: snapshotLabel });
+    if (snapError) {
+      return jsonResponse({ success: false, message: `Price snapshot failed: ${snapError.message}` }, 500);
+    }
+
+    const rows: Json[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await serviceClient
+        .from('offers')
+        .select('id, price, is_sale, pricing_mode, pricing_margin_percent, g2bulk_cost_usd')
+        .gt('g2bulk_cost_usd', 0)
+        .order('id')
+        .range(from, from + 999);
+      if (error) return jsonResponse({ success: false, message: error.message }, 500);
+      rows.push(...((data || []) as Json[]));
+      if (!data || data.length < 1000) break;
+    }
+
+    const changes: { id: string; price: number }[] = [];
+    for (const row of rows) {
+      const resolved = resolveSyncedPrice(row, Number(row.g2bulk_cost_usd), markup, roundStep);
+      if (resolved.preservePrice) continue;
+      if (Math.abs(resolved.price - Number(row.price)) > 0.0001) {
+        changes.push({ id: String(row.id), price: resolved.price });
+      }
+    }
+
+    let failed = 0;
+    for (let i = 0; i < changes.length; i += 25) {
+      const chunk = changes.slice(i, i + 25);
+      const results = await Promise.all(chunk.map((c) => (
+        serviceClient.from('offers').update({ price: c.price }).eq('id', c.id)
+      )));
+      failed += results.filter((r) => r.error).length;
+    }
+
+    await serviceClient.rpc('append_site_log', {
+      p_category: 'admin',
+      p_event_type: 'offers_repriced',
+      p_severity: failed ? 'warning' : 'info',
+      p_actor_user_id: userId,
+      p_subject_user_id: null,
+      p_metadata: { markup, roundStep, checked: rows.length, changed: changes.length - failed, failed, snapshotLabel },
+    });
+
+    return jsonResponse({
+      success: failed === 0,
+      checked: rows.length,
+      changed: changes.length - failed,
+      failed,
+      markup,
+      roundStep,
+      snapshotLabel,
+    });
   }
 
   if (action === 'getSettings') {
@@ -3111,7 +3224,7 @@ Deno.serve(async (req) => {
     const hideManual = body.hideManual !== false;
     const now = new Date().toISOString();
 
-    const { markup } = await loadStorePricingSettings(serviceClient);
+    const { markup, roundStep } = await loadStorePricingSettings(serviceClient);
     const igdbAutoCover = await loadIgdbAutoCoverConfig(serviceClient);
 
     async function syncTopupGame(
@@ -3131,12 +3244,11 @@ Deno.serve(async (req) => {
       const slug = slugify(code);
       const imageUrl = absImageUrl(g.image_url as string | undefined);
 
-      const [catRes, topupReqs] = await Promise.all([
-        fetch(`${G2BULK_BASE}/games/${encodeURIComponent(code)}/catalogue`),
+      // Empty is legitimate (all packs out of stock); a failed request is not.
+      const [catalogues, topupReqs] = await Promise.all([
+        fetchSupplierList(`/games/${encodeURIComponent(code)}/catalogue`, 'catalogues', { allowEmpty: true }),
         fetchTopupRequirements(code),
       ]);
-      const catPayload = await catRes.json().catch(() => ({}));
-      const catalogues = Array.isArray(catPayload.catalogues) ? catPayload.catalogues : [];
 
       const description = buildTopupDescription(meta, topupReqs.notes);
       const displayName = meta.regionLabel !== 'Global'
@@ -3251,7 +3363,7 @@ Deno.serve(async (req) => {
           game_id: gameId,
           name_en: displayName,
           name_ar: displayName,
-          price: priceFromCost(cost, markup),
+          price: priceFromCost(cost, markup, roundStep),
           region: offerRegion,
           g2bulk_type: 'topup',
           g2bulk_catalogue_name: catalogueName,
@@ -3272,7 +3384,7 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (existingOffer?.id) {
-          const error = await updateOfferPreservingSale(serviceClient, existingOffer.id, offerRow, markup);
+          const error = await updateOfferPreservingSale(serviceClient, existingOffer.id, offerRow, markup, roundStep);
           if (error) throw error;
         } else {
           const { error } = await serviceClient.from('offers').insert({
@@ -3313,9 +3425,7 @@ Deno.serve(async (req) => {
       let offersSkipped = 0;
       const errors: string[] = [];
 
-      const categoriesRes = await fetch(`${G2BULK_BASE}/category`);
-      const categoriesPayload = await categoriesRes.json().catch(() => ({}));
-      const categories = Array.isArray(categoriesPayload.categories) ? categoriesPayload.categories : [];
+      const categories = await fetchSupplierList('/category', 'categories');
       const categoryMeta = new Map<number, { title: string; image_url: string | null; description: string }>();
       for (const cat of categories) {
         const id = Number(cat.id);
@@ -3327,9 +3437,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      const productsRes = await fetch(`${G2BULK_BASE}/products`);
-      const productsPayload = await productsRes.json().catch(() => ({}));
-      const products = Array.isArray(productsPayload.products) ? productsPayload.products : [];
+      const products = await fetchSupplierList('/products', 'products');
       const byCategory = new Map<number, { title: string; items: Json[] }>();
 
       for (const product of products) {
@@ -3436,7 +3544,7 @@ Deno.serve(async (req) => {
               game_id: gameId,
               name_en: offerTitle,
               name_ar: offerTitle,
-              price: priceFromCost(cost, markup),
+              price: priceFromCost(cost, markup, roundStep),
               region: offerRegionMeta.regionLabel !== 'Global' ? offerRegionMeta.regionLabel : null,
               g2bulk_type: 'voucher',
               g2bulk_product_id: productId,
@@ -3455,7 +3563,7 @@ Deno.serve(async (req) => {
               .maybeSingle();
 
             if (existingOffer?.id) {
-              const error = await updateOfferPreservingSale(serviceClient, existingOffer.id, offerRow, markup);
+              const error = await updateOfferPreservingSale(serviceClient, existingOffer.id, offerRow, markup, roundStep);
               if (error) throw error;
             } else {
               const { error } = await serviceClient.from('offers').insert({
@@ -4105,7 +4213,7 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'browseCatalog') {
-    const { markup } = await loadStorePricingSettings(serviceClient);
+    const { markup, roundStep } = await loadStorePricingSettings(serviceClient);
     const subAction = String(body.subAction || 'listGames');
 
     async function fetchG2GamesPublic() {
@@ -4222,7 +4330,7 @@ Deno.serve(async (req) => {
             game_id: gameRow.id,
             name_en: formatCatalogueOfferName(catalogueName, code, meta.baseName, meta.baseKey),
             name_ar: formatCatalogueOfferName(catalogueName, code, meta.baseName, meta.baseKey),
-            price: priceFromCost(cost, markup),
+            price: priceFromCost(cost, markup, roundStep),
             region: meta.regionLabel,
             g2bulk_type: 'topup',
             g2bulk_game_code: code,
@@ -4309,7 +4417,7 @@ Deno.serve(async (req) => {
             game_id: gameId,
             name_en: String(product.title || `Product ${productId}`),
             name_ar: String(product.title || `Product ${productId}`),
-            price: priceFromCost(cost, markup),
+            price: priceFromCost(cost, markup, roundStep),
             g2bulk_type: 'voucher',
             g2bulk_product_id: productId,
             g2bulk_cost_usd: cost,
@@ -4331,7 +4439,7 @@ Deno.serve(async (req) => {
     const items = Array.isArray(body.items) ? body.items : [];
     const now = new Date().toISOString();
 
-    const { markup } = await loadStorePricingSettings(serviceClient);
+    const { markup, roundStep } = await loadStorePricingSettings(serviceClient);
 
     const resolved: { liveId: string; offerId: string }[] = [];
 
@@ -4396,7 +4504,7 @@ Deno.serve(async (req) => {
           name_en: offerDisplayName,
           name_ar: offerDisplayName,
           price: Number.isFinite(cost) && cost > 0
-            ? priceFromCost(cost, markup)
+            ? priceFromCost(cost, markup, roundStep)
             : Number(raw.price) || 0.01,
           g2bulk_type: 'topup',
           g2bulk_catalogue_name: catalogueName,
@@ -4416,7 +4524,7 @@ Deno.serve(async (req) => {
 
         let offerId = existingOffer?.id as string | undefined;
         if (offerId) {
-          const error = await updateOfferPreservingSale(serviceClient, offerId, offerRow, markup);
+          const error = await updateOfferPreservingSale(serviceClient, offerId, offerRow, markup, roundStep);
           if (error) throw error;
         } else {
           const { data: insertedOffer, error: offerError } = await serviceClient
@@ -4488,7 +4596,7 @@ Deno.serve(async (req) => {
               game_id: gameId,
               name_en: String(product.title || `Product ${productId}`),
               name_ar: String(product.title || `Product ${productId}`),
-              price: priceFromCost(cost, markup),
+              price: priceFromCost(cost, markup, roundStep),
               g2bulk_type: 'voucher',
               g2bulk_product_id: productId,
               g2bulk_cost_usd: cost,

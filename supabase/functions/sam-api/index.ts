@@ -540,7 +540,9 @@ Deno.serve(async (req) => {
 
       const paidAmount = parsePaidAmount(body as Json, row.amount);
 
-      await serviceClient
+      // Conditional flip: if two webhook deliveries race, only the one that
+      // actually moves the invoice to 'paid' runs completion + fulfillment.
+      const { data: flipped } = await serviceClient
         .from('sam_invoices')
         .update({
           status: 'paid',
@@ -550,7 +552,13 @@ Deno.serve(async (req) => {
           webhook_received_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq('id', row.id);
+        .eq('id', row.id)
+        .neq('status', 'paid')
+        .select('id');
+
+      if (!flipped || flipped.length === 0) {
+        return jsonResponse({ success: true, skipped: true });
+      }
 
       const completion = await completeEntityAfterPaid(serviceClient, row as Record<string, unknown>);
 

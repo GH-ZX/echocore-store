@@ -100,6 +100,7 @@ export async function saveG2bulkSettings({
   autoSyncTimezone,
   blockWhenWalletLow,
   autoRefundOnFail,
+  priceRoundStep,
 }) {
   const data = await invokeG2bulk({
     action: 'saveSettings',
@@ -113,6 +114,7 @@ export async function saveG2bulkSettings({
     autoSyncTimezone: autoSyncTimezone !== undefined ? (autoSyncTimezone?.trim() || null) : undefined,
     blockWhenWalletLow: blockWhenWalletLow !== undefined ? !!blockWhenWalletLow : undefined,
     autoRefundOnFail: autoRefundOnFail !== undefined ? !!autoRefundOnFail : undefined,
+    priceRoundStep: priceRoundStep !== undefined ? Number(priceRoundStep) : undefined,
   });
 
   if (data?.settings) {
@@ -120,6 +122,25 @@ export async function saveG2bulkSettings({
   }
 
   return data;
+}
+
+/** Admin: apply current markup + rounding to all auto/margin packs now (snapshots first). */
+export async function repriceG2bulkOffers() {
+  return invokeG2bulk({ action: 'repriceOffers' }, { retries: 0 });
+}
+
+/** Admin: recent price snapshots ({ label, taken_at, offers }[]), newest first. */
+export async function listOfferPriceSnapshots() {
+  const { data, error } = await supabase.rpc('admin_list_offer_price_snapshots');
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+/** Admin: undo a reprice by restoring every offer price from a snapshot. */
+export async function restoreOfferPriceSnapshot(label) {
+  const { data, error } = await supabase.rpc('admin_restore_offer_prices', { p_label: label });
+  if (error) throw error;
+  return Number(data) || 0;
 }
 
 /** Keep each edge invoke under ~15s so browser fetch does not drop mid-sync. */

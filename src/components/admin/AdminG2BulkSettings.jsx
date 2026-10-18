@@ -7,6 +7,7 @@ import {
 import G2bulkWalletCard from '../ui/G2bulkWalletCard';
 import G2bulkPullPanel from './G2bulkPullPanel';
 import PricingEditableValue from './PricingEditableValue';
+import AdminPriceRoundingPanel from './AdminPriceRoundingPanel';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import AdminApiKeyField from './AdminApiKeyField';
 import {
@@ -60,7 +61,7 @@ function StatusPill({ ok, label }) {
 function SectionCard({ icon: Icon, title, description, children, accent = false }) {
   return (
     <section
-      className={`rounded-2xl border p-5 sm:p-6 space-y-4 ${
+      className={`rounded-2xl border p-3.5 sm:p-6 space-y-4 min-w-0 ${
         accent
           ? 'border-[var(--accent)]/35 bg-[var(--accent)]/5'
           : 'border-[var(--border)] bg-[var(--bg-surface)]/60'
@@ -174,6 +175,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
       setForm({
         g2bulk_enabled: data.g2bulk_enabled ?? false,
         g2bulk_markup_percent: safeMarkup,
+        g2bulk_price_round_step: Number(data.g2bulk_price_round_step) || 0,
         g2bulk_catalog_only: data.g2bulk_catalog_only ?? true,
         g2bulk_catalog_mode: normalizeCatalogMode(data.g2bulk_catalog_mode),
         g2bulk_block_when_wallet_low: data.g2bulk_block_when_wallet_low !== false,
@@ -654,6 +656,17 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
             )}
           </div>
         )}
+
+        {settingsLoaded && (
+          <AdminPriceRoundingPanel
+            t={t}
+            lang={lang}
+            roundStep={form.g2bulk_price_round_step}
+            markupPercent={form.g2bulk_markup_percent ?? 12}
+            onStepSaved={(next) => setForm((p) => ({ ...p, g2bulk_price_round_step: next }))}
+            onPricesChanged={() => onCatalogSynced?.(form.g2bulk_catalog_only)}
+          />
+        )}
       </div>
 
       <div className={`rounded-2xl border px-4 py-4 ${
@@ -666,15 +679,15 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
               : 'border-[var(--border)] bg-[var(--bg-primary)]/35'
       }`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-start gap-3 min-w-0">
+          <div className="flex items-start gap-3 min-w-0 w-full">
             {catalogStatus === 'synced' && <ShieldCheck className="w-6 h-6 text-green-400 shrink-0" />}
             {catalogStatus === 'no-selection' && <Info className="w-6 h-6 text-amber-300 shrink-0" />}
             {catalogStatus === 'syncing' && <Loader2 className="w-6 h-6 text-[var(--accent)] animate-spin shrink-0" />}
             {(catalogStatus === 'ready' || catalogStatus === 'never') && (
               <CloudDownload className="w-6 h-6 text-[var(--text-sec)] shrink-0" />
             )}
-            <div>
-              <div className="font-bold text-base">
+            <div className="min-w-0 flex-1">
+              <div className="font-bold text-base break-words">
                 {catalogStatus === 'no-selection' && t.g2bulkNothingSelected}
                 {catalogStatus === 'ready' && t.g2bulkReadyToSync}
                 {catalogStatus === 'synced' && t.g2bulkSelectionSynced}
@@ -748,12 +761,12 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         </div>
       )}
 
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-3">
         <button
           type="button"
           onClick={() => setPullPanelOpen(true)}
           disabled={syncing || clearing}
-          className="btn btn-primary inline-flex items-center gap-2"
+          className="btn btn-primary inline-flex items-center justify-center gap-2 w-full sm:w-auto min-h-[44px] touch-manipulation"
         >
           <CloudDownload className="w-4 h-4" />
           {t.g2bulkPullFromApi}
@@ -764,12 +777,14 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
             type="button"
             onClick={handleSyncCatalog}
             disabled={syncing || clearing || !hasSyncableSelection}
-            className="btn btn-secondary inline-flex items-center gap-2"
+            className="btn btn-secondary inline-flex items-center justify-center gap-2 w-full sm:w-auto min-h-[44px] touch-manipulation min-w-0"
           >
-            {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            {syncing
-              ? syncPhaseLabel(syncProgress)
-              : t.g2bulkSyncNow}
+            {syncing ? <Loader2 className="w-4 h-4 animate-spin shrink-0" /> : <Download className="w-4 h-4 shrink-0" />}
+            <span className="truncate">
+              {syncing
+                ? syncPhaseLabel(syncProgress)
+                : t.g2bulkSyncNow}
+            </span>
           </button>
         )}
 
@@ -778,7 +793,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
             type="button"
             onClick={handleClearSyncedCatalog}
             disabled={syncing || clearing}
-            className="btn btn-secondary inline-flex items-center gap-2 text-red-300 border-red-500/30 hover:border-red-500/50"
+            className="btn btn-secondary inline-flex items-center justify-center gap-2 w-full sm:w-auto min-h-[44px] touch-manipulation text-red-300 border-red-500/30 hover:border-red-500/50"
           >
             {clearing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
             {t.g2bulkRemoveSynced}
@@ -789,7 +804,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
           <button
             type="button"
             onClick={handleCancelSync}
-            className="btn btn-secondary inline-flex items-center gap-2"
+            className="btn btn-secondary inline-flex items-center justify-center gap-2 w-full sm:w-auto min-h-[44px] touch-manipulation"
           >
             <X className="w-4 h-4" />
             {t.cancel}
@@ -799,9 +814,9 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
 
       {syncing && syncProgress && (
         <div className="space-y-2">
-          <div className="flex justify-between text-xs text-[var(--text-muted)]">
-            <span>{syncPhaseLabel(syncProgress)}</span>
-            <span>{syncPercent(syncProgress)}%</span>
+          <div className="flex justify-between gap-3 text-xs text-[var(--text-muted)]">
+            <span className="min-w-0 truncate">{syncPhaseLabel(syncProgress)}</span>
+            <span className="shrink-0 tabular-nums">{syncPercent(syncProgress)}%</span>
           </div>
           <div className="h-2.5 rounded-full bg-[var(--border)] overflow-hidden">
             <div
@@ -824,7 +839,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
         <div className="text-xs text-amber-300/90 space-y-1 max-h-32 overflow-y-auto">
           <p className="font-medium">{t.g2bulkSyncWarnings}</p>
           {syncResult.errors.map((msg) => (
-            <p key={msg} className="font-mono opacity-90">{msg}</p>
+            <p key={msg} className="font-mono opacity-90 break-all">{msg}</p>
           ))}
         </div>
       )}
