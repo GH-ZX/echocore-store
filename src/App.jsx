@@ -788,20 +788,28 @@ export default function App() {
     }
     setCart(syncedCart);
 
-    const items = syncedCart.map((item) => {
+    // Same pack added N times → one line with quantity N, so the supplier
+    // sells N distinct codes in one purchase (separate lines got one code).
+    const items = [];
+    for (const item of syncedCart) {
       const fromMap = partnerUnitPriceMap?.[item.id] || partnerUnitPriceMap?.[String(item.id)];
       const unit = fromMap?.unitPrice != null
         ? Number(fromMap.unitPrice)
         : (item._partnerPriced
           ? Number(item.price)
           : resolveCustomerUnitPrice(item, { partnerMarkupPercent: partnerMarkup }));
-      return {
-        offer_id: item.id,
-        name_snapshot: getOfferOrderNameSnapshot(item, lang, games, priceCatalog),
-        price: unit,
-        quantity: 1,
-      };
-    });
+      const existing = items.find((row) => row.offer_id === item.id && row.price === unit);
+      if (existing) {
+        existing.quantity += 1;
+      } else {
+        items.push({
+          offer_id: item.id,
+          name_snapshot: getOfferOrderNameSnapshot(item, lang, games, priceCatalog),
+          price: unit,
+          quantity: 1,
+        });
+      }
+    }
     const total = items.reduce((sum, row) => sum + row.price * row.quantity, 0);
     if (!Number.isFinite(total) || total <= 0) {
       throw new Error(t.cartEmptyOrUnavailable);

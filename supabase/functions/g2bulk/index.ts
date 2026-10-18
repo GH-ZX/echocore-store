@@ -2798,7 +2798,10 @@ Deno.serve(async (req) => {
       // If a supplier order id is known (or client forced pollOnly), we NEVER
       // call POST /games/:code/order or POST /products/:id/purchase.
       // That would re-charge G2Bulk and re-deliver to the player's UID.
-      if (pollOnly) {
+      // Multi-item carts skip this block: each line is its own supplier order
+      // (handled per line in the loop below) — copying one supplier order's
+      // codes onto every line left lines unbought and showed one code twice.
+      if (pollOnly && items.length <= 1) {
         if (!primaryG2bulkOrderId) {
           return jsonResponse({
             success: false,
@@ -2960,24 +2963,64 @@ Deno.serve(async (req) => {
         });
       }
 
-      // ── FIRST-TIME PURCHASE PATH (no supplier id yet) ────────────────
+      // ── PURCHASE PATH (single item: no supplier id yet; multi-item: per line) ──
+      // Per-line supplier ids for multi-item orders, from the previous run's
+      // metadata.items ({ itemId, g2bulkOrderId }).
+      const priorItemResults = Array.isArray(orderMeta.items) ? orderMeta.items as Json[] : [];
+      const lineSupplierId = (rowId: string): string | null => {
+        for (const raw of priorItemResults) {
+          if (!raw || typeof raw !== 'object') continue;
+          const it = raw as Json;
+          const id = String(it.g2bulkOrderId ?? it.g2bulk_order_id ?? '').trim();
+          if (String(it.itemId) === rowId && id && id !== 'null' && id !== 'undefined') return id;
+        }
+        return null;
+      };
+
       for (const row of items) {
         if (row.fulfillment_status === 'fulfilled') {
           fulfilledCount += 1;
-          itemResults.push({ itemId: row.id, status: 'fulfilled', skipped: true });
+          itemResults.push({
+            itemId: row.id,
+            status: 'fulfilled',
+            skipped: true,
+            g2bulkOrderId: lineSupplierId(String(row.id)) || undefined,
+          });
           continue;
         }
 
-        // Belt-and-suspenders: never purchase if id appeared mid-loop
-        if (primaryG2bulkOrderId) {
-          return jsonResponse({
-            success: false,
-            message: 'Supplier order id present — refusing new purchase. Use poll-only re-check.',
-            fulfillmentStatus: 'fulfilling',
-            g2bulkOrderId: primaryG2bulkOrderId,
-            reason: 'block_purchase_with_supplier_id',
-            pollOnly: true,
-          }, 409);
+        if (items.length > 1) {
+          // This line was already bought → only fetch its own codes.
+          const ownSupplierId = lineSupplierId(String(row.id));
+          if (ownSupplierId) {
+            const once = await fetchVoucherCodesOnce(apiKey!, Number(ownSupplierId));
+            if (once.ok) {
+              const codes = normalizeDeliveryItems(once.items);
+              fulfilledCount += 1;
+              allDeliveryItems.push(...codes);
+              await serviceClient
+                .from('order_items')
+                .update({ fulfillment_status: 'fulfilled', delivery_items: codes.length ? codes : null })
+                .eq('id', row.id);
+              itemResults.push({ itemId: row.id, status: 'fulfilled', g2bulkOrderId: ownSupplierId, resumed: true });
+            } else if ((once as { terminal?: boolean }).terminal) {
+              failedCount += 1;
+              errors.push(once.error);
+              await serviceClient.from('order_items').update({ fulfillment_status: 'failed' }).eq('id', row.id);
+              itemResults.push({ itemId: row.id, status: 'failed', g2bulkOrderId: ownSupplierId, error: once.error });
+            } else {
+              pendingCount += 1;
+              itemResults.push({ itemId: row.id, status: 'pending', g2bulkOrderId: ownSupplierId, error: once.error });
+            }
+            continue;
+          }
+          // Not bought yet. Poll-only callers (cron) and refunded orders never buy.
+          if (clientPollOnly || balanceRefunded) {
+            pendingCount += 1;
+            itemResults.push({ itemId: row.id, status: 'pending', error: 'Line not purchased yet' });
+            continue;
+          }
+          // Safe to (re)try: the purchase is idempotent per line (X-Idempotency-Key = item id).
         }
 
         const result = await fulfillG2bulkOrderItem(apiKey!, orderId, row, callbackUrl, serviceClient);
