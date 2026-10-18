@@ -3014,13 +3014,27 @@ Deno.serve(async (req) => {
             }
             continue;
           }
-          // Not bought yet. Poll-only callers (cron) and refunded orders never buy.
-          if (clientPollOnly || balanceRefunded) {
+          // Not bought yet. Lines are only bought on the first run (no supplier
+          // order on the order yet). Once any supplier id exists, a line without
+          // its own id may have been bought by a crashed run → never re-buy it
+          // automatically; leave it for admin review. Same for refunded/locked
+          // orders and poll-only callers (cron).
+          if (
+            clientPollOnly
+            || balanceRefunded
+            || existingSupplierId
+            || orderMeta.do_not_refulfill === true
+            || orderMeta.free_after_refund === true
+          ) {
             pendingCount += 1;
-            itemResults.push({ itemId: row.id, status: 'pending', error: 'Line not purchased yet' });
+            itemResults.push({
+              itemId: row.id,
+              status: 'pending',
+              error: 'Line not purchased — needs admin review',
+              needsAdminReview: true,
+            });
             continue;
           }
-          // Safe to (re)try: the purchase is idempotent per line (X-Idempotency-Key = item id).
         }
 
         const result = await fulfillG2bulkOrderItem(apiKey!, orderId, row, callbackUrl, serviceClient);
