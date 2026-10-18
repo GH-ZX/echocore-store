@@ -10,6 +10,8 @@ export default function TelegramLinkView({ t = {}, lang, user, navigate }) {
   const [status, setStatus] = useState('loading'); // loading | success | error | need_login
   const [message, setMessage] = useState('');
   const [linking, setLinking] = useState(false);
+  const [displayName, setDisplayName] = useState('');
+  const [pendingToken, setPendingToken] = useState('');
 
   const linkToken = searchParams.get('token');
   const attempted = useRef(false);
@@ -67,15 +69,32 @@ export default function TelegramLinkView({ t = {}, lang, user, navigate }) {
     }
 
     if (user) {
-      // Tokens are single-use: never retry on re-render.
+      // Never link on page load: show which Telegram account this is and ask first.
+      // (Otherwise a crafted link could attach an attacker's Telegram to a logged-in user.)
       if (attempted.current) return;
       attempted.current = true;
-      doLink(tokenValue);
+      (async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const res = await fetch(
+            `${supabase.supabaseUrl}/functions/v1/telegram-bot?action=link-preview&token=${encodeURIComponent(tokenValue)}`,
+            { headers: { Authorization: `Bearer ${session?.access_token}`, apikey: supabase.supabaseKey } },
+          );
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(body.error || `Link failed (${res.status})`);
+          setDisplayName(body.display_name || '');
+          setPendingToken(tokenValue);
+          setStatus('confirm');
+        } catch (err) {
+          setStatus('error');
+          setMessage(err.message || 'Failed to link account');
+        }
+      })();
     } else if (!user) {
       setStatus('need_login');
       setMessage(t.telegramLinkLoginRequired || 'Please log in to link your Telegram account.');
     }
-  }, [user, linkToken, doLink, t]);
+  }, [user, linkToken, t]);
 
   const handleLogin = () => {
     // Store token again before redirect
@@ -114,6 +133,8 @@ export default function TelegramLinkView({ t = {}, lang, user, navigate }) {
             ? (t.telegramLinkTitleSuccess || 'Account Linked!')
             : status === 'error'
             ? (t.telegramLinkTitleError || 'Linking Failed')
+            : status === 'confirm'
+            ? (t.telegramLinkConfirmTitle || 'Link this Telegram account?')
             : status === 'need_login'
             ? (t.telegramLinkTitleLogin || 'Login Required')
             : (t.telegramLinkTitleLoading || 'Linking Your Account...')}
@@ -121,8 +142,16 @@ export default function TelegramLinkView({ t = {}, lang, user, navigate }) {
 
         {/* Message */}
         <p className="text-[var(--text-sec)] text-sm leading-relaxed">
-          {message}
+          {status === 'confirm'
+            ? (t.telegramLinkConfirmBody || 'This Telegram account will be linked to your store account and will be able to see your orders and balance. Continue only if it is yours.')
+            : message}
         </p>
+
+        {status === 'confirm' && displayName && (
+          <p dir="auto" className="rounded-xl border border-[var(--border)] px-4 py-3 font-semibold text-[var(--text-primary)]">
+            {displayName}
+          </p>
+        )}
 
         {/* Actions */}
         <div className="flex flex-col gap-3 items-center">
@@ -135,6 +164,29 @@ export default function TelegramLinkView({ t = {}, lang, user, navigate }) {
               <MessageSquare className="w-4 h-4" />
               {t.login || 'Login'}
             </button>
+          )}
+
+          {status === 'confirm' && (
+            <>
+              <button
+                type="button"
+                onClick={() => doLink(pendingToken)}
+                className="btn btn-primary gap-2"
+              >
+                <Link2 className="w-4 h-4" />
+                {t.telegramLinkConfirmBtn || 'Yes, link this account'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  sessionStorage.removeItem(STORAGE_KEY);
+                  navigate('/');
+                }}
+                className="btn btn-secondary gap-2"
+              >
+                {t.telegramLinkCancelBtn || 'Cancel'}
+              </button>
+            </>
           )}
 
           {status === 'success' && (

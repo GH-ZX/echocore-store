@@ -151,11 +151,11 @@ function json(body: unknown, status = 200) {
 }
 
 /** One-time link token: the chat_id never travels through a user-editable URL. */
-async function createLinkToken(supabase: ReturnType<typeof createClient>, chatId: number): Promise<string | null> {
+async function createLinkToken(supabase: ReturnType<typeof createClient>, chatId: number, displayName: string): Promise<string | null> {
   const token = crypto.randomUUID().replace(/-/g, '');
   const { error } = await supabase
     .from('telegram_link_tokens')
-    .insert({ token, chat_id: String(chatId) });
+    .insert({ token, chat_id: String(chatId), display_name: displayName.slice(0, 80) });
   if (error) {
     console.error('createLinkToken error:', error);
     return null;
@@ -229,7 +229,8 @@ async function sendLinkPrompt(ctx: BotContext, intro: string) {
     await sendMessage(ctx.botToken, ctx.chatId, `Please message me in a private chat to link your account.`);
     return;
   }
-  const token = await createLinkToken(ctx.supabase, ctx.chatId);
+  const displayName = [ctx.firstName, ctx.username ? `(@${ctx.username})` : ''].filter(Boolean).join(' ') || `Telegram ${ctx.userId}`;
+  const token = await createLinkToken(ctx.supabase, ctx.chatId, displayName);
   const rows: Array<Array<Record<string, string>>> = [];
   if (token) {
     rows.push([{ text: '🔗 Link My Account', url: `${STORE_URL}/telegram-link?token=${token}` }]);
@@ -880,6 +881,18 @@ Deno.serve(async (req) => {
         return json({ error: 'Authentication required' }, 401);
       }
 
+      if (action === 'link-preview') {
+        const previewToken = url.searchParams.get('token')?.trim() ?? '';
+        if (!/^[0-9a-f]{32}$/i.test(previewToken)) {
+          return json({ error: 'Invalid or expired link. Send /start to the bot again.' }, 400);
+        }
+        const { data: preview } = await supabase.rpc('peek_telegram_link_token', { p_token: previewToken });
+        if (!preview?.ok) {
+          return json({ error: 'Invalid or expired link. Send /start to the bot again.' }, 400);
+        }
+        return json({ ok: true, display_name: preview.display_name });
+      }
+
       if (action === 'link') {
         const linkToken = url.searchParams.get('token')?.trim() ?? '';
         if (!/^[0-9a-f]{32}$/i.test(linkToken)) {
@@ -899,8 +912,10 @@ Deno.serve(async (req) => {
           return json({
             error: result?.reason === 'chat_taken'
               ? 'This Telegram account is already linked to another user.'
+              : result?.reason === 'already_linked'
+              ? 'Your account already has a Telegram linked. Send /unlink in the bot first.'
               : 'Invalid or expired link. Send /start to the bot again.',
-          }, result?.reason === 'chat_taken' ? 409 : 400);
+          }, result?.reason === 'chat_taken' || result?.reason === 'already_linked' ? 409 : 400);
         }
 
         const { data: profile } = await supabase
