@@ -290,3 +290,104 @@ export function mapSamTransferError(err, t = {}) {
 
   return err?.message || t.samSendFailed || 'Transfer failed';
 }
+
+/** Key used for a payout recipient in name maps (ShamCash ids are case-insensitive). */
+export function samRecipientKey(method, identifier) {
+  const m = String(method || '').toLowerCase() === 'syriatel' ? 'syriatel' : 'shamcash';
+  const id = String(identifier || '').trim();
+  return `${m}:${m === 'shamcash' ? id.toLowerCase() : id}`;
+}
+
+/** Admin — names given to payout recipients: Map(key → { label, source }). */
+export async function listSamRecipientNames() {
+  const { data, error } = await supabase
+    .from('sam_recipient_names')
+    .select('method, recipient_identifier, label, source');
+  if (error) throw new Error(error.message);
+  const map = new Map();
+  for (const row of data || []) {
+    map.set(samRecipientKey(row.method, row.recipient_identifier), { label: row.label, source: row.source });
+  }
+  return map;
+}
+
+/**
+ * Admin — set (or clear, with an empty label) a recipient's name.
+ * `auto` names never replace an existing one.
+ */
+export async function saveSamRecipientName(method, identifier, label, source = 'manual') {
+  const key = samRecipientKey(method, identifier);
+  const [m, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+  const clean = String(label || '').trim().slice(0, 80);
+  if (!clean) {
+    const { error } = await supabase.from('sam_recipient_names').delete()
+      .eq('method', m).eq('recipient_identifier', id);
+    if (error) throw new Error(error.message);
+    return null;
+  }
+  const { data: auth } = await supabase.auth.getUser();
+  const { error } = await supabase.from('sam_recipient_names').upsert({
+    method: m,
+    recipient_identifier: id,
+    label: clean,
+    source,
+    updated_by: auth?.user?.id || null,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'method,recipient_identifier', ignoreDuplicates: source === 'auto' });
+  if (error) throw new Error(error.message);
+  return clean;
+}
+
+const SAM_TX_OFFSETS_MS = [0, 2, 3].map((h) => h * 3600 * 1000);
+const SAM_TX_MATCH_WINDOW_MS = 10 * 60 * 1000;
+
+function samTxTime(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return NaN;
+  // Wallet history times carry no zone; read them as UTC and allow the Syria offsets below.
+  const hasZone = /([zZ]|[+-]\d{2}:?\d{2})$/.test(raw);
+  return Date.parse(hasZone ? raw : `${raw}Z`);
+}
+
+/**
+ * Pair completed ShamCash payouts with outgoing wallet transactions (same amount and
+ * currency, close in time) to read the recipient's real account name.
+ * Returns Map(recipient key → counterparty name).
+ */
+export function matchSamTransferCounterparties(transfers = [], transactions = []) {
+  const outgoing = transactions
+    .filter((tx) => tx && String(tx.counterparty || '').trim())
+    .filter((tx) => !/credit|^in$|deposit|receive/i.test(String(tx.type || '')))
+    .map((tx) => ({
+      name: String(tx.counterparty).trim(),
+      amount: Math.abs(Number(tx.amount)),
+      currency: String(tx.currency || '').toUpperCase(),
+      time: samTxTime(tx.occurredAt),
+      used: false,
+    }))
+    .filter((tx) => Number.isFinite(tx.amount) && Number.isFinite(tx.time));
+
+  const result = new Map();
+  for (const tr of transfers) {
+    if (!tr || tr.status !== 'completed' || tr.method === 'syriatel') continue;
+    const created = Date.parse(tr.createdAt);
+    const amount = Number(tr.amount);
+    if (!Number.isFinite(created) || !Number.isFinite(amount)) continue;
+    let best = null;
+    let bestGap = Infinity;
+    for (const tx of outgoing) {
+      if (tx.used || tx.currency !== String(tr.currency || '').toUpperCase()) continue;
+      if (Math.abs(tx.amount - amount) > 0.005) continue;
+      const gap = Math.min(...SAM_TX_OFFSETS_MS.map((off) => Math.abs(tx.time - off - created)));
+      if (gap <= SAM_TX_MATCH_WINDOW_MS && gap < bestGap) {
+        best = tx;
+        bestGap = gap;
+      }
+    }
+    if (!best) continue;
+    best.used = true;
+    const key = samRecipientKey(tr.method, tr.recipientIdentifier);
+    if (!result.has(key)) result.set(key, best.name);
+  }
+  return result;
+}

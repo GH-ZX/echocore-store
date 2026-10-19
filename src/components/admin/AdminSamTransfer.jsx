@@ -3,10 +3,12 @@ import {
   AlertCircle,
   ArrowUpRight,
   BadgeCheck,
+  Check,
   CheckCircle,
   ClipboardPaste,
   Heart,
   History,
+  Pencil,
   Loader2,
   Plus,
   RefreshCw,
@@ -22,6 +24,11 @@ import {
   isValidSamRecipient,
   sendSamTransfer,
   clearSamTransfers,
+  getSamWalletTransactions,
+  listSamRecipientNames,
+  matchSamTransferCounterparties,
+  samRecipientKey,
+  saveSamRecipientName,
 } from '../../lib/samApi';
 import { decodeQrFromFile } from '../../lib/qrDecode';
 import { formatDateTime, formatMessage } from '../../lib/i18n';
@@ -40,16 +47,8 @@ function formatAmount(currency, amount) {
   return `${code} ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(safe)}`;
 }
 
-function maskRecipient(value) {
-  const raw = String(value || '').trim();
-  if (raw.length <= 4) return raw;
-  return `**** **** **** ${raw.slice(-4)}`;
-}
-
-function recipientLabel(tr, t) {
-  return tr?.customer?.name
-    || tr?.customer?.username
-    || (tr?.method === 'syriatel' ? t.samSendMethodSyriatel : t.samSendMethodShamcash);
+function methodLabel(method, t) {
+  return method === 'syriatel' ? t.samSendMethodSyriatel : t.samSendMethodShamcash;
 }
 
 /**
@@ -91,6 +90,29 @@ export default function AdminSamTransfer({
   const [qrError, setQrError] = useState('');
   const [qrScanNote, setQrScanNote] = useState('');
   const qrScanRequestRef = useRef(0);
+
+  const [names, setNames] = useState(() => new Map());
+  const [nameDraft, setNameDraft] = useState('');
+  const [editingKey, setEditingKey] = useState('');
+  const [editingValue, setEditingValue] = useState('');
+  const autoNamesTriedRef = useRef(false);
+
+  const nameFor = useCallback((method, identifier) => (
+    names.get(samRecipientKey(method, identifier))?.label || ''
+  ), [names]);
+
+  const recipientLabel = (tr) => nameFor(tr.method, tr.recipientIdentifier)
+    || tr?.customer?.name
+    || tr?.customer?.username
+    || methodLabel(tr?.method, t);
+
+  useEffect(() => {
+    let cancelled = false;
+    listSamRecipientNames()
+      .then((map) => { if (!cancelled) setNames(map); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (samSettingsProp) return undefined;
@@ -182,6 +204,53 @@ export default function AdminSamTransfer({
     return [...byKey.values()];
   }, [transfers]);
 
+  /** Fill in real account names from the ShamCash wallet history, once per visit. */
+  useEffect(() => {
+    const wallet = samSettings?.sam_shamcash_wallet_identifier;
+    if (autoNamesTriedRef.current || !wallet || transfers.length === 0) return;
+    const unnamed = transfers.filter((tr) => tr.method !== 'syriatel'
+      && tr.status === 'completed'
+      && !names.has(samRecipientKey(tr.method, tr.recipientIdentifier)));
+    if (unnamed.length === 0) return;
+    autoNamesTriedRef.current = true;
+    (async () => {
+      try {
+        const { transactions } = await getSamWalletTransactions('shamcash', wallet, 'out');
+        const found = matchSamTransferCounterparties(unnamed, transactions);
+        if (found.size === 0) return;
+        for (const [key, label] of found) {
+          await saveSamRecipientName('shamcash', key.slice(key.indexOf(':') + 1), label, 'auto');
+        }
+        setNames(await listSamRecipientNames());
+      } catch {
+        // Wallet history unavailable — names can still be typed by hand.
+      }
+    })();
+  }, [samSettings?.sam_shamcash_wallet_identifier, transfers, names]);
+
+  const saveName = async (nameMethod, identifier, label) => {
+    const key = samRecipientKey(nameMethod, identifier);
+    const clean = String(label || '').trim();
+    if ((names.get(key)?.label || '') === clean) return;
+    try {
+      await saveSamRecipientName(nameMethod, identifier, clean, 'manual');
+      setNames((prev) => {
+        const next = new Map(prev);
+        if (clean) next.set(key, { label: clean, source: 'manual' });
+        else next.delete(key);
+        return next;
+      });
+      onSuccess?.(t.samSendNameSaved);
+    } catch (err) {
+      onError?.(err.message);
+    }
+  };
+
+  useEffect(() => {
+    setNameDraft(recipientValid ? nameFor(method, recipient) : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipientValid, method, recipient]);
+
   const knownRecipient = useMemo(() => {
     const key = recipient.trim().toLowerCase();
     if (!key) return null;
@@ -210,6 +279,7 @@ export default function AdminSamTransfer({
     if (!formValid || sending) return;
     setSending(true);
     try {
+      if (nameDraft.trim()) await saveName(method, recipient.trim(), nameDraft);
       await sendSamTransfer({
         method,
         recipient: recipient.trim(),
@@ -340,15 +410,22 @@ export default function AdminSamTransfer({
           {recipientValid ? (
             <div className="sam-send__card flex items-center gap-3">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 font-semibold text-sm truncate">
-                  <span className="truncate">
-                    {selectedCustomer?.name || selectedCustomer?.username || (knownRecipient ? recipientLabel(knownRecipient, t) : (method === 'syriatel' ? t.samSendMethodSyriatel : t.samSendMethodShamcash))}
-                  </span>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    className="sam-send__name-input"
+                    value={nameDraft}
+                    onChange={(e) => setNameDraft(e.target.value)}
+                    onBlur={() => saveName(method, recipient.trim(), nameDraft)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                    placeholder={selectedCustomer?.name || knownRecipient?.customer?.name || t.samSendNamePlaceholder}
+                    aria-label={t.samSendNameLabel}
+                    maxLength={80}
+                  />
                   {(selectedCustomer || knownRecipient?.customer) && (
                     <BadgeCheck className="w-4 h-4 shrink-0 text-[var(--accent)]" aria-label={t.samSendLinkedCustomer} />
                   )}
                 </div>
-                <div className="font-mono text-xs text-[var(--text-sec)] mt-0.5 truncate" dir="ltr" title={recipient}>
+                <div className="font-mono text-[10px] tracking-tight text-[var(--text-sec)] mt-1 break-all" dir="ltr">
                   {recipient}
                 </div>
               </div>
@@ -502,26 +579,67 @@ export default function AdminSamTransfer({
           <EmptyState loading={transfersLoading} error={historyError} t={t} text={t.samSendSavedEmpty} onRetry={() => loadTransfers(1)} />
         ) : (
           <div className="space-y-2.5">
-            {savedRecipients.map((tr) => (
-              <button
-                key={`${tr.method}:${tr.recipientIdentifier}`}
-                type="button"
-                onClick={() => selectRecipient(tr)}
-                className="sam-send__card sam-send__card--button w-full flex items-center gap-3 text-start"
-                title={t.samSendToThis}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="font-semibold text-sm truncate">{recipientLabel(tr, t)}</div>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <span className="font-mono text-xs text-[var(--text-sec)] tracking-wide" dir="ltr">
-                      {maskRecipient(tr.recipientIdentifier)}
-                    </span>
-                    {tr.customer && <BadgeCheck className="w-4 h-4 shrink-0 text-[var(--accent)]" aria-label={t.samSendLinkedCustomer} />}
+            {savedRecipients.map((tr) => {
+              const key = samRecipientKey(tr.method, tr.recipientIdentifier);
+              const editing = editingKey === key;
+              const commitEdit = async () => {
+                await saveName(tr.method, tr.recipientIdentifier, editingValue);
+                setEditingKey('');
+              };
+              return (
+                <div key={key} className="sam-send__card flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    {editing ? (
+                      <input
+                        className="sam-send__name-input"
+                        value={editingValue}
+                        onChange={(e) => setEditingValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') commitEdit();
+                          if (e.key === 'Escape') setEditingKey('');
+                        }}
+                        placeholder={t.samSendNamePlaceholder}
+                        aria-label={t.samSendNameLabel}
+                        maxLength={80}
+                        autoFocus
+                      />
+                    ) : (
+                      <button type="button" onClick={() => selectRecipient(tr)} className="block w-full text-start font-semibold text-sm truncate">
+                        {recipientLabel(tr)}
+                      </button>
+                    )}
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="font-mono text-[10px] tracking-tight text-[var(--text-sec)] break-all" dir="ltr">
+                        {tr.recipientIdentifier}
+                      </span>
+                      {tr.customer && <BadgeCheck className="w-4 h-4 shrink-0 text-[var(--accent)]" aria-label={t.samSendLinkedCustomer} />}
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (editing) { commitEdit(); return; }
+                      setEditingKey(key);
+                      setEditingValue(nameFor(tr.method, tr.recipientIdentifier));
+                    }}
+                    className="sam-send__icon-btn"
+                    title={editing ? t.samSendNameSave : t.samSendNameEdit}
+                    aria-label={editing ? t.samSendNameSave : t.samSendNameEdit}
+                  >
+                    {editing ? <Check className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => selectRecipient(tr)}
+                    className="sam-send__icon-btn"
+                    title={t.samSendToThis}
+                    aria-label={t.samSendToThis}
+                  >
+                    <ArrowUpRight className="w-5 h-5 rtl:-scale-x-100" />
+                  </button>
                 </div>
-                <ArrowUpRight className="w-5 h-5 shrink-0 text-[var(--text-sec)] rtl:-scale-x-100" />
-              </button>
-            ))}
+              );
+            })}
           </div>
         )
       )}
@@ -542,10 +660,12 @@ export default function AdminSamTransfer({
                   title={t.samSendToThis}
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-sm truncate">{recipientLabel(tr, t)}</div>
+                    <div className="font-semibold text-sm truncate">{recipientLabel(tr)}</div>
+                    <div className="font-mono text-[10px] tracking-tight text-[var(--text-sec)] mt-0.5 break-all" dir="ltr">
+                      {tr.recipientIdentifier}
+                    </div>
                     <div className="text-[11px] text-[var(--text-muted)] mt-0.5 truncate">
-                      <span dir="ltr">{maskRecipient(tr.recipientIdentifier)}</span>
-                      {tr.createdAt ? ` · ${formatDateTime(tr.createdAt, lang)}` : ''}
+                      {tr.createdAt ? formatDateTime(tr.createdAt, lang) : ''}
                       {tr.admin?.username ? ` · ${t.samSendBy} ${tr.admin.username}` : ''}
                     </div>
                     {failed && tr.samMessage ? (
@@ -661,6 +781,7 @@ export default function AdminSamTransfer({
             </div>
 
             <div className="rounded-2xl border border-[var(--border)] divide-y divide-[var(--border)] text-sm">
+              {nameDraft.trim() ? <ConfirmRow label={t.samSendNameLabel} value={nameDraft.trim()} /> : null}
               <ConfirmRow label={t.samSendTo} value={recipient.trim()} mono dir="ltr" />
               <ConfirmRow label={t.samSendFrom} value={sourceIdentifier} mono dir="ltr" />
               <ConfirmRow label={t.samSendCurrency} value={`${currency} · ${method === 'syriatel' ? t.samSendMethodSyriatel : t.samSendMethodShamcash}`} dir="ltr" />

@@ -10458,3 +10458,22 @@ button.profile-list-item {
 }
 .sam-send__field:focus { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
 .sam-send__field::placeholder { color: var(--text-muted); }
+.sam-send__name-input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.3rem 0.55rem;
+  margin-inline-start: -0.55rem;
+  border-radius: 0.6rem;
+  border: 1px solid transparent;
+  background: transparent;
+  outline: none;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+.sam-send__name-input:hover { border-color: color-mix(in srgb, var(--border) 80%, transparent); }
+.sam-send__name-input:focus {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) 70%, transparent);
+}
+.sam-send__name-input::placeholder { color: var(--text-muted); font-weight: 500; }
