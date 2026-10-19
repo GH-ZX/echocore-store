@@ -10477,3 +10477,21 @@ button.profile-list-item {
   background: color-mix(in srgb, var(--bg-surface) 70%, transparent);
 }
 .sam-send__name-input::placeholder { color: var(--text-muted); font-weight: 500; }
+.sam-send__balance {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1rem 1.15rem;
+  border-radius: 1.25rem;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, var(--bg-elevated)), color-mix(in srgb, var(--bg-elevated) 80%, transparent));
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.sam-send__balance-amount {
+  text-align: left;
+  font-size: 1.85rem;
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+[dir="rtl"] .sam-send__balance-amount { text-align: right; }

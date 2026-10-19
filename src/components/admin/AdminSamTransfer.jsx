@@ -24,6 +24,7 @@ import {
   isValidSamRecipient,
   sendSamTransfer,
   clearSamTransfers,
+  getSamWalletBalance,
   getSamWalletTransactions,
   listSamRecipientNames,
   matchSamTransferCounterparties,
@@ -185,6 +186,32 @@ export default function AdminSamTransfer({
     ? samSettings?.sam_syriatel_wallet_identifier || ''
     : samSettings?.sam_shamcash_wallet_identifier || '';
 
+  const [balances, setBalances] = useState(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const balanceRequestRef = useRef(0);
+
+  const loadBalance = useCallback(async () => {
+    if (!sourceIdentifier) { setBalances(null); return; }
+    const requestId = ++balanceRequestRef.current;
+    setBalanceLoading(true);
+    try {
+      const list = await getSamWalletBalance(method, sourceIdentifier);
+      if (requestId === balanceRequestRef.current) setBalances(Array.isArray(list) ? list : []);
+    } catch {
+      if (requestId === balanceRequestRef.current) setBalances(null);
+    } finally {
+      if (requestId === balanceRequestRef.current) setBalanceLoading(false);
+    }
+  }, [method, sourceIdentifier]);
+
+  useEffect(() => { loadBalance(); }, [loadBalance]);
+
+  const balanceFor = (code) => {
+    const row = (balances || []).find((b) => String(b.currency).toUpperCase() === code);
+    return row ? Number(row.amount) || 0 : null;
+  };
+  const shownCurrency = balanceFor(currency) != null ? currency : (balances?.[0]?.currency ? String(balances[0].currency).toUpperCase() : currency);
+
   const recipientValid = isValidSamRecipient(method, recipient);
   const amountNumber = Number(amount);
   const amountValid = Number.isFinite(amountNumber) && amountNumber > 0;
@@ -295,6 +322,7 @@ export default function AdminSamTransfer({
       setAmount('');
       setNote('');
       setConfirming(false);
+      loadBalance();
       await loadTransfers(1);
     } catch (err) {
       onError?.(mapSamTransferError(err, t));
@@ -399,6 +427,45 @@ export default function AdminSamTransfer({
               </button>
             ))}
           </div>
+
+          {sourceIdentifier && (
+            <div className="sam-send__balance">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-[var(--text-sec)]">{t.samSendBalanceLabel}</span>
+                <button
+                  type="button"
+                  onClick={loadBalance}
+                  disabled={balanceLoading}
+                  className="ms-auto text-[var(--text-muted)] hover:text-[var(--accent)]"
+                  title={t.samSendHistoryRefresh}
+                  aria-label={t.samSendHistoryRefresh}
+                >
+                  {balanceLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                </button>
+              </div>
+              <div className="sam-send__balance-amount" dir="ltr">
+                {balances == null
+                  ? (balanceLoading ? '…' : '—')
+                  : formatAmount(shownCurrency, balanceFor(shownCurrency) ?? 0)}
+              </div>
+              {balances && balances.length > 1 && (
+                <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--text-muted)]" dir="ltr">
+                  {balances
+                    .filter((b) => String(b.currency).toUpperCase() !== shownCurrency)
+                    .map((b) => (
+                      <button
+                        key={b.currency}
+                        type="button"
+                        onClick={() => setCurrency(String(b.currency).toUpperCase())}
+                        className="tabular-nums hover:text-[var(--text-primary)]"
+                      >
+                        {formatAmount(b.currency, b.amount)}
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {!sourceIdentifier && samSettings && (
             <p className="flex items-start gap-1.5 text-xs text-amber-300/90 leading-relaxed">
