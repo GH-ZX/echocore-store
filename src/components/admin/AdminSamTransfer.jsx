@@ -1,19 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
+  ArrowUpRight,
+  BadgeCheck,
   CheckCircle,
-  Copy,
+  ClipboardPaste,
+  Heart,
   History,
   Loader2,
-  QrCode,
+  Plus,
   RefreshCw,
   Send,
-  ShieldCheck,
-  Smartphone,
   Trash2,
+  UploadCloud,
   X,
 } from 'lucide-react';
 import {
+  fetchSamApiSettings,
   listSamTransfers,
   mapSamTransferError,
   isValidSamRecipient,
@@ -25,25 +28,42 @@ import { formatDateTime, formatMessage } from '../../lib/i18n';
 
 const SYRIATEL_PIN_RE = /^\d{4}$/;
 const SHAMCASH_ID_RE = /^[0-9a-f]{32}$/i;
+const CURRENCIES = ['USD', 'SYP', 'EUR'];
 
 function formatAmount(currency, amount) {
   const value = Number(amount);
   const safe = Number.isFinite(value) ? value : 0;
   const code = String(currency || 'USD').toUpperCase();
-  const locale = 'en-US';
-  if (code === 'USD') {
-    return new Intl.NumberFormat(locale, { style: 'currency', currency: 'USD' }).format(safe);
+  if (code === 'USD' || code === 'EUR') {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: code }).format(safe);
   }
-  if (code === 'EUR') {
-    return new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(safe);
-  }
-  return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(safe)} ${code}`;
+  return `${code} ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(safe)}`;
 }
 
+function maskRecipient(value) {
+  const raw = String(value || '').trim();
+  if (raw.length <= 4) return raw;
+  return `**** **** **** ${raw.slice(-4)}`;
+}
+
+function recipientLabel(tr, t) {
+  return tr?.customer?.name
+    || tr?.customer?.username
+    || (tr?.method === 'syriatel' ? t.samSendMethodSyriatel : t.samSendMethodShamcash);
+}
+
+/**
+ * Admin payout form (Sam API): send from the store wallet to a ShamCash / Syriatel wallet.
+ * Used on the APIs page and on the dashboard overview (`bare` drops the own header).
+ */
 export default function AdminSamTransfer({
-  t = {}, lang = 'ar', samSettings, onError, onSuccess, onTransferComplete,
-  initialCustomer = null,
+  t = {}, lang = 'ar', samSettings: samSettingsProp, onError, onSuccess, onTransferComplete,
+  initialCustomer = null, bare = false,
 }) {
+  const [fetchedSettings, setFetchedSettings] = useState(null);
+  const samSettings = samSettingsProp || fetchedSettings;
+
+  const [view, setView] = useState('new');
   const [method, setMethod] = useState('shamcash');
   const [recipient, setRecipient] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState(initialCustomer);
@@ -61,34 +81,42 @@ export default function AdminSamTransfer({
   const [historyError, setHistoryError] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
-  const [formRef, setFormRef] = useState(null);
   const transfersRequestRef = useRef(0);
   const [clearing, setClearing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
 
+  const recipientInputRef = useRef(null);
   const qrFileInputRef = useRef(null);
-  const [qrPreview, setQrPreview] = useState('');
   const [qrScanning, setQrScanning] = useState(false);
   const [qrError, setQrError] = useState('');
   const [qrScanNote, setQrScanNote] = useState('');
   const qrScanRequestRef = useRef(0);
 
   useEffect(() => {
+    if (samSettingsProp) return undefined;
+    let cancelled = false;
+    fetchSamApiSettings()
+      .then((data) => { if (!cancelled) setFetchedSettings(data || {}); })
+      .catch(() => { if (!cancelled) setFetchedSettings({}); });
+    return () => { cancelled = true; };
+  }, [samSettingsProp]);
+
+  useEffect(() => {
     if (initialCustomer) return;
     setMethod((current) => {
       if (current === 'shamcash' && samSettings?.sam_shamcash_wallet_identifier) return current;
       if (current === 'syriatel' && samSettings?.sam_syriatel_wallet_identifier) return current;
-      return samSettings?.sam_shamcash_wallet_identifier ? 'shamcash' : 'syriatel';
+      return samSettings?.sam_shamcash_wallet_identifier || !samSettings?.sam_syriatel_wallet_identifier
+        ? 'shamcash'
+        : 'syriatel';
     });
   }, [initialCustomer, samSettings?.sam_shamcash_wallet_identifier, samSettings?.sam_syriatel_wallet_identifier]);
 
   useEffect(() => {
     if (!initialCustomer) return;
     setSelectedCustomer(initialCustomer);
-    const nextMethod = initialCustomer.sam_shamcash_wallet_id ? 'shamcash' : 'syriatel';
-    const nextRecipient = initialCustomer.sam_shamcash_wallet_id || initialCustomer.sam_syriatel_recipient || '';
-    setMethod(nextMethod);
-    setRecipient(nextRecipient);
+    setMethod(initialCustomer.sam_shamcash_wallet_id ? 'shamcash' : 'syriatel');
+    setRecipient(initialCustomer.sam_shamcash_wallet_id || initialCustomer.sam_syriatel_recipient || '');
   }, [initialCustomer]);
 
   const loadTransfers = useCallback(async (pageToLoad = page) => {
@@ -141,26 +169,41 @@ export default function AdminSamTransfer({
   const pinValid = method === 'syriatel' ? SYRIATEL_PIN_RE.test(pinCode.trim()) : true;
   const formValid = !!sourceIdentifier && recipientValid && amountValid && pinValid;
 
-  const recentRecipients = useMemo(() => {
-    const seen = new Set();
-    const list = [];
+  /** One entry per recipient, newest first; successful transfers win over failed ones. */
+  const savedRecipients = useMemo(() => {
+    const byKey = new Map();
     for (const tr of transfers) {
-      if (!tr.recipientIdentifier) continue;
-      const key = String(tr.recipientIdentifier).toLowerCase();
-      if (!seen.has(key)) {
-        seen.add(key);
-        list.push(tr.recipientIdentifier);
-      }
-      if (list.length >= 5) break;
+      const id = String(tr.recipientIdentifier || '').trim();
+      if (!id) continue;
+      const key = `${tr.method}:${id.toLowerCase()}`;
+      const prev = byKey.get(key);
+      if (!prev || (prev.status === 'failed' && tr.status !== 'failed')) byKey.set(key, tr);
     }
-    return list;
+    return [...byKey.values()];
   }, [transfers]);
+
+  const knownRecipient = useMemo(() => {
+    const key = recipient.trim().toLowerCase();
+    if (!key) return null;
+    return savedRecipients.find((tr) => String(tr.recipientIdentifier).toLowerCase() === key) || null;
+  }, [recipient, savedRecipients]);
 
   const selectRecipient = (tr) => {
     setMethod(tr.method === 'syriatel' ? 'syriatel' : 'shamcash');
     setRecipient(String(tr.recipientIdentifier || '').trim());
-    setCurrency((prev) => (prev ? prev : tr.currency || 'USD'));
-    formRef?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (tr.currency) setCurrency(String(tr.currency).toUpperCase());
+    setSelectedCustomer(null);
+    setQrError('');
+    setQrScanNote('');
+    setView('new');
+  };
+
+  const resetRecipient = (nextMethod = method) => {
+    setSelectedCustomer(null);
+    setRecipient('');
+    setMethod(nextMethod);
+    setQrError('');
+    setQrScanNote('');
   };
 
   const submit = async () => {
@@ -181,7 +224,6 @@ export default function AdminSamTransfer({
       setRecipient('');
       setAmount('');
       setNote('');
-      setPinCode('');
       setConfirming(false);
       await loadTransfers(1);
     } catch (err) {
@@ -193,26 +235,17 @@ export default function AdminSamTransfer({
     }
   };
 
-  const clearCustomer = (nextMethod = 'shamcash') => {
-    setSelectedCustomer(null);
-    setRecipient('');
-    setMethod(nextMethod);
-  };
-
-  const copyValue = async (value) => {
-    if (!value) return;
+  const pasteRecipient = async () => {
     try {
-      await navigator.clipboard.writeText(String(value));
-      onSuccess?.(t.copied);
+      const text = String(await navigator.clipboard.readText()).trim();
+      if (text) {
+        setRecipient(text);
+        return;
+      }
     } catch {
-      onError?.(t.copyFailed);
+      // Clipboard read blocked — let the admin paste by hand.
     }
-  };
-
-  const openQrPicker = () => {
-    setQrError('');
-    setQrScanNote('');
-    qrFileInputRef.current?.click();
+    recipientInputRef.current?.focus();
   };
 
   const handleQrFile = async (e) => {
@@ -224,14 +257,6 @@ export default function AdminSamTransfer({
     setQrScanNote('');
     setQrScanning(true);
     try {
-      const dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = () => reject(reader.error || new Error('read-failed'));
-        reader.readAsDataURL(file);
-      });
-      if (requestId !== qrScanRequestRef.current) return;
-      setQrPreview(dataUrl);
       const decoded = await decodeQrFromFile(file);
       if (requestId !== qrScanRequestRef.current) return;
       if (!decoded) {
@@ -247,277 +272,407 @@ export default function AdminSamTransfer({
         setQrError(formatMessage(t.samQrUnrecognized, { value: cleaned }));
       }
     } catch {
-      if (requestId === qrScanRequestRef.current) {
-        setQrPreview('');
-        setQrError(t.samQrDecodeFailed);
-      }
+      if (requestId === qrScanRequestRef.current) setQrError(t.samQrDecodeFailed);
     } finally {
       if (requestId === qrScanRequestRef.current) setQrScanning(false);
     }
   };
 
-  const clearQr = () => {
-    ++qrScanRequestRef.current;
-    setQrPreview('');
-    setQrError('');
-    setQrScanNote('');
-    setQrScanning(false);
-  };
-
   const totalPages = Math.max(1, Math.ceil(transfersTotal / pageSize));
-  const currentRecipientKey = recipient.trim().toLowerCase();
+  const tabs = [
+    { id: 'new', icon: Plus, label: t.samSendTabNew },
+    { id: 'saved', icon: Heart, label: t.samSendTabSaved },
+    { id: 'history', icon: History, label: t.samSendTabHistory },
+  ];
 
-  return (
-    <section className="rounded-2xl border border-[var(--border)] bg-[var(--bg-primary)] p-4 sm:p-5 space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-start gap-3 min-w-0">
-          <div className="p-2 rounded-xl shrink-0 bg-[var(--bg-surface)] text-[var(--accent)]">
-            <Send className="w-5 h-5" />
-          </div>
-          <div className="min-w-0">
-            <h3 className="font-semibold text-base">{t.samSendTitle}</h3>
-            <p className="text-sm text-[var(--text-sec)] mt-0.5">{t.samSendHelp}</p>
-          </div>
+  const content = (
+    <div className="sam-send space-y-4">
+      <div className="flex items-center gap-2">
+        <div className="sam-send__tabs" role="tablist">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={view === tab.id}
+              onClick={() => setView(tab.id)}
+              className={`sam-send__tab ${view === tab.id ? 'is-active' : ''}`}
+            >
+              <tab.icon className={`w-4 h-4 ${tab.id === 'saved' && view === tab.id ? 'fill-current' : ''}`} />
+              <span>{tab.label}</span>
+            </button>
+          ))}
         </div>
         <button
           type="button"
           onClick={() => loadTransfers(1)}
           disabled={transfersLoading}
-          className="action-chip gap-1.5 text-xs"
+          className="sam-send__icon-btn ms-auto"
+          title={t.samSendHistoryRefresh}
+          aria-label={t.samSendHistoryRefresh}
         >
-          {transfersLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-          {t.samSendHistoryRefresh}
+          {transfersLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
         </button>
       </div>
 
-      <div ref={setFormRef} className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-4 space-y-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border border-[var(--border)] text-[var(--text-sec)]">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            {t.samSendAdminOnly}
-          </span>
-          {(['shamcash', 'syriatel'].map((key) => (
-            <button
-              key={key}
-              type="button"
-               onClick={() => clearCustomer(key)}
-              className={`action-chip text-xs !h-9 !min-h-9 px-3 ${
-                method === key ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10' : ''
-              }`}
-            >
-              {key === 'syriatel' ? <Smartphone className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
-              {key === 'syriatel' ? t.samSendMethodSyriatel : t.samSendMethodShamcash}
-            </button>
-          )))}
-        </div>
+      {view === 'new' && (
+        <div className="space-y-4">
+          <div className="sam-send__methods">
+            {['shamcash', 'syriatel'].map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => { if (key !== method) resetRecipient(key); }}
+                className={`sam-send__method ${method === key ? 'is-active' : ''}`}
+              >
+                {key === 'syriatel' ? t.samSendMethodSyriatel : t.samSendMethodShamcash}
+              </button>
+            ))}
+          </div>
 
-        <label className="text-xs space-y-1 block">
-          <span className="font-semibold text-[var(--text-sec)]">{t.samSendSource}</span>
-          <input
-            className="profile-field-input text-sm w-full font-mono disabled:opacity-60"
-            value={sourceIdentifier || t.samSendSourceMissing}
-            disabled
-            dir="ltr"
-          />
-        </label>
+          {!sourceIdentifier && samSettings && (
+            <p className="flex items-start gap-1.5 text-xs text-amber-300/90 leading-relaxed">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-px" />
+              {t.samSendSourceMissing}
+            </p>
+          )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label className="text-xs space-y-1 block">
-            <span className="font-semibold text-[var(--text-sec)]">{t.samSendRecipient}</span>
-            <span className="block text-[10px] text-[var(--text-muted)] leading-snug">
-              {method === 'syriatel' ? t.samSendRecipientSyriatelHint : t.samSendRecipientHint}
-            </span>
-            <input
-              className={`profile-field-input text-sm w-full font-mono ${recipient ? (recipientValid ? '' : 'border-red-500/60') : ''}`}
-              placeholder={method === 'syriatel' ? '0991234567' : '879be352768766cb4acc3c7a'}
-              value={recipient}
-              onChange={(e) => setRecipient(e.target.value.trim())}
-              dir="ltr"
-            />
-            <input
-              ref={qrFileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleQrFile}
-            />
-            <div className="flex items-center gap-2 pt-1.5">
+          {recipientValid ? (
+            <div className="sam-send__card flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 font-semibold text-sm truncate">
+                  <span className="truncate">
+                    {selectedCustomer?.name || selectedCustomer?.username || (knownRecipient ? recipientLabel(knownRecipient, t) : (method === 'syriatel' ? t.samSendMethodSyriatel : t.samSendMethodShamcash))}
+                  </span>
+                  {(selectedCustomer || knownRecipient?.customer) && (
+                    <BadgeCheck className="w-4 h-4 shrink-0 text-[var(--accent)]" aria-label={t.samSendLinkedCustomer} />
+                  )}
+                </div>
+                <div className="font-mono text-xs text-[var(--text-sec)] mt-0.5 truncate" dir="ltr" title={recipient}>
+                  {recipient}
+                </div>
+              </div>
               <button
                 type="button"
-                onClick={openQrPicker}
-                disabled={qrScanning}
-                className="action-chip gap-1.5 text-xs !h-8 !min-h-8"
+                onClick={() => resetRecipient()}
+                className="sam-send__icon-btn"
+                title={t.samSendChangeRecipient}
+                aria-label={t.samSendChangeRecipient}
               >
-                {qrScanning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <QrCode className="w-3.5 h-3.5" />}
-                {qrScanning ? t.samQrScanning : t.samQrScan}
+                <X className="w-4 h-4" />
               </button>
-              {qrPreview && (
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <img src={qrPreview} alt={t.samQrPreviewAlt} className="w-8 h-8 rounded-md object-cover border border-[var(--border)] shrink-0" />
+            </div>
+          ) : (
+            <>
+              {method === 'shamcash' && (
+                <>
+                  <input
+                    ref={qrFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleQrFile}
+                  />
                   <button
                     type="button"
-                    onClick={clearQr}
-                    className="p-1 text-[var(--text-muted)] hover:text-red-400 rounded-md"
-                    title={t.samQrClear}
-                    aria-label={t.samQrClear}
+                    onClick={() => { setQrError(''); setQrScanNote(''); qrFileInputRef.current?.click(); }}
+                    disabled={qrScanning}
+                    className="sam-send__drop"
                   >
-                    <X className="w-3.5 h-3.5" />
+                    {qrScanning
+                      ? <Loader2 className="w-10 h-10 animate-spin" />
+                      : <UploadCloud className="w-10 h-10" strokeWidth={1.6} />}
+                    <span className="text-sm font-medium text-[var(--text-primary)]">
+                      {qrScanning ? t.samQrScanning : t.samSendQrUpload}
+                    </span>
                   </button>
-                </div>
+                  <div className="sam-send__or"><span>{t.samSendOr}</span></div>
+                </>
               )}
-            </div>
-            {qrScanNote && (
-              <span className="flex items-center gap-1 text-[11px] text-emerald-400 pt-1">
-                <CheckCircle className="w-3 h-3" />
-                {qrScanNote}
-              </span>
-            )}
-            {qrError && (
-              <span className="flex items-start gap-1 text-[11px] text-amber-300 pt-1 leading-snug break-all">
-                <AlertCircle className="w-3 h-3 shrink-0 mt-px" />
-                {qrError}
-              </span>
-            )}
-            {selectedCustomer && recipient.trim() !== String(selectedCustomer.sam_shamcash_wallet_id || selectedCustomer.sam_syriatel_recipient || '').trim() && (
-              <span className="block text-[11px] text-amber-300 pt-1">{t.samCustomerRecipientChanged}</span>
-            )}
-            {recipient && !recipientValid && (
-              <span className="flex items-center gap-1 text-[11px] text-red-400 pt-1">
-                <AlertCircle className="w-3 h-3" />
-                {t.samSendRecipientInvalid}
-              </span>
-            )}
-          </label>
 
-          <div className="grid grid-cols-2 gap-3">
-            <label className="text-xs space-y-1 block">
-              <span className="font-semibold text-[var(--text-sec)]">{t.samSendAmount}</span>
-              <input
-                className="profile-field-input text-sm w-full"
-                type="number"
-                min="0"
-                step="0.01"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                dir="ltr"
-              />
-            </label>
-            <label className="text-xs space-y-1 block">
-              <span className="font-semibold text-[var(--text-sec)]">{t.samSendCurrency}</span>
-              <select
-                className="profile-field-input text-sm w-full"
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value)}
-                dir="ltr"
-              >
-                {['USD', 'SYP', 'EUR'].map((code) => (
-                  <option key={code} value={code}>{code}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-        </div>
-
-        {method === 'syriatel' && (
-          <label className="text-xs space-y-1 block">
-            <span className="font-semibold text-[var(--text-sec)]">{t.samSendPinCode}</span>
-            <span className="block text-[10px] text-[var(--text-muted)] leading-snug">{t.samSendPinCodeHint}</span>
-            <input
-              className="profile-field-input text-sm w-full font-mono"
-              type="password"
-              inputMode="numeric"
-              maxLength={4}
-              placeholder="0000"
-              value={pinCode}
-              onChange={(e) => setPinCode(e.target.value.replace(/\D/g, ''))}
-              dir="ltr"
-            />
-          </label>
-        )}
-
-        <label className="text-xs space-y-1 block">
-          <span className="font-semibold text-[var(--text-sec)]">{t.samSendNote}</span>
-          <span className="block text-[10px] text-[var(--text-muted)] leading-snug">{t.samSendNoteHint}</span>
-          <input
-            className="profile-field-input text-sm w-full"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder={t.samSendNotePlaceholder}
-          />
-        </label>
-
-        {!sourceIdentifier && (
-          <p className="text-xs text-amber-300/90 leading-relaxed">{t.samSendSourceMissing}</p>
-        )}
-
-        {recentRecipients.length > 0 && (
-          <div className="space-y-1.5">
-            <span className="text-[11px] font-semibold text-[var(--text-muted)]">{t.samSendRecipientRecent}</span>
-            <div className="flex flex-wrap gap-2">
-              {recentRecipients.map((addr) => (
+              <div className="sam-send__paste">
+                <input
+                  ref={recipientInputRef}
+                  className={`sam-send__paste-input ${recipient ? 'font-mono' : ''}`}
+                  placeholder={method === 'syriatel' ? t.samSendRecipientSyriatelHint : t.samSendPastePlaceholder}
+                  value={recipient}
+                  onChange={(e) => setRecipient(e.target.value.trim())}
+                  dir="auto"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
                 <button
-                  key={addr}
                   type="button"
-                  onClick={() => setRecipient(addr)}
-                  className="action-chip text-[11px] font-mono px-2.5 py-1"
-                  dir="ltr"
+                  onClick={pasteRecipient}
+                  className="sam-send__paste-btn"
+                  title={t.samSendPaste}
+                  aria-label={t.samSendPaste}
                 >
-                  {addr.slice(0, 12)}…
+                  <ClipboardPaste className="w-5 h-5" />
                 </button>
-              ))}
-            </div>
-          </div>
-        )}
+              </div>
+              {recipient && !recipientValid && (
+                <p className="flex items-center gap-1 text-[11px] text-red-400 -mt-2">
+                  <AlertCircle className="w-3 h-3" />
+                  {method === 'syriatel' ? t.samSendRecipientSyriatelHint : t.samSendRecipientInvalid}
+                </p>
+              )}
+            </>
+          )}
 
-        <button
-          type="button"
-          disabled={!formValid}
-          onClick={() => setConfirming(true)}
-          className="btn btn-primary text-sm py-2.5 px-4 w-full sm:w-auto inline-flex items-center justify-center gap-2 disabled:opacity-50"
-        >
-          <Send className="w-4 h-4" />
-          {t.samSendBtn}
-        </button>
-      </div>
+          {qrScanNote && (
+            <p className="flex items-center gap-1 text-[11px] text-emerald-400 -mt-2">
+              <CheckCircle className="w-3 h-3" />
+              {qrScanNote}
+            </p>
+          )}
+          {qrError && (
+            <p className="flex items-start gap-1 text-[11px] text-amber-300 -mt-2 leading-snug break-all">
+              <AlertCircle className="w-3 h-3 shrink-0 mt-px" />
+              {qrError}
+            </p>
+          )}
+
+          {recipientValid && (
+            <div className="space-y-3">
+              <div className="sam-send__amount">
+                <input
+                  className="sam-send__amount-input"
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  aria-label={t.samSendAmount}
+                  dir="ltr"
+                />
+                <div className="sam-send__currencies" dir="ltr">
+                  {CURRENCIES.map((code) => (
+                    <button
+                      key={code}
+                      type="button"
+                      onClick={() => setCurrency(code)}
+                      className={`sam-send__currency ${currency === code ? 'is-active' : ''}`}
+                    >
+                      {code}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {method === 'syriatel' && (
+                <input
+                  className="sam-send__field font-mono"
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  placeholder={t.samSendPinCode}
+                  value={pinCode}
+                  onChange={(e) => setPinCode(e.target.value.replace(/\D/g, ''))}
+                  aria-label={t.samSendPinCode}
+                />
+              )}
+
+              <input
+                className="sam-send__field"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder={t.samSendNote}
+                aria-label={t.samSendNote}
+              />
+            </div>
+          )}
+
+          <button
+            type="button"
+            disabled={!formValid}
+            onClick={() => setConfirming(true)}
+            className="btn btn-primary w-full justify-center gap-2 py-3 text-sm rounded-2xl disabled:opacity-50"
+          >
+            <Send className="w-4 h-4" />
+            {recipientValid ? t.samSendBtn : t.samSendContinue}
+          </button>
+        </div>
+      )}
+
+      {view === 'saved' && (
+        savedRecipients.length === 0 ? (
+          <EmptyState loading={transfersLoading} error={historyError} t={t} text={t.samSendSavedEmpty} onRetry={() => loadTransfers(1)} />
+        ) : (
+          <div className="space-y-2.5">
+            {savedRecipients.map((tr) => (
+              <button
+                key={`${tr.method}:${tr.recipientIdentifier}`}
+                type="button"
+                onClick={() => selectRecipient(tr)}
+                className="sam-send__card sam-send__card--button w-full flex items-center gap-3 text-start"
+                title={t.samSendToThis}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-sm truncate">{recipientLabel(tr, t)}</div>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className="font-mono text-xs text-[var(--text-sec)] tracking-wide" dir="ltr">
+                      {maskRecipient(tr.recipientIdentifier)}
+                    </span>
+                    {tr.customer && <BadgeCheck className="w-4 h-4 shrink-0 text-[var(--accent)]" aria-label={t.samSendLinkedCustomer} />}
+                  </div>
+                </div>
+                <ArrowUpRight className="w-5 h-5 shrink-0 text-[var(--text-sec)] rtl:-scale-x-100" />
+              </button>
+            ))}
+          </div>
+        )
+      )}
+
+      {view === 'history' && (
+        <div className="space-y-2.5">
+          {transfers.length === 0 ? (
+            <EmptyState loading={transfersLoading} error={historyError} t={t} text={t.samSendHistoryEmpty} onRetry={() => loadTransfers(1)} />
+          ) : (
+            transfers.map((tr) => {
+              const failed = tr.status === 'failed';
+              return (
+                <button
+                  key={tr.id}
+                  type="button"
+                  onClick={() => selectRecipient(tr)}
+                  className="sam-send__card sam-send__card--button w-full flex items-center gap-3 text-start"
+                  title={t.samSendToThis}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-sm truncate">{recipientLabel(tr, t)}</div>
+                    <div className="text-[11px] text-[var(--text-muted)] mt-0.5 truncate">
+                      <span dir="ltr">{maskRecipient(tr.recipientIdentifier)}</span>
+                      {tr.createdAt ? ` · ${formatDateTime(tr.createdAt, lang)}` : ''}
+                      {tr.admin?.username ? ` · ${t.samSendBy} ${tr.admin.username}` : ''}
+                    </div>
+                    {failed && tr.samMessage ? (
+                      <div className="text-[10px] text-red-400/90 truncate mt-0.5" dir="auto" title={tr.samMessage}>{tr.samMessage}</div>
+                    ) : null}
+                  </div>
+                  <div className="shrink-0 text-end">
+                    <div
+                      className={`flex items-center gap-1 font-bold text-sm tabular-nums ${failed ? 'text-[var(--text-muted)] line-through' : 'text-red-400'}`}
+                      dir="ltr"
+                    >
+                      {!failed && <ArrowUpRight className="w-4 h-4" />}
+                      {formatAmount(tr.currency, tr.amount)}
+                    </div>
+                    {failed && <div className="text-[10px] text-red-400 mt-0.5">{t.samSendStatusFailed}</div>}
+                  </div>
+                </button>
+              );
+            })
+          )}
+
+          {(transfersTotal > pageSize || transfersTotal > 0) && (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              {transfersTotal > pageSize && (
+                <>
+                  <span className="text-xs text-[var(--text-muted)]">
+                    {formatMessage(t.samSendHistoryPage, { page, total: totalPages })}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={page <= 1 || transfersLoading}
+                    onClick={() => loadTransfers(page - 1)}
+                    className="btn btn-secondary text-xs py-1.5 px-3 disabled:opacity-50"
+                  >
+                    {t.prev}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={page >= totalPages || transfersLoading}
+                    onClick={() => loadTransfers(page + 1)}
+                    className="btn btn-secondary text-xs py-1.5 px-3 disabled:opacity-50"
+                  >
+                    {t.next}
+                  </button>
+                </>
+              )}
+              <span className="ms-auto">
+                {confirmClear ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="text-[11px] text-red-400">{t.samSendHistoryClearConfirm}</span>
+                    <button
+                      type="button"
+                      disabled={clearing}
+                      onClick={handleClearTransfers}
+                      className="btn btn-secondary text-xs py-1.5 px-2.5 inline-flex items-center gap-1 border-red-500/40 text-red-400 disabled:opacity-50"
+                    >
+                      {clearing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                      {t.samSendHistoryClearYes}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={clearing}
+                      onClick={() => setConfirmClear(false)}
+                      className="btn btn-secondary text-xs py-1.5 px-2.5 disabled:opacity-50"
+                    >
+                      {t.cancel}
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={clearing || transfersTotal === 0}
+                    onClick={() => setConfirmClear(true)}
+                    className="inline-flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-red-400 disabled:opacity-40"
+                    title={t.samSendHistoryClearTitle}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {t.samSendHistoryClear}
+                  </button>
+                )}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {confirming && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => { if (!sending) { setConfirming(false); setPinCode(''); } }}>
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60"
+          onClick={() => { if (!sending) { setConfirming(false); setPinCode(''); } }}
+        >
           <div
-            className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-5 space-y-4 shadow-2xl"
+            className="w-full max-w-md rounded-3xl border border-[var(--border)] bg-[var(--bg-surface)] p-5 space-y-4 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-[var(--accent)]/12 text-[var(--accent)]">
-                <Send className="w-5 h-5" />
-              </div>
+            <div className="flex items-center gap-2">
               <h4 className="font-bold text-base">{t.samSendConfirmTitle}</h4>
               <button
                 type="button"
-                 onClick={() => { setConfirming(false); setPinCode(''); }}
-                className="ms-auto inline-flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--bg-elevated)] text-[var(--text-sec)]"
+                onClick={() => { setConfirming(false); setPinCode(''); }}
+                className="sam-send__icon-btn ms-auto"
                 aria-label={t.samSendCancel}
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-[var(--text-muted)] leading-relaxed">{t.samSendConfirmHelp}</p>
+            <div className="text-center py-2">
+              <div className="text-3xl font-black tabular-nums text-[var(--text-primary)]" dir="ltr">
+                {formatAmount(currency, amountNumber)}
+              </div>
+              <p className="text-xs text-[var(--text-muted)] mt-1">{t.samSendConfirmHelp}</p>
+            </div>
 
-            <div className="rounded-xl border border-[var(--border)] divide-y divide-[var(--border)] text-sm">
-              <ConfirmRow label={t.samSendMethodShamcash} value={method === 'syriatel' ? t.samSendMethodSyriatel : t.samSendMethodShamcash} />
-              <ConfirmRow label={t.samSendFrom} value={sourceIdentifier} mono dir="ltr" />
+            <div className="rounded-2xl border border-[var(--border)] divide-y divide-[var(--border)] text-sm">
               <ConfirmRow label={t.samSendTo} value={recipient.trim()} mono dir="ltr" />
-              <ConfirmRow label={t.samSendAmount} value={formatAmount(currency, amountNumber)} strong dir="ltr" />
-              <ConfirmRow label={t.samSendCurrency} value={currency} mono dir="ltr" />
+              <ConfirmRow label={t.samSendFrom} value={sourceIdentifier} mono dir="ltr" />
+              <ConfirmRow label={t.samSendCurrency} value={`${currency} · ${method === 'syriatel' ? t.samSendMethodSyriatel : t.samSendMethodShamcash}`} dir="ltr" />
               {note.trim() ? <ConfirmRow label={t.samSendNote} value={note.trim()} /> : null}
             </div>
 
-            <div className="flex flex-col-reverse sm:flex-row gap-2 pt-1">
+            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                 onClick={() => { setConfirming(false); setPinCode(''); }}
+                onClick={() => { setConfirming(false); setPinCode(''); }}
                 disabled={sending}
-                className="btn btn-secondary text-sm py-2.5 px-4 w-full sm:w-auto justify-center"
+                className="btn btn-secondary text-sm py-3 justify-center rounded-2xl"
               >
                 {t.samSendCancel}
               </button>
@@ -525,7 +680,7 @@ export default function AdminSamTransfer({
                 type="button"
                 onClick={submit}
                 disabled={sending}
-                className="btn btn-primary text-sm py-2.5 px-4 w-full sm:w-auto justify-center inline-flex items-center gap-2 disabled:opacity-50"
+                className="btn btn-primary text-sm py-3 px-2 justify-center inline-flex items-center gap-2 rounded-2xl whitespace-nowrap disabled:opacity-50"
               >
                 {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 {t.samSendConfirmSend}
@@ -534,182 +689,56 @@ export default function AdminSamTransfer({
           </div>
         </div>
       )}
+    </div>
+  );
 
-      <div className="pt-1 space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <History className="w-4 h-4 text-[var(--accent)]" />
-          <h4 className="text-sm font-semibold">{t.samSendHistoryTitle}</h4>
-          <span className="text-xs font-mono font-bold text-[var(--accent)] bg-[var(--accent)]/12 rounded-full px-2 py-0.5" dir="ltr">
-            {transfersTotal}
-          </span>
-          <span className="text-[11px] text-[var(--text-muted)]">{t.samSendHistorySelectHelp}</span>
-          <span className="ms-auto">
-            {confirmClear ? (
-              <span className="inline-flex items-center gap-2">
-                <span className="text-[11px] text-red-400">{t.samSendHistoryClearConfirm}</span>
-                <button
-                  type="button"
-                  disabled={clearing}
-                  onClick={handleClearTransfers}
-                  className="btn btn-secondary text-xs py-1.5 px-2.5 inline-flex items-center gap-1 border-red-500/40 text-red-400 disabled:opacity-50"
-                >
-                  {clearing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                  {t.samSendHistoryClearYes}
-                </button>
-                <button
-                  type="button"
-                  disabled={clearing}
-                  onClick={() => setConfirmClear(false)}
-                  className="btn btn-secondary text-xs py-1.5 px-2.5 disabled:opacity-50"
-                >
-                  {t.cancel}
-                </button>
-              </span>
-            ) : (
-              <button
-                type="button"
-                disabled={clearing || transfersTotal === 0}
-                onClick={() => setConfirmClear(true)}
-                className="btn btn-secondary text-xs py-1.5 px-2.5 inline-flex items-center gap-1 border-red-500/40 text-red-400 disabled:opacity-40"
-                title={t.samSendHistoryClearTitle}
-              >
-                {clearing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                {t.samSendHistoryClear}
-              </button>
-            )}
-          </span>
-        </div>
+  if (bare) return content;
 
-        {historyError ? (
-          <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 text-sm">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            <span className="min-w-0">{historyError}</span>
-            <button type="button" onClick={() => loadTransfers(1)} className="ms-auto shrink-0 btn btn-secondary text-xs py-1 px-2">
-              {t.retry || t.samSendHistoryRefresh}
-            </button>
-          </div>
-        ) : transfersLoading && transfers.length === 0 ? (
-          <div className="flex items-center gap-2 text-sm text-[var(--text-sec)] py-3">
-            <Loader2 className="w-4 h-4 animate-spin text-[var(--accent)]" />
-            {t.samTransferHistoryLoading}
-          </div>
-        ) : transfers.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-[var(--border)] px-4 py-6 text-center text-sm text-[var(--text-muted)]">
-            {t.samSendHistoryEmpty}
-          </div>
-        ) : (
-          <div className="rounded-xl border border-[var(--border)] divide-y divide-[var(--border)]">
-            {transfers.map((tr) => (
-              <TransferRow
-                key={tr.id}
-                transfer={tr}
-                t={t}
-                lang={lang}
-                selected={String(tr.recipientIdentifier || '').toLowerCase() === currentRecipientKey}
-                onSelect={() => selectRecipient(tr)}
-                onCopy={copyValue}
-              />
-            ))}
-          </div>
-        )}
-
-        {transfersTotal > pageSize && (
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-            <span className="text-xs text-[var(--text-muted)]">
-              {formatMessage(t.samSendHistoryPage || 'Page {page} / {total}', { page, total: totalPages })}
-            </span>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={page <= 1 || transfersLoading}
-                onClick={() => loadTransfers(page - 1)}
-                className="btn btn-secondary text-xs py-2 px-3 disabled:opacity-50"
-              >
-                {t.prev}
-              </button>
-              <button
-                type="button"
-                disabled={page >= totalPages || transfersLoading}
-                onClick={() => loadTransfers(page + 1)}
-                className="btn btn-secondary text-xs py-2 px-3 disabled:opacity-50"
-              >
-                {t.next}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+  return (
+    <section className="rounded-2xl border border-[var(--border)] bg-[var(--bg-primary)] p-4 sm:p-5 space-y-4">
+      <h3 className="font-bold text-lg">{t.samSendTitle}</h3>
+      {content}
     </section>
   );
 }
 
-function ConfirmRow({ label, value, mono = false, strong = false, dir }) {
+function EmptyState({ loading, error, t, text, onRetry }) {
+  if (error) {
+    return (
+      <div className="flex items-center gap-2 p-3 rounded-2xl bg-red-500/10 border border-red-500/25 text-red-400 text-sm">
+        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+        <span className="min-w-0">{error}</span>
+        <button type="button" onClick={onRetry} className="ms-auto shrink-0 btn btn-secondary text-xs py-1 px-2">
+          {t.retry || t.samSendHistoryRefresh}
+        </button>
+      </div>
+    );
+  }
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center gap-2 text-sm text-[var(--text-sec)] py-6">
+        <Loader2 className="w-4 h-4 animate-spin text-[var(--accent)]" />
+        {t.samTransferHistoryLoading}
+      </div>
+    );
+  }
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
-      <span className="text-xs text-[var(--text-muted)] shrink-0">{label}</span>
-      <span
-        className={`text-sm min-w-0 ${strong ? 'font-bold text-[var(--accent)]' : 'font-semibold'} ${mono ? 'font-mono text-xs break-all' : 'break-words'}`}
-        dir={dir || undefined}
-      >
-        {value}
-      </span>
+    <div className="rounded-2xl border border-dashed border-[var(--border)] px-4 py-8 text-center text-sm text-[var(--text-muted)]">
+      {text}
     </div>
   );
 }
 
-function TransferRow({ transfer: tr, t, lang, selected, onSelect, onCopy }) {
-  const failed = tr.status === 'failed';
+function ConfirmRow({ label, value, mono = false, dir }) {
   return (
-    <div
-      className={`flex items-stretch gap-1.5 sm:gap-2 p-2.5 sm:px-3 transition-colors ${selected ? 'bg-[var(--accent)]/10' : 'hover:bg-[var(--bg-elevated)]'}`}
-    >
-      <button
-        type="button"
-        onClick={onSelect}
-        className="flex-1 min-w-0 text-start flex flex-wrap items-center gap-x-2 gap-y-1 sm:gap-3"
-        title={t.samSendToThis}
+    <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+      <span className="text-xs text-[var(--text-muted)] shrink-0">{label}</span>
+      <span
+        className={`text-sm min-w-0 font-semibold ${mono ? 'font-mono text-xs break-all' : 'break-words'}`}
+        dir={dir || undefined}
       >
-        <span className={`shrink-0 w-2 h-2 rounded-full self-center ${failed ? 'bg-red-400' : 'bg-emerald-400'}`} aria-hidden />
-        <span className="min-w-0 flex-1">
-          <span className="block font-mono text-xs text-[var(--text-primary)] truncate" dir="ltr">
-            {tr.recipientIdentifier}
-          </span>
-          <span className="block text-[11px] text-[var(--text-muted)] truncate">
-            {tr.method === 'syriatel' ? t.samSendMethodSyriatel : t.samSendMethodShamcash}
-            {tr.admin?.username ? ` · ${t.samSendBy} ${tr.admin.username}` : ''}
-            {tr.customer?.name ? ` · ${tr.customer.name}` : ''}
-            {tr.createdAt ? ` · ${formatDateTime(tr.createdAt, lang)}` : ''}
-          </span>
-          {failed && tr.samMessage ? (
-            <span className="block text-[10px] text-red-400/90 truncate" dir="auto" title={tr.samMessage}>
-              {tr.samMessage}
-            </span>
-          ) : null}
-        </span>
-        <span className={`shrink-0 font-mono text-xs font-bold w-full sm:w-auto ${failed ? 'text-[var(--text-sec)]' : 'text-[var(--text-primary)]'}`} dir="ltr">
-          {formatAmount(tr.currency, tr.amount)}
-        </span>
-      </button>
-
-      <button
-        type="button"
-        onClick={() => onCopy(tr.recipientIdentifier)}
-        className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-lg text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--bg-elevated)]"
-        title={t.samSendCopyRecipient}
-        aria-label={t.samSendCopyRecipient}
-      >
-        <Copy className="w-3.5 h-3.5" />
-      </button>
-
-      <button
-        type="button"
-        onClick={onSelect}
-        className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--accent)]/12 text-[var(--accent)] hover:bg-[var(--accent)]/20"
-        title={t.samSendToThis}
-        aria-label={t.samSendToThis}
-      >
-        <Send className="w-3.5 h-3.5" />
-      </button>
+        {value}
+      </span>
     </div>
   );
 }

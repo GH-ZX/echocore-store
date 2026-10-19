@@ -3,6 +3,7 @@ import {
   Gamepad2,
   Gift,
   Package,
+  Send,
   ShoppingCart,
   Zap,
 } from 'lucide-react';
@@ -11,6 +12,7 @@ import AdminDashStatCard from './AdminDashStatCard';
 import AdminDashGoTo from './AdminDashGoTo';
 import AdminProfitOverview from './AdminProfitOverview';
 import AdminSupplierWalletsCard from '../ui/AdminSupplierWalletsCard';
+import AdminSamTransfer from './AdminSamTransfer';
 import {
   getAdminDashboardPath,
   getAdminOrdersPath,
@@ -39,6 +41,7 @@ export default function AdminOverviewPanel({
   supplierWalletsLoading,
   refreshSupplierWallets,
   paymentConfig = {},
+  onNotify,
 }) {
   const sypPerUsd = getSypPerUsd(paymentConfig);
 
@@ -76,6 +79,19 @@ export default function AdminOverviewPanel({
         goToLabel={t.adminOverviewGoWallets}
         onGoToPage={() => goToTab('payments')}
       />
+
+      {!samNotConfigured && (
+        <AdminDashSection title={t.adminOverviewSendTitle} icon={Send}>
+          <AdminSamTransfer
+            t={t}
+            lang={lang}
+            bare
+            onError={(msg) => { if (msg) onNotify?.(msg, 'error'); }}
+            onSuccess={(msg) => { if (msg) onNotify?.(msg, 'success'); }}
+            onTransferComplete={() => refreshSupplierWallets?.()}
+          />
+        </AdminDashSection>
+      )}
 
       <AdminDashSection
         title={t.adminOverviewCatalogTitle}

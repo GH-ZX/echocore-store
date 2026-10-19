@@ -609,6 +609,7 @@ export default function AdminView({
           supplierWalletsLoading={supplierWalletsLoading}
           refreshSupplierWallets={refreshSupplierWallets}
           paymentConfig={paymentConfig}
+          onNotify={onNotify}
         />
       )}
 

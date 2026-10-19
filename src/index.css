@@ -10264,3 +10264,197 @@ button.profile-list-item {
 }
 .home-game-card--ticket .storefront-card__body::before { left: -11px; }
 .home-game-card--ticket .storefront-card__body::after { right: -11px; }
+
+/* ── Sam payout (send money): minimal wallet-app layout ── */
+.sam-send__tabs {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--bg-elevated) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  min-width: 0;
+}
+.sam-send__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 0.8rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-sec);
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.sam-send__tab:hover { color: var(--text-primary); }
+.sam-send__tab.is-active {
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-surface));
+  color: var(--text-primary);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--accent) 30%, transparent) inset;
+}
+@media (max-width: 380px) {
+  .sam-send__tab { padding: 0.5rem 0.6rem; font-size: 0.8rem; }
+}
+.sam-send__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  border-radius: 0.75rem;
+  color: var(--text-sec);
+  background: color-mix(in srgb, var(--bg-elevated) 60%, transparent);
+}
+.sam-send__icon-btn:hover { color: var(--accent); }
+.sam-send__methods {
+  display: flex;
+  gap: 0.5rem;
+}
+.sam-send__method {
+  padding: 0.3rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+.sam-send__method.is-active {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.sam-send__drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  width: min(100%, 18rem);
+  aspect-ratio: 4 / 3;
+  margin-inline: auto;
+  border-radius: 1.25rem;
+  border: 2px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+  color: var(--text-primary);
+  transition: background 0.15s, border-color 0.15s;
+}
+.sam-send__drop:hover {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border-color: var(--accent);
+}
+.sam-send__or {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  color: var(--text-sec);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.sam-send__or::before,
+.sam-send__or::after {
+  content: '';
+  width: 3.5rem;
+  height: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--border) 90%, transparent);
+}
+.sam-send__paste {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-inline: 1rem 0.5rem;
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--bg-elevated) 75%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+.sam-send__paste:focus-within { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.sam-send__paste-input {
+  flex: 1;
+  min-width: 0;
+  height: 3.25rem;
+  background: transparent;
+  outline: none;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+.sam-send__paste-input::placeholder {
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: var(--text-sec);
+}
+.sam-send__paste-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.75rem;
+  color: var(--text-muted);
+}
+.sam-send__paste-btn:hover { color: var(--accent); }
+.sam-send__card {
+  padding: 0.95rem 1.1rem;
+  border-radius: 1.1rem;
+  background: color-mix(in srgb, var(--bg-elevated) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+}
+.sam-send__card--button { transition: border-color 0.15s, background 0.15s; }
+.sam-send__card--button:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-elevated));
+}
+.sam-send__amount {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem;
+  padding-inline-start: 1rem;
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--bg-elevated) 75%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+.sam-send__amount:focus-within { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.sam-send__amount-input {
+  flex: 1;
+  min-width: 0;
+  height: 2.75rem;
+  background: transparent;
+  outline: none;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.sam-send__currencies {
+  display: flex;
+  gap: 0.2rem;
+  padding: 0.2rem;
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--bg-surface) 80%, transparent);
+}
+.sam-send__currency {
+  padding: 0.35rem 0.55rem;
+  border-radius: 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.sam-send__currency.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+.sam-send__field {
+  width: 100%;
+  height: 3rem;
+  padding-inline: 1rem;
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--bg-elevated) 75%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  outline: none;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+.sam-send__field:focus { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.sam-send__field::placeholder { color: var(--text-muted); }
