@@ -228,9 +228,10 @@ export default function GameDetail({
         {gameOffers.length > 0 ? (
           <div>
             <div className="catalog-offer-grid grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
-              {gameOffers.map((offer) => (
+              {gameOffers.map((offer, index) => (
                 <OfferPackCard
                   key={`${activeGameId}:${offer.id}`}
+                  enterIndex={index < 12 ? index : null}
                   offer={offer}
                   game={game}
                   catalogGames={games}

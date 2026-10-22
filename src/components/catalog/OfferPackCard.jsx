@@ -29,6 +29,7 @@ export default function OfferPackCard({
   onEdit,
   onPricingSaved,
   onNotify,
+  enterIndex = null,
 }) {
   const showGift = isAdmin && onGift;
   const offerName = getOfferDisplayName(offer, lang, {
@@ -53,7 +54,8 @@ export default function OfferPackCard({
   return (
     <Link
       to={offerPath}
-      className="catalog-offer-card card group cursor-pointer touch-manipulation active:scale-[0.99] transition-transform flex"
+      className={`catalog-offer-card card group cursor-pointer touch-manipulation active:scale-[0.99] transition-transform flex${enterIndex != null ? ' card-enter' : ''}`}
+      style={enterIndex != null ? { '--enter-i': Math.min(enterIndex, 11) } : undefined}
       onClick={handleOpen}
     >
       <div className="catalog-offer-card__body p-3 sm:p-5 flex flex-col h-full w-full min-w-0">

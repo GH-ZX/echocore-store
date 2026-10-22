@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Loader2, QrCode, Clock, CheckCircle, Gift, Wallet } from 'lucide-react';
+import { Loader2, QrCode, Clock, CheckCircle, Gift, Wallet, Copy, Check } from 'lucide-react';
 import {
   buildPaymentMethods,
   getManualPaymentDisplay,
@@ -21,12 +21,58 @@ import {
 import { isCommerceBlockedDuringMaintenance } from '../lib/siteStatus';
 import { useNotify } from '../hooks/useNotify';
 import BackButton from '../components/ui/BackButton';
+import MobileBuyBar from '../components/catalog/MobileBuyBar';
+import { getOfferDisplayName } from '../lib/offerDisplay';
+import { brandUserText } from '../lib/branding';
+
+/** Tap-to-copy chip for the payment code / reference (a big win on phones: no long-press selecting). */
+function CopyButton({ value, label, copiedLabel }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(String(value));
+    } catch {
+      // Older WebViews: fall back to a hidden textarea.
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = String(value);
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch {
+        return;
+      }
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      className={`copy-chip${copied ? ' is-copied' : ''}`}
+      aria-label={label}
+    >
+      {copied ? <Check className="w-3.5 h-3.5" aria-hidden="true" /> : <Copy className="w-3.5 h-3.5" aria-hidden="true" />}
+      <span>{copied ? copiedLabel : label}</span>
+    </button>
+  );
+}
 
 export default function CheckoutView({
   t,
   lang = 'ar',
   user,
   cart,
+  games = [],
+  offers = [],
   submitOrder,
   onComplete,
   onOrderPaid,
@@ -225,10 +271,10 @@ export default function CheckoutView({
 
   if (step === 'payment' && activeOrder) {
     return (
-      <div className="max-w-xl mx-auto mt-4 sm:mt-6 px-2 animate-fade-in">
+      <div className="max-w-xl mx-auto mt-4 sm:mt-6 px-2 animate-fade-in pb-28 lg:pb-0">
         <BackButton onClick={() => { setStep('method'); setActiveOrder(null); }} t={t} className="mb-4" />
 
-        <div className="card p-8 md:p-10">
+        <div className="card p-4 sm:p-8 md:p-10">
           <div className="mb-6">
             <div className="text-xs font-semibold text-[var(--accent)] mb-1">{methodLabel}</div>
             <h2 className="text-2xl font-black mb-1">{formatMessage(t.completeWalletPayment, { method: methodLabel })}</h2>
@@ -271,8 +317,11 @@ export default function CheckoutView({
                 )}
                 {paymentDisplay.payCode && (
                   <div className="mt-4">
-                    <div className="text-xs text-[var(--text-muted)] mb-1">{t.shamcashPayCodeLabel}</div>
-                    <div className="font-mono text-lg tracking-wide break-all bg-black/30 rounded-xl px-4 py-3">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <div className="text-xs text-[var(--text-muted)]">{t.shamcashPayCodeLabel}</div>
+                      <CopyButton value={paymentDisplay.payCode} label={t.copyCode || 'Copy'} copiedLabel={t.copied || 'Copied'} />
+                    </div>
+                    <div className="font-mono text-lg tracking-wide break-all bg-black/30 rounded-xl px-4 py-3" dir="ltr">
                       {paymentDisplay.payCode}
                     </div>
                   </div>
@@ -280,8 +329,13 @@ export default function CheckoutView({
               </div>
 
               <div className="rounded-2xl border border-[var(--border)] bg-black/40 p-4 text-center mb-5">
-                <div className="text-green-400 text-xs mb-1 uppercase tracking-wider">{t.paymentReference}</div>
-                <div className="font-mono text-lg tracking-wider">{activeOrder.reference || '—'}</div>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <div className="text-green-400 text-xs uppercase tracking-wider">{t.paymentReference}</div>
+                  {activeOrder.reference ? (
+                    <CopyButton value={activeOrder.reference} label={t.copyCode || 'Copy'} copiedLabel={t.copied || 'Copied'} />
+                  ) : null}
+                </div>
+                <div className="font-mono text-lg tracking-wider break-all" dir="ltr">{activeOrder.reference || '—'}</div>
               </div>
 
               {activeOrder.status === 'payment_sent' ? (
@@ -292,18 +346,45 @@ export default function CheckoutView({
                   <CheckCircle className="w-5 h-5 mx-auto text-emerald-400 mt-3" />
                 </AlertBanner>
               ) : (
-                <button
-                  type="button"
-                  onClick={confirmPaymentSent}
-                  disabled={isProcessing}
-                  className="btn btn-primary w-full py-4 font-bold flex items-center justify-center gap-2"
-                >
-                  {isProcessing ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> {t.processing}</>
-                  ) : (
-                    t.confirmPaymentSent
-                  )}
-                </button>
+                <>
+                  {/* Desktop: inline button. Phones get the sticky bar below so no scrolling is needed. */}
+                  <div className="hidden lg:block">
+                    <button
+                      type="button"
+                      onClick={confirmPaymentSent}
+                      disabled={isProcessing}
+                      className="btn btn-primary w-full py-4 font-bold flex items-center justify-center gap-2"
+                    >
+                      {isProcessing ? (
+                        <><Loader2 className="w-4 h-4 animate-spin" /> {t.processing}</>
+                      ) : (
+                        t.confirmPaymentSent
+                      )}
+                    </button>
+                  </div>
+                  <MobileBuyBar>
+                    <div className="catalog-mobile-buybar" role="region" aria-label={t.confirmPaymentSent}>
+                      <div className="catalog-mobile-buybar__inner">
+                        <div className="min-w-0 flex-1">
+                          <div className="catalog-mobile-buybar__title truncate">{methodLabel}</div>
+                          <div className="catalog-mobile-buybar__price tabular-nums" dir="ltr">{total}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={confirmPaymentSent}
+                          disabled={isProcessing}
+                          className="btn btn-primary catalog-mobile-buybar__btn font-bold shrink-0 touch-manipulation inline-flex items-center justify-center gap-2 disabled:opacity-60"
+                        >
+                          {isProcessing ? (
+                            <><Loader2 className="w-4 h-4 animate-spin" /> {t.processing}</>
+                          ) : (
+                            t.confirmPaymentSent
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </MobileBuyBar>
+                </>
               )}
             </>
           )}
@@ -312,45 +393,90 @@ export default function CheckoutView({
     );
   }
 
+  const payDisabled = isProcessing
+    || cart.length === 0
+    || (selectedMethod === 'balance' && !hasEnoughBalance)
+    || (selectedMethod === 'balance' && (stockCheck.loading || !stockCheck.available))
+    || (selectedMethod !== 'balance' && !usableMethods.some((m) => m.id === selectedMethod))
+    || (isManualWalletMethod(selectedMethod) && !isPaymentMethodReady(selectedMethod, paymentConfig));
+
+  const payLabel = isProcessing
+    ? t.processing
+    : selectedMethod === 'balance'
+      ? t.payFromBalance
+      : selectedMethod === 'WalletRecharge'
+        ? (t.walletRechargeBtn || (lang === 'ar' ? 'شحن المحفظة للمتابعة' : 'Recharge Wallet to Continue'))
+        : t.payNow;
+
   return (
-    <div className="max-w-xl mx-auto mt-4 sm:mt-6 px-2 animate-fade-in">
+    <div className="max-w-xl mx-auto mt-4 sm:mt-6 px-2 animate-fade-in pb-28 lg:pb-0">
       <BackButton onClick={() => navigate('/cart')} t={t} ariaLabel={`${t.back} ${t.cart}`} className="mb-4 transition-colors" />
-      <div className="card p-8 md:p-12">
-        <div className="mb-6">
+      <div className="card p-4 sm:p-8 md:p-12">
+        <div className="mb-5 sm:mb-6">
           <div className="text-xs font-semibold text-[var(--accent)] mb-1">{t.checkout}</div>
-          <h2 className="text-3xl font-black">{t.paymentMethod}</h2>
-          <div className="mt-1 text-sm text-[var(--text-sec)]">
-            {t.orderTotal}: <span className="font-mono font-bold text-[var(--price)]" dir="ltr">${total}</span>
-          </div>
+          <h2 className="text-2xl sm:text-3xl font-black">{t.paymentMethod}</h2>
           <div className="mt-1 text-xs text-[var(--text-muted)]">
             <span>{t.currentBalance}:</span> <span className="font-mono" dir="ltr">{formatMoney(currentBalance)}</span>
           </div>
         </div>
 
-        <div className="space-y-3 mb-8">
+        {cart.length > 0 && (
+          <section className="checkout-summary mb-5 sm:mb-6" aria-label={t.orderSummary}>
+            <div className="checkout-summary__title">{t.orderSummary}</div>
+            <ul className="checkout-summary__list">
+              {cart.map((item, index) => (
+                <li key={`${item.id}:${index}`} className="checkout-summary__row">
+                  <span className="min-w-0 flex-1 truncate">
+                    {brandUserText(getOfferDisplayName(item, lang, { games, relatedOffers: offers }))}
+                  </span>
+                  <span className="font-mono font-semibold tabular-nums shrink-0" dir="ltr">
+                    {formatMoney(item.price)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div className="checkout-summary__total">
+              <span>{t.orderTotal}</span>
+              <span className="text-xl font-black text-[var(--price)] tabular-nums" dir="ltr">{total}</span>
+            </div>
+          </section>
+        )}
+
+        <div className="space-y-2.5 sm:space-y-3 mb-6 sm:mb-8" role="radiogroup" aria-label={t.paymentMethod}>
           {allMethods.map((method) => {
             const active = selectedMethod === method.id;
             const isBalance = method.id === 'balance';
             const isDisabled = method.disabled || method.comingSoon;
+            const selectable = !isDisabled && !(isBalance && !hasEnoughBalance);
+            const choose = () => {
+              if (!selectable) return;
+              setSelectedMethod(method.id);
+            };
             return (
               <div
                 key={method.id}
-                onClick={() => {
-                  if (isDisabled) return;
-                  if (isBalance && !hasEnoughBalance) return;
-                  setSelectedMethod(method.id);
+                role="radio"
+                aria-checked={active}
+                aria-disabled={!selectable}
+                tabIndex={selectable ? 0 : -1}
+                onClick={choose}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    choose();
+                  }
                 }}
-                className={`flex items-center p-5 rounded-2xl border transition-all ${
+                className={`pay-method flex items-center p-3.5 sm:p-5 rounded-2xl border ${
                   isDisabled
                     ? 'border-[var(--border)] opacity-50 cursor-not-allowed'
-                    : `cursor-pointer ${active ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border)] hover:border-[var(--accent)]/70'} ${isBalance ? 'ring-1 ring-emerald-500/30' : ''}`
+                    : `cursor-pointer touch-manipulation ${active ? 'is-active border-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border)] hover:border-[var(--accent)]/70'} ${isBalance ? 'ring-1 ring-emerald-500/30' : ''}`
                 }`}
               >
-                <span className={`payment-method-icon-wrap mx-4 flex-shrink-0 ${method.color || ''}`}>
-                  <PaymentMethodIcon method={method} className="w-9 h-9" />
+                <span className={`payment-method-icon-wrap mx-3 sm:mx-4 flex-shrink-0 ${method.color || ''}`}>
+                  <PaymentMethodIcon method={method} className="w-8 h-8 sm:w-9 sm:h-9" />
                 </span>
                 <div className="flex-1 min-w-0">
-                  <div className="font-bold text-lg flex items-center gap-2">
+                  <div className="font-bold text-base sm:text-lg flex items-center gap-2 flex-wrap">
                     {method.name}
                     {method.manualOnlyKey && (
                       <span className="text-[10px] text-[var(--text-muted)] font-normal">{t[method.manualOnlyKey]}</span>
@@ -369,12 +495,17 @@ export default function CheckoutView({
                   )}
                 </div>
                 {isBalance && !hasEnoughBalance && (
-                  <div className="text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-400">{t.insufficientBalance}</div>
+                  <div className="text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-400 me-2">{t.insufficientBalance}</div>
                 )}
                 {method.id === 'WalletRecharge' && (
-                  <div className="text-xs font-semibold text-[var(--accent)] shrink-0 hidden sm:inline">
+                  <div className="text-xs font-semibold text-[var(--accent)] shrink-0 hidden sm:inline me-2">
                     {t.recharge || (lang === 'ar' ? 'شحن' : 'Recharge')}
                   </div>
+                )}
+                {selectable && (
+                  <span className={`pay-radio${active ? ' is-on' : ''}`} aria-hidden="true">
+                    <Check className="w-3 h-3" />
+                  </span>
                 )}
               </div>
             );
@@ -404,26 +535,16 @@ export default function CheckoutView({
           </AlertBanner>
         )}
 
-        <button
-          onClick={handleCheckoutProcess}
-          disabled={
-            isProcessing
-            || cart.length === 0
-            || (selectedMethod === 'balance' && !hasEnoughBalance)
-            || (selectedMethod === 'balance' && (stockCheck.loading || !stockCheck.available))
-            || (selectedMethod !== 'balance' && !usableMethods.some((m) => m.id === selectedMethod))
-            || (isManualWalletMethod(selectedMethod) && !isPaymentMethodReady(selectedMethod, paymentConfig))
-          }
-          className="btn btn-primary w-full py-5 text-xl font-black disabled:opacity-60"
-        >
-          {isProcessing
-            ? t.processing
-            : selectedMethod === 'balance'
-              ? t.payFromBalance
-              : selectedMethod === 'WalletRecharge'
-                ? (t.walletRechargeBtn || (lang === 'ar' ? 'شحن المحفظة للمتابعة' : 'Recharge Wallet to Continue'))
-                : t.payNow}
-        </button>
+        {/* Desktop: inline button. Phones get the sticky bar below so Pay is always on screen. */}
+        <div className="hidden lg:block">
+          <button
+            onClick={handleCheckoutProcess}
+            disabled={payDisabled}
+            className="btn btn-primary w-full py-5 text-xl font-black disabled:opacity-60"
+          >
+            {payLabel}
+          </button>
+        </div>
 
         <div className="text-center text-xs text-[var(--text-muted)] mt-4">
           {selectedMethod === 'balance'
@@ -431,6 +552,26 @@ export default function CheckoutView({
             : (isApiWalletMethod(selectedMethod, paymentConfig) ? t.samInvoiceCheckoutNote : t.instantDeliveryNote)}
         </div>
       </div>
+
+      <MobileBuyBar>
+        <div className="catalog-mobile-buybar" role="region" aria-label={t.checkout}>
+          <div className="catalog-mobile-buybar__inner">
+            <div className="min-w-0 flex-1">
+              <div className="catalog-mobile-buybar__title truncate">{t.orderTotal}</div>
+              <div className="catalog-mobile-buybar__price tabular-nums" dir="ltr">{total}</div>
+            </div>
+            <button
+              type="button"
+              onClick={handleCheckoutProcess}
+              disabled={payDisabled}
+              className="btn btn-primary catalog-mobile-buybar__btn font-bold min-w-0 touch-manipulation inline-flex items-center justify-center gap-2 disabled:opacity-60"
+            >
+              {isProcessing ? <Loader2 className="w-4 h-4 animate-spin shrink-0" /> : null}
+              <span className="truncate">{payLabel}</span>
+            </button>
+          </div>
+        </div>
+      </MobileBuyBar>
     </div>
   );
 }

@@ -465,6 +465,8 @@ export default function AppRoutes({
                 user={user}
                 navigate={navigate}
                 cart={cart}
+                games={games}
+                offers={offers}
                 submitOrder={submitOrder}
                 onOrderPaid={onOrderPaid}
                 onComplete={handleCheckoutComplete}

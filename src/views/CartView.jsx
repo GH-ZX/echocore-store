@@ -6,6 +6,7 @@ import { cartRequiresPlayerUid } from '../lib/catalogUtils';
 import { presetImageUrl } from '../lib/imageUtils';
 import { isCommerceBlockedDuringMaintenance } from '../lib/siteStatus';
 import AlertBanner from '../components/ui/AlertBanner';
+import MobileBuyBar from '../components/catalog/MobileBuyBar';
 
 function CartItemThumb({ src, name, color }) {
   const placeholder = new URL('../assets/placeholder-cover.svg', import.meta.url).href;
@@ -55,7 +56,7 @@ export default function CartView({
   const count = cart.length;
 
   return (
-    <div className="max-w-5xl mx-auto mt-4 sm:mt-6 px-2 sm:px-3 animate-fade-in pb-8">
+    <div className="max-w-5xl mx-auto mt-4 sm:mt-6 px-2 sm:px-3 animate-fade-in pb-8 max-lg:pb-40">
       <div className="flex flex-wrap items-end justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl sm:text-3xl font-black flex items-center gap-2.5">
@@ -105,7 +106,7 @@ export default function CartView({
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
           <div className="lg:col-span-2 space-y-3">
-            {cart.map((item) => {
+            {cart.map((item, itemIndex) => {
               const name = brandUserText(
                 getOfferDisplayName(item, lang, { games, relatedOffers: offers }),
               );
@@ -122,7 +123,8 @@ export default function CartView({
               return (
                 <div
                   key={getCartLineKey(item)}
-                  className="card flex items-stretch gap-3 sm:gap-4 p-3 sm:p-4 hover:border-[var(--accent)]/30 transition-colors"
+                  className="card card-enter flex items-stretch gap-3 sm:gap-4 p-3 sm:p-4 hover:border-[var(--accent)]/30 transition-colors"
+                  style={{ '--enter-i': Math.min(itemIndex, 11) }}
                 >
                   <CartItemThumb src={imageUrl} name={name} color={item.color} />
 
@@ -200,15 +202,18 @@ export default function CartView({
               </p>
             )}
 
-            <button
-              type="button"
-              onClick={onCheckout}
-              disabled={uidBlocked || maintenanceBlocked || count === 0}
-              className="btn btn-primary w-full py-3.5 sm:py-4 text-base sm:text-lg font-bold disabled:opacity-50 disabled:pointer-events-none inline-flex items-center justify-center gap-2"
-            >
-              {t.checkout}
-              <ArrowRight className="w-4 h-4 rtl:rotate-180" />
-            </button>
+            {/* Desktop only: phones use the sticky bar. (.btn sets display itself, so hide via a wrapper.) */}
+            <div className="hidden lg:block">
+              <button
+                type="button"
+                onClick={onCheckout}
+                disabled={uidBlocked || maintenanceBlocked || count === 0}
+                className="btn btn-primary w-full py-3.5 sm:py-4 text-base sm:text-lg font-bold disabled:opacity-50 disabled:pointer-events-none inline-flex items-center justify-center gap-2"
+              >
+                {t.checkout}
+                <ArrowRight className="w-4 h-4 rtl:rotate-180" />
+              </button>
+            </div>
 
             <div className="flex items-center justify-center gap-1.5 text-[11px] text-[var(--text-muted)] mt-3.5">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400/80" />
@@ -216,6 +221,28 @@ export default function CartView({
             </div>
           </aside>
         </div>
+      )}
+
+      {count > 0 && (
+        <MobileBuyBar>
+          <div className="cart-mobile-bar" role="region" aria-label={t.checkout}>
+            <div className="cart-mobile-bar__inner">
+              <div className="min-w-0 flex-1">
+                <div className="catalog-mobile-buybar__title truncate">{count} {t.cartItemsCount || t.itemsPurchased}</div>
+                <div className="catalog-mobile-buybar__price tabular-nums" dir="ltr">${total}</div>
+              </div>
+              <button
+                type="button"
+                onClick={onCheckout}
+                disabled={uidBlocked || maintenanceBlocked}
+                className="btn btn-primary catalog-mobile-buybar__btn font-bold shrink-0 touch-manipulation inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
+              >
+                {t.checkout}
+                <ArrowRight className="w-4 h-4 rtl:rotate-180" />
+              </button>
+            </div>
+          </div>
+        </MobileBuyBar>
       )}
     </div>
   );
