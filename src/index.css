@@ -10495,3 +10495,100 @@ button.profile-list-item {
   font-variant-numeric: tabular-nums;
 }
 [dir="rtl"] .sam-send__balance-amount { text-align: right; }
+
+/* =============================================================================
+   Motion system (mobile-first, RTL-safe, GPU-cheap: transform + opacity only)
+   Tokens: durations --dur-*, easing --ease-*. Everything below is switched off for
+   users who prefer reduced motion.
+   ============================================================================= */
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 150ms;
+  --dur-base: 240ms;
+  --dur-slow: 420ms;
+}
+
+/* Cards rise in with a short stagger (capped at 12 steps so late cards never feel slow).
+   Vertical only, so it reads the same in Arabic (RTL) and English. `backwards` fill: the
+   animation releases the transform afterwards so hover/press states keep working. */
+@keyframes cardRise {
+  from { opacity: 0; transform: translate3d(0, 14px, 0); }
+  to { opacity: 1; transform: none; }
+}
+
+.card-enter {
+  animation: cardRise var(--dur-slow) var(--ease-out) backwards;
+  animation-delay: calc(var(--enter-i, 0) * 45ms);
+}
+
+/* Game art fades/settles in once decoded instead of popping in. */
+.home-card-img {
+  opacity: 0;
+  transform: scale(1.04);
+  transition: opacity var(--dur-slow) var(--ease-out), transform 600ms var(--ease-out);
+}
+
+.home-card-img.is-loaded {
+  opacity: 1;
+  transform: none;
+}
+
+/* Hover zoom only on devices that actually hover — no sticky hover states on phones. */
+@media (hover: hover) and (pointer: fine) {
+  .storefront-card:not(.storefront-card--teaser):hover .home-card-img.is-loaded {
+    transform: scale(1.05);
+  }
+}
+
+/* Press feedback for touch. */
+.storefront-card:not(.storefront-card--teaser):active .home-card-img.is-loaded {
+  transform: scale(1.02);
+  transition-duration: var(--dur-fast);
+}
+
+/* Skeleton shimmer (one GPU-composited sweep instead of pulsing the whole grid). */
+@keyframes skSweep {
+  from { transform: translate3d(-100%, 0, 0); }
+  to { transform: translate3d(100%, 0, 0); }
+}
+
+@keyframes skSweepRtl {
+  from { transform: translate3d(100%, 0, 0); }
+  to { transform: translate3d(-100%, 0, 0); }
+}
+
+.sk-block {
+  position: relative;
+  overflow: hidden;
+}
+
+.sk-block::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text-primary, #fff) 7%, transparent), transparent);
+  animation: skSweep 1.4s var(--ease-in-out) infinite;
+}
+
+.sk-block:dir(rtl)::after {
+  animation-name: skSweepRtl;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-enter {
+    animation: none;
+  }
+
+  .home-card-img,
+  .home-card-img.is-loaded {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .sk-block::after {
+    animation: none;
+    opacity: 0;
+  }
+}

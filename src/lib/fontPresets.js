@@ -41,7 +41,8 @@ export const FONT_PRESETS = [
     labelAr: 'ريديكس برو',
     stack: "'Readex Pro', 'Cairo', ui-sans-serif, system-ui, sans-serif",
     weights: [400, 500, 600, 700],
-    googleId: 'Readex+Pro',
+    // Self-hosted (public/fonts + @font-face in index.html): no third-party font request.
+    googleId: null,
   },
   {
     id: 'ibm-plex-arabic',
