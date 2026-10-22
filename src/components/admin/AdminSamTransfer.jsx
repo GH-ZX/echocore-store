@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertCircle,
   ArrowUpRight,
@@ -332,6 +333,27 @@ export default function AdminSamTransfer({
       setSending(false);
     }
   };
+
+  const closeConfirm = useCallback(() => {
+    setConfirming(false);
+    setPinCode('');
+  }, []);
+
+  // While the confirm sheet is open: freeze the page behind it and let Esc dismiss it
+  // (never while a transfer is in flight).
+  useEffect(() => {
+    if (!confirming) return undefined;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e) => {
+      if (e.key === 'Escape' && !sending) closeConfirm();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [confirming, sending, closeConfirm]);
 
   const pasteRecipient = async () => {
     try {
@@ -819,20 +841,27 @@ export default function AdminSamTransfer({
         </div>
       )}
 
-      {confirming && (
+      {confirming && createPortal(
+        // Portal + z-[200]: the storefront mobile bottom nav is fixed at z-index 102 and used to
+        // cover this sheet's buttons. The sheet is height-capped (dvh) with a scrolling middle and a
+        // pinned footer, so Cancel / Confirm are always on screen, even on short phones.
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60"
-          onClick={() => { if (!sending) { setConfirming(false); setPinCode(''); } }}
+          className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/60 sm:p-4"
+          onClick={() => { if (!sending) closeConfirm(); }}
         >
           <div
-            className="w-full max-w-md rounded-3xl border border-[var(--border)] bg-[var(--bg-surface)] p-5 space-y-4 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sam-confirm-title"
+            className="flex w-full max-w-md max-h-[100dvh] sm:max-h-[90dvh] flex-col overflow-hidden rounded-t-3xl sm:rounded-3xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-2">
-              <h4 className="font-bold text-base">{t.samSendConfirmTitle}</h4>
+            <div className="flex shrink-0 items-center gap-2 px-5 pt-4 pb-1">
+              <h4 id="sam-confirm-title" className="font-bold text-base">{t.samSendConfirmTitle}</h4>
               <button
                 type="button"
-                onClick={() => { setConfirming(false); setPinCode(''); }}
+                onClick={closeConfirm}
+                disabled={sending}
                 className="sam-send__icon-btn ms-auto"
                 aria-label={t.samSendCancel}
               >
@@ -840,25 +869,27 @@ export default function AdminSamTransfer({
               </button>
             </div>
 
-            <div className="text-center py-2">
-              <div className="text-3xl font-black tabular-nums text-[var(--text-primary)]" dir="ltr">
-                {formatAmount(currency, amountNumber)}
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-5 py-2">
+              <div className="text-center py-1">
+                <div className="text-3xl font-black tabular-nums text-[var(--text-primary)]" dir="ltr">
+                  {formatAmount(currency, amountNumber)}
+                </div>
+                <p className="text-xs text-[var(--text-muted)] mt-1">{t.samSendConfirmHelp}</p>
               </div>
-              <p className="text-xs text-[var(--text-muted)] mt-1">{t.samSendConfirmHelp}</p>
+
+              <div className="rounded-2xl border border-[var(--border)] divide-y divide-[var(--border)] text-sm">
+                {nameDraft.trim() ? <ConfirmRow label={t.samSendNameLabel} value={nameDraft.trim()} /> : null}
+                <ConfirmRow label={t.samSendTo} value={recipient.trim()} mono dir="ltr" />
+                <ConfirmRow label={t.samSendFrom} value={sourceIdentifier} mono dir="ltr" />
+                <ConfirmRow label={t.samSendCurrency} value={`${currency} · ${method === 'syriatel' ? t.samSendMethodSyriatel : t.samSendMethodShamcash}`} dir="ltr" />
+                {note.trim() ? <ConfirmRow label={t.samSendNote} value={note.trim()} /> : null}
+              </div>
             </div>
 
-            <div className="rounded-2xl border border-[var(--border)] divide-y divide-[var(--border)] text-sm">
-              {nameDraft.trim() ? <ConfirmRow label={t.samSendNameLabel} value={nameDraft.trim()} /> : null}
-              <ConfirmRow label={t.samSendTo} value={recipient.trim()} mono dir="ltr" />
-              <ConfirmRow label={t.samSendFrom} value={sourceIdentifier} mono dir="ltr" />
-              <ConfirmRow label={t.samSendCurrency} value={`${currency} · ${method === 'syriatel' ? t.samSendMethodSyriatel : t.samSendMethodShamcash}`} dir="ltr" />
-              {note.trim() ? <ConfirmRow label={t.samSendNote} value={note.trim()} /> : null}
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid shrink-0 grid-cols-2 gap-2 border-t border-[var(--border)] bg-[var(--bg-surface)] px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
               <button
                 type="button"
-                onClick={() => { setConfirming(false); setPinCode(''); }}
+                onClick={closeConfirm}
                 disabled={sending}
                 className="btn btn-secondary text-sm py-3 justify-center rounded-2xl"
               >
@@ -875,7 +906,8 @@ export default function AdminSamTransfer({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
