@@ -19,10 +19,77 @@
     <meta name="twitter:image" content="https://www.echocore412.com/echo-core-logo.png" />
     <link rel="canonical" href="https://www.echocore412.com/" />
     <meta name="theme-color" content="#040812" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800;900&display=swap" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800;900&display=swap" />
+    <!-- Cairo is self-hosted (variable weight 200–900): no third-party font round trips, which are slow
+         or blocked on many mobile networks. Arabic + Latin are preloaded; latin-ext loads on demand. -->
+    <script>
+      (function () {
+        // Preload only the font the saved theme actually uses (Readex Pro or the default Cairo).
+        var family = 'cairo';
+        try {
+          var t = JSON.parse(localStorage.getItem('echocore-theme') || '{}');
+          if (/readex/i.test(t['font-sans'] || '')) family = 'readex';
+        } catch (e) {}
+        ['arabic', 'latin'].forEach(function (subset) {
+          var l = document.createElement('link');
+          l.rel = 'preload';
+          l.as = 'font';
+          l.type = 'font/woff2';
+          l.crossOrigin = 'anonymous';
+          l.href = '%BASE_URL%fonts/' + family + '-' + subset + '.woff2';
+          document.head.appendChild(l);
+        });
+      })();
+    </script>
+    <style>
+      @font-face {
+        font-family: 'Cairo';
+        font-style: normal;
+        font-weight: 200 900;
+        font-display: swap;
+        src: url(%BASE_URL%fonts/cairo-arabic.woff2) format('woff2');
+        unicode-range: U+0600-06FF, U+0750-077F, U+0870-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC4, U+10EFC-10EFF, U+1EE00-1EEFF;
+      }
+      @font-face {
+        font-family: 'Cairo';
+        font-style: normal;
+        font-weight: 200 900;
+        font-display: swap;
+        src: url(%BASE_URL%fonts/cairo-latin-ext.woff2) format('woff2');
+        unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+      }
+      @font-face {
+        font-family: 'Cairo';
+        font-style: normal;
+        font-weight: 200 900;
+        font-display: swap;
+        src: url(%BASE_URL%fonts/cairo-latin.woff2) format('woff2');
+        unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+      }
+      @font-face {
+        font-family: 'Readex Pro';
+        font-style: normal;
+        font-weight: 160 700;
+        font-display: swap;
+        src: url(%BASE_URL%fonts/readex-arabic.woff2) format('woff2');
+        unicode-range: U+0600-06FF, U+0750-077F, U+0870-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC4, U+10EFC-10EFF, U+1EE00-1EEFF;
+      }
+      @font-face {
+        font-family: 'Readex Pro';
+        font-style: normal;
+        font-weight: 160 700;
+        font-display: swap;
+        src: url(%BASE_URL%fonts/readex-latin-ext.woff2) format('woff2');
+        unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+      }
+      @font-face {
+        font-family: 'Readex Pro';
+        font-style: normal;
+        font-weight: 160 700;
+        font-display: swap;
+        src: url(%BASE_URL%fonts/readex-latin.woff2) format('woff2');
+        unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+      }
+    </style>
     <title>ECHOCORE Store</title>
     <script>
       (function () {

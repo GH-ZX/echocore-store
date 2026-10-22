@@ -1,3 +1,4 @@
+import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Ticket, Gamepad2 } from 'lucide-react';
 import AdminEditButton from '../admin/AdminEditButton';
@@ -20,7 +21,14 @@ export default function HomeGameCard({
   onEditGame,
   isAdmin = false,
   className = '',
+  priority = false,
+  enterIndex = null,
 }) {
+  const [imgLoaded, setImgLoaded] = useState(false);
+  // Images served from the HTTP cache can finish before React attaches onLoad.
+  const imgRef = useCallback((node) => {
+    if (node && node.complete && node.naturalWidth > 0) setImgLoaded(true);
+  }, []);
   const isAr = lang === 'ar';
   const isVoucher = variant === 'voucher'
     || variant === 'account'
@@ -69,7 +77,8 @@ export default function HomeGameCard({
       <CardElement
         {...(teaser ? {} : { to: gamePath })}
         onClick={teaser ? undefined : handleOpen}
-        className={`storefront-card home-game-card${isVoucher ? ' home-game-card--ticket' : ''} group flex flex-col transition-all duration-300 ${
+        style={enterIndex != null ? { '--enter-i': Math.min(enterIndex, 11) } : undefined}
+        className={`storefront-card home-game-card${enterIndex != null ? ' card-enter' : ''}${isVoucher ? ' home-game-card--ticket' : ''} group flex flex-col transition-all duration-300 ${
           teaser
             ? 'storefront-card--teaser home-game-card--teaser pointer-events-none select-none'
             : 'cursor-pointer active:scale-[0.99]'
@@ -82,9 +91,12 @@ export default function HomeGameCard({
             <img
               src={presetGameCardImage(cardImageUrl)}
               alt={gameName}
-              loading="lazy"
+              ref={imgRef}
+              loading={priority ? 'eager' : 'lazy'}
+              fetchPriority={priority ? 'high' : undefined}
               decoding="async"
-              className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              onLoad={() => setImgLoaded(true)}
+              className={`home-card-img absolute inset-0 w-full h-full object-cover${imgLoaded ? ' is-loaded' : ''}`}
             />
           ) : (
             <div className="absolute inset-0 bg-gradient-to-br from-[var(--bg-elevated)] to-[var(--bg-primary)]" />

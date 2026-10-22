@@ -143,3 +143,13 @@
   overflow: hidden;
   z-index: 1;
 }
+
+/* Touch devices never hover: drop the three masked glow layers per card entirely.
+   (46+ cards x 3 masked/blended layers is real GPU cost on mid-range phones.) */
+@media (hover: none), (pointer: coarse) {
+  .border-glow-card::before,
+  .border-glow-card::after,
+  .border-glow-card > .edge-light {
+    display: none;
+  }
+}

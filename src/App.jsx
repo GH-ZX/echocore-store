@@ -100,6 +100,13 @@ import {
 import { applyTheme, fetchSiteTheme, normalizeThemeOverrides } from './lib/theme';
 import { DEFAULT_HOME_LAYOUT, fetchHomeLayout, normalizeHomeLayout } from './lib/homeLayout';
 import { fetchApprovedReviews } from './lib/customerReviews';
+import {
+  catalogConfigKey,
+  readStorefrontCache,
+  sameRows,
+  writeCachedCatalog,
+  writeStorefrontCache,
+} from './lib/storefrontCache';
 
 import { translations } from './data/translations';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
@@ -166,8 +173,11 @@ export default function App() {
     isAdmin: user?.role === 'admin',
     defaultCatalogOnly: paymentConfig.g2bulkCatalogOnly,
   });
-  const [homeLayout, setHomeLayout] = useState(DEFAULT_HOME_LAYOUT);
-  const [reviews, setReviews] = useState([]);
+  const [homeLayout, setHomeLayout] = useState(() => {
+    const cached = readStorefrontCache('homeLayout');
+    return cached ? normalizeHomeLayout(cached) : DEFAULT_HOME_LAYOUT;
+  });
+  const [reviews, setReviews] = useState(() => readStorefrontCache('reviews') || []);
   const [siteStatus, setSiteStatus] = useState({
     maintenanceEnabled: false,
     maintenanceMessageAr: '',
@@ -1584,18 +1594,22 @@ export default function App() {
 
   const refreshHomeLayout = async (layout) => {
     if (layout) {
-      setHomeLayout(normalizeHomeLayout(layout));
+      const normalized = normalizeHomeLayout(layout);
+      setHomeLayout(normalized);
+      writeStorefrontCache('homeLayout', normalized);
       return;
     }
     const nextLayout = await fetchHomeLayout();
     if (nextLayout) {
-      setHomeLayout(nextLayout);
+      setHomeLayout((prev) => (sameRows([prev], [nextLayout]) ? prev : nextLayout));
+      writeStorefrontCache('homeLayout', nextLayout);
     }
   };
 
   const refreshReviews = async () => {
     const nextReviews = await fetchApprovedReviews();
-    setReviews(nextReviews);
+    setReviews((prev) => (sameRows(prev, nextReviews) ? prev : nextReviews));
+    writeStorefrontCache('reviews', nextReviews);
   };
 
   const loadLiveCatalog = async (pullSelection = null) => {
@@ -1642,10 +1656,22 @@ export default function App() {
 
     const filteredGames = filterGamesByPullSelection(gamesData || [], pull);
     const filteredOffers = filterOffersByPullSelection(offersData || [], filteredGames, pull);
-    setGames(sortGamesByCarousel(filteredGames));
+    const sortedGames = sortGamesByCarousel(filteredGames);
     const cleaned = stripOffersSecrets(filteredOffers);
+    // Cache the PUBLIC rows (before any admin wholesale overlay) for instant repeat visits.
+    writeCachedCatalog({
+      games: sortedGames,
+      offers: cleaned,
+      configKey: catalogConfigKey({
+        g2bulkCatalogMode: 'sync',
+        g2bulkCatalogOnly: catalogOnly,
+        g2bulkPullSelection: pullSelection,
+      }),
+    });
+    // Skip the state update when a background revalidate found nothing new (no re-render churn).
+    setGames((prev) => (sameRows(prev, sortedGames) ? prev : sortedGames));
     const withCost = await withAdminWholesale(cleaned, { isAdmin: user?.role === 'admin' });
-    setOffers(withCost);
+    setOffers((prev) => (sameRows(prev, withCost) ? prev : withCost));
   };
 
   const handleLiveCatalogUpdate = useCallback(({ parent, games: variantGames = [], offers: groupOffers = [] }) => {
