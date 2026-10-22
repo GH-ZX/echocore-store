@@ -116,3 +116,13 @@ export async function setTelegramBotCommands() {
   if (!res.ok) throw new Error(`Set commands failed: ${res.status}`);
   return res.json();
 }
+
+/** Admin: delivery health of Telegram sends in the last 24h (dashboard only, never sent to Telegram). */
+export async function fetchTelegramDeliveryStats() {
+  const { data, error } = await supabase.rpc('get_telegram_delivery_stats');
+  if (error) {
+    if (isMissingRpc(error)) return null;
+    throw error;
+  }
+  return data || null;
+}

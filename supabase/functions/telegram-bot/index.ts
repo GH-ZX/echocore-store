@@ -982,18 +982,7 @@ async function cmdApprove(ctx: BotContext, args: string) {
   }
   const result = data as { userId: string; amount: number; newBalance: number };
 
-  const { data: customer } = await ctx.supabase
-    .from('profiles').select('telegram_chat_id').eq('id', result.userId).maybeSingle();
-  if (customer?.telegram_chat_id) {
-    const cl = await langForChat(ctx, String(customer.telegram_chat_id));
-    await sendMessage(ctx.botToken, Number(customer.telegram_chat_id),
-      tr(cl, 'custApproved', { amount: money(result.amount), balance: money(result.newBalance) }),
-      { reply_markup: { inline_keyboard: [[
-        { text: tr(cl, 'btnShopNow'), callback_data: 'menu' },
-        { text: tr(cl, 'btnBalance'), callback_data: 'my_balance' },
-      ]] } },
-    );
-  }
+  // The customer DM is sent by the recharge_requests status trigger (covers dashboard + bot).
 
   await reply(ctx,
     T(ctx, 'approved', { amount: money(result.amount), balance: money(result.newBalance) }),
@@ -1023,15 +1012,7 @@ async function cmdReject(ctx: BotContext, args: string) {
   }
   const result = data as { userId: string; amount: number };
 
-  const { data: customer } = await ctx.supabase
-    .from('profiles').select('telegram_chat_id').eq('id', result.userId).maybeSingle();
-  if (customer?.telegram_chat_id) {
-    const cl = await langForChat(ctx, String(customer.telegram_chat_id));
-    await sendMessage(ctx.botToken, Number(customer.telegram_chat_id),
-      tr(cl, 'custRejected', { amount: money(result.amount) }),
-      { reply_markup: { inline_keyboard: [[{ text: tr(cl, 'btnSupport'), url: `${STORE_URL}/contact` }]] } },
-    );
-  }
+  // The customer DM is sent by the recharge_requests status trigger (covers dashboard + bot).
 
   await reply(ctx, T(ctx, 'rejected'),
     { reply_markup: { inline_keyboard: [[{ text: T(ctx, 'btnPending'), callback_data: 'admin_pending' }]] } });

@@ -22,6 +22,7 @@ import {
   saveTelegramAlertsSettings,
   sendTestTelegramAlert,
   fetchTelegramBotInfo,
+  fetchTelegramDeliveryStats,
   setupTelegramWebhook,
   setTelegramBotCommands,
 } from '../../lib/telegramAlerts';
@@ -50,6 +51,7 @@ export default function AdminTelegramSettings({ t = {}, embedded = false }) {
   const [tokenInput, setTokenInput] = useState('');
   const [setupLoading, setSetupLoading] = useState('');
   const [botInfo, setBotInfo] = useState(null);
+  const [deliveryStats, setDeliveryStats] = useState(null);
   const [form, setForm] = useState({
     telegram_alerts_enabled: false,
     telegram_bot_token_set: false,
@@ -68,6 +70,7 @@ export default function AdminTelegramSettings({ t = {}, embedded = false }) {
       setTokenInput('');
       // Load bot info in background (non-blocking)
       fetchTelegramBotInfo().then(setBotInfo).catch(() => {});
+      fetchTelegramDeliveryStats().then(setDeliveryStats).catch(() => {});
     } catch (err) {
       setError(err.message || t.telegramLoadFailed);
     } finally {
@@ -385,6 +388,24 @@ export default function AdminTelegramSettings({ t = {}, embedded = false }) {
                 {botInfo.telegram_webhook_secret_set ? '✓ Active' : '⚠ Not set'}
               </span>
             </div>
+          </div>
+        )}
+
+        {deliveryStats && (
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]/30 px-4 py-3 space-y-1">
+            <span className="text-xs font-medium text-[var(--text-sec)]">{t.telegramDeliveryTitle || 'Delivery (last 24h)'}</span>
+            <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+              <span className="text-green-400">{t.telegramDeliverySent || 'Delivered'}: {deliveryStats.sent ?? 0}</span>
+              <span className={deliveryStats.failed > 0 ? 'text-red-400' : 'text-[var(--text-sec)]'}>
+                {t.telegramDeliveryFailed || 'Failed'}: {deliveryStats.failed ?? 0}
+              </span>
+              <span className="text-[var(--text-sec)]">{t.telegramDeliveryPending || 'Pending'}: {deliveryStats.pending ?? 0}</span>
+            </div>
+            {deliveryStats.failed > 0 && deliveryStats.last_error && (
+              <p dir="ltr" className="text-xs text-red-400 break-words">
+                {t.telegramDeliveryLastError || 'Last error'}: {deliveryStats.last_error}
+              </p>
+            )}
           </div>
         )}
 
