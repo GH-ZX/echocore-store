@@ -520,6 +520,12 @@ async function sendOrderDetail(ctx: BotContext, order: {
     buttons.push([{ text: T(ctx, 'btnInvoice'), url: `${STORE_URL}/invoice/order/${order.id}` }]);
   } else if (order.fulfillment_status === 'failed') {
     buttons.push([{ text: T(ctx, 'btnSupport'), url: `${STORE_URL}/contact` }]);
+    if (ctx.isAdmin && !ctx.isGroup) {
+      buttons.push([
+        { text: T(ctx, 'btnRetry'), callback_data: `rt:${order.id}` },
+        { text: T(ctx, 'btnRefund'), callback_data: `rf:${order.id}` },
+      ]);
+    }
   }
   buttons.push([{ text: T(ctx, 'btnOrders'), callback_data: 'my_orders' }]);
 
@@ -1154,6 +1160,158 @@ async function cmdAdminOrders(ctx: BotContext, failedOnly: boolean) {
   );
 }
 
+// ─── Admin: retry fulfilment / refund a failed order ───────────────
+// Both actions need an explicit confirm tap and only work for a linked admin in a private chat.
+// Internal error text is never shown; the checks mirror the dashboard and the SQL refund path.
+
+type AdminOrder = {
+  id: string; order_ref: string; total: number; status: string; payment_method: string;
+  fulfillment_status: string | null; g2bulk_order_id: string | null; g2bulk_metadata: unknown; user_id: string | null;
+};
+
+async function loadAdminOrder(ctx: BotContext, id: string): Promise<AdminOrder | null> {
+  const { data } = await ctx.supabase
+    .from('orders')
+    .select('id, order_ref, total, status, payment_method, fulfillment_status, g2bulk_order_id, g2bulk_metadata, user_id')
+    .eq('id', id)
+    .maybeSingle();
+  return (data as AdminOrder | null) ?? null;
+}
+
+/** Decides what a retry would do. Mirrors canRetryOrderFulfillment() in the dashboard (stricter: no timed in-flight restarts). */
+function retryPlan(order: AdminOrder): { ok: false; key: StringKey } | { ok: true; mode: 'poll' | 'purchase' } {
+  const meta = (order.g2bulk_metadata || {}) as Record<string, unknown>;
+  if (meta.balance_refunded === true || meta.balance_refunded === 'true') return { ok: false, key: 'retryBlockedRefunded' };
+  if (meta.do_not_refulfill === true || meta.free_after_refund === true) return { ok: false, key: 'retryBlockedLocked' };
+  if (order.status !== 'completed') return { ok: false, key: 'retryNotPaid' };
+  const fs = order.fulfillment_status || 'pending';
+  if (fs === 'fulfilled' || fs === 'skipped') return { ok: false, key: 'retryAlreadyDone' };
+  const supplierId = order.g2bulk_order_id || meta.g2bulk_order_id || meta.g2bulkOrderId;
+  // A known supplier order => poll only, never a second purchase.
+  if (supplierId) return { ok: true, mode: 'poll' };
+  if (fs === 'failed') return { ok: true, mode: 'purchase' };
+  return { ok: false, key: 'retryNoSupplier' };
+}
+
+function backToOrderRow(ctx: BotContext, orderId: string) {
+  return [{ text: T(ctx, 'btnBackOrder'), callback_data: `track:${orderId}` }];
+}
+
+async function cmdRetryAsk(ctx: BotContext, orderId: string) {
+  if (!(await requireAdmin(ctx))) return;
+  if (!UUID_RE.test(orderId)) return;
+  const order = await loadAdminOrder(ctx, orderId);
+  if (!order) { await reply(ctx, T(ctx, 'orderNotFound')); return; }
+
+  const plan = retryPlan(order);
+  if (!plan.ok) {
+    await reply(ctx, T(ctx, plan.key), { reply_markup: { inline_keyboard: [backToOrderRow(ctx, order.id)] } });
+    return;
+  }
+  await reply(ctx,
+    T(ctx, plan.mode === 'poll' ? 'retryConfirmPoll' : 'retryConfirmPurchase', {
+      ref: esc(order.order_ref), amount: money(order.total),
+    }),
+    { reply_markup: { inline_keyboard: [
+      [{ text: T(ctx, 'btnConfirmRetry'), callback_data: `rtc:${order.id}` }],
+      backToOrderRow(ctx, order.id),
+    ] } });
+}
+
+async function cmdRetryRun(ctx: BotContext, orderId: string) {
+  if (!(await requireAdmin(ctx))) return;
+  if (!UUID_RE.test(orderId)) return;
+  // Re-check at execution time: state may have changed since the confirm screen.
+  const order = await loadAdminOrder(ctx, orderId);
+  if (!order) { await reply(ctx, T(ctx, 'orderNotFound')); return; }
+  const plan = retryPlan(order);
+  if (!plan.ok) {
+    await reply(ctx, T(ctx, plan.key), { reply_markup: { inline_keyboard: [backToOrderRow(ctx, order.id)] } });
+    return;
+  }
+
+  const res = await callG2bulk({
+    action: 'fulfillOrder',
+    orderId: order.id,
+    ...(plan.mode === 'poll' ? { pollOnly: true, mode: 'poll' } : {}),
+  }, 55000);
+
+  await ctx.supabase.rpc('try_append_site_log', {
+    p_category: 'order',
+    p_event_type: 'retry_via_telegram',
+    p_severity: 'info',
+    p_subject_user_id: order.user_id,
+    p_actor_user_id: ctx.adminProfileId,
+    p_metadata: { orderId: order.id, orderRef: order.order_ref, mode: plan.mode, accepted: res?.success !== false },
+  });
+
+  if (res?.success === false) {
+    await reply(ctx, T(ctx, 'retryFailed'), { reply_markup: { inline_keyboard: [backToOrderRow(ctx, order.id)] } });
+    return;
+  }
+  await reply(ctx, T(ctx, 'retryStarted', { ref: esc(order.order_ref) }),
+    { reply_markup: { inline_keyboard: [backToOrderRow(ctx, order.id)] } });
+}
+
+const REFUND_ERROR_KEYS: Record<string, StringKey> = {
+  refund_already: 'refundAlready',
+  refund_not_failed: 'refundNotFailed',
+  refund_not_balance: 'refundNotBalance',
+  refund_delivered: 'refundDelivered',
+  refund_locked: 'refundLocked',
+  refund_not_found: 'orderNotFound',
+};
+
+function refundErrorKey(message: string | undefined): StringKey {
+  const hit = Object.keys(REFUND_ERROR_KEYS).find((k) => (message || '').includes(k));
+  return hit ? REFUND_ERROR_KEYS[hit] : 'refundFailed';
+}
+
+async function cmdRefundAsk(ctx: BotContext, orderId: string) {
+  if (!(await requireAdmin(ctx))) return;
+  if (!UUID_RE.test(orderId)) return;
+  const order = await loadAdminOrder(ctx, orderId);
+  if (!order) { await reply(ctx, T(ctx, 'orderNotFound')); return; }
+
+  const meta = (order.g2bulk_metadata || {}) as Record<string, unknown>;
+  let blocked: StringKey | null = null;
+  if (meta.balance_refunded === true || meta.balance_refunded === 'true') blocked = 'refundAlready';
+  else if (order.status !== 'completed' || order.fulfillment_status !== 'failed') blocked = 'refundNotFailed';
+  else if (order.payment_method !== 'balance' || !order.user_id) blocked = 'refundNotBalance';
+  if (blocked) {
+    await reply(ctx, T(ctx, blocked), { reply_markup: { inline_keyboard: [backToOrderRow(ctx, order.id)] } });
+    return;
+  }
+  await reply(ctx,
+    T(ctx, 'refundConfirm', { ref: esc(order.order_ref), amount: money(order.total) }),
+    { reply_markup: { inline_keyboard: [
+      [{ text: T(ctx, 'btnConfirmRefund'), callback_data: `rfc:${order.id}` }],
+      backToOrderRow(ctx, order.id),
+    ] } });
+}
+
+async function cmdRefundRun(ctx: BotContext, orderId: string) {
+  if (!(await requireAdmin(ctx))) return;
+  if (!UUID_RE.test(orderId)) return;
+
+  // Row-locked in SQL; the FULFILL-REFUND reference makes a double tap harmless.
+  const { data, error } = await ctx.supabase.rpc('telegram_refund_failed_order', {
+    p_order_id: orderId,
+    p_admin_id: ctx.adminProfileId,
+  });
+  if (error || !data) {
+    console.error('refund error:', error?.message);
+    await reply(ctx, T(ctx, refundErrorKey(error?.message)), {
+      reply_markup: { inline_keyboard: [backToOrderRow(ctx, orderId)] },
+    });
+    return;
+  }
+  const r = data as { orderRef: string; amount: number; newBalance: number };
+  await reply(ctx,
+    T(ctx, 'refundDone', { ref: esc(r.orderRef), amount: money(r.amount), balance: money(r.newBalance) }),
+    { reply_markup: { inline_keyboard: [backToOrderRow(ctx, orderId)] } });
+}
+
 // ─── Callback query handler ─────────────────────────────────────────────────
 
 async function handleCallback(ctx: BotContext, data: string) {
@@ -1204,6 +1362,10 @@ async function handleCallback(ctx: BotContext, data: string) {
     }
     await sendOrderDetail(ctx, order);
   }
+  else if (data.startsWith('rt:')) await cmdRetryAsk(ctx, data.slice(3));
+  else if (data.startsWith('rtc:')) await cmdRetryRun(ctx, data.slice(4));
+  else if (data.startsWith('rf:')) await cmdRefundAsk(ctx, data.slice(3));
+  else if (data.startsWith('rfc:')) await cmdRefundRun(ctx, data.slice(4));
   else if (data.startsWith('approve:')) await cmdApprove(ctx, data.slice(8));
   else if (data.startsWith('reject:')) await cmdReject(ctx, data.slice(7));
 }
