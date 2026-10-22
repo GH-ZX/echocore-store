@@ -10592,3 +10592,168 @@ button.profile-list-item {
     opacity: 0;
   }
 }
+
+/* =============================================================================
+   Cart / checkout (mobile-first): sticky action bars, order summary, payment methods
+   ============================================================================= */
+
+/* Cart page: the storefront bottom nav is visible below 768px, so the bar sits above it. */
+.cart-mobile-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(5.1rem + env(safe-area-inset-bottom, 0px));
+  z-index: 90;
+  padding-inline: 0.75rem;
+  pointer-events: none;
+}
+
+.cart-mobile-bar__inner {
+  pointer-events: auto;
+  max-width: 40rem;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  border-radius: 1.1rem;
+  background: color-mix(in srgb, var(--bg-surface) 96%, transparent);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  animation: cardRise var(--dur-base, 240ms) var(--ease-out, ease-out) backwards;
+}
+
+/* 768px+: the bottom nav is gone, so sit flush with the screen edge. */
+@media (min-width: 768px) {
+  .cart-mobile-bar {
+    bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (min-width: 1024px) {
+  .cart-mobile-bar {
+    display: none;
+  }
+}
+
+/* Order summary on the checkout step. */
+.checkout-summary {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--bg-surface) 70%, transparent);
+  padding: 0.75rem 0.9rem;
+}
+
+.checkout-summary__title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+}
+
+.checkout-summary__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 9.5rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.checkout-summary__row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+  font-size: 0.85rem;
+  color: var(--text-sec);
+}
+
+.checkout-summary__row + .checkout-summary__row {
+  border-top: 1px dashed color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.checkout-summary__total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.45rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border);
+  font-weight: 700;
+}
+
+/* Payment method rows: clear selected state + a radio indicator (works in RTL: uses logical order). */
+.pay-method {
+  transition: border-color var(--dur-fast, 150ms) ease, background-color var(--dur-fast, 150ms) ease,
+    transform var(--dur-fast, 150ms) var(--ease-out, ease-out);
+}
+
+.pay-method:active:not([aria-disabled='true']) {
+  transform: scale(0.985);
+}
+
+.pay-method:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.pay-radio {
+  flex: 0 0 auto;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  border: 2px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  transition: background-color var(--dur-fast, 150ms) ease, border-color var(--dur-fast, 150ms) ease,
+    color var(--dur-fast, 150ms) ease, transform var(--dur-base, 240ms) var(--ease-out, ease-out);
+}
+
+.pay-radio.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  transform: scale(1.08);
+}
+
+/* Tap-to-copy chip. */
+.copy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 1.9rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-sec);
+  font-size: 0.72rem;
+  font-weight: 700;
+  touch-action: manipulation;
+  transition: color var(--dur-fast, 150ms) ease, border-color var(--dur-fast, 150ms) ease,
+    background-color var(--dur-fast, 150ms) ease;
+}
+
+.copy-chip:active {
+  transform: scale(0.96);
+}
+
+.copy-chip.is-copied {
+  color: #34d399;
+  border-color: color-mix(in srgb, #34d399 45%, var(--border));
+  background: color-mix(in srgb, #34d399 12%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cart-mobile-bar__inner {
+    animation: none;
+  }
+
+  .pay-radio.is-on {
+    transform: none;
+  }
+}
