@@ -919,7 +919,7 @@ async function cmdPending(ctx: BotContext) {
 
   const { data: recharges } = await ctx.supabase
     .from('recharge_requests')
-    .select('id, user_id, amount, reference, payment_method, status, created_at')
+    .select('id, user_id, amount, reference, payment_method, status, created_at, payment_txn_ref, payment_proof_path')
     .in('status', ['pending', 'payment_sent'])
     .order('created_at', { ascending: true })
     .limit(10);
@@ -940,7 +940,8 @@ async function cmdPending(ctx: BotContext) {
     const p = profileMap.get(r.user_id);
     const name = p?.username || p?.name || '—';
     const date = new Date(r.created_at).toLocaleString(ctx.lang === 'ar' ? 'ar' : 'en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-    return `${i + 1}. <b>${esc(name)}</b> — ${money(r.amount)} · ${date}\n   <code>${esc(r.reference)}</code>`;
+    const proof = [r.payment_txn_ref ? `<code>${esc(r.payment_txn_ref)}</code>` : '', r.payment_proof_path ? '🧾' : ''].filter(Boolean).join(' ');
+    return `${i + 1}. <b>${esc(name)}</b> — ${money(r.amount)} · ${date}\n   <code>${esc(r.reference)}</code>${proof ? `\n   ${proof}` : ''}`;
   });
 
   await reply(ctx,

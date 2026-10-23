@@ -1,14 +1,51 @@
--- ShamCash manual fallback
---  * Admin can enable a manual ShamCash option (wallet id in shamcash_pay_code, QR optional) that runs
---    ALONGSIDE Sam API mode, for when the automatic provider is down.
---  * New recharge method id 'ShamCashManual' (USD only). Customer pays the wallet id with the reference,
---    taps "I've paid", an admin verifies and approves (existing flow). Telegram alerts the admins.
+-- ShamCash manual fallback (runs ALONGSIDE Sam API mode)
+--  * Admin enables it in Admin > Payments (toggle + ShamCash wallet id in shamcash_pay_code; QR optional).
+--  * Recharge method id 'ShamCashManual': USD or SYP, never auto-cancelled while waiting for the customer.
+--  * Customer proves the payment with a ShamCash transaction id (#digits) and/or a receipt image uploaded to a
+--    PRIVATE bucket; the same transaction id cannot back two recharges. An admin verifies and approves
+--    (existing flow); Telegram alerts the admins.
 
 ALTER TABLE public.store_settings
   ADD COLUMN IF NOT EXISTS shamcash_manual_fallback boolean NOT NULL DEFAULT false;
 
 COMMENT ON COLUMN public.store_settings.shamcash_manual_fallback IS
   'Show a manual ShamCash transfer option on the recharge page even in Sam API mode (needs shamcash_pay_code).';
+
+ALTER TABLE public.recharge_requests
+  ADD COLUMN IF NOT EXISTS payment_txn_ref text,
+  ADD COLUMN IF NOT EXISTS payment_proof_path text;
+
+COMMENT ON COLUMN public.recharge_requests.payment_txn_ref IS 'Customer-supplied ShamCash transaction id (#digits) for manual payments.';
+COMMENT ON COLUMN public.recharge_requests.payment_proof_path IS 'Path of the uploaded receipt image in the private payment-proofs bucket.';
+
+-- One transaction id can back only one claimed/approved recharge.
+CREATE UNIQUE INDEX IF NOT EXISTS recharge_requests_txn_ref_unique
+  ON public.recharge_requests (lower(payment_txn_ref))
+  WHERE payment_txn_ref IS NOT NULL AND status IN ('payment_sent', 'approved');
+
+-- Private bucket for receipt images: customers write only inside their own folder, admins read everything.
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('payment-proofs', 'payment-proofs', false, 5242880, ARRAY['image/jpeg', 'image/png', 'image/webp'])
+ON CONFLICT (id) DO UPDATE
+  SET public = false,
+      file_size_limit = 5242880,
+      allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp'];
+
+DROP POLICY IF EXISTS payment_proofs_insert_own ON storage.objects;
+CREATE POLICY payment_proofs_insert_own ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    bucket_id = 'payment-proofs'
+    AND (storage.foldername(name))[1] = (SELECT auth.uid())::text
+  );
+
+DROP POLICY IF EXISTS payment_proofs_select_own_or_admin ON storage.objects;
+CREATE POLICY payment_proofs_select_own_or_admin ON storage.objects
+  FOR SELECT TO authenticated
+  USING (
+    bucket_id = 'payment-proofs'
+    AND ((storage.foldername(name))[1] = (SELECT auth.uid())::text OR public.is_admin())
+  );
 
 CREATE OR REPLACE FUNCTION public.get_payment_methods()
  RETURNS json
@@ -187,12 +224,7 @@ BEGIN
   FROM store_settings
   WHERE id = 1;
 
-  -- Manual transfers are USD-only (no SYP invoice / exchange snapshot).
-  IF v_method = 'ShamCashManual' THEN
-    v_pay_currency := 'USD';
-  END IF;
-
-  IF v_wallet_mode <> 'api' AND v_pay_currency = 'SYP' THEN
+  IF v_wallet_mode <> 'api' AND v_pay_currency = 'SYP' AND v_method <> 'ShamCashManual' THEN
     RAISE EXCEPTION 'SYP recharge is only available in Sam API mode';
   END IF;
 
@@ -306,7 +338,13 @@ BEGIN
 END;
 $function$;
 
-CREATE OR REPLACE FUNCTION public.mark_recharge_payment_sent(p_request_id uuid)
+DROP FUNCTION IF EXISTS public.mark_recharge_payment_sent(uuid);
+
+CREATE OR REPLACE FUNCTION public.mark_recharge_payment_sent(
+  p_request_id uuid,
+  p_txn_ref text DEFAULT NULL,
+  p_proof_path text DEFAULT NULL
+)
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -318,6 +356,8 @@ DECLARE
   v_user_name text;
   v_current_balance numeric;
   v_wallet_mode text;
+  v_txn text := nullif(trim(COALESCE(p_txn_ref, '')), '');
+  v_proof text := nullif(trim(COALESCE(p_proof_path, '')), '');
 BEGIN
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'Not authenticated';
@@ -341,13 +381,46 @@ BEGIN
     RAISE EXCEPTION 'Manual payment confirmation is not used in Sam API wallet mode';
   END IF;
 
+  -- Proof of payment: ShamCash transaction id (#digits) and/or a receipt image uploaded to our private bucket.
+  IF v_txn IS NOT NULL AND v_txn !~ '^#[0-9]{3,20}$' THEN
+    RAISE EXCEPTION 'invalid_txn_ref';
+  END IF;
+  IF v_proof IS NOT NULL THEN
+    IF left(v_proof, length(v_user_id::text) + 1) <> v_user_id::text || '/' OR length(v_proof) > 200 THEN
+      RAISE EXCEPTION 'invalid_proof_path';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM storage.objects o WHERE o.bucket_id = 'payment-proofs' AND o.name = v_proof) THEN
+      RAISE EXCEPTION 'proof_not_found';
+    END IF;
+  END IF;
+  IF v_row.payment_method = 'ShamCashManual'
+     AND v_txn IS NULL AND v_proof IS NULL
+     AND v_row.payment_txn_ref IS NULL AND v_row.payment_proof_path IS NULL THEN
+    RAISE EXCEPTION 'proof_required';
+  END IF;
+  IF v_txn IS NOT NULL AND EXISTS (
+    SELECT 1 FROM recharge_requests x
+    WHERE lower(x.payment_txn_ref) = lower(v_txn)
+      AND x.id <> p_request_id
+      AND x.status IN ('payment_sent', 'approved')
+  ) THEN
+    RAISE EXCEPTION 'txn_ref_used';
+  END IF;
+
   IF v_row.status NOT IN ('pending', 'payment_sent') THEN
     RAISE EXCEPTION 'This recharge request can no longer be updated';
   END IF;
 
-  UPDATE recharge_requests
-    SET status = 'payment_sent', updated_at = now()
-    WHERE id = p_request_id;
+  BEGIN
+    UPDATE recharge_requests
+      SET status = 'payment_sent',
+          payment_txn_ref = COALESCE(v_txn, payment_txn_ref),
+          payment_proof_path = COALESCE(v_proof, payment_proof_path),
+          updated_at = now()
+      WHERE id = p_request_id;
+  EXCEPTION WHEN unique_violation THEN
+    RAISE EXCEPTION 'txn_ref_used';
+  END;
 
   SELECT name, balance INTO v_user_name, v_current_balance
   FROM profiles WHERE id = v_row.user_id;
@@ -396,6 +469,198 @@ BEGIN
     'amount', v_row.amount,
     'status', 'payment_sent',
     'currentBalance', v_current_balance
+  );
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.mark_recharge_payment_sent(uuid, text, text) FROM public, anon;
+GRANT EXECUTE ON FUNCTION public.mark_recharge_payment_sent(uuid, text, text) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.expire_stale_pending_recharges(p_max_age_minutes integer DEFAULT 20)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_minutes int := GREATEST(10, LEAST(COALESCE(p_max_age_minutes, 20), 1440));
+  v_cutoff timestamptz := now() - make_interval(mins => v_minutes);
+  v_cancelled int := 0;
+  v_ids uuid[] := ARRAY[]::uuid[];
+  v_uid uuid := auth.uid();
+  -- Non-admins may only clean up their OWN stale recharges (never other users').
+  v_own_only boolean := v_uid IS NOT NULL AND NOT public.is_admin();
+BEGIN
+
+  -- 1) pending/payment_sent with expired Sam invoice
+  WITH expired_inv AS (
+    SELECT DISTINCT r.id
+    FROM public.recharge_requests r
+    JOIN public.sam_invoices si
+      ON si.entity_type = 'recharge'
+     AND si.entity_id = r.id
+    WHERE r.status IN ('pending', 'payment_sent')
+      AND (NOT v_own_only OR r.user_id = v_uid)
+      AND (
+        COALESCE(si.status, '') IN ('expired', 'failed', 'cancelled')
+        OR (si.expires_at IS NOT NULL AND si.expires_at <= now())
+      )
+  ),
+  upd AS (
+    UPDATE public.recharge_requests r
+    SET status = 'cancelled', updated_at = now()
+    FROM expired_inv e
+    WHERE r.id = e.id
+      AND r.status IN ('pending', 'payment_sent')
+    RETURNING r.id
+  )
+  SELECT coalesce(array_agg(id), ARRAY[]::uuid[]) INTO v_ids FROM upd;
+
+  v_cancelled := coalesce(array_length(v_ids, 1), 0);
+
+  -- 2) Abandoned pending without a paid path — older than cutoff
+  WITH stale AS (
+    UPDATE public.recharge_requests r
+    SET status = 'cancelled', updated_at = now()
+    WHERE r.status = 'pending'
+      AND (NOT v_own_only OR r.user_id = v_uid)
+      AND r.created_at < v_cutoff
+      AND r.payment_method IS DISTINCT FROM 'ShamCashManual'
+      AND r.id <> ALL (v_ids)
+    RETURNING r.id
+  )
+  SELECT v_cancelled + coalesce((SELECT count(*)::int FROM stale), 0)
+  INTO v_cancelled;
+
+  -- Mark open Sam invoices as expired for cancelled recharges (best-effort)
+  BEGIN
+    UPDATE public.sam_invoices si
+    SET status = 'expired'
+    WHERE si.entity_type = 'recharge'
+      AND si.entity_id IN (
+        SELECT id FROM public.recharge_requests
+        WHERE status = 'cancelled'
+          AND (NOT v_own_only OR user_id = v_uid)
+          AND updated_at > now() - interval '2 minutes'
+      )
+      AND COALESCE(si.status, '') NOT IN ('paid', 'completed', 'cancelled', 'expired');
+  EXCEPTION
+    WHEN undefined_table THEN NULL;
+    WHEN OTHERS THEN NULL;
+  END;
+
+  RETURN jsonb_build_object(
+    'cancelledPending', v_cancelled,
+    'maxAgeMinutes', v_minutes,
+    'cutoff', v_cutoff
+  );
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.get_admin_recharge_requests(p_status text DEFAULT 'all'::text, p_limit integer DEFAULT 25, p_offset integer DEFAULT 0)
+ RETURNS json
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_status text := lower(trim(COALESCE(p_status, 'all')));
+  v_limit int := GREATEST(1, LEAST(COALESCE(p_limit, 25), 100));
+  v_offset int := GREATEST(0, COALESCE(p_offset, 0));
+  v_total bigint := 0;
+  v_rows json;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  IF v_status = '' THEN
+    v_status := 'all';
+  END IF;
+
+  SELECT count(*)::bigint INTO v_total
+  FROM public.recharge_requests r
+  WHERE (v_status = 'all' OR r.status = v_status);
+
+  SELECT COALESCE(json_agg(row_to_json(q)), '[]'::json) INTO v_rows
+  FROM (
+    SELECT
+      r.id,
+      r.user_id,
+      r.amount,
+      r.reference,
+      r.status,
+      r.payment_method,
+      r.admin_note,
+      r.created_at,
+      r.updated_at,
+      r.reviewed_at,
+      r.reviewed_by,
+      r.pay_currency,
+      r.syp_per_usd_snapshot,
+      r.payment_txn_ref,
+      r.payment_proof_path,
+      r.credited_amount,
+      p.name AS user_name,
+      p.username AS username,
+      p.balance AS user_balance,
+      u.email AS user_email,
+      tx.balance_after,
+      CASE
+        WHEN tx.balance_after IS NOT NULL AND r.amount IS NOT NULL
+          THEN (tx.balance_after - r.amount)
+        ELSE NULL
+      END AS balance_before,
+      tx.created_at AS credited_at,
+      inv.sam_invoice_id,
+      inv.sam_invoice_status,
+      inv.sam_invoice_expires_at
+    FROM public.recharge_requests r
+    LEFT JOIN public.profiles p ON p.id = r.user_id
+    LEFT JOIN auth.users u ON u.id = r.user_id
+    LEFT JOIN LATERAL (
+      SELECT
+        t.balance_after,
+        t.created_at
+      FROM public.transactions t
+      WHERE t.user_id = r.user_id
+        AND t.type IN ('recharge', 'adjustment')
+        AND (
+          (r.reference IS NOT NULL AND t.reference = r.reference)
+          OR (
+            r.status = 'approved'
+            AND t.created_at BETWEEN r.created_at - interval '1 minute'
+              AND COALESCE(r.reviewed_at, r.updated_at, r.created_at) + interval '10 minutes'
+            AND t.amount > 0
+          )
+        )
+      ORDER BY
+        CASE WHEN r.reference IS NOT NULL AND t.reference = r.reference THEN 0 ELSE 1 END,
+        t.created_at DESC
+      LIMIT 1
+    ) tx ON true
+    LEFT JOIN LATERAL (
+      SELECT
+        si.sam_invoice_id,
+        si.status AS sam_invoice_status,
+        si.expires_at AS sam_invoice_expires_at
+      FROM public.sam_invoices si
+      WHERE si.entity_type = 'recharge'
+        AND si.entity_id = r.id
+      ORDER BY si.created_at DESC
+      LIMIT 1
+    ) inv ON true
+    WHERE (v_status = 'all' OR r.status = v_status)
+    ORDER BY r.created_at DESC
+    LIMIT v_limit
+    OFFSET v_offset
+  ) q;
+
+  RETURN json_build_object(
+    'rows', v_rows,
+    'total', v_total,
+    'limit', v_limit,
+    'offset', v_offset
   );
 END;
 $function$;
@@ -458,9 +723,12 @@ AS $function$
       || '<b>' || public.telegram_escape(p_metadata->>'count') || '</b> failure(s) in the last 24h.'
     WHEN 'rechargePending' THEN
         '🟡 <b>Manual recharge awaiting approval</b>' || E'\n'
-      || 'Amount: <b>$' || public.telegram_escape(p_metadata->>'amount') || '</b>' || E'\n'
+      || 'Amount: <b>$' || public.telegram_escape(p_metadata->>'amount') || '</b>'
+      || COALESCE(' (' || public.telegram_escape(nullif(p_metadata->>'sypAmount', '')) || ' SYP)', '') || E'\n'
       || 'Method: ' || public.telegram_escape(p_metadata->>'paymentMethod') || E'\n'
       || 'Reference: <code>' || public.telegram_escape(p_metadata->>'reference') || '</code>' || E'\n'
+      || COALESCE('Transaction id: <code>' || public.telegram_escape(nullif(p_metadata->>'txnRef', '')) || '</code>' || E'\n', '')
+      || CASE WHEN p_metadata->>'hasReceipt' = 'true' THEN 'Receipt image: attached (open the dashboard)' || E'\n' ELSE '' END
       || 'Customer: ' || public.telegram_escape(p_metadata->>'userName') || E'\n'
       || 'Verify the transfer in ShamCash, then approve.'
     WHEN 'test' THEN
@@ -619,6 +887,13 @@ BEGIN
       'amount', NEW.amount,
       'paymentMethod', NEW.payment_method,
       'reference', NEW.reference,
+      'txnRef', NEW.payment_txn_ref,
+      'hasReceipt', (NEW.payment_proof_path IS NOT NULL)::text,
+      'sypAmount', CASE
+        WHEN upper(COALESCE(NEW.pay_currency, 'USD')) = 'SYP' AND NEW.syp_per_usd_snapshot IS NOT NULL
+          THEN to_char(round(NEW.amount * NEW.syp_per_usd_snapshot), 'FM999,999,999,990')
+        ELSE NULL
+      END,
       'userName', COALESCE(v_user_name, 'Customer')
     )
   );

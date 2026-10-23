@@ -14,6 +14,8 @@ import {
   History,
 } from 'lucide-react';
 import { Spinner } from '../routing/PageLoader';
+import CopyButton from '../ui/CopyButton';
+import { getPaymentProofUrl } from '../../lib/paymentProof';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import AdminManualBalanceCredit from './AdminManualBalanceCredit';
 import AdminCustomerBalances from './AdminCustomerBalances';
@@ -83,6 +85,7 @@ function sypPaidAmount(req) {
 }
 
 function getPaymentMethodLabel(method, t) {
+  if (method === 'ShamCashManual') return t.shamcashManualMethod || 'ShamCash (manual)';
   if (method === 'ShamCash') return t.shamCash || 'ShamCash';
   if (method === 'SyriatelCash') return t.syriatelCash || 'Syriatel Cash';
   return method || '—';
@@ -95,6 +98,44 @@ function RechargeStatusBadge({ displayStatus, t }) {
     <span className={`admin-order-status admin-order-status--${tone}`}>
       {labelKey ? t[labelKey] : displayStatus}
     </span>
+  );
+}
+
+/** Receipt image uploaded by the customer (private bucket → short-lived signed link). */
+function ProofReceipt({ path, t }) {
+  const [url, setUrl] = useState(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setUrl(null);
+    setFailed(false);
+    getPaymentProofUrl(path).then((signed) => {
+      if (cancelled) return;
+      if (signed) setUrl(signed);
+      else setFailed(true);
+    });
+    return () => { cancelled = true; };
+  }, [path]);
+
+  return (
+    <div className="py-2 border-b border-[var(--border)]/60">
+      <div className="text-[11px] text-[var(--text-muted)] mb-1.5">{t.adminRechargeReceipt}</div>
+      {failed ? (
+        <div className="text-xs text-red-300">{t.adminRechargeReceiptMissing}</div>
+      ) : !url ? (
+        <Spinner size="sm" className="text-[var(--accent)]" />
+      ) : (
+        <a href={url} target="_blank" rel="noreferrer" className="inline-block" aria-label={t.adminRechargeReceiptOpen}>
+          <img
+            src={url}
+            alt=""
+            className="max-h-64 max-w-full rounded-xl border border-[var(--border)] bg-white object-contain"
+          />
+          <span className="block mt-1 text-[11px] text-[var(--accent)] underline">{t.adminRechargeReceiptOpen}</span>
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -499,6 +540,12 @@ export default function AdminRechargeManager({
                               {t.adminRechargeBalanceAfter}: {balanceAfter}
                             </div>
                           )}
+                          {(req.payment_txn_ref || req.payment_proof_path) && (
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-[var(--text-sec)]" dir="ltr">
+                              {req.payment_txn_ref && <span>{req.payment_txn_ref}</span>}
+                              {req.payment_proof_path && <span aria-label={t.adminRechargeReceipt}>🧾</span>}
+                            </div>
+                          )}
                           {!expanded && (
                             <div className="text-[10px] text-[var(--text-muted)]">
                               {t.adminRechargeExpandHint}
@@ -568,6 +615,16 @@ export default function AdminRechargeManager({
                             mono
                             dir="ltr"
                           />
+                          {req.payment_txn_ref && (
+                            <div className="flex items-center justify-between gap-3 py-1.5 border-b border-[var(--border)]/60">
+                              <span className="text-[11px] text-[var(--text-muted)] shrink-0">{t.adminRechargeTxnRef}</span>
+                              <span className="flex items-center gap-2 min-w-0">
+                                <span className="text-xs font-mono text-[var(--text-sec)] break-all" dir="ltr">{req.payment_txn_ref}</span>
+                                <CopyButton value={req.payment_txn_ref} label={t.copyCode || 'Copy'} copiedLabel={t.copied || 'Copied'} />
+                              </span>
+                            </div>
+                          )}
+                          {req.payment_proof_path && <ProofReceipt path={req.payment_proof_path} t={t} />}
                           <DetailRow
                             label={t.paymentMethod}
                             value={getPaymentMethodLabel(req.payment_method, t)}
