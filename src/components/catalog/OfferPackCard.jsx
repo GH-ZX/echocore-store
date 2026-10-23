@@ -148,12 +148,12 @@ export default function OfferPackCard({
                     e.stopPropagation();
                     if (!unaffordable) onAddToCart(offer, e);
                   }}
-                  className="btn btn-secondary p-2 min-h-[40px] min-w-[40px] inline-flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="btn btn-secondary p-2 min-h-[40px] min-w-[40px] shrink-0 inline-flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed"
                   title={unaffordable ? t.offerWalletLow : t.addToCart}
                   aria-label={t.addToCart}
                   disabled={unaffordable}
                 >
-                  <ShoppingCart className="w-4 h-4" />
+                  <ShoppingCart className="w-4 h-4 shrink-0" />
                 </button>
               )}
               <button
