@@ -22,6 +22,8 @@ import {
   isPaymentMethodReady,
 } from '../lib/paymentMethods';
 import { createRechargeInvoice, mapSamRechargeError } from '../lib/samApi';
+import CopyButton from '../components/ui/CopyButton';
+import MobileBuyBar from '../components/catalog/MobileBuyBar';
 import {
   createBinancePayRechargeOrder,
   getBinancePayOrderStatus,
@@ -77,7 +79,7 @@ export default function RechargeView({
   const rechargeAllowed = canUserRecharge(user) && !maintenanceBlocked;
 
   const walletMethods = useMemo(
-    () => buildPaymentMethods(t, lang, paymentConfig, { isCheckout: false }).filter((m) => m.id === 'ShamCash' || m.id === 'SyriatelCash' || m.id === 'binance'),
+    () => buildPaymentMethods(t, lang, paymentConfig, { isCheckout: false }).filter((m) => m.id === 'ShamCash' || m.id === 'ShamCashManual' || m.id === 'SyriatelCash' || m.id === 'binance'),
     [t, lang, paymentConfig],
   );
   const usableWalletMethods = walletMethods.filter((m) => !m.disabled);
@@ -106,13 +108,12 @@ export default function RechargeView({
     : selectedAmount;
   const { valid: isValidAmount } = validateRechargeAmount(effectiveAmount);
 
+  const isManualFallbackSelected = selectedMethod === 'ShamCashManual';
+  const apiNotes = isApiMode && !isManualFallbackSelected;
   const rechargeSubtitle = isApiMode ? t.rechargeApiSubtitle : t.rechargeSyriaSubtitle;
-  const methodNoteKey = isBinancePayMethod(selectedMethod)
-    ? 'binanceRechargeNote'
-    : (isApiMode ? 'samInvoiceRechargeNote' : 'manualPaymentApprovalNote');
   const amountFooterNote = isBinancePayMethod(selectedMethod)
     ? t.binanceRechargeNote
-    : (isApiMode ? t.samInvoiceRechargeNote : t.rechargeManualNote);
+    : (apiNotes ? t.samInvoiceRechargeNote : t.rechargeManualNote);
 
   useEffect(() => {
     if (!usableWalletMethods.some((m) => m.id === selectedMethod)) {
@@ -249,7 +250,7 @@ export default function RechargeView({
       const result = await createRechargeRequest(
         effectiveAmount,
         selectedMethod,
-        isBinancePayMethod(selectedMethod) ? 'USD' : (sypRechargeAvailable ? payCurrency : 'USD'),
+        (isBinancePayMethod(selectedMethod) || isManualFallbackSelected) ? 'USD' : (sypRechargeAvailable ? payCurrency : 'USD'),
       );
       const apiWallet = isApiWalletMethod(selectedMethod, paymentConfig);
       const binanceMethod = isBinancePayMethod(selectedMethod);
@@ -588,7 +589,7 @@ export default function RechargeView({
               </div>
             )}
 
-            {sypRechargeAvailable && !isBinancePayMethod(selectedMethod) && (
+            {sypRechargeAvailable && !isBinancePayMethod(selectedMethod) && !isManualFallbackSelected && (
               <div className="mb-6">
                 <div className="text-sm font-semibold mb-3 text-[var(--text-sec)]">{t.rechargePayCurrencyLabel}</div>
                 <div className="grid grid-cols-2 gap-3">
@@ -644,7 +645,14 @@ export default function RechargeView({
                       </span>
                       <div className="min-w-0">
                         <div className="font-bold">{m.name}</div>
-                        <div className="text-xs text-[var(--text-muted)]">{t[methodNoteKey]}</div>
+                        <div className="text-xs text-[var(--text-muted)]">
+                          {/* Each row explains ITSELF, independent of which row is selected. */}
+                          {m.id === 'ShamCashManual'
+                            ? (t.shamcashManualRowNote || t.manualPaymentApprovalNote)
+                            : (m.id === 'binance'
+                              ? t.binanceRechargeNote
+                              : (isApiMode ? t.samInvoiceRechargeNote : t.manualPaymentApprovalNote))}
+                        </div>
                       </div>
                     </button>
                   );
@@ -671,7 +679,7 @@ export default function RechargeView({
               {effectivePayCurrency === 'SYP' && (
                 <p className="text-[10px] text-[var(--text-muted)] mt-2 max-w-md mx-auto">{t.rechargeSypPartialCreditNote}</p>
               )}
-              {effectivePayCurrency === 'USD' && isApiMode && (
+              {effectivePayCurrency === 'USD' && isApiMode && !isManualFallbackSelected && (
                 <p className="text-[10px] text-[var(--text-muted)] mt-2 max-w-md mx-auto">{t.rechargeUsdPartialCreditNote}</p>
               )}
             </div>
@@ -692,7 +700,7 @@ export default function RechargeView({
         )}
 
         {(step === 'payment' || step === 'pending') && activeRequest && (
-          <div className="space-y-5">
+          <div className="space-y-5 max-lg:pb-36">
             <BackButton onClick={resetToAmount} t={t} className="mb-4" />
 
             <div className="text-center">
@@ -786,16 +794,19 @@ export default function RechargeView({
                       alt=""
                       className="mx-auto max-w-[220px] w-full rounded-xl border border-[var(--border)] bg-white p-2"
                     />
-                  ) : (
+                  ) : !activeDisplay.payCode ? (
                     <div className="py-10 text-sm text-[var(--text-muted)]">{t.qrNotConfigured}</div>
-                  )}
+                  ) : null}
 
                   {activeDisplay.payCode && (
                     <div className="mt-4">
-                      <div className="text-xs text-[var(--text-muted)] mb-1">
-                        {t.shamcashPayCodeLabel}
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <div className="text-xs text-[var(--text-muted)]">
+                          {t.shamcashPayCodeLabel}
+                        </div>
+                        <CopyButton value={activeDisplay.payCode} label={t.copyCode || 'Copy'} copiedLabel={t.copied || 'Copied'} />
                       </div>
-                      <div className="font-mono text-lg tracking-wide break-all text-[var(--text-primary)] bg-black/30 rounded-xl px-4 py-3">
+                      <div className="font-mono text-lg tracking-wide break-all text-[var(--text-primary)] bg-black/30 rounded-xl px-4 py-3" dir="ltr">
                         {activeDisplay.payCode}
                       </div>
                     </div>
@@ -803,28 +814,60 @@ export default function RechargeView({
                 </div>
 
                 <div className="rounded-2xl border border-[var(--border)] bg-black/40 p-4 text-center">
-                  <div className="text-green-400 text-xs mb-1 uppercase tracking-wider">
-                    {t.paymentReference}
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <div className="text-green-400 text-xs uppercase tracking-wider">
+                      {t.paymentReference}
+                    </div>
+                    {activeRequest.reference ? (
+                      <CopyButton value={activeRequest.reference} label={t.copyCode || 'Copy'} copiedLabel={t.copied || 'Copied'} />
+                    ) : null}
                   </div>
-                  <div className="font-mono text-lg tracking-wider">{activeRequest.reference}</div>
+                  <div className="font-mono text-lg tracking-wider break-all" dir="ltr">{activeRequest.reference}</div>
                   <p className="text-xs text-[var(--text-muted)] mt-2">
                     {formatMessage(t.includeReferenceNoteMethod, { method: activeMethodLabel })}
                   </p>
                 </div>
 
                 {step === 'payment' ? (
-                  <button
-                    type="button"
-                    onClick={confirmPaymentSent}
-                    disabled={isProcessing}
-                    className="btn btn-primary w-full py-4 font-bold flex items-center justify-center gap-2"
-                  >
-                    {isProcessing ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /> {t.processing}</>
-                    ) : (
-                      t.confirmPaymentSent
-                    )}
-                  </button>
+                  <>
+                    {/* Desktop: inline button. Phones: sticky bar below, so "I've paid" never needs scrolling. */}
+                    <div className="hidden lg:block">
+                      <button
+                        type="button"
+                        onClick={confirmPaymentSent}
+                        disabled={isProcessing}
+                        className="btn btn-primary w-full py-4 font-bold flex items-center justify-center gap-2"
+                      >
+                        {isProcessing ? (
+                          <><Loader2 className="w-4 h-4 animate-spin" /> {t.processing}</>
+                        ) : (
+                          t.confirmPaymentSent
+                        )}
+                      </button>
+                    </div>
+                    <MobileBuyBar>
+                      <div className="cart-mobile-bar" role="region" aria-label={t.confirmPaymentSent}>
+                        <div className="cart-mobile-bar__inner">
+                          <div className="min-w-0 flex-1">
+                            <div className="catalog-mobile-buybar__title truncate">{activeMethodLabel}</div>
+                            <div className="catalog-mobile-buybar__price tabular-nums" dir="ltr">{formatMoney(activeRequest.amount)}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={confirmPaymentSent}
+                            disabled={isProcessing}
+                            className="btn btn-primary catalog-mobile-buybar__btn font-bold shrink-0 touch-manipulation inline-flex items-center justify-center gap-2 disabled:opacity-60"
+                          >
+                            {isProcessing ? (
+                              <><Loader2 className="w-4 h-4 animate-spin" /> {t.processing}</>
+                            ) : (
+                              t.confirmPaymentSent
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </MobileBuyBar>
+                  </>
                 ) : (
                   <AlertBanner tone="amber" centered>
                     <Clock className="w-8 h-8 mx-auto text-amber-300 mb-2" />
