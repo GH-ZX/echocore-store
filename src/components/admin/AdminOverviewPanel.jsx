@@ -13,6 +13,7 @@ import AdminDashGoTo from './AdminDashGoTo';
 import AdminProfitOverview from './AdminProfitOverview';
 import AdminSupplierWalletsCard from '../ui/AdminSupplierWalletsCard';
 import AdminSamTransfer from './AdminSamTransfer';
+import AdminPendingRecharges from './AdminPendingRecharges';
 import {
   getAdminDashboardPath,
   getAdminOrdersPath,
@@ -58,6 +59,12 @@ export default function AdminOverviewPanel({
 
   return (
     <div className="admin-overview space-y-6 sm:space-y-8">
+      <AdminPendingRecharges
+        t={t}
+        onNotify={onNotify}
+        onOpenAll={() => goToTab('recharges')}
+      />
+
       <AdminSupplierWalletsCard
         t={t}
         lang={lang}

@@ -47,6 +47,10 @@ interface BotContext {
   firstName: string;
   username: string;
   isAdmin: boolean;
+  /** Listed in the store's Telegram alert chats: may review/approve/reject recharges (nothing else). */
+  isApprover: boolean;
+  /** Who is acting (for the audit log), e.g. "Granger (@granger)". */
+  actorLabel: string;
   adminProfileId: string | null;
   isGroup: boolean;
   callbackQueryId?: string;
@@ -146,6 +150,23 @@ async function getStoreSettings(supabase: ReturnType<typeof createClient>) {
 async function resolveAdminChatId(supabase: ReturnType<typeof createClient>): Promise<string> {
   const settings = await getStoreSettings(supabase);
   return (settings?.telegram_chat_id ?? '').trim();
+}
+
+/** Chat ids from the alert settings (comma / space / newline separated), numeric only. */
+function parseChatIds(raw: string | null | undefined): string[] {
+  return (raw ?? '').split(/[\s,;]+/).filter((x) => /^-?[0-9]+$/.test(x));
+}
+
+/** The account recorded as reviewer when an approver without an admin profile acts from Telegram. */
+async function getPrimaryAdminProfileId(supabase: ReturnType<typeof createClient>): Promise<string | null> {
+  const { data } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('role', 'admin')
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return data?.id ?? null;
 }
 
 /** Returns the admin's profile id when this Telegram user is a linked admin, else null. */
@@ -296,6 +317,8 @@ function menuRows(ctx: BotContext): Array<Array<Record<string, string>>> {
         { text: T(ctx, 'btnFailed'), callback_data: 'admin_failed' },
       ],
     );
+  } else if (ctx.isApprover && !ctx.isGroup) {
+    rows.push([{ text: T(ctx, 'btnPending'), callback_data: 'admin_pending' }]);
   }
   return rows;
 }
@@ -899,6 +922,19 @@ async function cmdCancelFlow(ctx: BotContext) {
 
 // ─── Admin command handlers ─────────────────────────────────────────────────
 
+/** Reviewing recharges: linked admins and anyone listed in the alert chats, in a private chat. */
+async function requireApprover(ctx: BotContext): Promise<boolean> {
+  if ((!ctx.isAdmin && !ctx.isApprover) || !ctx.adminProfileId) {
+    await reply(ctx, T(ctx, 'adminOnly'));
+    return false;
+  }
+  if (ctx.isGroup) {
+    await reply(ctx, T(ctx, 'adminPrivate'));
+    return false;
+  }
+  return true;
+}
+
 /** Admin commands only run for a linked admin, in a private chat. */
 async function requireAdmin(ctx: BotContext): Promise<boolean> {
   if (!ctx.isAdmin || !ctx.adminProfileId) {
@@ -915,7 +951,7 @@ async function requireAdmin(ctx: BotContext): Promise<boolean> {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 async function cmdPending(ctx: BotContext) {
-  if (!(await requireAdmin(ctx))) return;
+  if (!(await requireApprover(ctx))) return;
 
   const { data: recharges } = await ctx.supabase
     .from('recharge_requests')
@@ -966,7 +1002,7 @@ async function langForChat(ctx: BotContext, chatId: string): Promise<Lang> {
 }
 
 async function cmdApprove(ctx: BotContext, args: string) {
-  if (!(await requireAdmin(ctx))) return;
+  if (!(await requireApprover(ctx))) return;
   const id = args.trim();
   if (!id) {
     await reply(ctx, T(ctx, 'approveUsage'));
@@ -981,6 +1017,7 @@ async function cmdApprove(ctx: BotContext, args: string) {
   const { data, error } = await ctx.supabase.rpc('telegram_approve_recharge', {
     p_request_id: id,
     p_admin_id: ctx.adminProfileId,
+    p_actor: ctx.actorLabel || null,
   });
   if (error || !data) {
     console.error('approve error:', error);
@@ -997,7 +1034,7 @@ async function cmdApprove(ctx: BotContext, args: string) {
 }
 
 async function cmdReject(ctx: BotContext, args: string) {
-  if (!(await requireAdmin(ctx))) return;
+  if (!(await requireApprover(ctx))) return;
   const id = args.trim();
   if (!id) {
     await reply(ctx, T(ctx, 'rejectUsage'));
@@ -1011,6 +1048,7 @@ async function cmdReject(ctx: BotContext, args: string) {
   const { data, error } = await ctx.supabase.rpc('telegram_reject_recharge', {
     p_request_id: id,
     p_admin_id: ctx.adminProfileId,
+    p_actor: ctx.actorLabel || null,
   });
   if (error || !data) {
     console.error('reject error:', error);
@@ -1410,6 +1448,17 @@ async function setBotCommands(supabase: ReturnType<typeof createClient>, token: 
       scope: { type: 'chat', chat_id: Number(a.telegram_chat_id) },
     }));
   }
+  // Approvers (alert chats without an admin profile): only the recharge-review commands.
+  const settings = await getStoreSettings(supabase);
+  const adminChats = new Set((admins ?? []).map((a: { telegram_chat_id: string | null }) => String(a.telegram_chat_id)));
+  const reviewCommands = adminCommands.filter((c) => ['pending', 'approve', 'reject'].includes(c.command));
+  for (const id of parseChatIds(settings?.telegram_chat_id)) {
+    if (adminChats.has(id) || id.startsWith('-')) continue;
+    results.push(await tgApi(token, 'setMyCommands', {
+      commands: [...commands, ...reviewCommands],
+      scope: { type: 'chat', chat_id: Number(id) },
+    }));
+  }
   return results;
 }
 
@@ -1605,6 +1654,8 @@ Deno.serve(async (req) => {
       firstName: from.first_name || '',
       username: from.username || '',
       isAdmin: false,
+      isApprover: false,
+      actorLabel: '',
       adminProfileId: null,
       isGroup: chat.type !== 'private',
       callbackQueryId: cb?.id,
@@ -1619,8 +1670,11 @@ Deno.serve(async (req) => {
     if (chatPrefs?.lang === 'ar' || chatPrefs?.lang === 'en') ctx.lang = chatPrefs.lang;
     ctx.flow = (chatPrefs?.flow && typeof chatPrefs.flow === 'object') ? chatPrefs.flow as Record<string, unknown> : null;
 
-    ctx.adminProfileId = await findAdminProfileId(supabase, ctx.userId);
-    ctx.isAdmin = !!ctx.adminProfileId;
+    const profileAdminId = await findAdminProfileId(supabase, ctx.userId);
+    ctx.isAdmin = !!profileAdminId;
+    ctx.isApprover = !ctx.isGroup && parseChatIds(settings?.telegram_chat_id).includes(String(ctx.userId));
+    ctx.adminProfileId = profileAdminId ?? (ctx.isApprover ? await getPrimaryAdminProfileId(supabase) : null);
+    ctx.actorLabel = [ctx.firstName, ctx.username ? `(@${ctx.username})` : '', `tg:${ctx.userId}`].filter(Boolean).join(' ');
 
     // ── Handle callback query ──
     if (cb?.data) {
