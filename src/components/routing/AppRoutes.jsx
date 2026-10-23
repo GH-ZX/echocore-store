@@ -594,6 +594,7 @@ export default function AppRoutes({
                   paymentConfig={paymentConfig}
                   onNotify={showToast}
                   onRechargePaid={handleRechargeApproved}
+                  onRefreshPaymentConfig={refreshPaymentConfig}
                   siteStatus={siteStatus}
                 />
               )}

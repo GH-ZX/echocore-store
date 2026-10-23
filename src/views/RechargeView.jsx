@@ -74,6 +74,7 @@ export default function RechargeView({
   paymentConfig = {},
   onNotify,
   onRechargePaid,
+  onRefreshPaymentConfig,
   siteStatus = null,
 }) {
   const { notifyError, notifySuccess } = useNotify(onNotify);
@@ -107,6 +108,12 @@ export default function RechargeView({
   const [proofFile, setProofFile] = useState(null);
   const [proofPreview, setProofPreview] = useState('');
   const [proofError, setProofError] = useState('');
+
+  // Always re-read the payment config when this page opens: an admin may have changed it since the app loaded.
+  useEffect(() => {
+    onRefreshPaymentConfig?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const sypPerUsd = getSypPerUsd(paymentConfig);
   const sypRechargeAvailable = isApiMode && sypPerUsd != null;
