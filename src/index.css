@@ -8696,6 +8696,13 @@ button.admin-profit-customer-order__id {
   backdrop-filter: blur(8px);
 }
 
+/* Two packs per row on phones: tighter buttons so the cart and "Buy now" fit the card. */
+@media (max-width: 639px) {
+  .catalog-offer-card__body .btn {
+    padding-inline: 0.625rem;
+  }
+}
+
 .catalog-info-banner {
   display: flex;
   gap: 0.875rem;
