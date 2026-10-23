@@ -984,7 +984,7 @@ async function cmdApprove(ctx: BotContext, args: string) {
   });
   if (error || !data) {
     console.error('approve error:', error);
-    await reply(ctx, T(ctx, 'approveFailed'), { reply_markup: { inline_keyboard: [[{ text: T(ctx, 'btnPending'), callback_data: 'admin_pending' }]] } });
+    await reply(ctx, T(ctx, String(error?.message || '').includes('txn_ref_already_approved') ? 'approveTxnUsed' : 'approveFailed'), { reply_markup: { inline_keyboard: [[{ text: T(ctx, 'btnPending'), callback_data: 'admin_pending' }]] } });
     return;
   }
   const result = data as { userId: string; amount: number; newBalance: number };

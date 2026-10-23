@@ -249,7 +249,9 @@ export default function AdminRechargeManager({
       setBalancesRefreshKey((key) => key + 1);
       await load(filter, safePage);
     } catch (err) {
-      notifyError(err.message);
+      notifyError(String(err?.message || '').includes('txn_ref_already_approved')
+        ? t.adminRechargeTxnAlreadyApproved
+        : err.message);
     } finally {
       setProcessingId(null);
     }
@@ -543,6 +545,9 @@ export default function AdminRechargeManager({
                           {(req.payment_txn_ref || req.payment_proof_path) && (
                             <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-[var(--text-sec)]" dir="ltr">
                               {req.payment_txn_ref && <span>{req.payment_txn_ref}</span>}
+                              {req.txn_ref_conflict && (
+                                <span className="font-sans font-bold text-red-300">⚠ {t.adminRechargeTxnConflictShort}</span>
+                              )}
                               {req.payment_proof_path && <span aria-label={t.adminRechargeReceipt}>🧾</span>}
                             </div>
                           )}
@@ -675,6 +680,16 @@ export default function AdminRechargeManager({
                             dir="ltr"
                           />
                         </div>
+                        {req.txn_ref_conflict && (
+                          <div className="rounded-xl border border-red-400/40 bg-red-500/10 px-3 py-2.5 text-xs text-red-200 leading-relaxed" role="alert">
+                            {t.adminRechargeTxnConflict}
+                          </div>
+                        )}
+                        {req.status === 'payment_sent' && req.payment_method === 'ShamCashManual' && (
+                          <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-100 leading-relaxed">
+                            {formatMessage(t.adminRechargeVerifyHint, { reference: req.reference || '' })}
+                          </div>
+                        )}
                         {renderActions(req)}
                       </div>
                     )}
