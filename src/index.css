@@ -38,7 +38,7 @@
   --warning: #fbbf24;
 
   /* Gradients */
-  --gradient-accent: linear-gradient(to right, #8b5cf6, #a78bfa);
+  --gradient-accent: #8b5cf6;
   --gradient-surface: linear-gradient(to bottom, #120b26, #07030f);
 
   /* Effects */
@@ -2848,7 +2848,7 @@ html, body {
 
 .header-mobile-profile-hairline {
   height: 1px;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, transparent) 0%, color-mix(in srgb, var(--border) 40%, transparent) 70%, transparent 100%);
+  background: var(--border);
 }
 
 /* Bottom actions — compact cart + notifications row, wide sign out */
@@ -8604,7 +8604,7 @@ button.admin-profit-customer-order__id {
 }
 
 .carousel-thumb__initial {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-2) 18%, transparent), color-mix(in srgb, var(--accent) 6%, transparent));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   border-radius: inherit;
 }
 

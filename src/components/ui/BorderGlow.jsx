@@ -115,7 +115,7 @@ const BorderGlow = ({
   }, []);
 
   // Read theme accent colors from CSS variables (surfaced by the app's theme system)
-  const { accent, hover, dark, bgSurface } = readThemeColors();
+  const { accent, bgSurface } = readThemeColors();
   void themeVer; // used to force re-read on theme change
 
   const isLightMode = typeof document !== 'undefined'
@@ -124,7 +124,8 @@ const BorderGlow = ({
   const resolvedGlowIntensity = isLightMode ? glowIntensity * 0.55 : glowIntensity;
 
   const glowColor = glowColorProp || hexToHslStr(accent);
-  const colors = colorsProp || [accent, hover, dark];
+  // One hue: the edge glow is the accent itself, not a three-tone mesh.
+  const colors = colorsProp || [accent];
   const backgroundColor = bgProp || bgSurface;
   const cardRef = useRef(null);
 

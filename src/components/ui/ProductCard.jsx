@@ -97,7 +97,7 @@ export default function ProductCard({
 
         <div className="flex items-center justify-between mt-auto pt-3 border-t border-border gap-2">
           <div>
-            <span className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-accent to-blue-400">
+            <span className="text-2xl font-black text-[var(--price)]">
             {formatMoney(product.price)}
             </span>
           </div>

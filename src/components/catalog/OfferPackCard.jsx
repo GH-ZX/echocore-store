@@ -133,13 +133,13 @@ export default function OfferPackCard({
                 e.stopPropagation();
                 onGift(offer);
               }}
-              className="btn btn-primary text-xs px-3 py-2 min-h-[40px] shrink-0 inline-flex items-center justify-center gap-1.5 bg-gradient-to-r from-pink-600 to-violet-600 border-pink-500/40"
+              className="btn btn-primary text-xs px-3 py-2 min-h-[40px] w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-1.5 whitespace-nowrap"
             >
               <Gift className="w-3.5 h-3.5" />
               {t.giftOffer}
             </button>
           ) : (
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex w-full sm:w-auto items-center gap-1.5 shrink-0">
               {onAddToCart && (
                 <button
                   type="button"
@@ -163,7 +163,7 @@ export default function OfferPackCard({
                   e.stopPropagation();
                   if (!unaffordable) onBuyNow?.(offer);
                 }}
-                className="btn btn-primary text-xs px-3 py-2 min-h-[40px] flex-1 sm:flex-none disabled:opacity-40 disabled:cursor-not-allowed"
+                className="btn btn-primary text-xs px-3 py-2 min-h-[40px] flex-1 sm:flex-none whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
                 title={unaffordable ? t.offerWalletLow : undefined}
                 disabled={unaffordable}
               >

@@ -17,7 +17,7 @@ export default function Footer({ lang = 'en', t = {} }) {
             <Link to="/" className="flex items-center gap-3 group mb-4">
               <EchoLogo className="w-9 h-9 md:w-10 md:h-10 transition-transform group-hover:scale-105" />
               <div className="flex flex-col">
-                <span className="text-lg md:text-xl font-black tracking-[1px] text-transparent bg-clip-text bg-gradient-to-r from-[var(--accent)] to-[var(--accent-2)]">
+                <span className="text-lg md:text-xl font-black tracking-[1px] text-[var(--text-primary)]">
                   ECHOCORE
                 </span>
                 <span className="text-[10px] text-[var(--text-muted)] tracking-[2px] font-semibold -mt-0.5">STORE</span>

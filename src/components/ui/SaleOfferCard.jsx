@@ -82,7 +82,7 @@ export default function SaleOfferCard({
             loading="lazy"
           />
         ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-[var(--bg-elevated)] to-[var(--bg-primary)]" />
+          <div className="absolute inset-0 bg-[var(--bg-elevated)]" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
 

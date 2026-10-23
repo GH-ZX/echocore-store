@@ -20,9 +20,10 @@ export default function CatalogPageShell({
             type="button"
             onClick={onBack}
             className="catalog-page__back btn btn-secondary text-sm py-2 px-3 sm:px-4 shrink-0 touch-manipulation"
+            aria-label={backLabel}
           >
             <ChevronLeft className={`w-4 h-4 shrink-0 ${isAr ? 'rotate-180' : ''}`} />
-            <span className="truncate max-w-[10rem] sm:max-w-[14rem]">{backLabel}</span>
+            <span className="hidden sm:inline truncate max-w-[14rem]">{backLabel}</span>
           </button>
 
           {breadcrumb.length > 0 && (

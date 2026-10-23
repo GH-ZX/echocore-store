@@ -371,7 +371,7 @@ export default function SuccessView({
       </div>
 
       {orderDetails.payment_method === 'admin_gift' && orderDetails.gift_message && (
-        <div className="card p-6 mb-6 border border-pink-500/25 bg-gradient-to-br from-pink-500/10 via-[var(--bg-surface)] to-violet-500/5">
+        <div className="card p-6 mb-6 border border-[var(--border)]">
           <div className="flex items-start gap-3">
             <div className="w-11 h-11 rounded-2xl bg-pink-500/15 text-pink-300 flex items-center justify-center shrink-0">
               <Gift className="w-6 h-6" />

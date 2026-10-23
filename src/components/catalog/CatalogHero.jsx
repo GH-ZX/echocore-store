@@ -23,10 +23,9 @@ export default function CatalogHero({
             className="absolute inset-0 w-full h-full object-cover"
           />
         ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-[var(--bg-elevated)] to-[var(--bg-primary)]" />
+          <div className="absolute inset-0 bg-[var(--bg-elevated)]" />
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/10" />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/35 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/15" />
 
         <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-7 md:p-8">
           <div className="flex items-end gap-4">

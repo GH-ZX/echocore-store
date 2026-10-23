@@ -292,7 +292,7 @@ export default function ProductCarousel({
                         >
                           <span
                             className="inline-block w-1.5 h-1.5 rounded-full"
-                            style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-2))' }}
+                            style={{ background: 'var(--accent)' }}
                             aria-hidden="true"
                           />
                           {badgeText}

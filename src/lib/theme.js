@@ -21,7 +21,7 @@ export const DEFAULT_THEME = {
   success: '#34d399',
   error: '#fb7185',
   warning: '#fbbf24',
-  'gradient-accent': 'linear-gradient(to right, #8b5cf6, #a78bfa)',
+  'gradient-accent': '#8b5cf6',
   'gradient-surface': 'linear-gradient(to bottom, #120b26, #07030f)',
   'shadow-glow': '0 0 12px rgba(139, 92, 246, 0.14)',
   'shadow-card': '0 8px 24px -16px rgba(0, 0, 0, 0.55)',
@@ -947,7 +947,8 @@ export function buildFullTheme(overrides = {}) {
   }
 
   if (!overrides['gradient-accent']) {
-    base['gradient-accent'] = `linear-gradient(to right, ${accent}, ${lightMode ? base['accent-hover'] || accent : '#3b82f6'})`;
+    // A flat accent fill: gradients on buttons and badges read as decoration, not action.
+    base['gradient-accent'] = accent;
   }
 
   if (!overrides['gradient-surface']) {
