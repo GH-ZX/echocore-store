@@ -15,7 +15,8 @@ import {
 } from 'lucide-react';
 import { Spinner } from '../routing/PageLoader';
 import CopyButton from '../ui/CopyButton';
-import { getPaymentProofUrl } from '../../lib/paymentProof';
+import AdminProofReceipt from './AdminProofReceipt';
+import Modal from '../ui/Modal';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import AdminManualBalanceCredit from './AdminManualBalanceCredit';
 import AdminCustomerBalances from './AdminCustomerBalances';
@@ -101,40 +102,12 @@ function RechargeStatusBadge({ displayStatus, t }) {
   );
 }
 
-/** Receipt image uploaded by the customer (private bucket → short-lived signed link). */
+/** Receipt row inside the expanded request details. */
 function ProofReceipt({ path, t }) {
-  const [url, setUrl] = useState(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    setUrl(null);
-    setFailed(false);
-    getPaymentProofUrl(path).then((signed) => {
-      if (cancelled) return;
-      if (signed) setUrl(signed);
-      else setFailed(true);
-    });
-    return () => { cancelled = true; };
-  }, [path]);
-
   return (
     <div className="py-2 border-b border-[var(--border)]/60">
       <div className="text-[11px] text-[var(--text-muted)] mb-1.5">{t.adminRechargeReceipt}</div>
-      {failed ? (
-        <div className="text-xs text-red-300">{t.adminRechargeReceiptMissing}</div>
-      ) : !url ? (
-        <Spinner size="sm" className="text-[var(--accent)]" />
-      ) : (
-        <a href={url} target="_blank" rel="noreferrer" className="inline-block" aria-label={t.adminRechargeReceiptOpen}>
-          <img
-            src={url}
-            alt=""
-            className="max-h-64 max-w-full rounded-xl border border-[var(--border)] bg-white object-contain"
-          />
-          <span className="block mt-1 text-[11px] text-[var(--accent)] underline">{t.adminRechargeReceiptOpen}</span>
-        </a>
-      )}
+      <AdminProofReceipt path={path} t={t} />
     </div>
   );
 }
@@ -183,10 +156,10 @@ export default function AdminRechargeManager({
   const [page, setPage] = useState(0);
   const [expandedId, setExpandedId] = useState(null);
   const [creditPreset, setCreditPreset] = useState(null);
+  const [creditOpen, setCreditOpen] = useState(false);
   const [balancesRefreshKey, setBalancesRefreshKey] = useState(0);
   const [grantConfirmTarget, setGrantConfirmTarget] = useState(null);
   const loadInFlightRef = useRef(false);
-  const manualCreditRef = useRef(null);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE) || 1);
   const safePage = Math.min(page, totalPages - 1);
@@ -284,9 +257,7 @@ export default function AdminRechargeManager({
       defaultReason: t.adminManualCreditReason_shamcashExpiredRecovery,
     });
     setGrantConfirmTarget(null);
-    requestAnimationFrame(() => {
-      manualCreditRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    setCreditOpen(true);
   };
 
   const openCreditForUser = (user) => {
@@ -295,6 +266,12 @@ export default function AdminRechargeManager({
       amount: null,
       requestId: null,
     });
+    setCreditOpen(true);
+  };
+
+  const closeCredit = () => {
+    setCreditOpen(false);
+    setCreditPreset(null);
   };
 
   const openWalletFlow = (req) => {
@@ -396,14 +373,7 @@ export default function AdminRechargeManager({
 
   return (
     <div className="space-y-4 min-w-0">
-      <AdminCustomerBalances
-        t={t}
-        onNotify={onNotify}
-        refreshKey={balancesRefreshKey}
-        onSelectForCredit={openCreditForUser}
-      />
-
-      <div ref={manualCreditRef} className="scroll-mt-24">
+      <Modal open={creditOpen} onClose={closeCredit} size="lg" panelClassName="p-3 sm:p-4">
         <AdminManualBalanceCredit
           t={t}
           lang={lang}
@@ -413,26 +383,23 @@ export default function AdminRechargeManager({
           presetRequestId={creditPreset?.requestId || null}
           presetReason={creditPreset?.defaultReason || ''}
           onCredited={() => {
-            setCreditPreset(null);
+            closeCredit();
             setBalancesRefreshKey((key) => key + 1);
             load(filter, safePage);
           }}
         />
-      </div>
+      </Modal>
 
-      <ConfirmDialog
-        open={!!grantConfirmTarget}
-        title={t.adminManualCreditGrantConfirmTitle}
-        message={grantConfirmTarget ? formatMessage(t.adminManualCreditGrantConfirmBody, {
-          amount: formatMoney(grantConfirmTarget.amount || 0),
-          user: grantConfirmTarget.user_name || t.adminUsersUnnamed,
-        }) : ''}
-        confirmLabel={t.adminManualCreditGrantConfirmAction}
-        cancelLabel={t.cancel}
-        variant="primary"
-        onConfirm={() => grantConfirmTarget && openRecoveryCredit(grantConfirmTarget)}
-        onCancel={() => setGrantConfirmTarget(null)}
-      />
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => { setCreditPreset(null); setCreditOpen(true); }}
+          className="btn btn-secondary text-sm py-2 px-3 inline-flex items-center gap-2"
+        >
+          <HandCoins className="w-4 h-4" aria-hidden="true" />
+          {t.adminPendingBalanceTools}
+        </button>
+      </div>
 
       <section className="card overflow-hidden min-w-0">
         <div className="p-4 sm:p-5 border-b border-[var(--border)] flex flex-wrap items-start justify-between gap-3">
@@ -733,6 +700,29 @@ export default function AdminRechargeManager({
           </>
         )}
       </section>
+
+      <AdminCustomerBalances
+        t={t}
+        onNotify={onNotify}
+        refreshKey={balancesRefreshKey}
+        onSelectForCredit={openCreditForUser}
+      />
+
+      <ConfirmDialog
+        open={!!grantConfirmTarget}
+        title={t.adminManualCreditGrantConfirmTitle}
+        message={grantConfirmTarget ? formatMessage(t.adminManualCreditGrantConfirmBody, {
+          amount: formatMoney(grantConfirmTarget.amount || 0),
+          user: grantConfirmTarget.user_name || t.adminUsersUnnamed,
+        }) : ''}
+        confirmLabel={t.adminManualCreditGrantConfirmAction}
+        cancelLabel={t.cancel}
+        variant="primary"
+        onConfirm={() => grantConfirmTarget && openRecoveryCredit(grantConfirmTarget)}
+        onCancel={() => setGrantConfirmTarget(null)}
+      />
+
+
     </div>
   );
 }
