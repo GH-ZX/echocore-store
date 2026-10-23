@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ArrowLeft, Loader2, CheckCircle, Wallet, QrCode, Clock, AlertCircle, Info } from 'lucide-react';
+import { ArrowLeft, Loader2, CheckCircle, Wallet, QrCode, Clock, AlertCircle, Info, ImagePlus, X } from 'lucide-react';
 import { Spinner } from '../components/routing/PageLoader';
 import AlertBanner from '../components/ui/AlertBanner';
 import {
@@ -22,6 +22,15 @@ import {
   isPaymentMethodReady,
 } from '../lib/paymentMethods';
 import { createRechargeInvoice, mapSamRechargeError } from '../lib/samApi';
+import CopyButton from '../components/ui/CopyButton';
+import {
+  PAYMENT_PROOF_MAX_BYTES,
+  isValidTxnRef,
+  normalizeTxnRef,
+  proofErrorKey,
+  uploadPaymentProof,
+} from '../lib/paymentProof';
+import MobileBuyBar from '../components/catalog/MobileBuyBar';
 import {
   createBinancePayRechargeOrder,
   getBinancePayOrderStatus,
@@ -77,7 +86,7 @@ export default function RechargeView({
   const rechargeAllowed = canUserRecharge(user) && !maintenanceBlocked;
 
   const walletMethods = useMemo(
-    () => buildPaymentMethods(t, lang, paymentConfig, { isCheckout: false }).filter((m) => m.id === 'ShamCash' || m.id === 'SyriatelCash' || m.id === 'binance'),
+    () => buildPaymentMethods(t, lang, paymentConfig, { isCheckout: false }).filter((m) => m.id === 'ShamCash' || m.id === 'ShamCashManual' || m.id === 'SyriatelCash' || m.id === 'binance'),
     [t, lang, paymentConfig],
   );
   const usableWalletMethods = walletMethods.filter((m) => !m.disabled);
@@ -93,6 +102,11 @@ export default function RechargeView({
   const [invoiceError, setInvoiceError] = useState('');
   const [completedRecharge, setCompletedRecharge] = useState(null);
   const [payCurrency, setPayCurrency] = useState('USD');
+  // Manual ShamCash proof: a ShamCash transaction id and/or a receipt image (either is enough).
+  const [txnInput, setTxnInput] = useState('');
+  const [proofFile, setProofFile] = useState(null);
+  const [proofPreview, setProofPreview] = useState('');
+  const [proofError, setProofError] = useState('');
 
   const sypPerUsd = getSypPerUsd(paymentConfig);
   const sypRechargeAvailable = isApiMode && sypPerUsd != null;
@@ -106,13 +120,12 @@ export default function RechargeView({
     : selectedAmount;
   const { valid: isValidAmount } = validateRechargeAmount(effectiveAmount);
 
+  const isManualFallbackSelected = selectedMethod === 'ShamCashManual';
+  const apiNotes = isApiMode && !isManualFallbackSelected;
   const rechargeSubtitle = isApiMode ? t.rechargeApiSubtitle : t.rechargeSyriaSubtitle;
-  const methodNoteKey = isBinancePayMethod(selectedMethod)
-    ? 'binanceRechargeNote'
-    : (isApiMode ? 'samInvoiceRechargeNote' : 'manualPaymentApprovalNote');
   const amountFooterNote = isBinancePayMethod(selectedMethod)
     ? t.binanceRechargeNote
-    : (isApiMode ? t.samInvoiceRechargeNote : t.rechargeManualNote);
+    : (apiNotes ? t.samInvoiceRechargeNote : t.rechargeManualNote);
 
   useEffect(() => {
     if (!usableWalletMethods.some((m) => m.id === selectedMethod)) {
@@ -321,18 +334,72 @@ export default function RechargeView({
       return;
     }
 
+    const needsProof = activeRequest.paymentMethod === 'ShamCashManual';
+    const txnRef = normalizeTxnRef(txnInput);
+    if (needsProof) {
+      if (!txnRef && !proofFile) {
+        setProofError(t.rechargeProofNeedOne);
+        return;
+      }
+      if (txnRef && !isValidTxnRef(txnRef)) {
+        setProofError(t.rechargeTxnInvalid);
+        return;
+      }
+    }
+
     setIsProcessing(true);
+    setProofError('');
     try {
-      const result = await markRechargePaymentSent(activeRequest.requestId);
+      let proofPath = null;
+      if (needsProof && proofFile) {
+        try {
+          proofPath = await uploadPaymentProof({ userId: user?.id, requestId: activeRequest.requestId, file: proofFile });
+        } catch (uploadErr) {
+          setProofError(uploadErr?.message === 'proof_too_big' ? t.rechargeProofTooBig : t.rechargeProofUploadFailed);
+          return;
+        }
+      }
+      const result = await markRechargePaymentSent(
+        activeRequest.requestId,
+        needsProof ? { txnRef: txnRef || null, proofPath } : {},
+      );
       setActiveRequest(result);
       setStep('pending');
       notifySuccess(t.rechargePendingApproval);
     } catch (err) {
-      notifyError(err.message || t.rechargeFailed);
+      const key = proofErrorKey(err?.message);
+      if (needsProof && key) setProofError(t[key] || err.message);
+      else notifyError(err.message || t.rechargeFailed);
     } finally {
       setIsProcessing(false);
     }
   };
+
+  const chooseProofFile = (file) => {
+    setProofError('');
+    if (!file) return;
+    if (!/^image\//.test(file.type)) {
+      setProofError(t.rechargeProofImageOnly);
+      return;
+    }
+    // Phone photos can be 8MB+; they are shrunk before upload, so only reject absurd sizes here.
+    if (file.size > PAYMENT_PROOF_MAX_BYTES * 8) {
+      setProofError(t.rechargeProofTooBig);
+      return;
+    }
+    setProofFile(file);
+  };
+
+  // Preview URL for the chosen receipt (revoked when it changes / the page closes).
+  useEffect(() => {
+    if (!proofFile) {
+      setProofPreview('');
+      return undefined;
+    }
+    const url = URL.createObjectURL(proofFile);
+    setProofPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [proofFile]);
 
   const handleInvoicePaid = (completion) => {
     const creditedAmount = completion?.creditedAmount ?? completion?.amount ?? activeRequest?.amount;
@@ -381,9 +448,15 @@ export default function RechargeView({
   };
 
   const resetToAmount = async () => {
+    // Manual ShamCash requests never expire on their own: going back from the unconfirmed screen cancels it
+    // (after asking — the customer may already have sent the money and just wants to re-read the wallet id).
+    const isUnconfirmedManual = activeRequest?.paymentMethod === 'ShamCashManual' && step === 'payment';
+    if (isUnconfirmedManual && typeof window !== 'undefined' && !window.confirm(t.rechargeCancelConfirm)) {
+      return;
+    }
     if (
       activeRequest?.requestId
-      && (isApiWalletMethod(activeRequest.paymentMethod, paymentConfig) || isBinancePayMethod(activeRequest.paymentMethod))
+      && (isApiWalletMethod(activeRequest.paymentMethod, paymentConfig) || isBinancePayMethod(activeRequest.paymentMethod) || isUnconfirmedManual)
       && step !== 'completed'
     ) {
       await cancelPendingRecharge(activeRequest.requestId);
@@ -392,9 +465,16 @@ export default function RechargeView({
     setActiveRequest(null);
     setInvoiceError('');
     setCompletedRecharge(null);
+    setTxnInput('');
+    setProofFile(null);
+    setProofError('');
   };
 
   const activeMethod = activeRequest?.paymentMethod || selectedMethod;
+  const activeIsManualFallback = activeMethod === 'ShamCashManual';
+  const txnTyped = normalizeTxnRef(txnInput);
+  const txnTypedValid = isValidTxnRef(txnTyped);
+  const proofReady = !activeIsManualFallback || txnTypedValid || !!proofFile;
   const activeDisplay = getManualPaymentDisplay(paymentConfig, activeMethod);
   const activeMethodLabel = t[activeDisplay.methodLabelKey] || activeMethod;
   const activeIsApiWallet = isApiWalletMethod(activeMethod, paymentConfig);
@@ -644,7 +724,14 @@ export default function RechargeView({
                       </span>
                       <div className="min-w-0">
                         <div className="font-bold">{m.name}</div>
-                        <div className="text-xs text-[var(--text-muted)]">{t[methodNoteKey]}</div>
+                        <div className="text-xs text-[var(--text-muted)]">
+                          {/* Each row explains ITSELF, independent of which row is selected. */}
+                          {m.id === 'ShamCashManual'
+                            ? (t.shamcashManualRowNote || t.manualPaymentApprovalNote)
+                            : (m.id === 'binance'
+                              ? t.binanceRechargeNote
+                              : (isApiMode ? t.samInvoiceRechargeNote : t.manualPaymentApprovalNote))}
+                        </div>
                       </div>
                     </button>
                   );
@@ -668,10 +755,10 @@ export default function RechargeView({
                 </div>
               )}
               <div className="text-xs text-[var(--text-muted)] mt-1">{methodLabel}</div>
-              {effectivePayCurrency === 'SYP' && (
+              {effectivePayCurrency === 'SYP' && !isManualFallbackSelected && (
                 <p className="text-[10px] text-[var(--text-muted)] mt-2 max-w-md mx-auto">{t.rechargeSypPartialCreditNote}</p>
               )}
-              {effectivePayCurrency === 'USD' && isApiMode && (
+              {effectivePayCurrency === 'USD' && isApiMode && !isManualFallbackSelected && (
                 <p className="text-[10px] text-[var(--text-muted)] mt-2 max-w-md mx-auto">{t.rechargeUsdPartialCreditNote}</p>
               )}
             </div>
@@ -692,7 +779,7 @@ export default function RechargeView({
         )}
 
         {(step === 'payment' || step === 'pending') && activeRequest && (
-          <div className="space-y-5">
+          <div className="space-y-5 max-lg:pb-36">
             <BackButton onClick={resetToAmount} t={t} className="mb-4" />
 
             <div className="text-center">
@@ -713,7 +800,7 @@ export default function RechargeView({
                 </p>
               )}
               <div className="text-xs text-[var(--text-sec)] mt-1">{activeMethodLabel}</div>
-              {activePayCurrency === 'SYP' && (
+              {activePayCurrency === 'SYP' && activeMethod !== 'ShamCashManual' && (
                 <p className="text-[10px] text-[var(--text-muted)] mt-2 max-w-md mx-auto">{t.rechargeSypPartialCreditNote}</p>
               )}
             </div>
@@ -786,16 +873,19 @@ export default function RechargeView({
                       alt=""
                       className="mx-auto max-w-[220px] w-full rounded-xl border border-[var(--border)] bg-white p-2"
                     />
-                  ) : (
+                  ) : !activeDisplay.payCode ? (
                     <div className="py-10 text-sm text-[var(--text-muted)]">{t.qrNotConfigured}</div>
-                  )}
+                  ) : null}
 
                   {activeDisplay.payCode && (
                     <div className="mt-4">
-                      <div className="text-xs text-[var(--text-muted)] mb-1">
-                        {t.shamcashPayCodeLabel}
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <div className="text-xs text-[var(--text-muted)]">
+                          {t.shamcashPayCodeLabel}
+                        </div>
+                        <CopyButton value={activeDisplay.payCode} label={t.copyCode || 'Copy'} copiedLabel={t.copied || 'Copied'} />
                       </div>
-                      <div className="font-mono text-lg tracking-wide break-all text-[var(--text-primary)] bg-black/30 rounded-xl px-4 py-3">
+                      <div className="font-mono text-lg tracking-wide break-all text-[var(--text-primary)] bg-black/30 rounded-xl px-4 py-3" dir="ltr">
                         {activeDisplay.payCode}
                       </div>
                     </div>
@@ -803,28 +893,140 @@ export default function RechargeView({
                 </div>
 
                 <div className="rounded-2xl border border-[var(--border)] bg-black/40 p-4 text-center">
-                  <div className="text-green-400 text-xs mb-1 uppercase tracking-wider">
-                    {t.paymentReference}
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <div className="text-green-400 text-xs uppercase tracking-wider">
+                      {t.paymentReference}
+                    </div>
+                    {activeRequest.reference ? (
+                      <CopyButton value={activeRequest.reference} label={t.copyCode || 'Copy'} copiedLabel={t.copied || 'Copied'} />
+                    ) : null}
                   </div>
-                  <div className="font-mono text-lg tracking-wider">{activeRequest.reference}</div>
+                  <div className="font-mono text-lg tracking-wider break-all" dir="ltr">{activeRequest.reference}</div>
                   <p className="text-xs text-[var(--text-muted)] mt-2">
                     {formatMessage(t.includeReferenceNoteMethod, { method: activeMethodLabel })}
                   </p>
                 </div>
 
-                {step === 'payment' ? (
-                  <button
-                    type="button"
-                    onClick={confirmPaymentSent}
-                    disabled={isProcessing}
-                    className="btn btn-primary w-full py-4 font-bold flex items-center justify-center gap-2"
-                  >
-                    {isProcessing ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /> {t.processing}</>
+                {step === 'payment' && activeIsManualFallback && (
+                  <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-4 space-y-3">
+                    <div>
+                      <div className="font-bold text-sm">{t.rechargeProofTitle}</div>
+                      <p className="text-[11px] text-[var(--text-muted)] mt-1 leading-relaxed">{t.rechargeProofHelp}</p>
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-[var(--text-muted)] block mb-1.5" htmlFor="recharge-txn-ref">
+                        {t.samInvoiceTransactionRefLabel}
+                      </label>
+                      <input
+                        id="recharge-txn-ref"
+                        type="text"
+                        inputMode="numeric"
+                        dir="ltr"
+                        autoComplete="off"
+                        value={txnInput}
+                        onChange={(e) => { setTxnInput(e.target.value); setProofError(''); }}
+                        placeholder="#324065688"
+                        className="w-full rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] px-4 py-3 font-mono text-sm focus:border-[var(--accent)] outline-none"
+                      />
+                      <p className="text-[10px] text-[var(--text-muted)] mt-1.5">{t.samInvoiceTransactionRefHint}</p>
+                      {txnInput.trim() && !txnTypedValid && (
+                        <p className="text-[11px] text-amber-300 mt-1">{t.rechargeTxnInvalid}</p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-3 text-[11px] text-[var(--text-muted)]">
+                      <span className="h-px flex-1 bg-[var(--border)]" />
+                      {t.rechargeProofOr}
+                      <span className="h-px flex-1 bg-[var(--border)]" />
+                    </div>
+
+                    {proofFile ? (
+                      <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-2.5">
+                        {proofPreview ? (
+                          <img src={proofPreview} alt="" className="w-16 h-16 rounded-lg object-cover border border-[var(--border)]" />
+                        ) : null}
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-semibold truncate" dir="ltr">{proofFile.name}</div>
+                          <div className="text-[10px] text-[var(--text-muted)]">{t.rechargeProofReady}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { setProofFile(null); setProofError(''); }}
+                          className="p-2 rounded-lg text-[var(--text-sec)] hover:bg-[var(--bg-elevated)]"
+                          aria-label={t.rechargeProofRemove}
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
                     ) : (
-                      t.confirmPaymentSent
+                      <label className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--border)] px-4 py-4 text-sm font-semibold text-[var(--text-sec)] cursor-pointer hover:border-[var(--accent)]/60 touch-manipulation">
+                        <ImagePlus className="w-4 h-4" aria-hidden="true" />
+                        {t.rechargeProofUpload}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="sr-only"
+                          onChange={(e) => { chooseProofFile(e.target.files?.[0]); e.target.value = ''; }}
+                        />
+                      </label>
                     )}
-                  </button>
+
+                    {proofError && (
+                      <p className="text-xs text-red-300" role="alert">{proofError}</p>
+                    )}
+                  </div>
+                )}
+
+                {step === 'payment' ? (
+                  <>
+                    {/* Desktop: inline button. Phones: sticky bar below, so "I've paid" never needs scrolling. */}
+                    <div className="hidden lg:block">
+                      <button
+                        type="button"
+                        onClick={confirmPaymentSent}
+                        disabled={isProcessing || !proofReady}
+                        className="btn btn-primary w-full py-4 font-bold flex items-center justify-center gap-2 disabled:opacity-60"
+                      >
+                        {isProcessing ? (
+                          <><Loader2 className="w-4 h-4 animate-spin" /> {t.processing}</>
+                        ) : (
+                          t.confirmPaymentSent
+                        )}
+                      </button>
+                    </div>
+                    <MobileBuyBar>
+                      <div className="cart-mobile-bar" role="region" aria-label={t.confirmPaymentSent}>
+                        <div className="cart-mobile-bar__inner">
+                          <div className="min-w-0 flex-1">
+                            <div className="catalog-mobile-buybar__title truncate">{activeMethodLabel}</div>
+                            <div className="catalog-mobile-buybar__price tabular-nums" dir="ltr">{formatMoney(activeRequest.amount)}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={confirmPaymentSent}
+                            disabled={isProcessing || !proofReady}
+                            className="btn btn-primary catalog-mobile-buybar__btn font-bold shrink-0 touch-manipulation inline-flex items-center justify-center gap-2 disabled:opacity-60"
+                          >
+                            {isProcessing ? (
+                              <><Loader2 className="w-4 h-4 animate-spin" /> {t.processing}</>
+                            ) : (
+                              t.confirmPaymentSent
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </MobileBuyBar>
+                    {activeIsManualFallback && (
+                      <button
+                        type="button"
+                        onClick={resetToAmount}
+                        className="w-full text-center text-xs text-[var(--text-muted)] underline underline-offset-2 py-2"
+                      >
+                        {t.rechargeCancelRequest}
+                      </button>
+                    )}
+                  </>
                 ) : (
                   <AlertBanner tone="amber" centered>
                     <Clock className="w-8 h-8 mx-auto text-amber-300 mb-2" />

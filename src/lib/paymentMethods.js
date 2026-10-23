@@ -27,6 +27,17 @@ export const PAYMENT_METHOD_DEFS = {
     descAr: 'ادفع عبر تطبيق ShamCash',
     manualOnlyKey: 'shamcashManualOnly',
   },
+  ShamCashManual: {
+    id: 'ShamCashManual',
+    icon: Wallet,
+    logoSrc: '/shamcash-logo.svg',
+    color: 'text-green-500',
+    nameKey: 'shamcashManualMethod',
+    fallbackEn: 'ShamCash (manual transfer)',
+    fallbackAr: 'شام كاش (تحويل يدوي)',
+    descEn: 'Send to our wallet, then confirm — approved by our team',
+    descAr: 'حوّل إلى محفظتنا ثم أكّد الدفع — تتم الموافقة من فريقنا',
+  },
   WalletRecharge: {
     id: 'WalletRecharge',
     icon: Wallet,
@@ -102,6 +113,9 @@ export function getOrderPaymentMethodLabel(method, t = {}) {
   if (id === 'admin_gift') {
     return t.orderPaymentGift || t.adminGiftTitle || 'Admin gift';
   }
+  if (id === 'ShamCashManual') {
+    return t.shamcashManualMethod || 'ShamCash (manual)';
+  }
   if (id === 'ShamCash' || id.toLowerCase() === 'shamcash') {
     return t.adminOrdersPaymentShamcash || t.shamCash || 'ShamCash';
   }
@@ -135,6 +149,9 @@ export function canManuallyRejectWalletOrder(_order, _paymentConfig = {}) {
 export function isPaymentMethodReady(methodId, paymentConfig = {}) {
   const mode = walletMode(paymentConfig);
 
+  // Manual fallback: admin toggle + wallet id (computed server-side), independent of Sam API health.
+  if (methodId === 'ShamCashManual') return !!paymentConfig.shamcashManualFallback;
+
   if (methodId === 'ShamCash') {
     const enabled = paymentConfig.shamcash !== false && paymentConfig.shamcash !== undefined
       ? !!paymentConfig.shamcash
@@ -167,6 +184,15 @@ export function getManualPaymentDisplay(paymentConfig = {}, methodId = 'ShamCash
     };
   }
 
+  if (methodId === 'ShamCashManual') {
+    return {
+      merchantName,
+      qrImageUrl: paymentConfig.shamcashQrImageUrl || '',
+      payCode: paymentConfig.shamcashPayCode || '',
+      methodLabelKey: 'shamcashManualMethod',
+    };
+  }
+
   if (String(methodId).toLowerCase() === 'binance') {
     return {
       merchantName: 'Binance',
@@ -186,7 +212,8 @@ export function getManualPaymentDisplay(paymentConfig = {}, methodId = 'ShamCash
 
 export function hasAnyManualWalletReady(paymentConfig = {}) {
   return isPaymentMethodReady('ShamCash', paymentConfig)
-    || isPaymentMethodReady('SyriatelCash', paymentConfig);
+    || isPaymentMethodReady('SyriatelCash', paymentConfig)
+    || isPaymentMethodReady('ShamCashManual', paymentConfig);
 }
 
 export function buildPaymentMethods(t, lang, paymentConfig = {}, options = {}) {
@@ -258,6 +285,12 @@ export function buildPaymentMethods(t, lang, paymentConfig = {}, options = {}) {
         });
       }
     }
+  }
+
+  // Manual ShamCash fallback: recharge page only, alongside the automatic option (Sam API mode).
+  if (!isCheckout && isApiMode && isPaymentMethodReady('ShamCashManual', paymentConfig)) {
+    const def = PAYMENT_METHOD_DEFS.ShamCashManual;
+    methods.push({ ...def, name: label(def), desc: desc(def), disabled: false });
   }
 
   if (enabled.syriatel) {

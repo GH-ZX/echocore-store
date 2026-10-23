@@ -79,9 +79,12 @@ export async function createRechargeRequest(amount, paymentMethod = 'ShamCash', 
   return assertRpcData(data, error);
 }
 
-export async function markRechargePaymentSent(requestId) {
+/** Customer confirms they paid. Manual ShamCash passes a transaction id and/or an uploaded receipt path. */
+export async function markRechargePaymentSent(requestId, { txnRef = null, proofPath = null } = {}) {
   const { data, error } = await supabase.rpc('mark_recharge_payment_sent', {
     p_request_id: requestId,
+    p_txn_ref: txnRef || null,
+    p_proof_path: proofPath || null,
   });
   return assertRpcData(data, error);
 }

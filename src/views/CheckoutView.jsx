@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Loader2, QrCode, Clock, CheckCircle, Gift, Wallet, Copy, Check } from 'lucide-react';
+import { Loader2, QrCode, Clock, CheckCircle, Gift, Wallet, Check } from 'lucide-react';
 import {
   buildPaymentMethods,
   getManualPaymentDisplay,
@@ -22,49 +22,9 @@ import { isCommerceBlockedDuringMaintenance } from '../lib/siteStatus';
 import { useNotify } from '../hooks/useNotify';
 import BackButton from '../components/ui/BackButton';
 import MobileBuyBar from '../components/catalog/MobileBuyBar';
+import CopyButton from '../components/ui/CopyButton';
 import { getOfferDisplayName } from '../lib/offerDisplay';
 import { brandUserText } from '../lib/branding';
-
-/** Tap-to-copy chip for the payment code / reference (a big win on phones: no long-press selecting). */
-function CopyButton({ value, label, copiedLabel }) {
-  const [copied, setCopied] = useState(false);
-
-  const copy = async () => {
-    if (!value) return;
-    try {
-      await navigator.clipboard.writeText(String(value));
-    } catch {
-      // Older WebViews: fall back to a hidden textarea.
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = String(value);
-        ta.setAttribute('readonly', '');
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-      } catch {
-        return;
-      }
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={copy}
-      className={`copy-chip${copied ? ' is-copied' : ''}`}
-      aria-label={label}
-    >
-      {copied ? <Check className="w-3.5 h-3.5" aria-hidden="true" /> : <Copy className="w-3.5 h-3.5" aria-hidden="true" />}
-      <span>{copied ? copiedLabel : label}</span>
-    </button>
-  );
-}
 
 export default function CheckoutView({
   t,

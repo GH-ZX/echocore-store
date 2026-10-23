@@ -30,6 +30,7 @@ export const STORE_SETTINGS_CLIENT_SELECT = [
   'home_layout',
   'shamcash_qr_image_url',
   'shamcash_pay_code',
+  'shamcash_manual_fallback',
   'g2bulk_enabled',
   'g2bulk_markup_percent',
   'g2bulk_catalog_only',

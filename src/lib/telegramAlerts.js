@@ -4,6 +4,7 @@ import { isMissingRpc, buildRpcSetupMsg } from './supabaseErrors';
 export const TELEGRAM_ALERT_EVENTS = [
   'orderPaid',
   'recharge',
+  'rechargePending',
   'fulfillmentFail',
   'lowWallet',
   'invariantViolation',

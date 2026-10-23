@@ -10,6 +10,7 @@ const DEFAULT_SETTINGS = {
   shamcash_merchant_name: 'ECHOCORE Store',
   shamcash_qr_image_url: '',
   shamcash_pay_code: '',
+  shamcash_manual_fallback: false,
   syriatel_enabled: false,
   syriatel_qr_image_url: '',
   syriatel_pay_code: '',
@@ -71,6 +72,7 @@ export async function saveStoreSettings(settings) {
     shamcash_pay_code: settings.shamcash_pay_code !== undefined
       ? (settings.shamcash_pay_code?.trim() || null)
       : (existing.shamcash_pay_code?.trim() || null),
+    shamcash_manual_fallback: settings.shamcash_manual_fallback ?? existing.shamcash_manual_fallback ?? DEFAULT_SETTINGS.shamcash_manual_fallback,
     syriatel_enabled: settings.syriatel_enabled ?? existing.syriatel_enabled ?? DEFAULT_SETTINGS.syriatel_enabled,
     syriatel_qr_image_url: settings.syriatel_qr_image_url !== undefined
       ? (settings.syriatel_qr_image_url?.trim() || null)

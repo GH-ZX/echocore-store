@@ -30,6 +30,7 @@ import {
 const EVENT_KEYS = {
   orderPaid: 'telegramEventOrderPaid',
   recharge: 'telegramEventRecharge',
+  rechargePending: 'telegramEventRechargePending',
   fulfillmentFail: 'telegramEventFulfillmentFail',
   lowWallet: 'telegramEventLowWallet',
   invariantViolation: 'telegramEventInvariantViolation',

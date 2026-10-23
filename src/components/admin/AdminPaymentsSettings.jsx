@@ -106,6 +106,7 @@ export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved, on
     shamcash_merchant_name: 'ECHOCORE Store',
     shamcash_qr_image_url: '',
     shamcash_pay_code: '',
+    shamcash_manual_fallback: false,
     syriatel_enabled: false,
     syriatel_qr_image_url: '',
     syriatel_pay_code: '',
@@ -127,6 +128,7 @@ export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved, on
         shamcash_merchant_name: data.shamcash_merchant_name || 'ECHOCORE Store',
         shamcash_qr_image_url: data.shamcash_qr_image_url || '',
         shamcash_pay_code: data.shamcash_pay_code || '',
+        shamcash_manual_fallback: data.shamcash_manual_fallback === true,
         syriatel_enabled: data.syriatel_enabled ?? false,
         syriatel_qr_image_url: data.syriatel_qr_image_url || '',
         syriatel_pay_code: data.syriatel_pay_code || '',
@@ -179,6 +181,7 @@ export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved, on
         shamcash_merchant_name: form.shamcash_merchant_name,
         shamcash_qr_image_url: form.shamcash_qr_image_url,
         shamcash_pay_code: form.shamcash_pay_code,
+        shamcash_manual_fallback: form.shamcash_manual_fallback,
         syriatel_enabled: form.syriatel_enabled,
         syriatel_qr_image_url: form.syriatel_qr_image_url,
         syriatel_pay_code: form.syriatel_pay_code,
@@ -332,6 +335,7 @@ export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved, on
 
           </div>
         ) : (
+          <div className="space-y-4">
           <div className="rounded-xl border border-[var(--accent)]/25 bg-[var(--accent)]/5 p-4 space-y-3">
             <p className="text-sm text-[var(--text-sec)] leading-relaxed">{t.apisPaymentsSamHint}</p>
             <button
@@ -341,6 +345,27 @@ export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved, on
             >
               {t.apisOpenHub}
             </button>
+          </div>
+
+          {/* Fallback for when the automatic provider is down: customers can still pay by sending
+              to this wallet id and confirming; an admin approves from Recharges. */}
+          <ManualWalletSection
+            title={t.shamcashFallbackTitle}
+            help={t.shamcashFallbackHelp}
+            qrLabel={t.shamcashFallbackQrLabel}
+            payCodeLabel={t.shamcashFallbackWalletIdLabel}
+            payCodeHelp={t.shamcashFallbackWalletIdHelp}
+            payCodePlaceholder={t.shamcashPayCodePlaceholder}
+            enableLabel={t.shamcashFallbackEnable}
+            enableHelp={t.shamcashFallbackEnableHelp}
+            qrImageUrl={form.shamcash_qr_image_url}
+            payCode={form.shamcash_pay_code}
+            enabled={form.shamcash_manual_fallback}
+            uploading={shamQrUploading}
+            onQrUpload={(e) => handleQrUpload(e, 'shamcash_qr_image_url', setShamQrUploading, 'shamcash-qr')}
+            onPayCodeChange={(e) => setForm((p) => ({ ...p, shamcash_pay_code: e.target.value }))}
+            onEnabledChange={(e) => setForm((p) => ({ ...p, shamcash_manual_fallback: e.target.checked }))}
+          />
           </div>
         )}
 
