@@ -275,6 +275,45 @@ function parsePaidAmount(payload: Json, fallback: unknown): number | null {
   return Number.isFinite(num) && num > 0 ? Math.round(num * 100) / 100 : null;
 }
 
+function timingSafeEqualStr(a: string, b: string) {
+  const enc = new TextEncoder();
+  const x = enc.encode(a);
+  const y = enc.encode(b);
+  let diff = x.length ^ y.length;
+  const len = Math.max(x.length, y.length);
+  for (let i = 0; i < len; i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
+
+/**
+ * Sam's own word that an invoice is paid. Webhook bodies and client calls are
+ * never enough on their own (a leaked webhook token or a loose ref match must
+ * not mint balance): Sam's GET /pay/{id} has to say `paid` for the same
+ * currency, and the amount we record is capped at the invoice amount.
+ */
+async function confirmPaidWithSam(
+  apiKey: string | null,
+  row: Record<string, unknown>,
+  reportedPaid: number | null,
+): Promise<{ ok: true; paidAmount: number; paidAt: string | null } | { ok: false; message: string }> {
+  if (!apiKey) return { ok: false, message: 'Sam API key not configured' };
+  const invoiceId = String(row.sam_invoice_id || '');
+  const { res, data } = await samFetch(apiKey, `/pay/${encodeURIComponent(invoiceId)}`);
+  if (!res.ok) return { ok: false, message: samErrorMessage(data, 'Could not confirm invoice with Sam', res.status) };
+  if (String(data.status || '').toLowerCase() !== 'paid') {
+    return { ok: false, message: 'Sam does not report this invoice as paid' };
+  }
+  if (data.currency && String(data.currency) !== String(row.currency)) {
+    return { ok: false, message: 'Currency mismatch' };
+  }
+  const invoiceAmount = Number(row.amount);
+  if (!Number.isFinite(invoiceAmount) || invoiceAmount <= 0) {
+    return { ok: false, message: 'Invoice amount invalid' };
+  }
+  const paidAmount = Math.min(reportedPaid ?? invoiceAmount, invoiceAmount);
+  return { ok: true, paidAmount, paidAt: typeof data.paidAt === 'string' ? data.paidAt : null };
+}
+
 function invoiceAmountString(amount: number, currency: string): string {
   if (currency === 'SYP') return String(Math.round(amount));
   return Number(amount).toFixed(2);
@@ -503,7 +542,7 @@ Deno.serve(async (req) => {
 
   if (action === 'webhook' || isWebhookEvent) {
     const expectedToken = await resolveWebhookSecret(serviceClient);
-    if (!expectedToken || queryToken !== expectedToken) {
+    if (!expectedToken || !queryToken || !timingSafeEqualStr(queryToken, expectedToken)) {
       return jsonResponse({ success: false, message: 'Invalid webhook token' }, 401);
     }
 
@@ -538,7 +577,16 @@ Deno.serve(async (req) => {
         return jsonResponse({ success: true, skipped: true });
       }
 
-      const paidAmount = parsePaidAmount(body as Json, row.amount);
+      // The token only proves the caller may wake us up; Sam must confirm the payment.
+      const confirmed = await confirmPaidWithSam(
+        await resolveSamApiKey(serviceClient),
+        row as Record<string, unknown>,
+        parsePaidAmount(body as Json, row.amount),
+      );
+      if (!confirmed.ok) {
+        console.error('sam webhook: payment not confirmed', invoiceId, confirmed.message);
+        return jsonResponse({ success: false, message: confirmed.message }, 409);
+      }
 
       // Conditional flip: if two webhook deliveries race, only the one that
       // actually moves the invoice to 'paid' runs completion + fulfillment.
@@ -546,9 +594,9 @@ Deno.serve(async (req) => {
         .from('sam_invoices')
         .update({
           status: 'paid',
-          paid_amount: paidAmount,
+          paid_amount: confirmed.paidAmount,
           transaction_ref: typeof body.transactionRef === 'string' ? body.transactionRef : row.transaction_ref,
-          paid_at: typeof body.paidAt === 'string' ? body.paidAt : new Date().toISOString(),
+          paid_at: confirmed.paidAt || (typeof body.paidAt === 'string' ? body.paidAt : new Date().toISOString()),
           webhook_received_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
@@ -881,29 +929,65 @@ Deno.serve(async (req) => {
         });
       }
 
-      let paidAmount = parsePaidAmount(data as Json, row.amount);
-      if (paidAmount == null) {
-        const { res: payRes, data: payData } = await samFetch(apiKey, `/pay/${encodeURIComponent(samInvoiceId)}`);
-        if (payRes.ok) {
-          paidAmount = parsePaidAmount(payData as Json, row.amount);
-        }
+      // One wallet transfer pays one invoice: refuse a ref already used by
+      // another paid invoice or an approved manual recharge.
+      const refKey = transactionRef.toLowerCase();
+      const [{ data: usedByInvoice }, { data: usedByRecharge }] = await Promise.all([
+        serviceClient
+          .from('sam_invoices')
+          .select('id')
+          .eq('status', 'paid')
+          .ilike('transaction_ref', refKey.replace(/[%_\\]/g, '\\$&'))
+          .neq('id', row.id)
+          .limit(1),
+        serviceClient
+          .from('recharge_requests')
+          .select('id')
+          .eq('status', 'approved')
+          .ilike('payment_txn_ref', refKey.replace(/[%_\\]/g, '\\$&'))
+          .limit(1),
+      ]);
+      if (usedByInvoice?.length || usedByRecharge?.length) {
+        return jsonResponse({
+          success: false,
+          verified: false,
+          code: 'REF_ALREADY_USED',
+          message: 'This transaction number was already used for another payment',
+        }, 409);
       }
 
-      await serviceClient
+      // Sam's verify answers only {verified, message}; its invoice must now say paid.
+      const confirmed = await confirmPaidWithSam(apiKey, row as Record<string, unknown>, null);
+      if (!confirmed.ok) {
+        return jsonResponse({ success: true, verified: false, message: confirmed.message });
+      }
+
+      const { data: flipped, error: flipError } = await serviceClient
         .from('sam_invoices')
         .update({
           status: 'paid',
-          paid_amount: paidAmount,
+          paid_amount: confirmed.paidAmount,
           transaction_ref: transactionRef,
-          paid_at: new Date().toISOString(),
+          paid_at: confirmed.paidAt || new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq('id', row.id);
+        .eq('id', row.id)
+        .neq('status', 'paid')
+        .select('id');
+
+      if (flipError) {
+        return jsonResponse({ success: false, verified: false, message: 'Could not record payment' }, 409);
+      }
+      if (!flipped || flipped.length === 0) {
+        // The webhook (or another tab) recorded it first: just complete.
+        const completion = await completeEntityAfterPaid(serviceClient, row as Record<string, unknown>);
+        return jsonResponse({ success: true, verified: true, status: 'paid', completion });
+      }
 
       const completion = await completeEntityAfterPaid(serviceClient, {
         ...row,
         transaction_ref: transactionRef,
-        paid_amount: paidAmount,
+        paid_amount: confirmed.paidAmount,
         status: 'paid',
       } as Record<string, unknown>);
 
@@ -928,8 +1012,9 @@ Deno.serve(async (req) => {
 
       if (row.status === 'pending') {
         const { res, data } = await samFetch(apiKey, `/pay/${encodeURIComponent(samInvoiceId)}`);
-        if (res.ok && data.status === 'paid') {
-          const paidAmount = parsePaidAmount(data as Json, row.amount);
+        if (res.ok && data.status === 'paid' && (!data.currency || String(data.currency) === String(row.currency))) {
+          const parsed = parsePaidAmount(data as Json, row.amount);
+          const paidAmount = parsed == null ? null : Math.min(parsed, Number(row.amount));
 
           await serviceClient
             .from('sam_invoices')
