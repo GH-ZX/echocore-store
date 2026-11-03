@@ -4499,12 +4499,18 @@ Deno.serve(async (req) => {
   if (action === 'ensureCatalogItems') {
     if (!userId) return jsonResponse({ success: false, message: 'Unauthorized' }, 401);
 
-    const items = Array.isArray(body.items) ? body.items : [];
+    // Any signed-in customer reaches this at checkout, so nothing price-related
+    // may come from the request body: costs are re-read from G2Bulk here and an
+    // item whose supplier cost can't be verified is skipped (2026-11-03 incident:
+    // a client-sent price of -1 became a purchasable offer).
+    const items = (Array.isArray(body.items) ? body.items : []).slice(0, 20);
     const now = new Date().toISOString();
+    const callerIsAdmin = await isAdmin(userClient, userId);
 
     const { markup, roundStep } = await loadStorePricingSettings(serviceClient);
 
     const resolved: { liveId: string; offerId: string }[] = [];
+    const cataloguesByCode = new Map<string, Json[]>();
 
     for (const raw of items) {
       const liveId = String(raw.id || '');
@@ -4514,6 +4520,21 @@ Deno.serve(async (req) => {
         const code = String(raw.g2bulk_game_code || '').trim();
         const catalogueName = String(raw.g2bulk_catalogue_name || '').trim();
         if (!code || !catalogueName) continue;
+
+        let catalogues = cataloguesByCode.get(code);
+        if (!catalogues) {
+          catalogues = await fetchSupplierList(
+            `/games/${encodeURIComponent(code)}/catalogue`,
+            'catalogues',
+            { allowEmpty: true },
+          );
+          cataloguesByCode.set(code, catalogues);
+        }
+        const liveCatalogue = catalogues.find(
+          (row) => String(row?.name || '').trim() === catalogueName,
+        );
+        const cost = Number(liveCatalogue?.amount);
+        if (!liveCatalogue || !Number.isFinite(cost) || cost <= 0) continue;
 
         const meta = parseG2BulkGameMeta(code, String(raw.game_name || code));
         const slug = slugify(code);
@@ -4542,8 +4563,11 @@ Deno.serve(async (req) => {
 
         let gameId = existingGame?.id as string | undefined;
         if (gameId) {
-          const error = await updateGamePreservingCustomImages(serviceClient, gameId, gameRow);
-          if (error) throw error;
+          // Customers resolve against existing games; only admins may rewrite them.
+          if (callerIsAdmin) {
+            const error = await updateGamePreservingCustomImages(serviceClient, gameId, gameRow);
+            if (error) throw error;
+          }
         } else {
           const { data: inserted, error: insertError } = await serviceClient
             .from('games')
@@ -4554,7 +4578,6 @@ Deno.serve(async (req) => {
           gameId = inserted.id as string;
         }
 
-        const cost = Number(raw.g2bulk_cost_usd ?? raw.price);
         const offerDisplayName = formatCatalogueOfferName(
           catalogueName,
           code,
@@ -4566,12 +4589,11 @@ Deno.serve(async (req) => {
           game_id: gameId,
           name_en: offerDisplayName,
           name_ar: offerDisplayName,
-          price: Number.isFinite(cost) && cost > 0
-            ? priceFromCost(cost, markup, roundStep)
-            : Number(raw.price) || 0.01,
+          price: priceFromCost(cost, markup, roundStep),
           g2bulk_type: 'topup',
           g2bulk_catalogue_name: catalogueName,
-          g2bulk_cost_usd: Number.isFinite(cost) ? cost : null,
+          g2bulk_catalogue_id: liveCatalogue.id ?? null,
+          g2bulk_cost_usd: cost,
           catalog_source: 'g2bulk',
           active: true,
           region: meta.regionLabel,
@@ -4623,6 +4645,7 @@ Deno.serve(async (req) => {
           const title = String(product.category_title || product.title || `Product ${productId}`);
           const slug = slugify(`cards-${categoryId}-${title}`);
           const cost = Number(product.unit_price);
+          if (!Number.isFinite(cost) || cost <= 0) continue;
 
           const { data: gameRow } = await serviceClient
             .from('games')
