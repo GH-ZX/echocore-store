@@ -34,6 +34,7 @@ export const IMAGE_PRESETS = {
   cardCover: { width: 640, quality: 78 },
   heroCover: { width: 960, quality: 80 },
   colorSample: { width: 48, quality: 60 },
+  thumb: { width: 112, height: 112, quality: 75, resize: 'cover' },
 };
 
 export function presetImageUrl(url, preset) {

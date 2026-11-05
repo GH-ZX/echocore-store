@@ -122,6 +122,11 @@ export function mapSamRechargeError(err, t = {}) {
   if (code === 'EXPIRED') {
     return t.samInvoiceExpired || t.samInvoiceCreateFailed || 'Invoice expired';
   }
+  // The store's own Sam account is down (e.g. its subscription lapsed). Sam's text
+  // ("your subscription has expired") reads as if it were the customer's account.
+  if (code === 'SUBSCRIPTION_EXPIRED' || /^\s*SUBSCRIPTION_EXPIRED\b/i.test(String(err?.message || ''))) {
+    return t.samInvoiceTemporarilyDown || t.samInvoiceCreateFailed || 'Payment unavailable';
+  }
 
   return err?.message || t.samInvoiceCreateFailed || t.rechargeFailed || 'Recharge failed';
 }

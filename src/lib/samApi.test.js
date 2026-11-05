@@ -3,6 +3,7 @@ import {
   buildSamRechargeHistoryPayload,
   buildSamTransferPayload,
   isValidSamRecipient,
+  mapSamRechargeError,
 } from './samApi';
 
 describe('buildSamRechargeHistoryPayload', () => {
@@ -44,5 +45,19 @@ describe('isValidSamRecipient', () => {
       amount: 10,
       customerId: '12345678-1234-1234-8123-123456789012',
     })).toMatchObject({ action: 'transfer', customerId: '12345678-1234-1234-8123-123456789012' });
+  });
+});
+
+describe('mapSamRechargeError', () => {
+  const t = { samInvoiceTemporarilyDown: 'down', samInvoiceCreateFailed: 'failed' };
+
+  it("never shows Sam's own 'subscription expired' text to a customer", () => {
+    const err = new Error('SUBSCRIPTION_EXPIRED: اشتراكك منتهي، يرجى تجديد الاشتراك للمتابعة');
+    expect(mapSamRechargeError(err, t)).toBe('down');
+    expect(mapSamRechargeError({ code: 'SUBSCRIPTION_EXPIRED' }, t)).toBe('down');
+  });
+
+  it('keeps other messages', () => {
+    expect(mapSamRechargeError(new Error('network down'), t)).toBe('network down');
   });
 });

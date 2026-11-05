@@ -178,6 +178,36 @@ export function sortOffersByPrice(offers = []) {
   return [...offers].sort((a, b) => Number.parseFloat(a.price) - Number.parseFloat(b.price));
 }
 
+// Passes, memberships and anything sold for a period ("Weekly", "Prime (1 Month)",
+// "Server Rental [30 Days]").
+const OFFER_PASS_RE = /\b(pass|weekly|monthly|prime|membership|subscription|twilight)\b|[([]\s*\d+\s*(days?|months?)\s*[)\]]/i;
+// A "Weekly Deal Pack" is still a deal, not a pass.
+const OFFER_BUNDLE_RE = /deal|\b(bundle|value pack|gift pack|chest)\b/i;
+
+export const OFFER_GROUPS = ['currency', 'pass', 'bundle'];
+
+/**
+ * Which tab a pack belongs to on the game page: `currency` for a plain amount
+ * ("55 Diamonds", "60 UC", "1800 UC (discounted)", "62"), `pass` for passes and
+ * memberships, `bundle` for everything else (gift packs, deals, skins).
+ */
+export function getOfferGroup(offer) {
+  const name = String(offer?.name_en || offer?.g2bulk_catalogue_name || offer?.name_ar || '').trim();
+  if (OFFER_BUNDLE_RE.test(name)) return 'bundle';
+  if (OFFER_PASS_RE.test(name)) return 'pass';
+  if (/^[\d,]+(?:\.\d+)?(?:\s|$)/.test(name) && name.split(/\s+/).length <= 4) return 'currency';
+  return 'bundle';
+}
+
+/** Pack counts per group, or null when a filter would not help (few packs, one kind). */
+export function getOfferGroupCounts(offers = [], minOffers = 10) {
+  if (offers.length < minOffers) return null;
+  const counts = { currency: 0, pass: 0, bundle: 0 };
+  for (const offer of offers) counts[getOfferGroup(offer)] += 1;
+  const nonEmpty = OFFER_GROUPS.filter((group) => counts[group] > 0);
+  return nonEmpty.length >= 2 ? counts : null;
+}
+
 export function getRedemptionSteps(game, _t = {}, lang = 'ar') {
   const isAr = lang === 'ar';
   const slug = String(game?.slug || '').toLowerCase();

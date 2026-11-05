@@ -13,7 +13,7 @@ import { isGamingAccountGame, isVoucherGame } from '../lib/catalogUtils';
 import { getGameDisplayName } from '../lib/offerDisplay';
 import { getGameMarketingDescription } from '../lib/gameDescriptions';
 import { resolveStorefrontGame } from '../lib/gameRegions';
-import { sortOffersByPrice } from '../lib/offerDisplay';
+import { getOfferGroup, getOfferGroupCounts, OFFER_GROUPS, sortOffersByPrice } from '../lib/offerDisplay';
 import { buildGameBreadcrumb } from '../lib/catalogNav';
 import { formatCountNoun } from '../lib/i18n';
 import { useOfferAffordability } from '../lib/offerAffordability';
@@ -55,10 +55,11 @@ export default function GameDetail({
   const [editingOffer, setEditingOffer] = useState(null);
   const [editingGame, setEditingGame] = useState(false);
   const activeGameId = storefrontGame?.id ?? null;
-  const gameOffers = sortOffersByPrice(
+  const gameOffers = useMemo(() => sortOffersByPrice(
     offers.filter((offer) => offer.game_id === activeGameId && offer.active !== false),
-  );
+  ), [offers, activeGameId]);
   const { unaffordable } = useOfferAffordability(gameOffers);
+  const [groupFilter, setGroupFilter] = useState({ gameId: null, group: 'all' });
 
   // Region per card is noise when every offer shares one region (it already
   // shows in the hero badge) — only surface it when regions actually differ.
@@ -79,6 +80,13 @@ export default function GameDetail({
       : false),
     [storefrontGame, games, offers, isVoucher, isAccount],
   );
+
+  // Long mixed lists (Mobile Legends has 100+ packs) get tabs: currency / passes / bundles.
+  const offerGroup = groupFilter.gameId === activeGameId ? groupFilter.group : 'all';
+  const groupCounts = isVoucher || isAccount ? null : getOfferGroupCounts(gameOffers);
+  const visibleOffers = groupCounts && offerGroup !== 'all'
+    ? gameOffers.filter((offer) => getOfferGroup(offer) === offerGroup)
+    : gameOffers;
 
   const catalogSearchQuery = storefrontGame ? getCatalogSearchQuery(storefrontGame) : '';
 
@@ -225,10 +233,33 @@ export default function GameDetail({
           </div>
         </div>
 
+        {groupCounts && (
+          <div className="inbox-filter-bar mb-4 sm:mb-5" role="tablist" aria-label={t.offerGroupsLabel}>
+            {['all', ...OFFER_GROUPS].filter((group) => group === 'all' || groupCounts[group] > 0).map((group) => {
+              const active = offerGroup === group;
+              return (
+                <button
+                  key={group}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setGroupFilter({ gameId: activeGameId, group })}
+                  className={`inbox-filter-chip ${active ? 'inbox-filter-chip--active' : ''}`}
+                >
+                  {t[`offerGroup_${group}`]}
+                  <span className="inbox-filter-chip-count">
+                    {group === 'all' ? gameOffers.length : groupCounts[group]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {gameOffers.length > 0 ? (
           <div>
             <div className="catalog-offer-grid grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
-              {gameOffers.map((offer, index) => (
+              {visibleOffers.map((offer, index) => (
                 <OfferPackCard
                   key={`${activeGameId}:${offer.id}`}
                   enterIndex={index < 12 ? index : null}

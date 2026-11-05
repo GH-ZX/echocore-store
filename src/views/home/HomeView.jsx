@@ -9,6 +9,7 @@ import CustomerReviewsSection from './CustomerReviewsSection';
 import SocialLinksHomeSection from '../../components/home/SocialLinksHomeSection';
 import TrustStrip from '../../components/home/TrustStrip';
 import RecentPurchasesTicker from '../../components/home/RecentPurchasesTicker';
+import BuyAgainStrip from '../../components/home/BuyAgainStrip';
 import HomeContactFab from '../../components/home/HomeContactFab';
 import HomeExpandableGrid from '../../components/home/HomeExpandableGrid';
 import AdminAddCard from '../../components/admin/AdminAddCard';
@@ -437,6 +438,9 @@ export default function HomeView({
             />
             <TrustStrip t={t} />
             <RecentPurchasesTicker t={t} lang={lang} />
+            {!isAdmin && (
+              <BuyAgainStrip user={user} offers={offers} games={games} t={t} lang={lang} onBuyNow={onBuyNow} />
+            )}
           </>
         );
       }

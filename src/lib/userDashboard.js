@@ -59,6 +59,45 @@ export async function fetchUserOrders(userId, { limit = 100 } = {}) {
   return data || [];
 }
 
+/** The customer's latest completed order lines, newest first (for "Buy again"). */
+export async function fetchRecentPurchasedItems(userId, { limit = 20 } = {}) {
+  if (!userId) return [];
+  const { data, error } = await supabase
+    .from('orders')
+    .select('created_at, order_items(offer_id, player_uid, player_server)')
+    .eq('user_id', userId)
+    .eq('status', 'completed')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data || []).flatMap((order) => (order.order_items || []).map((item) => ({
+    offerId: item.offer_id,
+    playerUid: item.player_uid || '',
+    playerServer: item.player_server || '',
+    boughtAt: order.created_at,
+  })));
+}
+
+/**
+ * Distinct packs from recent purchases that are still on sale, newest first,
+ * each with the player id it was last sent to.
+ */
+export function pickBuyAgainOffers(items = [], offers = [], max = 4) {
+  const byId = new Map(offers.filter((o) => o && o.active !== false).map((o) => [String(o.id), o]));
+  const seen = new Set();
+  const picks = [];
+  for (const item of items) {
+    const id = String(item?.offerId || '');
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const offer = byId.get(id);
+    if (!offer) continue;
+    picks.push({ offer, playerUid: item.playerUid || '', playerServer: item.playerServer || '' });
+    if (picks.length >= max) break;
+  }
+  return picks;
+}
+
 export async function fetchUserTransactions(userId, { limit = 100 } = {}) {
   if (!userId) return [];
   const { data, error } = await supabase

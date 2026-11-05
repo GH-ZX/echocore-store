@@ -4,10 +4,36 @@ import { verifyOrderInvoice, getSamInvoiceStatus } from '../lib/samApi';
 import { formatInvoicePayLabel } from '../lib/rechargeCurrency';
 import { formatMessage, formatTime } from '../lib/i18n';
 import { closeSamPaymentWindow, openSamPaymentWindow } from '../lib/samPaymentPopup';
+import { countdownTone, formatCountdown, msUntil } from '../lib/countdown';
 import { useNotify } from '../hooks/useNotify';
 import AlertBanner from './ui/AlertBanner';
 
 const POLL_MS = 4000;
+
+/** Live "time left to pay" for the invoice; turns amber, then red, near the end. */
+function InvoiceCountdown({ expiresAt, t = {}, lang = 'ar' }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const left = msUntil(expiresAt, now);
+  if (left == null) return null;
+
+  return (
+    <div className={`invoice-countdown invoice-countdown--${countdownTone(left)}`} role="timer" aria-live="off">
+      <Clock className="w-4 h-4 shrink-0" aria-hidden="true" />
+      <span>{t.samInvoiceTimeLeft}</span>
+      <span className="invoice-countdown__time tabular-nums" dir="ltr">{formatCountdown(left)}</span>
+      <span className="invoice-countdown__until">
+        {formatMessage(t.samInvoiceExpiresAt, {
+          time: formatTime(expiresAt, lang, { hour: '2-digit', minute: '2-digit' }),
+        })}
+      </span>
+    </div>
+  );
+}
 
 export default function SamInvoicePaymentPanel({
   t = {},
@@ -195,12 +221,7 @@ export default function SamInvoicePaymentPanel({
         )}
 
         {invoice?.expiresAt && (
-          <p className="text-[10px] text-[var(--text-muted)] mt-3 flex items-center justify-center gap-1">
-            <Clock className="w-3 h-3" />
-            {formatMessage(t.samInvoiceExpiresAt, {
-              time: formatTime(invoice.expiresAt, lang, { hour: '2-digit', minute: '2-digit' }),
-            })}
-          </p>
+          <InvoiceCountdown expiresAt={invoice.expiresAt} t={t} lang={lang} />
         )}
       </div>
 

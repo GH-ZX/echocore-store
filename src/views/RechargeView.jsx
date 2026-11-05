@@ -101,6 +101,8 @@ export default function RechargeView({
   const [loadingRequest, setLoadingRequest] = useState(true);
   const [activeRequest, setActiveRequest] = useState(null);
   const [invoiceError, setInvoiceError] = useState('');
+  // Amount of an invoice that ran out before payment: offered back as one tap.
+  const [expiredAmount, setExpiredAmount] = useState(null);
   const [completedRecharge, setCompletedRecharge] = useState(null);
   const [payCurrency, setPayCurrency] = useState('USD');
   // Manual ShamCash proof: a ShamCash transaction id and/or a receipt image (either is enough).
@@ -264,6 +266,7 @@ export default function RechargeView({
 
     setIsProcessing(true);
     setInvoiceError('');
+    setExpiredAmount(null);
 
     try {
       const result = await createRechargeRequest(
@@ -449,6 +452,17 @@ export default function RechargeView({
   });
 
   const handleInvoiceExpired = () => {
+    // Keep the same amount selected so "new invoice" is one tap.
+    const amount = Number(activeRequest?.amount);
+    if (Number.isFinite(amount) && amount > 0) {
+      if (RECHARGE_PRESETS.includes(amount)) {
+        handleAmountPreset(amount);
+      } else {
+        setCustomMode(true);
+        setCustomAmount(String(amount));
+      }
+      setExpiredAmount(amount);
+    }
     setActiveRequest(null);
     setInvoiceError('');
     setStep('amount');
@@ -590,6 +604,22 @@ export default function RechargeView({
         {invoiceError && step === 'amount' && (
           <AlertBanner tone="red" className="mb-6">
             {invoiceError}
+          </AlertBanner>
+        )}
+
+        {expiredAmount != null && step === 'amount' && !invoiceError && (
+          <AlertBanner tone="amber" className="mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <p className="flex-1 text-sm">{t.rechargeInvoiceExpiredRetry}</p>
+              <button
+                type="button"
+                onClick={startPayment}
+                disabled={isProcessing}
+                className="btn btn-primary shrink-0 text-sm px-4 py-2 font-semibold disabled:opacity-50"
+              >
+                {formatMessage(t.rechargeNewInvoiceFor, { amount: formatMoney(expiredAmount) })}
+              </button>
+            </div>
           </AlertBanner>
         )}
 
