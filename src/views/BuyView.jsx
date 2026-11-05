@@ -88,6 +88,8 @@ export default function BuyView({
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponError, setCouponError] = useState('');
   const [couponOkMsg, setCouponOkMsg] = useState('');
+  // The referral code field stays behind a "Have a referral code?" button until asked for.
+  const [couponOpen, setCouponOpen] = useState(false);
 
   const catalogLoading = loadingCatalog || (!offer && offers.length === 0);
   const isValidOffer = !!(offer && game);
@@ -656,13 +658,23 @@ export default function BuyView({
           </div>
         </div>
 
-        {showCouponField ? (
+        {showCouponField && !couponOpen && !appliedCoupon ? (
+          <div className="mb-6">
+            <button
+              type="button"
+              onClick={() => setCouponOpen(true)}
+              className="btn btn-secondary text-sm py-2 px-4 inline-flex items-center gap-2"
+              aria-expanded="false"
+              aria-controls="buy-coupon-input"
+            >
+              <Ticket className="w-4 h-4 text-[var(--accent)]" aria-hidden="true" />
+              {t.couponHaveReferral}
+            </button>
+          </div>
+        ) : null}
+
+        {showCouponField && (couponOpen || appliedCoupon) ? (
           <div className="mb-6 rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)]/60 p-4 space-y-2">
-            <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-sec)]">
-              <Ticket className="w-4 h-4 text-[var(--accent)]" />
-              <label htmlFor="buy-coupon-input">{t.couponBuyTitle}</label>
-            </div>
-            <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">{t.couponBuyHelp}</p>
             {appliedCoupon ? (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm">
                 <span className="text-emerald-100">
@@ -689,6 +701,8 @@ export default function BuyView({
                 <input
                   id="buy-coupon-input"
                   className="input text-sm flex-1 min-w-0 font-mono"
+                  aria-label={t.couponHaveReferral}
+                  autoFocus
                   placeholder={t.couponRedeemPlaceholder}
                   value={couponInput}
                   onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
