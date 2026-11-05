@@ -10,7 +10,7 @@ import OfferPackLabel from '../ui/OfferPackLabel';
 
 /**
  * "Buy again" for returning customers: their latest packs, the player id each
- * went to, and one tap back into checkout (BuyView refills the saved id).
+ * went to, and one tap back into checkout (BuyView offers the saved id as a suggestion).
  */
 export default function BuyAgainStrip({ user, offers = [], games = [], t = {}, lang = 'ar', onBuyNow }) {
   const userId = user?.role === 'admin' ? null : user?.id;

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
-import { Loader2, CheckCircle, User, QrCode, Clock, Ticket, Zap, Gift, Wallet, Info } from 'lucide-react';
+import { Loader2, CheckCircle, User, QrCode, Clock, Ticket, Zap, Gift, Wallet, Info, History } from 'lucide-react';
 import AlertBanner from '../components/ui/AlertBanner';
 import EmptyState from '../components/ui/EmptyState';
 import CharnameField from '../components/catalog/CharnameField';
@@ -176,16 +176,16 @@ export default function BuyView({
     ? getSavedGamePlayerEntry(user?.game_player_uids, game)
     : { uid: '', server: '', charname: '' };
 
-  useEffect(() => {
-    if (!isValidOffer || !showUidForm || !game) return;
-    const saved = getSavedGamePlayerEntry(user?.game_player_uids, game);
-    if (saved.uid) {
-      setPlayerUid((prev) => prev.trim() || saved.uid);
-    }
-    if (saved.server) {
-      setPlayerServer((prev) => prev.trim() || saved.server);
-    }
-  }, [isValidOffer, showUidForm, game, user?.game_player_uids]);
+  // The saved id is only suggested, never pre-filled: a top-up sent to the wrong
+  // player can't be undone, so the customer picks it on purpose.
+  const showSavedUidSuggestion = !!savedGamePlayer.uid
+    && (playerUid.trim() !== savedGamePlayer.uid
+      || (!!savedGamePlayer.server && playerServer.trim() !== savedGamePlayer.server));
+  const applySavedGamePlayer = () => {
+    setPlayerUid(savedGamePlayer.uid);
+    if (savedGamePlayer.server) setPlayerServer(savedGamePlayer.server);
+    if (savedGamePlayer.charname) setPlayerCharname(savedGamePlayer.charname);
+  };
 
   useEffect(() => {
     const code = game?.g2bulk_game_code;
@@ -809,8 +809,21 @@ export default function BuyView({
                 placeholder={t.enterUid}
                 className="input w-full text-lg font-mono"
               />
-              {savedGamePlayer.uid && (
-                <p className="text-[10px] text-[var(--text-muted)] mt-1.5">{t.gameUidAutofillHint}</p>
+              {showSavedUidSuggestion && (
+                <div className="saved-uid-suggestions">
+                  <span className="text-[11px] text-[var(--text-muted)]">{t.gameUidSuggestionLabel}</span>
+                  <button
+                    type="button"
+                    onClick={applySavedGamePlayer}
+                    className="saved-uid-chip"
+                    aria-label={formatMessage(t.gameUidSuggestionUse, { id: savedGamePlayer.uid })}
+                  >
+                    <History className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                    <span dir="ltr" className="font-mono tabular-nums">
+                      {savedGamePlayer.server ? `${savedGamePlayer.uid} (${savedGamePlayer.server})` : savedGamePlayer.uid}
+                    </span>
+                  </button>
+                </div>
               )}
             </div>
           )}
