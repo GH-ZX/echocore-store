@@ -768,7 +768,10 @@ Deno.serve(async (req) => {
       const storedIdentifier = samMethod === 'syriatel'
         ? String(settings.sam_syriatel_wallet_identifier || '').trim()
         : String(settings.sam_shamcash_wallet_identifier || '').trim();
-      let currency = String(settings.sam_invoice_currency || 'USD');
+      // Orders are priced in USD and complete_order_from_sam_invoice only accepts USD invoices, so
+      // an order invoice is always USD (the old "invoice currency" setting billed $5 as 5 SYP).
+      // Recharges choose USD or SYP below from the customer's request.
+      let currency = 'USD';
       const storeSypRate = Number(settings.sam_syp_per_usd) || 135;
 
       if (entityType === 'recharge') {

@@ -193,7 +193,7 @@ export default function AdminPaymentsSettings({ t = {}, lang = 'ar', onSaved, on
         walletMode: samForm.sam_wallet_mode,
         shamcashWalletIdentifier: samForm.sam_shamcash_wallet_identifier,
         syriatelWalletIdentifier: samForm.sam_syriatel_wallet_identifier,
-        invoiceCurrency: samForm.sam_invoice_currency,
+        invoiceCurrency: 'USD', // order invoices are USD only
         sypPerUsd: samForm.sam_syp_per_usd,
         apiKey: samForm.sam_api_key?.trim() ? samForm.sam_api_key : undefined,
         regenerateWebhookSecret,

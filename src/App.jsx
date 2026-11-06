@@ -664,6 +664,7 @@ export default function App() {
       const msg = String(error.message || '');
       if (/username_taken/i.test(msg)) throw new Error(t.usernameTaken || 'username_taken');
       if (/username_invalid/i.test(msg)) throw new Error(t.usernameInvalid || 'username_invalid');
+      if (/email_domain_blocked/i.test(msg)) throw new Error(t.emailDomainBlocked || 'email_domain_blocked');
       if (/already\s*registered|already\s*exists|user already/i.test(msg)) {
         throw new Error(t.emailAlreadyRegistered);
       }

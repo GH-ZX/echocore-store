@@ -75,9 +75,8 @@ Deno.serve(async (req) => {
   if (settingsError) {
     return jsonResponse({ success: false, message: settingsError.message }, 500);
   }
-  if (settings?.g2bulk_enabled !== true) {
-    return jsonResponse({ success: true, skipped: true, reason: 'g2bulk_disabled' });
-  }
+  // g2bulk_enabled is not a pause switch any more (fulfillment runs whenever a key exists);
+  // skipping here only left paid orders unpolled.
   const dbKey = (settings?.g2bulk_api_key && String(settings.g2bulk_api_key).trim()) || '';
   const envKey = Deno.env.get('G2BULK_API_KEY')?.trim() || '';
   if (!dbKey && !envKey) {

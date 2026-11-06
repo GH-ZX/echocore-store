@@ -200,6 +200,7 @@ export default function AdminSamApiSettings({
   const [walletsLoading, setWalletsLoading] = useState(false);
   const [samWallets, setSamWallets] = useState([]);
   const [deleteKeyOpen, setDeleteKeyOpen] = useState(false);
+  const [regenerateOpen, setRegenerateOpen] = useState(false);
   const [deletingKey, setDeletingKey] = useState(false);
   const [sypRateSaving, setSypRateSaving] = useState(false);
   const samFormRef = useRef(samForm);
@@ -231,7 +232,7 @@ export default function AdminSamApiSettings({
         walletMode: samForm.sam_wallet_mode,
         shamcashWalletIdentifier: samForm.sam_shamcash_wallet_identifier,
         syriatelWalletIdentifier: samForm.sam_syriatel_wallet_identifier,
-        invoiceCurrency: samForm.sam_invoice_currency,
+        invoiceCurrency: 'USD', // order invoices are USD only
         sypPerUsd: rate,
       });
       setSamForm((prev) => ({
@@ -258,7 +259,7 @@ export default function AdminSamApiSettings({
           walletMode: form.sam_wallet_mode,
           shamcashWalletIdentifier: form.sam_shamcash_wallet_identifier,
           syriatelWalletIdentifier: form.sam_syriatel_wallet_identifier,
-          invoiceCurrency: form.sam_invoice_currency,
+          invoiceCurrency: 'USD', // order invoices are USD only
           sypPerUsd: form.sam_syp_per_usd,
           apiKey: form.sam_api_key,
         });
@@ -344,7 +345,7 @@ export default function AdminSamApiSettings({
         walletMode: samForm.sam_wallet_mode,
         shamcashWalletIdentifier: samForm.sam_shamcash_wallet_identifier,
         syriatelWalletIdentifier: samForm.sam_syriatel_wallet_identifier,
-        invoiceCurrency: samForm.sam_invoice_currency,
+        invoiceCurrency: 'USD', // order invoices are USD only
         sypPerUsd: samForm.sam_syp_per_usd,
       });
       setSamForm((prev) => ({
@@ -433,18 +434,9 @@ export default function AdminSamApiSettings({
           )}
         </LockedField>
 
-        <LockedField label={t.samInvoiceCurrencyLabel} locked={apiKeyLocked}>
-          <select
-            value={samForm.sam_invoice_currency}
-            onChange={(e) => setSamForm((p) => ({ ...p, sam_invoice_currency: e.target.value }))}
-            disabled={apiKeyLocked}
-            className="w-full max-w-xs bg-[var(--bg-surface)] border border-[var(--border)] focus:border-[var(--accent)] rounded-xl px-4 py-3 text-sm outline-none disabled:opacity-80 disabled:cursor-not-allowed"
-          >
-            <option value="USD">USD</option>
-            <option value="SYP">SYP</option>
-            <option value="EUR">EUR</option>
-          </select>
-        </LockedField>
+        {/* Order invoices are always USD (sam-api). The old currency selector billed a $5 order as
+            5 SYP and the order never completed, so it is gone. */}
+        <p className="text-xs text-[var(--text-muted)]">{t.samInvoiceCurrencyFixed}</p>
 
         <div id="sam-syp-rate-field">
           <label className="text-xs text-[var(--text-muted)] block mb-1.5">
@@ -618,7 +610,7 @@ export default function AdminSamApiSettings({
         {apiKeyLocked && (
           <button
             type="button"
-            onClick={() => onSaveAll(true)}
+            onClick={() => setRegenerateOpen(true)}
             disabled={saving}
             className="action-chip text-xs"
           >
@@ -626,6 +618,19 @@ export default function AdminSamApiSettings({
           </button>
         )}
       </div>
+
+      <ConfirmDialog
+        open={regenerateOpen}
+        title={t.samRegenerateWebhook}
+        message={t.samRegenerateWebhookConfirm}
+        confirmLabel={t.samRegenerateWebhook}
+        cancelLabel={t.cancel}
+        onCancel={() => setRegenerateOpen(false)}
+        onConfirm={() => {
+          setRegenerateOpen(false);
+          onSaveAll(true);
+        }}
+      />
 
       <ConfirmDialog
         open={deleteKeyOpen}

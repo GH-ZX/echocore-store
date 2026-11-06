@@ -20,6 +20,7 @@ import {
   TELEGRAM_ALERT_EVENTS,
   fetchTelegramAlertsSettings,
   saveTelegramAlertsSettings,
+  normalizeBotUsername,
   sendTestTelegramAlert,
   fetchTelegramBotInfo,
   fetchTelegramDeliveryStats,
@@ -84,14 +85,21 @@ export default function AdminTelegramSettings({ t = {}, embedded = false }) {
   }, [load]);
 
   const handleSave = async () => {
-    setSaving(true);
     setError('');
     setSuccess('');
+    const rawUsername = String(form.telegram_bot_username || '').trim();
+    const botUsernameClean = normalizeBotUsername(rawUsername);
+    if (rawUsername && !botUsernameClean) {
+      // The bot's display name ("EchoCore Store") is not its @username and breaks every t.me link.
+      setError(t.telegramBotUsernameInvalid);
+      return;
+    }
+    setSaving(true);
     try {
       const saved = await saveTelegramAlertsSettings({
         enabled: form.telegram_alerts_enabled,
         botToken: tokenInput.trim() ? tokenInput.trim() : undefined,
-        botUsername: form.telegram_bot_username,
+        botUsername: botUsernameClean,
         chatId: form.telegram_chat_id,
         alertPrefs: form.telegram_alert_prefs,
       });
@@ -151,7 +159,7 @@ export default function AdminTelegramSettings({ t = {}, embedded = false }) {
       ...prev,
       telegram_alert_prefs: {
         ...prev.telegram_alert_prefs,
-        [key]: prev.telegram_alert_prefs[key] !== false,
+        [key]: prev.telegram_alert_prefs[key] === false, // currently off → on, otherwise off
       },
     }));
   };
@@ -190,7 +198,7 @@ export default function AdminTelegramSettings({ t = {}, embedded = false }) {
   };
 
   const botUsername = form.telegram_bot_username;
-  const botLink = botUsername ? `https://t.me/${botUsername.replace(/^@/, '')}` : '';
+  const botLink = normalizeBotUsername(botUsername) ? `https://t.me/${normalizeBotUsername(botUsername)}` : '';
 
   if (loading) {
     return (

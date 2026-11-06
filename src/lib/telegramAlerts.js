@@ -46,6 +46,12 @@ export async function fetchTelegramAlertsSettings() {
   return normalizeTelegramAlertsSettings(data || {});
 }
 
+/** "@My_Store_bot" / "https://t.me/My_Store_bot" → "My_Store_bot"; '' when it is not a bot username. */
+export function normalizeBotUsername(value = '') {
+  const clean = String(value || '').trim().replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, '').trim();
+  return /^[A-Za-z][A-Za-z0-9_]{3,30}bot$/i.test(clean) ? clean : '';
+}
+
 /** Admin: save Telegram alert settings. Pass botToken only to change it. */
 export async function saveTelegramAlertsSettings({
   enabled,

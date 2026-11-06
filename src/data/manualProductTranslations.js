@@ -102,6 +102,12 @@ export const manualProductTranslations = {
     customerAnswers: 'معلومات الزبون',
     copyValue: 'نسخ',
 
+    partnerMarkupTooLow: 'أقل زيادة لشرائح الشركاء {min}% حتى لا تخسر إذا ارتفع سعر المورد خلال اليوم.',
+    samInvoiceCurrencyFixed: 'فواتير الطلبات تُصدر دائماً بالدولار (USD). شحن الرصيد بالليرة يستخدم سعر الصرف أدناه.',
+    samRegenerateWebhookConfirm: 'تجديد الرمز يجعل الفواتير المفتوحة حالياً لا تُسجَّل عند دفعها. جدّده فقط إذا تسرّب الرمز، وبعد التأكد أنه لا توجد فواتير بانتظار الدفع. متابعة؟',
+    telegramBotUsernameInvalid: 'اكتب اسم مستخدم البوت كما في تيليغرام (ينتهي بـ bot، مثل EchoCoreStore_bot)، وليس اسم العرض.',
+    emailDomainBlocked: 'لا نقبل بريداً مؤقتاً. استخدم بريدك الحقيقي (مثل Gmail أو Outlook).',
+
     // Storefront
     manualDeliveryBadge: 'يسلّمه المتجر',
     manualDeliveryTitle: 'تسليم من المتجر',
@@ -220,6 +226,12 @@ export const manualProductTranslations = {
     orderCancelledRefunded: 'Order cancelled and refunded to the customer’s balance.',
     customerAnswers: 'Customer info',
     copyValue: 'Copy',
+
+    partnerMarkupTooLow: 'Partner tiers need at least {min}% markup, so a supplier price rise during the day does not cost you money.',
+    samInvoiceCurrencyFixed: 'Order invoices are always in USD. SYP balance top-ups use the exchange rate below.',
+    samRegenerateWebhookConfirm: 'A new token means invoices that are open right now will not be credited when paid. Only do this if the token leaked, and when no invoice is waiting for payment. Continue?',
+    telegramBotUsernameInvalid: 'Enter the bot’s Telegram @username (it ends in “bot”, e.g. EchoCoreStore_bot), not its display name.',
+    emailDomainBlocked: 'Temporary email addresses are not accepted. Use your real email (e.g. Gmail or Outlook).',
 
     manualDeliveryBadge: 'Delivered by the store',
     manualDeliveryTitle: 'Delivered by the store',

@@ -43,6 +43,10 @@ import {
   resolveInfluencerUnitPrice,
 } from '../../lib/partnerPricing';
 
+// Partner prices are set from the supplier cost at the daily sync. Below ~3% a supplier price rise
+// during the day, plus payment fees, turns partner sales into losses (also enforced in the database).
+const MIN_PARTNER_MARKUP = 3;
+
 export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) {
   const { notifyError, notifySuccess } = useNotify(onNotify);
 
@@ -100,6 +104,10 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
   }, [load]);
 
   const saveTier = async (tier, patch) => {
+    if (Number(patch.markup_percent ?? tier.markup_percent) < MIN_PARTNER_MARKUP) {
+      notifyError(formatMessage(t.partnerMarkupTooLow, { min: MIN_PARTNER_MARKUP }));
+      return;
+    }
     setSavingId(tier.id);
     try {
       await adminUpsertPartnerTier({
@@ -137,6 +145,10 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
   };
 
   const createTier = async () => {
+    if (!(Number(newMarkup) >= MIN_PARTNER_MARKUP)) {
+      notifyError(formatMessage(t.partnerMarkupTooLow, { min: MIN_PARTNER_MARKUP }));
+      return;
+    }
     setCreatingTier(true);
     try {
       await adminUpsertPartnerTier({
@@ -389,7 +401,7 @@ export default function AdminPartnersManager({ t = {}, lang = 'ar', onNotify }) 
               <input
                 className="profile-field-input text-sm w-full"
                 type="number"
-                min="0"
+                min={MIN_PARTNER_MARKUP}
                 step="0.1"
                 value={newMarkup}
                 onChange={(e) => setNewMarkup(e.target.value)}
@@ -825,7 +837,7 @@ function TierRow({ tier, t, saving, deleting, onSave, onRemove }) {
         <span className="text-[var(--text-muted)]">{t.partnerMarkupPercent}</span>
         <input
           type="number"
-          min="0"
+          min={MIN_PARTNER_MARKUP}
           step="0.1"
           className="profile-field-input text-sm w-full"
           value={markup}

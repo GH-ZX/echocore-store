@@ -219,7 +219,9 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
     const markup = parseMarkupPercent(payload.g2bulk_markup_percent);
     // Skip 0 — empty/broken values were wiping the real store margin to 0%
     const saved = await saveG2bulkSettings({
-      enabled: payload.g2bulk_enabled,
+      // Auto-fulfillment is always on while an API key exists (an off switch once left every order
+      // undelivered), so the old toggle is gone and saves keep it on.
+      enabled: true,
       markupPercent: markup != null && markup > 0 ? markup : undefined,
       catalogOnly: payload.g2bulk_catalog_only,
       catalogMode: payload.g2bulk_catalog_mode,
@@ -868,7 +870,8 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
             connectLabel={t.testConnection}
             connectDisabled={!apiKeyLocked && !apiKeyInput.trim()}
             connecting={testing}
-            onDelete={() => setDeleteKeyOpen(true)}
+            // A key stored as a server secret (G2BULK_API_KEY) can't be deleted from here.
+            onDelete={form.g2bulk_api_key_source === 'env' ? undefined : () => setDeleteKeyOpen(true)}
             deleteLabel={t.g2bulkApiDeleteKey || t.samApiDeleteKey}
           />
 
@@ -890,23 +893,6 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
           title={t.g2bulkFulfillmentSection || t.g2bulkStorefront}
           description={t.g2bulkFulfillmentSectionDesc || t.g2bulkStorefrontDesc}
         >
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={form.g2bulk_enabled}
-              onChange={(e) => setForm((p) => ({ ...p, g2bulk_enabled: e.target.checked }))}
-              className="rounded border-[var(--border)]"
-            />
-            <span className="text-sm">
-              {t.g2bulkEnabled}
-            </span>
-          </label>
-          {!form.g2bulk_enabled && (
-            <p className="text-xs text-amber-300/90 leading-relaxed border border-amber-500/25 bg-amber-500/10 rounded-xl px-3 py-2">
-              {t.g2bulkDisabledBlocksBuyHint
-                || 'When this is off, customers may be blocked from balance checkout. Keep it on if you sell via G2Bulk.'}
-            </p>
-          )}
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"
