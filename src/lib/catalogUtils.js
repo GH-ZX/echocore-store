@@ -58,6 +58,8 @@ export function isCartEligibleOffer(offer, games = []) {
     return offer.g2bulk_type === 'voucher' || offer.requires_player_id !== true;
   }
   if (game.active === false) return false;
+  // Store-delivered products ask the customer their own questions → Buy Now path only
+  if (game.delivery_mode === 'manual') return false;
   // Top-up / dual products need player id at buy time
   if (game.redemption_method === 'uid' || game.redemption_method === 'both') {
     return false;

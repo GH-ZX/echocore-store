@@ -263,6 +263,15 @@ export function getOrderReceiptPresentation(order, t = {}) {
       };
     }
 
+    if (fs === 'awaiting_delivery') {
+      return {
+        tone: 'info',
+        title: t.orderAwaitingDelivery || 'Your order is being prepared',
+        subtitle: t.manualDeliveryExplain || '',
+        showSuccess: false,
+      };
+    }
+
     if (order?.payment_method === 'admin_gift') {
       return {
         tone: 'success',

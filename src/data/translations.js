@@ -10,6 +10,7 @@
 */
 
 import { pageContent } from './pageContent';
+import { manualProductTranslations } from './manualProductTranslations';
 
 export const translations = {
   ar: {
@@ -2803,6 +2804,7 @@ export const translations = {
     rechargeApproved: "تمت الموافقة على الشحن",
     rechargeRejected: "تم رفض طلب الشحن",
 
+    ...manualProductTranslations.ar,
     ...pageContent.ar,
   },
   en: {
@@ -5596,6 +5598,7 @@ export const translations = {
     rechargeApproved: "Recharge approved",
     rechargeRejected: "Recharge request rejected",
 
+    ...manualProductTranslations.en,
     ...pageContent.en,
   }
 };

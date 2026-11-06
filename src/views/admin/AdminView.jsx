@@ -20,6 +20,7 @@ import { useNotify } from '../../hooks/useNotify';
 import AdminExistingGamesList from '../../components/admin/AdminExistingGamesList';
 import AdminSaleDiscountsManager from '../../components/admin/AdminSaleDiscountsManager';
 import AdminGameEditModal from '../../components/admin/AdminGameEditModal';
+import AdminManualProductsPanel from '../../components/admin/AdminManualProductsPanel';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import { lazyRetry } from '../../lib/lazyRetry';
 import { adminPanelFactories } from '../../lib/adminPanelFactories';
@@ -648,6 +649,15 @@ export default function AdminView({
             onPresetEditConsumed={() => setSaleDiscountEditId(null)}
           />
 
+          <AdminManualProductsPanel
+            games={games}
+            offers={offers}
+            lang={lang}
+            t={t}
+            onNotify={onNotify}
+            onEditProduct={setGameModal}
+          />
+
           <div className="admin-products-divider" role="separator">
             <span className="admin-products-divider__line" aria-hidden="true" />
             <span className="admin-products-divider__label">{t.gamesAndOffers}</span>
@@ -949,7 +959,7 @@ export default function AdminView({
         </footer>
       </div>
 
-      {gameModal?.id && (
+      {(gameModal?.id || gameModal?.delivery_mode === 'manual') && (
         <AdminGameEditModal
           game={gameModal}
           games={games}

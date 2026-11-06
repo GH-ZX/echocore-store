@@ -205,6 +205,8 @@ export function filterGamesByPullSelection(games = [], pull = {}) {
   }
 
   return games.filter((game) => {
+    // The owner's own products are never part of the G2Bulk pull selection.
+    if (game.delivery_mode === 'manual') return true;
     if (game.catalog_source === 'live') {
       const code = String(game.code || game.g2bulk_game_code || '').trim();
       if (code && normalized.topupLiveBaseKeys.includes(code)) return true;

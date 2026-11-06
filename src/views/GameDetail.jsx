@@ -15,7 +15,9 @@ import { getGameMarketingDescription } from '../lib/gameDescriptions';
 import { resolveStorefrontGame } from '../lib/gameRegions';
 import { getOfferGroup, getOfferGroupCounts, OFFER_GROUPS, sortOffersByPrice } from '../lib/offerDisplay';
 import { buildGameBreadcrumb } from '../lib/catalogNav';
-import { formatCountNoun } from '../lib/i18n';
+import { formatCountNoun, formatMessage } from '../lib/i18n';
+import { deliveryEta, isManualGame } from '../lib/manualProducts';
+import { ManualDeliveryInfo } from '../components/catalog/ManualDelivery';
 import { useOfferAffordability } from '../lib/offerAffordability';
 import {
   buildSearchPath,
@@ -48,8 +50,9 @@ export default function GameDetail({
   const matchedGame = games.find((g) => (g.slug || g.id) === slug) || games.find((g) => g.id === slug);
   const storefrontGame = resolveStorefrontGame(games, matchedGame);
   const isAdmin = user?.role === 'admin';
-  const isAccount = isGamingAccountGame(storefrontGame);
-  const isVoucher = isVoucherGame(storefrontGame);
+  const isManual = isManualGame(storefrontGame);
+  const isAccount = !isManual && isGamingAccountGame(storefrontGame);
+  const isVoucher = !isManual && isVoucherGame(storefrontGame);
   const hasOffers = !storefrontGame ? false : offers.some((offer) => offer.game_id === storefrontGame.id && offer.active !== false);
 
   const [editingOffer, setEditingOffer] = useState(null);
@@ -83,7 +86,7 @@ export default function GameDetail({
 
   // Long mixed lists (Mobile Legends has 100+ packs) get tabs: currency / passes / bundles.
   const offerGroup = groupFilter.gameId === activeGameId ? groupFilter.group : 'all';
-  const groupCounts = isVoucher || isAccount ? null : getOfferGroupCounts(gameOffers);
+  const groupCounts = isVoucher || isAccount || isManual ? null : getOfferGroupCounts(gameOffers);
   const visibleOffers = groupCounts && offerGroup !== 'all'
     ? gameOffers.filter((offer) => getOfferGroup(offer) === offerGroup)
     : gameOffers;
@@ -114,7 +117,9 @@ export default function GameDetail({
   const gameName = getGameDisplayName(game, lang);
   const gameDescription = getGameMarketingDescription(game, lang, games, offers, t);
   const { breadcrumb, backLabel, backPath } = buildGameBreadcrumb(game, t, lang, navigate);
-  const heroBadges = isAccount
+  const heroBadges = isManual
+    ? [{ label: t.manualDeliveryBadge, className: 'border-[var(--accent)]/30 bg-[var(--accent)]/10 text-[var(--accent)]' }]
+    : isAccount
     ? [{ label: t.accountBadge, className: 'border-sky-400/30 bg-sky-500/15 text-sky-200' }]
     : isVoucher
       ? [{ label: t.giftCard, className: 'border-violet-400/30 bg-violet-500/15 text-violet-200' }]
@@ -144,12 +149,16 @@ export default function GameDetail({
         imageUrl={game.image_url}
         logoUrl={game.logo_url}
         title={gameName}
-        subtitle={isAccount
+        subtitle={isManual
+          ? (gameDescription || t.storeProductsDesc)
+          : isAccount
           ? t.redeemSubtitle
           : isVoucher
             ? t.giftCardsSubtitle
             : (gameDescription || `${game.points_name || 'Top-up'} ${t.instantTopUpSuffix}`)}
-        meta={isAccount || isVoucher
+        meta={isManual
+          ? formatMessage(t.manualDeliveryEta, { eta: deliveryEta(game, lang) || t.manualDeliveryDefaultEta })
+          : isAccount || isVoucher
           ? t.voucherRedemption
           : `${t.redemptionMethod}: ${
             game.redemption_method === 'uid'
@@ -160,6 +169,8 @@ export default function GameDetail({
           }`}
         badges={heroBadges}
       />
+
+      {isManual && <ManualDeliveryInfo game={game} lang={lang} t={t} className="mb-6 sm:mb-8" />}
 
       {showTopupAlt && (
         <div className="catalog-info-banner catalog-info-banner--topup mb-6 sm:mb-8">
@@ -274,7 +285,7 @@ export default function GameDetail({
                   unaffordable={unaffordable.has(String(offer.id))}
                   onSelect={onSelectOffer}
                   onBuyNow={onBuyNow}
-                  onAddToCart={!isAdmin ? addToCart : undefined}
+                  onAddToCart={!isAdmin && !isManual ? addToCart : undefined}
                   onGift={isAdmin ? (giftOffer) => navigate(getAdminGiftPath({
                     offerId: giftOffer.id,
                     returnTo: `/game/${slug}`,

@@ -16,7 +16,11 @@ export default function OrderStatusStepper({ order, t = {} }) {
 
   const steps = [
     { key: 'paid', label: awaitingPayment ? (t.orderStepAwaitingPayment || 'Awaiting payment') : (t.orderStepPaid || 'Paid'), done: !awaitingPayment },
-    { key: 'fulfilling', label: t.orderStepFulfilling || 'Fulfilling', done: delivered },
+    {
+      key: 'fulfilling',
+      label: fs === 'awaiting_delivery' ? (t.statusAwaitingDelivery || 'Being prepared') : (t.orderStepFulfilling || 'Fulfilling'),
+      done: delivered,
+    },
     { key: 'delivered', label: t.orderStepDelivered || 'Delivered', done: delivered },
   ];
 

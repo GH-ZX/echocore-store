@@ -10,6 +10,9 @@ import {
   UserRound,
   X,
   RotateCcw,
+  Truck,
+  Ban,
+  Copy,
 } from 'lucide-react';
 import { Spinner } from '../routing/PageLoader';
 import {
@@ -26,6 +29,7 @@ import {
   getAdminPaymentStatusLabel,
   getAdminPaymentStatusTone,
   getOrderStatusFilterOptions,
+  isOrderAwaitingDelivery,
   isOrderBalanceRefunded,
   isSoftFulfillmentTimeout,
   shouldShowAdminFulfillmentError,
@@ -47,6 +51,7 @@ import {
   getOrderTopupDeliveryDetails,
 } from '../../lib/orderReceipt';
 import { isInvoiceReadyForOrder } from '../../lib/invoices';
+import { adminCancelManualOrder, adminDeliverOrder, describeCustomerInputs } from '../../lib/manualProducts';
 import { INVOICE_KIND } from '../../lib/invoiceBuilder';
 import {
   formatProfileUsername,
@@ -119,6 +124,7 @@ export default function AdminOrdersManager({
   const [searchParams, setSearchParams] = useSearchParams();
   const { notifyError } = useNotify(onNotify);
   const [fulfillingId, setFulfillingId] = useState(null);
+  const [deliveryDrafts, setDeliveryDrafts] = useState({});
 
   const userFilterParam = searchParams.get('user') || '';
   const highlightOrderId = searchParams.get('order') || '';
@@ -301,6 +307,47 @@ export default function AdminOrdersManager({
     }
   };
 
+  const handleManualDeliver = async (order) => {
+    if (fulfillingId) return;
+    setFulfillingId(order.id);
+    try {
+      await adminDeliverOrder(order.id, deliveryDrafts[order.id] || '');
+      setDeliveryDrafts((prev) => ({ ...prev, [order.id]: '' }));
+      onNotify?.(t.orderDelivered, 'success');
+      await refreshOrders?.();
+    } catch (err) {
+      onNotify?.(err?.message || t.adminOrdersFulfillRetryFailed, 'error');
+    } finally {
+      setFulfillingId(null);
+    }
+  };
+
+  const handleManualCancel = async (order) => {
+    if (fulfillingId) return;
+    const message = formatMessage(t.cancelRefundConfirm, { amount: formatMoney(Number(order.total)) });
+    if (typeof window !== 'undefined' && !window.confirm(message)) return;
+    setFulfillingId(order.id);
+    try {
+      await adminCancelManualOrder(order.id, deliveryDrafts[order.id] || '');
+      setDeliveryDrafts((prev) => ({ ...prev, [order.id]: '' }));
+      onNotify?.(t.orderCancelledRefunded, 'success');
+      await refreshOrders?.();
+    } catch (err) {
+      onNotify?.(err?.message || t.adminOrdersFulfillRetryFailed, 'error');
+    } finally {
+      setFulfillingId(null);
+    }
+  };
+
+  const copyText = async (value) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      onNotify?.(t.copied || 'Copied', 'success');
+    } catch {
+      /* clipboard blocked */
+    }
+  };
+
   const renderExpandedDetails = (order) => {
     const items = order.order_items || [];
     const profile = order.profiles;
@@ -454,6 +501,26 @@ export default function AdminOrdersManager({
                     {item.player_charname ? ` · ${item.player_charname}` : ''}
                   </div>
                 )}
+                {describeCustomerInputs(item, lang).length > 0 && (
+                  <dl className="mt-2 space-y-1 text-xs">
+                    <dt className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{t.customerAnswers}</dt>
+                    {describeCustomerInputs(item, lang).map((row) => (
+                      <dd key={row.key} className="flex items-start gap-2">
+                        <span className="text-[var(--text-muted)] shrink-0">{row.label}:</span>
+                        <bdi className="font-medium break-all">{row.value}</bdi>
+                        <button type="button" className="p-0.5 rounded hover:bg-white/10 shrink-0" title={t.copyValue}
+                          aria-label={`${t.copyValue} ${row.label}`} onClick={() => copyText(row.value)}>
+                          <Copy className="w-3 h-3" />
+                        </button>
+                      </dd>
+                    ))}
+                  </dl>
+                )}
+                {order.g2bulk_metadata?.manual_delivered_at && Array.isArray(item.delivery_items) && item.delivery_items.length > 0 && (
+                  <div className="mt-2 text-xs whitespace-pre-wrap break-words rounded-lg border border-emerald-500/25 bg-emerald-500/5 p-2">
+                    {item.delivery_items.join('\n')}
+                  </div>
+                )}
               </div>
               <span className="font-mono text-[var(--accent)] flex-shrink-0">
                 {formatMoney(item.price)} × {item.quantity || 1}
@@ -463,6 +530,41 @@ export default function AdminOrdersManager({
             <div className="text-[var(--text-muted)] text-xs">{t.noItemsRecorded}</div>
           )}
         </div>
+
+        {isOrderAwaitingDelivery(order) && (
+          <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+            <label className="block text-xs font-semibold" htmlFor={`deliver-${order.id}`}>{t.deliveryTextLabel}</label>
+            <textarea
+              id={`deliver-${order.id}`}
+              className="input w-full h-24 resize-y text-sm"
+              maxLength={4000}
+              value={deliveryDrafts[order.id] || ''}
+              onChange={(e) => setDeliveryDrafts((prev) => ({ ...prev, [order.id]: e.target.value }))}
+            />
+            <p className="text-[11px] text-[var(--text-muted)]">{t.deliveryTextHelp}</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={fulfillingId === order.id}
+                onClick={() => handleManualDeliver(order)}
+                className="btn btn-primary text-xs py-2 px-3 inline-flex items-center gap-1.5"
+              >
+                {fulfillingId === order.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Truck className="w-3.5 h-3.5" />}
+                {t.markDelivered}
+              </button>
+              <button
+                type="button"
+                disabled={fulfillingId === order.id}
+                onClick={() => handleManualCancel(order)}
+                title={t.cancelReasonLabel}
+                className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5 text-red-300"
+              >
+                <Ban className="w-3.5 h-3.5" />
+                {t.cancelAndRefund}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="mt-4 flex flex-wrap gap-2">
           {canRetry && (

@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { fetchAllSupabaseRows } from '../lib/supabaseQuery';
 import { stripOffersSecrets, withAdminWholesale } from '../lib/offerWholesale';
 import { readCachedCatalog } from '../lib/storefrontCache';
+import { applyCatalogOnlyGames, applyCatalogOnlyOffers } from '../lib/manualProducts';
 
 export function useCatalogState({ isAdmin = false, defaultCatalogOnly = true }) {
   // Repeat visits start from the cached PUBLIC catalog and revalidate in the background,
@@ -22,7 +23,7 @@ export function useCatalogState({ isAdmin = false, defaultCatalogOnly = true }) 
             .select('*')
             .eq('active', true);
           if (catalogOnly) {
-            pageQuery = pageQuery.eq('catalog_source', 'g2bulk');
+            pageQuery = applyCatalogOnlyGames(pageQuery);
           }
           return pageQuery.order('created_at', { ascending: true });
         },
@@ -46,7 +47,7 @@ export function useCatalogState({ isAdmin = false, defaultCatalogOnly = true }) 
             .select('*')
             .eq('active', true);
           if (catalogOnly) {
-            pageQuery = pageQuery.eq('catalog_source', 'g2bulk');
+            pageQuery = applyCatalogOnlyOffers(pageQuery);
           }
           return pageQuery.order('created_at', { ascending: true });
         },

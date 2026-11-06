@@ -13,6 +13,8 @@ import BuyAgainStrip from '../../components/home/BuyAgainStrip';
 import HomeContactFab from '../../components/home/HomeContactFab';
 import HomeExpandableGrid from '../../components/home/HomeExpandableGrid';
 import AdminAddCard from '../../components/admin/AdminAddCard';
+import { getStorefrontManualProducts } from '../../lib/gameRegions';
+import { useCategories } from '../../hooks/useCategories';
 import { getCarouselGames, resolveCarouselLogo } from '../../lib/carouselUtils';
 import {
   getDisplayGameForOffer,
@@ -187,6 +189,50 @@ export default function HomeView({
       }),
     [games, offers, isAdmin],
   );
+
+  // Products the store delivers itself: one home section per category marked "show on home",
+  // plus one "Store products" section for the rest that have no category.
+  const categories = useCategories();
+  const storeSections = useMemo(() => {
+    const products = getStorefrontManualProducts(games)
+      .map((game) => ({
+        ...game,
+        offerCount: countActiveOffers(game.id, offers),
+        marketingDescription: getGameMarketingDescription(game, lang, games, offers, t),
+      }))
+      .filter((game) => game.offerCount > 0 || isAdmin);
+    if (products.length === 0) return [];
+    const activeIds = new Set(categories.map((cat) => cat.id));
+    const sections = categories
+      .filter((cat) => cat.show_on_home)
+      .map((cat) => ({
+        section: {
+          id: `store-${cat.slug}`,
+          type: 'store_products',
+          title_ar: cat.name_ar,
+          title_en: cat.name_en,
+          path: `/store/${cat.slug}`,
+          subtitle: (lang === 'ar' ? cat.description_ar : cat.description_en) || '',
+        },
+        items: products.filter((game) => game.category_id === cat.id),
+      }))
+      .filter((row) => row.items.length > 0);
+    const loose = products.filter((game) => !game.category_id || !activeIds.has(game.category_id));
+    if (loose.length > 0) {
+      sections.push({
+        section: {
+          id: 'store-products',
+          type: 'store_products',
+          title_ar: t.storeProductsTitle,
+          title_en: t.storeProductsTitle,
+          path: '/store',
+          subtitle: t.storeProductsDesc,
+        },
+        items: loose,
+      });
+    }
+    return sections;
+  }, [games, offers, categories, isAdmin, lang, t]);
 
   const offersWithGames = useMemo(
     () => offers.filter((offer) => offerBelongsToStorefront(offer, games)),
@@ -639,6 +685,18 @@ export default function HomeView({
     }
   };
 
+  // Store-product sections go right after the games section (or at the end without one).
+  const storeAnchorId = layout.find((section) => section.type === 'games' && section.enabled)?.id || null;
+  const storeBlocks = storeSections.map(({ section, items }) => {
+    const content = renderSectionBlock(
+      section,
+      'games',
+      section.subtitle,
+      renderGamesExpandable(section, items, { hideAdd: true }),
+    );
+    return content ? <div key={section.id}>{content}</div> : null;
+  });
+
   const contactFab = (
     <HomeContactFab t={t} lang={lang} stacked={isAdminUser} />
   );
@@ -667,9 +725,16 @@ export default function HomeView({
       {previewFab}
       {layout.map((section) => {
         const content = renderSection(section);
-        if (!content) return null;
-        return <div key={section.id}>{content}</div>;
+        const withStore = section.id === storeAnchorId;
+        if (!content && !withStore) return null;
+        return (
+          <div key={section.id} className={withStore ? 'space-y-10 sm:space-y-14 md:space-y-16' : undefined}>
+            {content}
+            {withStore && storeBlocks}
+          </div>
+        );
       })}
+      {!storeAnchorId && storeBlocks}
     </div>
   );
 }

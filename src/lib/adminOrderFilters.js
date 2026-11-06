@@ -9,7 +9,13 @@ export const ORDER_STATUS_FILTER_IDS = {
   FAILED: 'failed',
   PROCESSING: 'processing',
   CANCELLED: 'cancelled',
+  AWAITING_DELIVERY: 'awaiting_delivery',
 };
+
+/** Paid order for a store-delivered product, waiting for the owner (admin_deliver_order). */
+export function isOrderAwaitingDelivery(order) {
+  return order?.status === 'completed' && order?.fulfillment_status === 'awaiting_delivery';
+}
 
 const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 
@@ -65,6 +71,7 @@ export function getAdminOrderOutcome(order) {
 
   if (status === 'completed') {
     if (fs === 'fulfilled' || fs === 'skipped') return 'success';
+    if (fs === 'awaiting_delivery') return 'processing';
 
     const recent = orderAgeMs(order) < FIFTEEN_MIN_MS;
     // Supplier already charged the player (G2Bulk order id exists) → still delivering,
@@ -184,6 +191,13 @@ export function getAdminDeliveryStatusDisplay(order, t = {}) {
       hint: null,
     };
   }
+  if (fs === 'awaiting_delivery') {
+    return {
+      label: t.awaitingDeliveryFilter || 'Awaiting delivery',
+      tone: 'warning',
+      hint: null,
+    };
+  }
   if (fs === 'skipped') {
     return {
       label: t.fulfillmentSkipped || 'Skipped',
@@ -268,6 +282,7 @@ export function getAdminDeliveryStatusDisplay(order, t = {}) {
 export function getOrderStatusFilterOptions(t = {}) {
   return [
     { id: ORDER_STATUS_FILTER_IDS.ALL, label: t.adminOrdersFilterAll },
+    { id: ORDER_STATUS_FILTER_IDS.AWAITING_DELIVERY, label: t.awaitingDeliveryFilter || 'Awaiting delivery' },
     { id: ORDER_STATUS_FILTER_IDS.SUCCESS, label: t.adminOrdersOutcomeSuccess },
     { id: ORDER_STATUS_FILTER_IDS.PROCESSING, label: t.adminOrdersOutcomeProcessing },
     { id: ORDER_STATUS_FILTER_IDS.FAILED, label: t.adminOrdersOutcomeFailed },
@@ -306,8 +321,8 @@ export function canRetryOrderFulfillment(order) {
   const fs = order.fulfillment_status == null || order.fulfillment_status === ''
     ? 'pending'
     : String(order.fulfillment_status);
-  // Already delivered / intentionally skipped — no re-fulfill button
-  if (fs === 'fulfilled' || fs === 'skipped') return false;
+  // Already delivered / intentionally skipped / delivered by the owner — no re-fulfill button
+  if (fs === 'fulfilled' || fs === 'skipped' || fs === 'awaiting_delivery') return false;
   // Outcome already success (legacy paid row) — do not re-ship
   if (getAdminOrderOutcome(order) === 'success') return false;
 
@@ -370,6 +385,7 @@ export function matchesOrderSearch(order, search = '') {
 
 export function matchesOrderStatus(order, statusFilter = ORDER_STATUS_FILTER_IDS.ALL) {
   if (!order || statusFilter === ORDER_STATUS_FILTER_IDS.ALL) return true;
+  if (statusFilter === ORDER_STATUS_FILTER_IDS.AWAITING_DELIVERY) return isOrderAwaitingDelivery(order);
   return getAdminOrderOutcome(order) === statusFilter;
 }
 

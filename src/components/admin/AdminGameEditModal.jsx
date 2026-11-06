@@ -13,6 +13,7 @@ import {
 } from '../../lib/adminOfferPricing';
 import PricingEditableValue from './PricingEditableValue';
 import { formatMessage } from '../../lib/i18n';
+import AdminManualProductModal from './AdminManualProductModal';
 
 function Field({ icon: Icon, label, required, children, className = '' }) {
   return (
@@ -53,7 +54,7 @@ function ImageModeToggle({ t = {}, value, onChange }) {
   );
 }
 
-export default function AdminGameEditModal({
+function CatalogGameEditModal({
   game,
   games = [],
   offers = [],
@@ -641,4 +642,11 @@ export default function AdminGameEditModal({
         </form>
     </Modal>
   );
+}
+/** Store-delivered products have their own editor (name, delivery, customer questions, prices). */
+export default function AdminGameEditModal(props) {
+  if (props.game?.delivery_mode === 'manual') {
+    return <AdminManualProductModal {...props} />;
+  }
+  return <CatalogGameEditModal {...props} />;
 }

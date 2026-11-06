@@ -144,6 +144,9 @@ export function isInvoiceReadyForOrder(order, { isAdmin: _isAdmin = false, items
     ? itemRows.some((row) => String(row?.player_uid || '').trim())
     : false;
 
+  // Delivered by the store owner (with or without delivery text)
+  if (fs === 'fulfilled' && order.g2bulk_metadata?.manual_delivered_at) return true;
+
   // Redeem / gift code packs: invoice only when codes exist
   if (itemRows && !hasUid) {
     return codes.length > 0;

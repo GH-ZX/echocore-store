@@ -25,7 +25,8 @@ export function useCartActions({
       return;
     }
     if (!isCartEligibleOffer(product, games)) {
-      showToast(t.cartUidCheckoutBlocked, 'error');
+      const manual = games.some((g) => String(g.id) === String(product?.game_id) && g.delivery_mode === 'manual');
+      showToast(manual ? t.manualBuyNowOnly : t.cartUidCheckoutBlocked, 'error');
       return;
     }
     if (isCartFull(cart)) {

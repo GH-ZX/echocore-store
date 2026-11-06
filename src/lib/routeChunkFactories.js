@@ -34,6 +34,7 @@ export const routeChunkFactories = {
   PrivacyView: () => import('../views/PrivacyView'),
   TermsView: () => import('../views/TermsView'),
   AllGamesView: () => import('../views/AllGamesView'),
+  StoreProductsView: () => import('../views/StoreProductsView'),
   SearchView: () => import('../views/SearchView'),
   GiftCardsView: () => import('../views/GiftCardsView'),
   GamingAccountsView: () => import('../views/GamingAccountsView'),

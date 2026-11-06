@@ -6,6 +6,15 @@ import EmptyState from '../components/ui/EmptyState';
 import CharnameField from '../components/catalog/CharnameField';
 import ServerIdField from '../components/catalog/ServerIdField';
 import { isVoucherGame } from '../lib/catalogUtils';
+import { ManualCustomerFields, ManualDeliveryInfo } from '../components/catalog/ManualDelivery';
+import {
+  cleanCustomerInputs,
+  customerFieldLabel,
+  invalidCustomerFields,
+  isManualGame,
+  manualCheckoutErrorMessage,
+  missingCustomerFields,
+} from '../lib/manualProducts';
 import {
   buildPaymentMethods,
   getDefaultPaymentMethod,
@@ -77,6 +86,7 @@ export default function BuyView({
   const [playerUid, setPlayerUid] = useState('');
   const [playerServer, setPlayerServer] = useState('');
   const [playerCharname, setPlayerCharname] = useState('');
+  const [customerInputs, setCustomerInputs] = useState({});
   const [topupMeta, setTopupMeta] = useState(() => buildTopupMetaFromGame(null));
   const [isProcessing, setIsProcessing] = useState(false);
   const [step, setStep] = useState('details');
@@ -96,8 +106,9 @@ export default function BuyView({
   const needsUid = isValidOffer && (game.redemption_method === 'uid' || game.redemption_method === 'both');
   const needsCode = isValidOffer && (game.redemption_method === 'redeem_code' || game.redemption_method === 'both');
   const isBoth = isValidOffer && game.redemption_method === 'both';
-  const isVoucherOnly = isValidOffer && isVoucherGame(game);
-  const showUidForm = needsUid && (!isBoth || redemptionChoice === 'uid') && !isVoucherOnly;
+  const isManual = isValidOffer && isManualGame(game);
+  const isVoucherOnly = isValidOffer && isVoucherGame(game) && !isManual;
+  const showUidForm = needsUid && (!isBoth || redemptionChoice === 'uid') && !isVoucherOnly && !isManual;
   const showRecipientFields = showUidForm && !isVoucherOnly;
   const needsServerField = showRecipientFields && gameShowsServerField(game, topupMeta);
   const needsCharnameField = showRecipientFields && gameShowsCharnameField(game, topupMeta);
@@ -246,7 +257,7 @@ export default function BuyView({
   });
 
   useEffect(() => {
-    if (!isValidOffer || selectedMethod !== 'balance' || !offer?.id || !isUidCompleteForStock) {
+    if (!isValidOffer || isManual || selectedMethod !== 'balance' || !offer?.id || !isUidCompleteForStock) {
       setStockCheck({ loading: false, available: true, message: '', reason: null });
       return undefined;
     }
@@ -284,6 +295,7 @@ export default function BuyView({
     };
   }, [
     isValidOffer,
+    isManual,
     selectedMethod,
     offer?.id,
     playerUid,
@@ -363,12 +375,16 @@ export default function BuyView({
     player_charname: resolvedPlayerCharname,
     influencer_code: appliedCoupon?.code || null,
     influencer_buyer_markup: appliedCoupon?.buyerMarkupPercent ?? null,
+    customer_inputs: isManual ? cleanCustomerInputs(game.customer_fields, customerInputs) : null,
   };
+  const missingManualFields = isManual ? missingCustomerFields(game.customer_fields, customerInputs) : [];
+  const invalidManualFields = isManual ? invalidCustomerFields(game.customer_fields, customerInputs) : [];
 
   const isUidComplete = !showUidForm || playerUid.trim().length > 2;
   const isServerComplete = !needsServerField || !!resolvedPlayerServer;
   const isCharnameFieldComplete = isCharnameComplete(topupMeta, playerCharname, game);
-  const canProceed = isUidComplete && isServerComplete && isCharnameFieldComplete && !!currentMethod;
+  const isManualComplete = missingManualFields.length === 0 && invalidManualFields.length === 0;
+  const canProceed = isUidComplete && isServerComplete && isCharnameFieldComplete && isManualComplete && !!currentMethod;
   const isManualWallet = isManualWalletMethod(selectedMethod);
   const isApiWallet = isApiWalletMethod(selectedMethod, paymentConfig);
   const methodReady = isPaymentMethodReady(selectedMethod, paymentConfig);
@@ -410,7 +426,7 @@ export default function BuyView({
           navigate(`/success?orderId=${result.orderId}`);
         }
       } catch (e) {
-        notifyError(brandUserText(`${t.error}: ${e.message || ''}`));
+        notifyError(manualCheckoutErrorMessage(e, t) || brandUserText(`${t.error}: ${e.message || ''}`));
       } finally {
         setIsProcessing(false);
       }
@@ -442,7 +458,7 @@ export default function BuyView({
         setStep(result.status === 'payment_sent' ? 'pending' : 'payment');
       }
     } catch (e) {
-      notifyError(brandUserText(`${t.paymentFailed}: ${e.message || ''}`));
+      notifyError(manualCheckoutErrorMessage(e, t) || brandUserText(`${t.paymentFailed}: ${e.message || ''}`));
     } finally {
       setIsProcessing(false);
     }
@@ -602,7 +618,7 @@ export default function BuyView({
       <div className="card p-8">
         <div className="mb-8">
           <div className="text-xs font-semibold text-[var(--accent)] mb-1">
-            {isVoucherOnly ? t.voucherCheckout : t.instantPurchaseLabel}
+            {isManual ? t.manualDeliveryBadge : (isVoucherOnly ? t.voucherCheckout : t.instantPurchaseLabel)}
           </div>
           <h1 className="text-3xl font-black">
             {isVoucherOnly ? t.buyVoucher : t.buyInstantly}
@@ -755,7 +771,24 @@ export default function BuyView({
           </div>
         ) : null}
 
-        {isVoucherOnly ? (
+        {isManual ? (
+          <div className="mb-8 space-y-4">
+            <ManualDeliveryInfo game={game} lang={lang} t={t} />
+            <ManualCustomerFields
+              game={game}
+              lang={lang}
+              t={t}
+              values={customerInputs}
+              onChange={setCustomerInputs}
+              invalidKeys={new Set(invalidManualFields.map((field) => field.key))}
+            />
+            {invalidManualFields.length > 0 && (
+              <div className="text-xs text-amber-400">
+                * {t.manualInputInvalid}: {invalidManualFields.map((field) => customerFieldLabel(field, lang)).join('، ')}
+              </div>
+            )}
+          </div>
+        ) : isVoucherOnly ? (
           <div className="mb-8 rounded-2xl border border-violet-500/25 bg-violet-500/10 p-5">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-xl bg-violet-500/15 text-violet-200">

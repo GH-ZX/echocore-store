@@ -61,6 +61,14 @@ export function getCatalogNavItemForGame(game) {
 }
 
 export function getCatalogContextForGame(game, t, lang) {
+  if (game?.delivery_mode === 'manual') {
+    return {
+      navItem: null,
+      segment: 'store',
+      label: t.storeProductsTitle || 'Store products',
+      path: '/store',
+    };
+  }
   const navItem = getCatalogNavItemForGame(game);
   return {
     navItem,

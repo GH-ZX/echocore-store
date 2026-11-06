@@ -51,7 +51,7 @@ export async function pollOrderFulfillment(orderId, { maxWaitMs = 90000, interva
     ]);
 
     const status = order?.fulfillment_status;
-    if (status === 'fulfilled' || status === 'failed' || status === 'skipped') {
+    if (status === 'fulfilled' || status === 'failed' || status === 'skipped' || status === 'awaiting_delivery') {
       return {
         order,
         items: items || [],

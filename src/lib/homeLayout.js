@@ -365,12 +365,18 @@ export function getHomeSectionPagePath(section) {
       return '/suggested';
     case 'offer_picks':
       return '/sale';
+    case 'store_products':
+      return section.path || '/store';
     default:
       return null;
   }
 }
 
 export function getSectionLabel(section, lang = 'en') {
+  // Store-product category sections are built from the categories table, not the saved layout.
+  if (section.type === 'store_products') {
+    return (lang === 'ar' ? section.title_ar : section.title_en) || section.title_ar || section.title_en || '';
+  }
   const meta = HOME_SECTION_TYPES[section.type];
   if (!meta) return section.type;
   if (lang === 'ar') {

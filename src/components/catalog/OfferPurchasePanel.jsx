@@ -118,16 +118,18 @@ export default function OfferPurchasePanel({
           >
             {t.buyNow}
           </button>
-          <button
-            type="button"
-            onClick={(e) => { if (!unaffordable) onAddToCart?.(offer, e); }}
-            className="btn btn-secondary w-full py-3 text-sm inline-flex items-center justify-center gap-2 touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed"
-            title={unaffordable ? t.offerWalletLow : undefined}
-            disabled={unaffordable}
-          >
-            <ShoppingCart className="w-4 h-4" />
-            {t.addToCart}
-          </button>
+          {onAddToCart && (
+            <button
+              type="button"
+              onClick={(e) => { if (!unaffordable) onAddToCart(offer, e); }}
+              className="btn btn-secondary w-full py-3 text-sm inline-flex items-center justify-center gap-2 touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed"
+              title={unaffordable ? t.offerWalletLow : undefined}
+              disabled={unaffordable}
+            >
+              <ShoppingCart className="w-4 h-4" />
+              {t.addToCart}
+            </button>
+          )}
         </div>
       </div>
     </aside>

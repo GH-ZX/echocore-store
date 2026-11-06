@@ -47,6 +47,7 @@ import {
 import { useCartState } from './hooks/useCartState';
 import { useCartActions } from './hooks/useCartActions';
 import { useCatalogState } from './hooks/useCatalogState';
+import { applyCatalogOnlyGames, applyCatalogOnlyOffers, CATALOG_CHANGED_EVENT } from './lib/manualProducts';
 import { useNotificationsState } from './hooks/useNotificationsState';
 import { usePartnerStatus } from './hooks/usePartnerStatus';
 import { useToastState } from './hooks/useToastState';
@@ -448,7 +449,7 @@ export default function App() {
         ordersData = await fetchAllSupabaseRows(() => (
           supabase
             .from('orders')
-            .select('*, order_items(*, offers(id, name_en, name_ar, game_id, g2bulk_catalogue_name, games(id, name_en, name_ar, slug, g2bulk_game_code)))')
+            .select('*, order_items(*, offers(id, name_en, name_ar, game_id, g2bulk_catalogue_name, games(id, name_en, name_ar, slug, g2bulk_game_code, delivery_mode, customer_fields)))')
             .order('created_at', { ascending: false })
         ));
       } catch (richErr) {
@@ -985,6 +986,7 @@ export default function App() {
       player_uid = null,
       player_server = null,
       player_charname = null,
+      customer_inputs = null,
     } = playerInfo;
 
     const items = [{
@@ -995,6 +997,7 @@ export default function App() {
       player_uid: player_uid || null,
       player_server: player_server || null,
       player_charname: player_charname || null,
+      ...(customer_inputs && Object.keys(customer_inputs).length ? { customer_inputs } : {}),
     }];
 
     if (paymentMethod === 'balance') {
@@ -1638,7 +1641,7 @@ export default function App() {
           .select('*')
           .eq('active', true);
         if (catalogOnly) {
-          pageQuery = pageQuery.eq('catalog_source', 'g2bulk');
+          pageQuery = applyCatalogOnlyGames(pageQuery);
         }
         return pageQuery.order('created_at', { ascending: true });
       }),
@@ -1648,7 +1651,7 @@ export default function App() {
           .select('*')
           .eq('active', true);
         if (catalogOnly) {
-          pageQuery = pageQuery.eq('catalog_source', 'g2bulk');
+          pageQuery = applyCatalogOnlyOffers(pageQuery);
         }
         return pageQuery.order('created_at', { ascending: true });
       }),
@@ -1673,6 +1676,17 @@ export default function App() {
     const withCost = await withAdminWholesale(cleaned, { isAdmin: user?.role === 'admin' });
     setOffers((prev) => (sameRows(prev, withCost) ? prev : withCost));
   };
+
+  // The dashboard's manual-product editor saves straight to the database and announces the rows.
+  useEffect(() => {
+    const onCatalogChanged = (event) => {
+      const { games: changedGames = [], offers: changedOffers = [] } = event.detail || {};
+      if (changedGames.length) setGames((prev) => mergeCatalogRows(prev, changedGames));
+      if (changedOffers.length) setOffers((prev) => mergeCatalogRows(prev, stripOffersSecrets(changedOffers)));
+    };
+    window.addEventListener(CATALOG_CHANGED_EVENT, onCatalogChanged);
+    return () => window.removeEventListener(CATALOG_CHANGED_EVENT, onCatalogChanged);
+  }, [setGames, setOffers]);
 
   const handleLiveCatalogUpdate = useCallback(({ parent, games: variantGames = [], offers: groupOffers = [] }) => {
     setGames((prev) => mergeCatalogRows(prev, [parent, ...variantGames].filter(Boolean)));

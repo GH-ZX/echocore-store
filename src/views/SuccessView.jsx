@@ -14,11 +14,12 @@ import {
 } from 'lucide-react';
 import { Spinner } from '../components/routing/PageLoader';
 import { fetchMyOrderReceipt } from '../lib/orders';
-import { formatDateTime, formatMoney } from '../lib/i18n';
+import { formatDateTime, formatMessage, formatMoney } from '../lib/i18n';
 import { getOfferHowTo } from '../lib/offerDisplay';
 import { renderRichTextLinks } from '../lib/richText';
 import CustomerReviewForm from '../components/reviews/CustomerReviewForm';
 import OrderStatusStepper from '../components/orders/OrderStatusStepper';
+import { deliveryEta, deliveryNote, describeCustomerInputs, isManualGame } from '../lib/manualProducts';
 import {
   canUserAccessOrderReceipt,
   consumeOrderFulfillMarker,
@@ -182,7 +183,7 @@ export default function SuccessView({
 
     const fs0 = orderDetails.fulfillment_status || 'pending';
     const codes0 = extractDeliveryCodes(orderItems, orderDetails.g2bulk_metadata);
-    const alreadyDone = fs0 === 'fulfilled' || fs0 === 'skipped' || fs0 === 'failed' || codes0.length > 0;
+    const alreadyDone = fs0 === 'fulfilled' || fs0 === 'skipped' || fs0 === 'failed' || fs0 === 'awaiting_delivery' || codes0.length > 0;
     if (alreadyDone) return undefined;
 
     let cancelled = false;
@@ -214,7 +215,7 @@ export default function SuccessView({
         if (cancelled || !result?.order) return;
         const codes = extractDeliveryCodes(result.items, result.order.g2bulk_metadata);
         const fs = result.order.fulfillment_status || 'pending';
-        const done = fs === 'fulfilled' || fs === 'skipped' || fs === 'failed' || codes.length > 0;
+        const done = fs === 'fulfilled' || fs === 'skipped' || fs === 'failed' || fs === 'awaiting_delivery' || codes.length > 0;
         if (done) return;
       } catch {
         /* keep last good snapshot */
@@ -230,6 +231,21 @@ export default function SuccessView({
     // Only start once per order id after first paint (do not restart every poll update)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid restart on each receipt refresh
   }, [loading, orderId, userId, orderDetails?.id]);
+
+  // Store-delivered order: re-read it now and then (no supplier calls) so "delivered" shows up live.
+  const awaitingOwner = orderDetails?.fulfillment_status === 'awaiting_delivery';
+  useEffect(() => {
+    if (!awaitingOwner || !orderId || !userId) return undefined;
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      if (Date.now() - startedAt > 2 * 60 * 60 * 1000) {
+        clearInterval(timer);
+        return;
+      }
+      loadOrder().catch(() => {});
+    }, 30 * 1000);
+    return () => clearInterval(timer);
+  }, [awaitingOwner, orderId, userId, loadOrder]);
 
   // Auto-fulfill only right after checkout in this tab (session marker). Notif reopen must not hang.
   useEffect(() => {
@@ -318,6 +334,13 @@ export default function SuccessView({
   const offerForItem = offers.find((o) => String(o.id) === String(firstItem.offer_id)) || null;
   const gameForItem = games.find((g) => String(g.id) === String(offerForItem?.game_id)) || null;
   const { text: offerInstructions, steps } = getOfferHowTo(offerForItem, gameForItem, lang);
+  const isManualOrder = isManualGame(gameForItem)
+    || orderDetails.fulfillment_status === 'awaiting_delivery'
+    || !!orderDetails.g2bulk_metadata?.manual_delivered_at;
+  const customerAnswers = orderItems.flatMap((item) => describeCustomerInputs(
+    { ...item, offers: { games: gameForItem } },
+    lang,
+  ));
   const topup = getOrderTopupDeliveryDetails(orderDetails, orderItems);
   const playerUid = topup.playerUid || firstItem.player_uid;
   const playerServer = topup.playerServer || firstItem.player_server;
@@ -445,12 +468,40 @@ export default function SuccessView({
         )}
       </div>
 
+      {isManualOrder && orderDetails.fulfillment_status === 'awaiting_delivery' && (
+        <div className="card p-6 mb-6 border border-[var(--accent)]/25 space-y-3">
+          <h2 className="font-bold text-lg">{t.orderAwaitingDelivery}</h2>
+          <p className="text-sm text-[var(--text-sec)] leading-relaxed">
+            {formatMessage(t.orderAwaitingDeliveryDesc, { eta: deliveryEta(gameForItem, lang) || t.manualDeliveryDefaultEta })}
+          </p>
+          {deliveryNote(gameForItem, lang) && (
+            <div className="text-sm text-[var(--text-sec)] whitespace-pre-wrap leading-relaxed">
+              {renderRichTextLinks(deliveryNote(gameForItem, lang))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {customerAnswers.length > 0 && (
+        <div className="card p-6 mb-6">
+          <h2 className="font-bold text-lg mb-3">{t.yourAnswers}</h2>
+          <dl className="space-y-2 text-sm">
+            {customerAnswers.map((row) => (
+              <div key={row.key} className="flex flex-wrap gap-x-3 gap-y-0.5 border-b border-[var(--border)] last:border-0 pb-2">
+                <dt className="text-[var(--text-muted)]">{row.label}</dt>
+                <dd className="font-medium break-all"><bdi>{row.value}</bdi></dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+
       {hasCodes && (
         <div className="card p-6 mb-6 border border-[var(--accent)]/25">
           <div className="flex items-center justify-between gap-3 mb-4">
             <h2 className="font-bold text-lg flex items-center gap-2">
               <KeyRound className="w-5 h-5 text-[var(--accent)]" />
-              {t.yourRedeemCode}
+              {isManualOrder ? t.deliveredInfo : t.yourRedeemCode}
             </h2>
             {deliveryCodes.length > 1 && (
               <button
@@ -466,7 +517,9 @@ export default function SuccessView({
             {deliveryCodes.map((code, idx) => (
               <div key={`${code}-${idx}`} className="bg-[var(--bg-primary)] p-4 rounded-xl flex items-center gap-3">
                 <div className="flex-1 min-w-0 text-center sm:text-left">
-                  <div className="text-xl sm:text-2xl font-mono tracking-wide text-[var(--accent)] break-all">
+                  <div className={isManualOrder
+                    ? 'text-base whitespace-pre-wrap break-words text-start text-[var(--text-primary,inherit)]'
+                    : 'text-xl sm:text-2xl font-mono tracking-wide text-[var(--accent)] break-all'}>
                     {code}
                   </div>
                 </div>

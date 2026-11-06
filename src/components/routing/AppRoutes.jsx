@@ -36,6 +36,7 @@ const NotFoundView = lazyRetry(routeChunkFactories.NotFoundView);
 const PrivacyView = lazyRetry(routeChunkFactories.PrivacyView);
 const TermsView = lazyRetry(routeChunkFactories.TermsView);
 const AllGamesView = lazyRetry(routeChunkFactories.AllGamesView);
+const StoreProductsView = lazyRetry(routeChunkFactories.StoreProductsView);
 const SearchView = lazyRetry(routeChunkFactories.SearchView);
 const GiftCardsView = lazyRetry(routeChunkFactories.GiftCardsView);
 const GamingAccountsView = lazyRetry(routeChunkFactories.GamingAccountsView);
@@ -174,6 +175,38 @@ export default function AppRoutes({
           path="/games"
           element={(
             <AllGamesView
+              games={games}
+              offers={offers}
+              t={t}
+              lang={lang}
+              loading={loadingGames}
+              onSelectGame={openGame}
+              onEditGame={isAdmin ? setAdminEditGame : undefined}
+              isAdmin={isAdmin}
+            />
+          )}
+        />
+
+        <Route
+          path="/store"
+          element={(
+            <StoreProductsView
+              games={games}
+              offers={offers}
+              t={t}
+              lang={lang}
+              loading={loadingGames}
+              onSelectGame={openGame}
+              onEditGame={isAdmin ? setAdminEditGame : undefined}
+              isAdmin={isAdmin}
+            />
+          )}
+        />
+
+        <Route
+          path="/store/:categorySlug"
+          element={(
+            <StoreProductsView
               games={games}
               offers={offers}
               t={t}

@@ -594,6 +594,7 @@ async function cmdBrowse(ctx: BotContext, kind: 'games' | 'vouchers') {
     .from('games')
     .select('id, slug, name_en, name_ar')
     .eq('active', true)
+    .neq('delivery_mode', 'manual') // store-delivered products ask questions → website only
     .order('name_en', { ascending: true })
     .limit(60);
   q = kind === 'vouchers' ? q.eq('redemption_method', 'redeem_code') : q.neq('redemption_method', 'redeem_code');
@@ -624,7 +625,7 @@ async function cmdBrowse(ctx: BotContext, kind: 'games' | 'vouchers') {
 async function cmdPacks(ctx: BotContext, gameId: string, page: number) {
   const { data: game } = await ctx.supabase
     .from('games')
-    .select('id, slug, name_en, name_ar, redemption_method, topup_fields, active')
+    .select('id, slug, name_en, name_ar, redemption_method, topup_fields, active, delivery_mode')
     .eq('id', gameId)
     .maybeSingle();
   if (!game || !game.active) {
@@ -634,7 +635,8 @@ async function cmdPacks(ctx: BotContext, gameId: string, page: number) {
   const gameName = esc(nameOf(ctx, game.name_en, game.name_ar));
   const storeRow = [{ text: T(ctx, 'btnOpenInStore'), url: `${STORE_URL}/game/${game.slug}` }];
 
-  if (game.redemption_method !== 'redeem_code' && topupNeeds(game.topup_fields).charname) {
+  if (game.delivery_mode === 'manual'
+    || (game.redemption_method !== 'redeem_code' && topupNeeds(game.topup_fields).charname)) {
     await reply(ctx, T(ctx, 'websiteOnly', { game: gameName }), { reply_markup: { inline_keyboard: [storeRow] } });
     return;
   }

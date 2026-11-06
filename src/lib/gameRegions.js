@@ -7,6 +7,10 @@ export function getGameBaseMeta(game) {
   return parseG2BulkGameMeta(game.g2bulk_game_code || game.slug || '', game.name_en || game.name_ar || '');
 }
 
+function isOwnerDelivered(game) {
+  return game?.delivery_mode === 'manual';
+}
+
 function isVoucherLike(game) {
   return !!game && game.redemption_method === 'redeem_code';
 }
@@ -21,6 +25,7 @@ export function getStorefrontGames(games = []) {
   return games.filter((game) =>
     game
     && game.active !== false
+    && !isOwnerDelivered(game)
     && !isVoucherLike(game)
     && game.redemption_method !== 'redeem_code'
   );
@@ -31,12 +36,18 @@ export function getStorefrontVoucherGames(games = []) {
   return games.filter((game) =>
     game
     && game.active !== false
+    && !isOwnerDelivered(game)
     && isVoucherLike(game)
   );
 }
 
+/** Products the store owner delivers by hand: their own lane (categories), never in the G2Bulk lanes. */
+export function getStorefrontManualProducts(games = []) {
+  return games.filter((game) => game && game.active !== false && isOwnerDelivered(game));
+}
+
 export function getAllStorefrontProducts(games = []) {
-  return [...getStorefrontGames(games), ...getStorefrontVoucherGames(games)];
+  return [...getStorefrontGames(games), ...getStorefrontVoucherGames(games), ...getStorefrontManualProducts(games)];
 }
 
 export function variantHasActiveOffers(variant, offers = []) {

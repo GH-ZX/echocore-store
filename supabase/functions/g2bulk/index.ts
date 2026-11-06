@@ -1604,6 +1604,19 @@ async function resolveSupplierQuote(
   };
 }
 
+async function loadManualOfferIds(
+  serviceClient: ReturnType<typeof createClient>,
+  offerIds: string[],
+): Promise<Set<string>> {
+  if (!offerIds.length) return new Set();
+  const { data } = await serviceClient
+    .from('offers')
+    .select('id, games!inner(delivery_mode)')
+    .in('id', offerIds)
+    .eq('games.delivery_mode', 'manual');
+  return new Set((data || []).map((row: { id: string }) => String(row.id)));
+}
+
 async function evaluateFulfillmentAvailability(
   serviceClient: ReturnType<typeof createClient>,
   apiKey: string | null,
@@ -1615,9 +1628,17 @@ async function evaluateFulfillmentAvailability(
     if (diagnose || !ok) steps.push({ step, ok, ...extra });
   };
 
-  const items = Array.isArray(rawItems) ? rawItems.filter((row) => row?.offer_id) : [];
-  if (!items.length) {
+  const requested = Array.isArray(rawItems) ? rawItems.filter((row) => row?.offer_id) : [];
+  if (!requested.length) {
     return { available: false, reason: 'items_required', steps };
+  }
+
+  // Products the store owner delivers by hand never depend on the supplier.
+  const manualOfferIds = await loadManualOfferIds(serviceClient, requested.map((row) => String(row.offer_id)));
+  const items = requested.filter((row) => !manualOfferIds.has(String(row.offer_id)));
+  if (!items.length) {
+    push('manual_delivery', true);
+    return { available: true, reason: 'manual_delivery', steps };
   }
 
   const settingsRow = await loadStoreSettingsRow(serviceClient);
@@ -2522,6 +2543,12 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: true, skipped: true, fulfillmentStatus: 'fulfilled' });
     }
 
+    // Manual products are delivered by the store owner from the dashboard (admin_deliver_order).
+    // The database marks their paid orders 'awaiting_delivery'; never send them to the supplier.
+    if (order.fulfillment_status === 'awaiting_delivery') {
+      return jsonResponse({ success: true, skipped: true, fulfillmentStatus: 'awaiting_delivery' });
+    }
+
     // ── Per-order in-flight lock ──────────────────────────────────────────
     // Concurrent fulfillOrder invocations (buy-flow call + success-page
     // auto-fulfill + background poll) raced here: one placed the G2Bulk
@@ -2685,6 +2712,7 @@ Deno.serve(async (req) => {
     const mappableItems = items.filter((row) => {
       const offer = row.offers;
       const game = offer?.games;
+      if (game?.delivery_mode === 'manual') return false;
       const g2bulkType = offer?.g2bulk_type
         || (game?.redemption_method === 'redeem_code' ? 'voucher' : 'topup');
       return g2bulkType === 'voucher'
@@ -3680,8 +3708,18 @@ Deno.serve(async (req) => {
 
     if (phase === 'init') {
       if (hideManual) {
-        await serviceClient.from('games').update({ active: false }).eq('catalog_source', 'manual');
-        await serviceClient.from('offers').update({ active: false }).eq('catalog_source', 'manual');
+        // Legacy hand-made rows only: products the owner delivers by hand (delivery_mode 'manual')
+        // are real store products and stay on sale.
+        const { data: ownerProducts } = await serviceClient
+          .from('games')
+          .select('id')
+          .eq('delivery_mode', 'manual');
+        const keepIds = (ownerProducts || []).map((row: { id: string }) => row.id);
+        await serviceClient.from('games').update({ active: false })
+          .eq('catalog_source', 'manual').neq('delivery_mode', 'manual');
+        let legacyOffers = serviceClient.from('offers').update({ active: false }).eq('catalog_source', 'manual');
+        if (keepIds.length) legacyOffers = legacyOffers.not('game_id', 'in', `(${keepIds.join(',')})`);
+        await legacyOffers;
       }
 
       const pullSelection = prunePullSelectionToCatalog(

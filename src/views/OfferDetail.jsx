@@ -20,6 +20,8 @@ import { formatMoney } from '../lib/i18n';
 import { buildGameBreadcrumb } from '../lib/catalogNav';
 import { renderRichTextLinks } from '../lib/richText';
 import MobileBuyBar from '../components/catalog/MobileBuyBar';
+import { ManualDeliveryInfo } from '../components/catalog/ManualDelivery';
+import { deliveryEta, isManualGame } from '../lib/manualProducts';
 import { useOfferAffordability } from '../lib/offerAffordability';
 
 function redemptionMethodLabel(game, t) {
@@ -78,14 +80,20 @@ export default function OfferDetail({
   const descriptionContext = { game, games, relatedOffers: offers };
   const gameName = displayGame ? getGameDisplayName(displayGame, lang) : '';
   const offerName = getOfferDisplayName(offer, lang, descriptionContext);
-  const description = getOfferDescription(offer, lang, descriptionContext, t);
+  const isManual = isManualGame(game);
+  const pickText = (row) => String((lang === 'ar' ? row?.description_ar : row?.description_en) || row?.description_ar || row?.description_en || '').trim();
+  const description = isManual
+    ? (pickText(offer) || pickText(game) || t.storeProductsDesc)
+    : getOfferDescription(offer, lang, descriptionContext, t);
   const { text: offerInstructions, steps } = getOfferHowTo(offer, game, lang);
   const heroImage = offer.sale_image_url || offer.image_url || displayGame?.image_url;
   const catalogTrail = displayGame
     ? buildGameBreadcrumb(displayGame, t, lang, navigate, { offerName })
     : null;
   const regionLabel = offer.region || game?.region_label || null;
-  const deliveryLabel = redemptionMethodLabel(game, t);
+  const deliveryLabel = isManual
+    ? (deliveryEta(game, lang) || t.manualDeliveryDefaultEta)
+    : redemptionMethodLabel(game, t);
 
   return (
     <CatalogPageShell
@@ -125,7 +133,7 @@ export default function OfferDetail({
           isAdmin={isAdmin}
           unaffordable={offerUnaffordable}
           onBuyNow={onBuyNow}
-          onAddToCart={addToCart}
+          onAddToCart={isManual ? undefined : addToCart}
           onPricingSaved={onPricingSaved}
           onNotify={onNotify}
           className="order-1 lg:order-2 lg:sticky lg:top-24"
@@ -171,6 +179,9 @@ export default function OfferDetail({
             </p>
           </section>
 
+          {isManual ? (
+            <ManualDeliveryInfo game={game} lang={lang} t={t} />
+          ) : (
           <section className="card p-5 sm:p-6">
             <div className="flex items-center justify-between gap-2 mb-4">
               <h2 className="font-bold text-lg sm:text-xl inline-flex items-center gap-2">
@@ -196,6 +207,7 @@ export default function OfferDetail({
               </ol>
             )}
           </section>
+          )}
 
           {displayGame && (
             <button
@@ -231,7 +243,7 @@ export default function OfferDetail({
               )}
               {isAdmin && <AdminOfferCostBadge offer={offer} t={t} className="mt-0.5" />}
             </div>
-            {!isAdmin && addToCart && (
+            {!isAdmin && addToCart && !isManual && (
               <button
                 type="button"
                 onClick={(e) => { if (!offerUnaffordable) addToCart(offer, e); }}
