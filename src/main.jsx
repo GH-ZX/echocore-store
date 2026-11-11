@@ -2,9 +2,11 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import './index.css'
+import './events.css'
 import './components/ui/BorderGlow.css'
 import './components/backgrounds/StoreBackgrounds.css'
 import { applyCachedTheme, bootstrapThemeFromStorage } from './lib/theme'
+import { bootstrapEventLook } from './lib/storeEvents'
 import { installGlobalErrorLogging } from './lib/siteLogs'
 import { enforceCanonicalHost } from './lib/siteDomain'
 import { clearChunkReloadGuard } from './lib/lazyRetry'
@@ -19,6 +21,7 @@ if (enforceCanonicalHost()) {
   clearChunkReloadGuard()
   bootstrapThemeFromStorage()
   applyCachedTheme()
+  bootstrapEventLook()
   installGlobalErrorLogging()
 
   const savedLang = typeof localStorage !== 'undefined' && localStorage.getItem('echocore-lang') === 'en' ? 'en' : 'ar'

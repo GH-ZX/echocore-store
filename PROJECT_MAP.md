@@ -143,13 +143,30 @@ Setup guide: [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) · [SUPABASE_SETUP.ar.md](
 | Orders | Search, filter, fulfill, invoice link |
 | Recharges | Approve / invoice |
 | Payments | ShamCash, Sam API, manual vs API mode |
-| Theme | Site presets |
+| Theme | Signature themes (palette + background + corners + font) and classic color presets |
+| **Events** (`events`) | Time-boxed events: text/banner, a look layered over the theme, optional margin cap (`AdminEventsManager`) |
 | Home layout | Section order & visibility |
 | Reviews | Moderation |
 | G2Bulk | Catalog sync, markup, charm pricing, pull selection |
 | Dev tools | Test fulfillment, balance credit |
 
 Game/offer CRUD: `AdminGameEditModal` / `AdminOfferEditModal` only (no inline forms in `AdminView`).
+
+### Store events
+
+`store_events` (migration `20261111090000_store_events.sql`) + `src/lib/storeEvents.js`.
+
+- **Start / end** only through `admin_start_store_event` / `admin_end_store_event` (or the `store-events-tick`
+  cron, every 2 minutes, for scheduled starts and the end time). Both run in one transaction.
+- **Prices:** with `markup_percent` set, starting caps every pack's margin at it (store markup, custom
+  margins, and fixed prices when `include_fixed`); `offers.event_compare_price` keeps the pre-event price
+  (shown struck through, and what fixed packs return to); ending restores the store markup and reprices
+  everything by the normal rules. `store_price_from_cost()` mirrors `applyMarkup` in `offerPricing.js`.
+- **Look:** `EVENT_LOOKS` theme overrides are layered over the saved site theme by `applySiteTheme()` and
+  never saved, so the site returns to its own theme when the event ends.
+- **Storefront:** `useActiveEvent()`; `EventBanner`, first carousel slide, `/events`, `EventComparePrice`.
+  Dashboard "Preview on the site" shows a draft in the current tab only (sessionStorage).
+- Banner art: `public/events/*.svg`, built by `scripts/build-event-art.py`.
 
 ---
 

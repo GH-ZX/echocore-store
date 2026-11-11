@@ -15,6 +15,10 @@ import HomeExpandableGrid from '../../components/home/HomeExpandableGrid';
 import AdminAddCard from '../../components/admin/AdminAddCard';
 import { getStorefrontManualProducts } from '../../lib/gameRegions';
 import { useCategories } from '../../hooks/useCategories';
+import { useActiveEvent } from '../../hooks/useActiveEvent';
+import EventBanner from '../../components/events/EventBanner';
+import EventDecor from '../../components/events/EventDecor';
+import { getEventArt, getEventOptions, orderGamesForEvent } from '../../lib/storeEvents';
 import { getCarouselGames, resolveCarouselLogo } from '../../lib/carouselUtils';
 import {
   getDisplayGameForOffer,
@@ -142,6 +146,8 @@ export default function HomeView({
   onReviewSubmitted,
 }) {
   const navigate = useNavigate();
+  const storeEvent = useActiveEvent();
+  const eventOptions = getEventOptions(storeEvent);
   const [bestsellerRanks, setBestsellerRanks] = useState([]);
 
   const layout = useMemo(() => normalizeHomeLayout(homeLayout), [homeLayout]);
@@ -161,9 +167,10 @@ export default function HomeView({
     return () => { cancelled = true; };
   }, []);
 
+  // While an event runs, the products it lists come first (the saved order is untouched).
   const topupGames = useMemo(
-    () => getVisibleTopupGames(games, offers, { isAdmin }),
-    [games, offers, isAdmin],
+    () => orderGamesForEvent(getVisibleTopupGames(games, offers, { isAdmin }), storeEvent),
+    [games, offers, isAdmin, storeEvent],
   );
 
   const topupGamesWithStats = useMemo(() => topupGames.map((game) => {
@@ -282,7 +289,7 @@ export default function HomeView({
   const { unaffordable } = useOfferAffordability(homeOfferIds.map((id) => ({ id })));
 
   // Include top-up games + redeem codes pinned to the carousel
-  const carouselGames = getCarouselGames(games);
+  const carouselGames = orderGamesForEvent(getCarouselGames(games), storeEvent);
 
   const carouselItems = carouselGames.map((g) => {
     const descriptions = resolveCarouselDescription(g, games, offers, t);
@@ -302,6 +309,25 @@ export default function HomeView({
       price: 0,
     };
   });
+  // The running event gets the first slide (customer view only: admin slide tools are per game).
+  if (storeEvent && !isAdmin && eventOptions.carouselSlide !== false) {
+    carouselItems.unshift({
+      id: `event-${storeEvent.id}`,
+      isEvent: true,
+      name_en: storeEvent.title_en,
+      name_ar: storeEvent.title_ar,
+      image_url: getEventArt(storeEvent),
+      logo_url: '/events/icon.svg',
+      description_en: storeEvent.description_en || '',
+      description_ar: storeEvent.description_ar || '',
+      carousel_focus_x: lang === 'ar' ? 22 : 78,
+      carousel_focus_y: 42,
+      carousel_badge_en: storeEvent.badge_en || null,
+      carousel_badge_ar: storeEvent.badge_ar || null,
+      category: 'games',
+      price: 0,
+    });
+  }
 
   const renderSectionHeading = (section) => {
     const title = getSectionLabel(section, lang);
@@ -480,7 +506,13 @@ export default function HomeView({
                 if (game) onEditGame?.(game);
               }}
               onMoveCarouselGame={onMoveCarouselGame}
-              onSelectProduct={(item) => onSelectGame && onSelectGame(games.find((g) => g.id === item.id))}
+              onSelectProduct={(item) => {
+                if (item.isEvent) {
+                  navigate('/events');
+                  return;
+                }
+                if (onSelectGame) onSelectGame(games.find((g) => g.id === item.id));
+              }}
             />
             <TrustStrip t={t} />
             <RecentPurchasesTicker t={t} lang={lang} />
@@ -723,6 +755,15 @@ export default function HomeView({
     <div className="space-y-10 sm:space-y-14 md:space-y-16 animate-fade-in">
       {contactFab}
       {previewFab}
+      {storeEvent && <EventDecor event={storeEvent} />}
+      {storeEvent && eventOptions.banner !== false && (
+        <EventBanner
+          event={storeEvent}
+          t={t}
+          lang={lang}
+          compact={!isAdmin && eventOptions.carouselSlide !== false}
+        />
+      )}
       {layout.map((section) => {
         const content = renderSection(section);
         const withStore = section.id === storeAnchorId;

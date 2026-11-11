@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
-  HelpCircle, BookOpen, Mail, Sparkles, Percent,
+  HelpCircle, BookOpen, Mail, Sparkles, Percent, PartyPopper,
 } from 'lucide-react';
 import {
   CATALOG_NAV_ITEMS,
@@ -23,8 +23,18 @@ const SALE_NAV_ITEM = {
   fallbackAr: 'العروض',
 };
 
+const EVENTS_NAV_ITEM = {
+  type: 'link',
+  path: '/events',
+  icon: PartyPopper,
+  labelKey: 'eventsNav',
+  fallbackEn: 'Events',
+  fallbackAr: 'الفعاليات',
+};
+
 export const NAV_ITEMS = [
   SALE_NAV_ITEM,
+  EVENTS_NAV_ITEM,
   {
     type: 'dropdown',
     icon: Sparkles,

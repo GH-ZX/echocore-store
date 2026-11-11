@@ -16,6 +16,7 @@ export const ADMIN_TAB_SEGMENTS = {
   partners: 'partners',
   inbox: 'inbox',
   announcements: 'announcements',
+  events: 'events',
   contact: 'contact',
   logs: 'logs',
 };

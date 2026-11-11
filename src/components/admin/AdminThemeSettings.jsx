@@ -5,8 +5,10 @@ import { fetchStoreSettings, saveStoreSettings } from '../../lib/storeSettings';
 import { uploadImage } from '../../lib/uploadImage';
 import EchoLogo from '../ui/EchoLogo';
 
+import { applySiteTheme } from '../../lib/storeEvents';
 import {
   getPresetsForMode,
+  SIGNATURE_THEME_PRESETS,
   getDefaultPresetForMode,
   isLightColorMode,
   THEME_FIELD_GROUPS,
@@ -753,15 +755,26 @@ function ThemePresetCard({ preset, active, isAr, mode, onSelect }) {
         className="theme-preset-card__swatch"
         style={{
           background: `linear-gradient(145deg, ${colors.bgPrimary} 0%, ${colors.bgSurface} 55%, ${colors.bgPrimary} 100%)`,
+          // Signature themes preview their own corner shape, button fill and font.
+          borderRadius: preset.signature ? preset.overrides.radius : undefined,
         }}
       >
         <span
           className="theme-preset-card__accent"
-          style={{ background: `linear-gradient(90deg, ${colors.accent}, ${colors.accentHover})` }}
+          style={{
+            background: (preset.signature && preset.overrides['gradient-accent'])
+              || `linear-gradient(90deg, ${colors.accent}, ${colors.accentHover})`,
+          }}
         />
-        <span className="theme-preset-card__dot" style={{ background: colors.accent }} />
-        <span className="theme-preset-card__text" style={{ color: colors.textPrimary }}>
-          Aa
+        <span
+          className="theme-preset-card__dot"
+          style={{ background: preset.signature ? preset.overrides['accent-2'] : colors.accent }}
+        />
+        <span
+          className="theme-preset-card__text"
+          style={{ color: colors.textPrimary, fontFamily: preset.signature ? preset.overrides['font-sans'] : undefined }}
+        >
+          {preset.signature ? 'أبجد' : 'Aa'}
         </span>
         {active && (
           <span className="theme-preset-card__check">
@@ -920,7 +933,8 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
   useEffect(() => {
     load();
     return () => {
-      applyTheme(savedRef.current, { replace: true });
+      // Back to the saved theme, with a running event's look on top.
+      applySiteTheme(savedRef.current);
     };
   }, []);
 
@@ -940,7 +954,7 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
     setForm((prev) => {
       const next = {
         ...pickAppearanceOverrides(prev),
-        'color-mode': mode,
+        'color-mode': preset.signature ? 'dark' : mode,
         ...preset.overrides,
       };
       setPresetId(preset.id);
@@ -1081,6 +1095,23 @@ export default function AdminThemeSettings({ t = {}, lang = 'ar', onSaved }) {
               </span>
             )}
           </div>
+          <div className="mb-5">
+            <div className="text-xs font-semibold text-[var(--text-primary)]">{t.signatureThemes}</div>
+            <p className="text-[11px] text-[var(--text-muted)] mb-2.5">{t.signatureThemesHelp}</p>
+            <div className="theme-preset-grid">
+              {Object.values(SIGNATURE_THEME_PRESETS).map((preset) => (
+                <ThemePresetCard
+                  key={preset.id}
+                  preset={preset}
+                  active={presetId === preset.id}
+                  isAr={isAr}
+                  mode="dark"
+                  onSelect={() => applyPreset(preset)}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="text-xs font-semibold text-[var(--text-primary)] mb-2.5">{t.classicColorThemes}</div>
           <div className="theme-preset-grid">
             {Object.values(activePresets).map((preset) => (
               <ThemePresetCard

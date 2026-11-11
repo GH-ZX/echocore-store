@@ -465,6 +465,72 @@ export const THEME_PRESETS = {
   },
 };
 
+/**
+ * Signature themes: unlike the color presets above, each one is a whole look — its own palette,
+ * background, corner shape, font and button fill. Dark only. Picking one replaces those settings.
+ */
+function signature(id, labelEn, labelAr, colors, look) {
+  const [bgPrimary, bgSurface, bgElevated, textPrimary, textSecondary, textMuted,
+    accent, accentHover, accent2, accentDark, border, borderStrong, price] = colors;
+  return {
+    id,
+    signature: true,
+    labelEn,
+    labelAr,
+    overrides: {
+      'color-mode': 'dark',
+      'bg-primary': bgPrimary,
+      'bg-surface': bgSurface,
+      'bg-elevated': bgElevated,
+      'text-primary': textPrimary,
+      'text-secondary': textSecondary,
+      'text-muted': textMuted,
+      accent,
+      'accent-hover': accentHover,
+      'accent-2': accent2,
+      'accent-dark': accentDark,
+      border,
+      'border-strong': borderStrong,
+      price,
+      'gradient-accent': look.button || accent,
+      'background-type': look.background,
+      'bg-effect-opacity': look.effect,
+      'glows-enabled': look.glows ? 'true' : 'false',
+      radius: look.radius[0],
+      'radius-sm': look.radius[1],
+      'radius-lg': look.radius[2],
+      'font-sans': `'${look.font}', 'Cairo', ui-sans-serif, system-ui, sans-serif`,
+    },
+  };
+}
+
+export const SIGNATURE_THEME_PRESETS = {
+  royal: signature('sig-royal', 'Royal Night', 'ليل ملكي',
+    ['#070b18', '#0d1428', '#151f3b', '#f6f1e4', '#b9b6a8', '#87877f', '#d4a94a', '#e6c170', '#8fa8ff', '#8a6a1f', '#1f2a4a', '#2f3d66', '#e6c170'],
+    { button: 'linear-gradient(135deg, #e6c170, #c08f2c)', background: 'dots', effect: '0.35', glows: false, radius: ['10px', '8px', '16px'], font: 'El Messiri' }),
+  arcade: signature('sig-arcade', 'Neon Arcade', 'أركيد نيون',
+    ['#05040d', '#0e0b1f', '#171233', '#f7f2ff', '#b6accf', '#857ba3', '#ff4fa3', '#ff7fbd', '#29e0ff', '#a3155c', '#2a1f4d', '#3d2e6b', '#29e0ff'],
+    { button: 'linear-gradient(120deg, #ff4fa3, #9d6bff)', background: 'aurora', effect: '0.6', glows: true, radius: ['22px', '14px', '30px'], font: 'Readex Pro' }),
+  sand: signature('sig-sand', 'Desert Sand', 'رمال الصحراء',
+    ['#140e08', '#1f160d', '#2b1f13', '#f7efe2', '#c9b89f', '#97866d', '#e9954a', '#f3b071', '#f2d08a', '#8f4f17', '#3a2a18', '#55402a', '#f2d08a'],
+    { button: 'linear-gradient(135deg, #f3b071, #df7b2e)', background: 'mesh', effect: '0.5', glows: false, radius: ['14px', '10px', '20px'], font: 'Tajawal' }),
+  vault: signature('sig-vault', 'Emerald Vault', 'خزنة الزمرد',
+    ['#04100c', '#0a1c15', '#102a20', '#ecfbf4', '#a2c6b6', '#6e9685', '#1fd18b', '#5be3ad', '#d9c06a', '#0c7a50', '#17382b', '#225240', '#d9c06a'],
+    { background: 'dots', effect: '0.45', glows: true, radius: ['8px', '6px', '12px'], font: 'IBM Plex Sans Arabic' }),
+  glass: signature('sig-glass', 'Polar Sky', 'سماء قطبية',
+    ['#06111c', '#0c1c2d', '#132a42', '#eef8ff', '#a6c3d8', '#7191a8', '#4cc9f0', '#86dcf7', '#b8c0ff', '#1d6f93', '#1b3550', '#284c70', '#86dcf7'],
+    { button: 'linear-gradient(135deg, #63d4f5, #6aa5ff)', background: 'aurora', effect: '0.55', glows: true, radius: ['24px', '16px', '32px'], font: 'Noto Sans Arabic' }),
+  ops: signature('sig-ops', 'Crimson Ops', 'عمليات قرمزية',
+    ['#0b0b0d', '#141417', '#1e1e23', '#f2f2f2', '#b3b3b8', '#85858c', '#ff5a66', '#ff838c', '#f4a261', '#8f1d27', '#2a2a31', '#3d3d47', '#f4a261'],
+    { background: 'none', effect: '0.3', glows: false, radius: ['6px', '4px', '8px'], font: 'Noto Kufi Arabic' }),
+  sunset: signature('sig-sunset', 'Sunset Pop', 'غروب نابض',
+    ['#130a1a', '#1e1029', '#2a173a', '#fff3ee', '#cdb3c6', '#987f93', '#ff8a6b', '#ffab93', '#ffcf5c', '#b3432a', '#3a2350', '#523370', '#ffcf5c'],
+    { button: 'linear-gradient(120deg, #ff8a6b, #ff6f9c)', background: 'mesh', effect: '0.6', glows: true, radius: ['20px', '14px', '28px'], font: 'Almarai' }),
+  graphite: signature('sig-graphite', 'Graphite Lime', 'غرافيت ليموني',
+    ['#0c0d0f', '#15171a', '#1e2126', '#f3f4f6', '#b4b8bf', '#858a93', '#a3e635', '#bef264', '#e5e7eb', '#4d7c0f', '#272b31', '#3a3f47', '#bef264'],
+    { background: 'dots', effect: '0.3', glows: false, radius: ['12px', '8px', '18px'], font: 'Readex Pro' }),
+};
+
 export const LIGHT_THEME_PRESETS = {
   daylight: {
     id: 'daylight',
@@ -1240,6 +1306,12 @@ function presetMatchesColor(preset, colorOverrides, mode = 'dark') {
 }
 
 export function detectPresetId(overrides = {}) {
+  // A signature theme sets appearance too: it is "on" when every value it sets is still in place.
+  const signaturePreset = Object.values(SIGNATURE_THEME_PRESETS).find((preset) => (
+    Object.entries(preset.overrides).every(([key, val]) => overrides[key] === val)
+  ));
+  if (signaturePreset) return signaturePreset.id;
+
   const colorOverrides = getColorPresetOverrides(overrides);
   const mode = overrides['color-mode'] || DEFAULT_THEME['color-mode'];
   const presets = getPresetsForMode(mode);

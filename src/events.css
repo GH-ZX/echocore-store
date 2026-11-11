@@ -1,0 +1,505 @@
+/* Store events: banner, countdown, old-price chip, celebration, events page, dashboard pickers.
+   Colors come from the theme variables, so every event look and site theme works. */
+
+html[data-event-look]:not([data-event-look='none']) body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  inset-inline: 0;
+  height: 3px;
+  z-index: 400;
+  pointer-events: none;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--price), var(--accent));
+}
+
+/* ── Banner ─────────────────────────────────────────────────────────────── */
+.event-banner {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: var(--radius-lg, 24px);
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
+  background: var(--bg-surface);
+  box-shadow: 0 18px 50px -30px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+.event-banner__art {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background-size: cover;
+  background-position: left center;
+  background-repeat: no-repeat;
+}
+
+.event-banner[dir='ltr'] .event-banner__art {
+  transform: scaleX(-1);
+}
+
+.event-banner__shade {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--bg-primary) 96%, transparent) 0%,
+    color-mix(in srgb, var(--bg-primary) 82%, transparent) 58%,
+    color-mix(in srgb, var(--bg-primary) 20%, transparent) 100%
+  );
+}
+
+.event-banner__body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 5.5rem 1.1rem 1.2rem;
+  max-width: 44rem;
+}
+
+@media (min-width: 768px) {
+  .event-banner__shade {
+    background: linear-gradient(
+      to left,
+      color-mix(in srgb, var(--bg-primary) 95%, transparent) 0%,
+      color-mix(in srgb, var(--bg-primary) 80%, transparent) 44%,
+      color-mix(in srgb, var(--bg-primary) 8%, transparent) 100%
+    );
+  }
+
+  .event-banner[dir='ltr'] .event-banner__shade {
+    background: linear-gradient(
+      to right,
+      color-mix(in srgb, var(--bg-primary) 95%, transparent) 0%,
+      color-mix(in srgb, var(--bg-primary) 80%, transparent) 44%,
+      color-mix(in srgb, var(--bg-primary) 8%, transparent) 100%
+    );
+  }
+
+  .event-banner__body {
+    padding: 1.75rem 2rem;
+  }
+
+  .event-banner--hero .event-banner__body {
+    padding-block: 2.5rem;
+    min-height: 17rem;
+    justify-content: center;
+  }
+}
+
+.event-banner__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--accent-2);
+  background: color-mix(in srgb, var(--accent-2) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-2) 42%, transparent);
+}
+
+.event-banner__title {
+  font-size: clamp(1.35rem, 4.6vw, 2.2rem);
+  font-weight: 900;
+  line-height: 1.25;
+  color: var(--text-primary);
+}
+
+.event-banner__desc {
+  max-width: 36rem;
+  font-size: 0.92rem;
+  line-height: 1.8;
+  color: var(--text-secondary);
+}
+
+.event-banner__discount {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--price);
+}
+
+.event-banner__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.1rem;
+  margin-top: 0.35rem;
+}
+
+.event-banner__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.event-banner__link:hover {
+  color: var(--accent-hover);
+}
+
+.event-banner__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Compact: one tight block above the carousel (the event slide carries the description). */
+.event-banner--compact .event-banner__body {
+  padding: 0.9rem 1rem 1rem;
+  gap: 0.45rem;
+}
+
+.event-banner--compact .event-banner__title {
+  font-size: clamp(1.15rem, 3.6vw, 1.6rem);
+}
+
+.event-banner--compact .event-banner__shade {
+  background: linear-gradient(
+    to left,
+    color-mix(in srgb, var(--bg-primary) 94%, transparent) 0%,
+    color-mix(in srgb, var(--bg-primary) 84%, transparent) 60%,
+    color-mix(in srgb, var(--bg-primary) 45%, transparent) 100%
+  );
+}
+
+.event-banner--compact[dir='ltr'] .event-banner__shade {
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--bg-primary) 94%, transparent) 0%,
+    color-mix(in srgb, var(--bg-primary) 84%, transparent) 60%,
+    color-mix(in srgb, var(--bg-primary) 45%, transparent) 100%
+  );
+}
+
+@media (min-width: 768px) {
+  .event-banner--compact .event-banner__body {
+    max-width: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem 1.1rem;
+    padding: 1rem 1.5rem;
+  }
+
+  .event-banner--compact .event-banner__actions {
+    margin-top: 0;
+    margin-inline-start: auto;
+  }
+}
+
+/* ── Note, countdown, old price ─────────────────────────────────────────── */
+.event-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: var(--radius-sm, 12px);
+  font-size: 0.82rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--accent) 38%, var(--border));
+}
+
+.event-note__icon {
+  width: 0.95rem;
+  height: 0.95rem;
+  margin-top: 0.25rem;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.event-note__link {
+  font-weight: 800;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.event-countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.event-countdown__label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.event-countdown__units {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+.event-countdown__unit {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 2.7rem;
+  padding: 0.3rem 0.35rem;
+  border-radius: var(--radius-sm, 12px);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  border: 1px solid var(--border);
+}
+
+.event-countdown__value {
+  font-size: 1.05rem;
+  font-weight: 900;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.event-countdown__name {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.event-compare {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.event-compare__old {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.event-compare__off {
+  padding: 0.1rem 0.42rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  white-space: nowrap;
+  color: var(--sale-badge-text);
+  background: var(--sale-badge);
+}
+
+/* ── Celebration (one short run on the home page) ───────────────────────── */
+.event-decor {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.event-decor__piece {
+  position: absolute;
+  display: block;
+  opacity: 0;
+  will-change: transform, opacity;
+  animation-iteration-count: 1;
+  animation-fill-mode: both;
+}
+
+.event-decor__piece--h0 { background: var(--accent); }
+.event-decor__piece--h1 { background: var(--accent-2); }
+.event-decor__piece--h2 { background: #ffffff; }
+.event-decor__piece--h3 { background: var(--price); }
+
+.event-decor--confetti .event-decor__piece {
+  top: -4vh;
+  width: calc(9px * var(--piece-scale, 1));
+  height: calc(14px * var(--piece-scale, 1));
+  border-radius: 2px;
+  animation-name: eventFall;
+  animation-timing-function: linear;
+}
+
+.event-decor--snow .event-decor__piece {
+  top: -4vh;
+  width: calc(7px * var(--piece-scale, 1));
+  height: calc(7px * var(--piece-scale, 1));
+  border-radius: 50%;
+  background: #ffffff;
+  animation-name: eventSnow;
+  animation-timing-function: linear;
+}
+
+.event-decor--balloons .event-decor__piece {
+  bottom: -20vh;
+  width: calc(44px * var(--piece-scale, 1));
+  height: calc(56px * var(--piece-scale, 1));
+  border-radius: 50% 50% 48% 48% / 56% 56% 44% 44%;
+  box-shadow: inset -6px -8px 0 rgba(0, 0, 0, 0.14);
+  animation-name: eventRise;
+  animation-timing-function: ease-in;
+}
+
+.event-decor--balloons .event-decor__piece::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: 1px;
+  height: 64px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.event-decor--stars .event-decor__piece {
+  width: calc(12px * var(--piece-scale, 1));
+  height: calc(12px * var(--piece-scale, 1));
+  background: var(--accent-2);
+  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
+  animation-name: eventTwinkle;
+  animation-timing-function: ease-in-out;
+}
+
+@keyframes eventFall {
+  0% { transform: translateY(-6vh) rotate(0deg); opacity: 0; }
+  8% { opacity: 0.9; }
+  100% { transform: translateY(112vh) rotate(540deg); opacity: 0; }
+}
+
+@keyframes eventSnow {
+  0% { transform: translate(0, -6vh); opacity: 0; }
+  10% { opacity: 0.8; }
+  100% { transform: translate(6vw, 112vh); opacity: 0; }
+}
+
+@keyframes eventRise {
+  0% { transform: translateY(0) rotate(-4deg); opacity: 0; }
+  10% { opacity: 0.85; }
+  50% { transform: translateY(-68vh) rotate(5deg); opacity: 0.85; }
+  100% { transform: translateY(-140vh) rotate(-3deg); opacity: 0; }
+}
+
+@keyframes eventTwinkle {
+  0%, 100% { transform: scale(0.4); opacity: 0; }
+  50% { transform: scale(1.2); opacity: 0.9; }
+}
+
+/* ── Events page ────────────────────────────────────────────────────────── */
+.event-card {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  gap: 0.9rem;
+  padding: 0.75rem;
+  border-radius: var(--radius, 16px);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+
+.event-card__art {
+  min-height: 5.5rem;
+  border-radius: var(--radius-sm, 12px);
+  background-size: cover;
+  background-position: left center;
+}
+
+.event-card--ended .event-card__art {
+  filter: grayscale(0.7);
+  opacity: 0.75;
+}
+
+.event-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.14rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: 0.68rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.event-chip--active { color: var(--success); }
+.event-chip--scheduled { color: var(--warning); }
+.event-chip--ended,
+.event-chip--draft { color: var(--text-muted); }
+
+/* ── Preview bar + dashboard pickers ────────────────────────────────────── */
+.event-preview-bar {
+  position: fixed;
+  inset-inline: 0.75rem;
+  top: 4.75rem;
+  z-index: 320;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  max-width: 34rem;
+  margin-inline: auto;
+  padding: 0.6rem 0.9rem;
+  border-radius: var(--radius, 16px);
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent);
+  box-shadow: 0 12px 30px -12px rgba(0, 0, 0, 0.7);
+}
+
+@media (min-width: 768px) {
+  .event-preview-bar {
+    top: auto;
+    bottom: 1.25rem;
+  }
+}
+
+.event-banner--home {
+  margin-top: 0.5rem;
+}
+
+.event-look-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  gap: 0.6rem;
+}
+
+.event-look {
+  overflow: hidden;
+  border-radius: var(--radius-sm, 12px);
+  border: 2px solid var(--border);
+  background: var(--bg-primary);
+  text-align: start;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.event-look:hover {
+  border-color: var(--border-strong);
+}
+
+.event-look--active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.event-look__art {
+  height: 4.2rem;
+  background-size: cover;
+  background-position: left center;
+}
+
+.event-look__label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.event-look__dots {
+  display: inline-flex;
+  gap: 0.2rem;
+}
+
+.event-look__dots span {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}

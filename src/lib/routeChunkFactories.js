@@ -24,6 +24,7 @@ export const routeChunkFactories = {
   ProfileView: () => import('../views/profile/ProfileView'),
   NotificationsView: () => import('../views/NotificationsView'),
   AnnouncementsView: () => import('../views/AnnouncementsView'),
+  EventsView: () => import('../views/EventsView'),
   BannedView: () => import('../views/BannedView'),
   AdminView: () => import('../views/admin/AdminView'),
   AdminGiftView: () => import('../views/admin/AdminGiftView'),

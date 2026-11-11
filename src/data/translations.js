@@ -11,6 +11,7 @@
 
 import { pageContent } from './pageContent';
 import { manualProductTranslations } from './manualProductTranslations';
+import { eventTranslations } from './eventTranslations';
 
 export const translations = {
   ar: {
@@ -2805,6 +2806,7 @@ export const translations = {
     rechargeRejected: "تم رفض طلب الشحن",
 
     ...manualProductTranslations.ar,
+    ...eventTranslations.ar,
     ...pageContent.ar,
   },
   en: {
@@ -5599,6 +5601,7 @@ export const translations = {
     rechargeRejected: "Recharge request rejected",
 
     ...manualProductTranslations.en,
+    ...eventTranslations.en,
     ...pageContent.en,
   }
 };

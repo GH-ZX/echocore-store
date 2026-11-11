@@ -7,6 +7,7 @@ import CharnameField from '../components/catalog/CharnameField';
 import ServerIdField from '../components/catalog/ServerIdField';
 import { isVoucherGame } from '../lib/catalogUtils';
 import { ManualCustomerFields, ManualDeliveryInfo } from '../components/catalog/ManualDelivery';
+import { EventComparePrice } from '../components/events/EventParts';
 import {
   cleanCustomerInputs,
   customerFieldLabel,
@@ -661,7 +662,9 @@ export default function BuyView({
               <div className="text-sm line-through text-[var(--text-muted)] font-mono" dir="ltr">
                 {formatMoney(publicPrice)}
               </div>
-            ) : null}
+            ) : (
+              <EventComparePrice offer={offer} price={price} t={t} className="text-sm justify-end" />
+            )}
             <div className="text-4xl font-black text-[var(--price)]" dir="ltr">${total}</div>
             {appliedCoupon ? (
               <div className="text-[11px] text-emerald-300 mt-1">

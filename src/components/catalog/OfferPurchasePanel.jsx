@@ -3,6 +3,7 @@ import AdminOfferCostBadge from '../admin/AdminOfferCostBadge';
 import AdminInlinePriceEdit from '../admin/AdminInlinePriceEdit';
 import { formatPrice, getOfferDiscount, getOfferDisplayName } from '../../lib/offerDisplay';
 import PartnerPriceBadge from '../ui/PartnerPriceBadge';
+import { EventComparePrice } from '../events/EventParts';
 import { getSypPriceHint } from '../../lib/sypPriceHint';
 
 export default function OfferPurchasePanel({
@@ -35,6 +36,7 @@ export default function OfferPurchasePanel({
           {offer.is_sale && offer.original_price && !offer._partnerPriced && !offer._influencerPriced && (
             <div className="text-sm line-through text-[var(--text-muted)]">${formatPrice(offer.original_price)}</div>
           )}
+          {!offer.is_sale && <EventComparePrice offer={offer} price={offer.price} t={t} className="text-base" />}
           {(offer._partnerPriced || offer._influencerPriced) && offer._publicPrice != null && (
             <div className="text-sm line-through text-[var(--text-muted)] font-mono tabular-nums" dir="ltr">
               ${formatPrice(offer._publicPrice)}

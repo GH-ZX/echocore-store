@@ -98,7 +98,10 @@ import {
   filterLiveCatalog,
   normalizePullSelection,
 } from './lib/pullCatalogUtils';
-import { applyTheme, fetchSiteTheme, normalizeThemeOverrides } from './lib/theme';
+import { fetchSiteTheme, normalizeThemeOverrides } from './lib/theme';
+import { applySiteTheme, loadActiveEvent } from './lib/storeEvents';
+import { useActiveEvent } from './hooks/useActiveEvent';
+import EventPreviewBar from './components/events/EventPreviewBar';
 import { DEFAULT_HOME_LAYOUT, fetchHomeLayout, normalizeHomeLayout } from './lib/homeLayout';
 import { fetchApprovedReviews } from './lib/customerReviews';
 import {
@@ -1586,14 +1589,15 @@ export default function App() {
     setPaymentConfig(config);
   };
 
+  // The saved site theme, with the running event's look layered on top (never saved).
   const refreshSiteTheme = async (overrides) => {
     if (overrides) {
-      applyTheme(normalizeThemeOverrides(overrides), { replace: true });
+      applySiteTheme(normalizeThemeOverrides(overrides));
       return;
     }
-    const theme = await fetchSiteTheme();
+    const [theme] = await Promise.all([fetchSiteTheme(), loadActiveEvent()]);
     if (theme == null) return;
-    applyTheme(normalizeThemeOverrides(theme), { replace: true });
+    applySiteTheme(normalizeThemeOverrides(theme));
   };
 
   const refreshHomeLayout = async (layout) => {
@@ -1729,6 +1733,33 @@ export default function App() {
       setLoadingGames(false);
     }
   };
+
+  // Events start and end on the server: re-check now and then, and reload prices when the
+  // running event changes (its start and end both reprice the catalog).
+  const activeEvent = useActiveEvent();
+  const activeEventId = activeEvent && !activeEvent._preview ? activeEvent.id : null;
+  const seenEventIdRef = useRef(undefined);
+  useEffect(() => {
+    const check = () => {
+      if (!document.hidden) loadActiveEvent().catch(() => {});
+    };
+    const timer = setInterval(check, 5 * 60 * 1000);
+    document.addEventListener('visibilitychange', check);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', check);
+    };
+  }, []);
+  useEffect(() => {
+    if (seenEventIdRef.current === undefined) {
+      seenEventIdRef.current = activeEventId;
+      return;
+    }
+    if (seenEventIdRef.current === activeEventId) return;
+    seenEventIdRef.current = activeEventId;
+    refreshCatalog().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload only when the event itself changes
+  }, [activeEventId]);
 
   useStorefrontBootstrap({
     setPaymentConfig,
@@ -1884,6 +1915,8 @@ export default function App() {
           navigate('/checkout');
         }}
       />
+
+      <EventPreviewBar t={t} />
 
       <MaintenanceBanner
         t={t}

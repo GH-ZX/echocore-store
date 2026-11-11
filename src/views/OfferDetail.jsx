@@ -20,6 +20,7 @@ import { formatMoney } from '../lib/i18n';
 import { buildGameBreadcrumb } from '../lib/catalogNav';
 import { renderRichTextLinks } from '../lib/richText';
 import MobileBuyBar from '../components/catalog/MobileBuyBar';
+import { EventComparePrice } from '../components/events/EventParts';
 import { ManualDeliveryInfo } from '../components/catalog/ManualDelivery';
 import { deliveryEta, isManualGame } from '../lib/manualProducts';
 import { useOfferAffordability } from '../lib/offerAffordability';
@@ -237,8 +238,9 @@ export default function OfferDetail({
                   onNotify={onNotify}
                 />
               ) : (
-                <div className="catalog-mobile-buybar__price tabular-nums" dir="ltr">
+                <div className="catalog-mobile-buybar__price tabular-nums flex items-center gap-2" dir="ltr">
                   {formatMoney(offer.price)}
+                  {!offer.is_sale && <EventComparePrice offer={offer} price={offer.price} t={t} showPercent={false} />}
                 </div>
               )}
               {isAdmin && <AdminOfferCostBadge offer={offer} t={t} className="mt-0.5" />}

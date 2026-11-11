@@ -23,6 +23,7 @@ const RechargeView = lazyRetry(routeChunkFactories.RechargeView);
 const ProfileView = lazyRetry(routeChunkFactories.ProfileView);
 const NotificationsView = lazyRetry(routeChunkFactories.NotificationsView);
 const AnnouncementsView = lazyRetry(routeChunkFactories.AnnouncementsView);
+const EventsView = lazyRetry(routeChunkFactories.EventsView);
 const BannedView = lazyRetry(routeChunkFactories.BannedView);
 const AdminView = lazyRetry(routeChunkFactories.AdminView);
 const AdminGiftView = lazyRetry(routeChunkFactories.AdminGiftView);
@@ -566,6 +567,8 @@ export default function AppRoutes({
             </ProtectedRoute>
           )}
         />
+
+        <Route path="/events" element={<EventsView t={t} lang={lang} />} />
 
         <Route
           path="/announcements"

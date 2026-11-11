@@ -7,7 +7,7 @@ import {
   isValidAdminTabSegment,
   resolveAdminTabFromPath,
 } from '../../lib/adminRoutes';
-import { Trash2, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Percent, PanelLeftClose, PanelLeftOpen, Users, ScrollText, Bell, Mail, TrendingUp, Cable, Settings, Handshake, Megaphone, ChevronDown } from 'lucide-react';
+import { Trash2, BarChart3, Package, ShoppingCart, Edit, Wallet, Palette, LayoutGrid, MessageSquare, CircleDollarSign, Percent, PanelLeftClose, PanelLeftOpen, Users, ScrollText, Bell, Mail, TrendingUp, Cable, Settings, Handshake, Megaphone, ChevronDown, PartyPopper } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 import { centerActiveMobileTab, resetPageHorizontalScroll } from '../../lib/adminMobileNav';
@@ -26,6 +26,7 @@ import { lazyRetry } from '../../lib/lazyRetry';
 import { adminPanelFactories } from '../../lib/adminPanelFactories';
 const AdminPaymentsSettings = lazyRetry(adminPanelFactories.AdminPaymentsSettings);
 const AdminThemeSettings = lazyRetry(adminPanelFactories.AdminThemeSettings);
+const AdminEventsManager = lazyRetry(adminPanelFactories.AdminEventsManager);
 const AdminHomeLayoutSettings = lazyRetry(adminPanelFactories.AdminHomeLayoutSettings);
 const AdminReviewsManager = lazyRetry(adminPanelFactories.AdminReviewsManager);
 const AdminRechargeManager = lazyRetry(adminPanelFactories.AdminRechargeManager);
@@ -70,6 +71,7 @@ function buildAdminNavItems(t) {
     { id: 'users', label: t.usersTab, shortLabel: t.tabUsersShort, icon: Users },
     { id: 'products', label: t.gamesAndOffers, shortLabel: t.tabGamesShort, icon: Package },
     { id: 'home', label: t.homeLayoutTab, shortLabel: t.tabHomeShort, icon: LayoutGrid },
+    { id: 'events', label: t.eventsTab, shortLabel: t.tabEventsShort, icon: PartyPopper },
     { id: 'profits', label: t.profitsTab, shortLabel: t.tabProfitsShort, icon: TrendingUp },
     { id: 'theme', label: t.themeTab, shortLabel: t.tabThemeShort, icon: Palette },
     { id: 'orders', label: t.ordersTab, shortLabel: t.tabOrdersShort, icon: ShoppingCart },
@@ -93,7 +95,7 @@ function buildAdminNavGroups(t) {
   return [
     { id: 'insights', label: t.adminGroupOverview, shortLabel: t.tabOverviewShort, icon: BarChart3, tabs: ['overview', 'profits', 'logs'] },
     { id: 'sales', label: t.adminGroupSales, shortLabel: t.adminGroupSales, icon: ShoppingCart, tabs: ['orders'] },
-    { id: 'catalog', label: t.adminGroupCatalog, shortLabel: t.adminGroupCatalog, icon: Package, tabs: ['products', 'home'] },
+    { id: 'catalog', label: t.adminGroupCatalog, shortLabel: t.adminGroupCatalog, icon: Package, tabs: ['products', 'home', 'events'] },
     { id: 'customers', label: t.adminGroupCustomers, shortLabel: t.adminGroupCustomers, icon: Users, tabs: ['users', 'partners', 'recharges', 'contact', 'reviews'] },
     { id: 'settings', label: t.adminGroupSettings, shortLabel: t.adminGroupSettings, icon: Settings, tabs: ['payments', 'apis', 'theme', 'inbox', 'announcements'] },
   ];
@@ -850,6 +852,21 @@ export default function AdminView({
             onNotify={onNotify}
             onApproved={onRechargeApproved}
             paymentConfig={paymentConfig}
+          />
+        </Suspense>
+      )}
+
+      {activeTab === 'events' && (
+        <Suspense fallback={<AdminTabLoader />}>
+          <AdminEventsManager
+            t={t}
+            lang={lang}
+            games={games}
+            orders={orders}
+            onNotify={onNotify}
+            onPricesChanged={async () => {
+              if (refreshOffers) await refreshOffers();
+            }}
           />
         </Suspense>
       )}

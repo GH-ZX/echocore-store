@@ -20,4 +20,5 @@ export const adminPanelFactories = {
   AdminProfitStatsPage: () => import('../components/admin/AdminProfitStatsPage'),
   AdminSiteLogs: () => import('../components/admin/AdminSiteLogs'),
   AdminApisPage: () => import('../components/admin/AdminApisPage'),
+  AdminEventsManager: () => import('../components/admin/AdminEventsManager'),
 };

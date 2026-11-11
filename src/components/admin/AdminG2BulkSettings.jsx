@@ -23,6 +23,7 @@ import { useAdminG2bulkWallet } from '../../hooks/useAdminG2bulkWallet';
 import { countPullSelection, normalizeCatalogMode, normalizePullSelection } from '../../lib/pullCatalogUtils';
 import { formatDateTime, formatMessage } from '../../lib/i18n';
 import { logDevEvent } from '../../lib/siteLogs';
+import EventMarkupNotice from '../events/EventMarkupNotice';
 import {
   invalidateStoreMarkupPercent,
   setCachedStoreMarkupPercent,
@@ -615,6 +616,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
               || 'Default profit margin applied on each catalog sync for packs set to “store default”. Fixed / custom-margin packs keep their own rules.'}
           </p>
         </div>
+        <EventMarkupNotice t={t} lang={lang} />
 
         <div className="rounded-xl border border-[var(--accent)]/30 bg-[var(--bg-primary)]/40 px-3 py-2.5">
           <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-sec)] mb-2">

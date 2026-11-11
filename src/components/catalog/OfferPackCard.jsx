@@ -11,6 +11,7 @@ import {
   getOfferDisplayName,
 } from '../../lib/offerDisplay';
 import { getGameOfferPath } from '../../lib/offerRoutes';
+import { EventComparePrice } from '../events/EventParts';
 
 export default function OfferPackCard({
   offer,
@@ -100,6 +101,7 @@ export default function OfferPackCard({
             {offer.is_sale && offer.original_price && (
               <div className="text-xs line-through text-[var(--text-muted)]">${formatPrice(offer.original_price)}</div>
             )}
+            {!offer.is_sale && <EventComparePrice offer={offer} price={offer.price} t={t} className="text-sm mb-0.5" />}
             <div className="flex items-center gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
               {isAdmin ? (
                 <AdminInlinePriceEdit
