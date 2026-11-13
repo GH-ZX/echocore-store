@@ -1348,6 +1348,10 @@ function parseG2bulkWalletBalance(data: Json): number {
 
 /** Stable reason code stored in g2bulk_metadata for UI mapping. */
 const REASON_INSUFFICIENT_SUPPLIER_BALANCE = 'insufficient_supplier_balance';
+// Paid order the supplier could not charge yet (store's G2Bulk wallet too low). Nothing was bought,
+// so it is safe to buy later: the fulfill cron retries these once the wallet covers them, and the
+// admin can retry by hand. Customers see it as "being prepared", never as failed.
+const FS_AWAITING_SUPPLIER_FUNDS = 'awaiting_supplier_funds';
 
 /** Machine + human last_error when G2Bulk wallet cannot cover supplier cost. */
 const ERR_INSUFFICIENT_SUPPLIER_BALANCE =
@@ -2766,9 +2770,9 @@ Deno.serve(async (req) => {
     // Pre-purchase wallet guard: never leave customers spinning on "pending"
     // when G2Bulk cannot charge the supplier cost (e.g. wallet $8.91 < cost $8.99).
     // Skip when a supplier order id already exists — funds may already be reserved/charged.
-    // Respect the admin toggle: OFF allows the order through (fails and refunds instead).
-    const blockWhenWalletLow = settingsRow?.g2bulk_block_when_wallet_low !== false;
-    if (blockWhenWalletLow && !primaryG2bulkOrderId && !pollOnly && requiredSupplierCost > 0) {
+    // A paid order the wallet can't cover waits for a top-up (awaiting_supplier_funds) instead of
+    // failing, whatever the storefront "block when wallet low" toggle says.
+    if (!primaryG2bulkOrderId && !pollOnly && requiredSupplierCost > 0) {
       const walletBalance = await fetchSupplierWalletBalance(apiKey!);
       if (Number.isFinite(walletBalance) && walletBalance + 0.001 < requiredSupplierCost) {
         // Defense-in-depth: a previous invocation may have placed this order's
@@ -2796,33 +2800,32 @@ Deno.serve(async (req) => {
           pollOnly = true;
           // Fall through to the poll-only resume path below.
         } else {
-          const failMeta = {
-            reason: REASON_INSUFFICIENT_SUPPLIER_BALANCE,
-            failure_reason: REASON_INSUFFICIENT_SUPPLIER_BALANCE,
-            walletBalance,
-            requiredCost: requiredSupplierCost,
-            detail: `wallet ${walletBalance} < required ${requiredSupplierCost}`,
-          };
-          for (const row of items) {
-            await serviceClient
-              .from('order_items')
-              .update({ fulfillment_status: 'failed' })
-              .eq('id', row.id);
-          }
+          const firstWait = order.fulfillment_status !== FS_AWAITING_SUPPLIER_FUNDS;
+          const nowIso = new Date().toISOString();
           await serviceClient.rpc('apply_g2bulk_fulfillment', {
             p_order_id: orderId,
-            p_fulfillment_status: 'failed',
-            p_error: ERR_INSUFFICIENT_SUPPLIER_BALANCE,
-            p_metadata: failMeta,
+            p_fulfillment_status: FS_AWAITING_SUPPLIER_FUNDS,
+            p_metadata: {
+              reason: REASON_INSUFFICIENT_SUPPLIER_BALANCE,
+              walletBalance,
+              requiredCost: requiredSupplierCost,
+              detail: `wallet ${walletBalance} < required ${requiredSupplierCost}`,
+              awaiting_funds_checked_at: nowIso,
+              ...(firstWait ? { awaiting_funds_since: nowIso } : {}),
+            },
           });
+          if (firstWait) {
+            await notifyTelegramLowWallet(serviceClient, {
+              orderRef: String((order as { order_ref?: string }).order_ref ?? orderId),
+              detail: `Paid order waiting: wallet ${walletBalance} < needed ${requiredSupplierCost} USD. Top up G2Bulk; it is sent automatically after.`,
+            });
+          }
           return jsonResponse({
-            success: false,
-            message: ERR_INSUFFICIENT_SUPPLIER_BALANCE,
-            fulfillmentStatus: 'failed',
+            success: true,
+            pending: true,
+            fulfillmentStatus: FS_AWAITING_SUPPLIER_FUNDS,
             reason: REASON_INSUFFICIENT_SUPPLIER_BALANCE,
-            walletBalance,
-            requiredCost: requiredSupplierCost,
-          }, 402);
+          });
         }
       }
     }
@@ -3149,6 +3152,35 @@ Deno.serve(async (req) => {
 
       const firstError = errors[0] || null;
       const walletFail = finalStatus === 'failed' && isInsufficientBalanceMessage(firstError);
+
+      // Supplier refused for balance and nothing was bought: wait for a top-up instead of failing.
+      if (walletFail && fulfilledCount === 0 && pendingCount === 0 && !primaryG2bulkOrderId) {
+        const nowIso = new Date().toISOString();
+        const firstWait = order.fulfillment_status !== FS_AWAITING_SUPPLIER_FUNDS;
+        if (firstWait) {
+          await notifyTelegramLowWallet(serviceClient, {
+            orderRef: String((order as { order_ref?: string }).order_ref ?? orderId),
+            detail: firstError || ERR_INSUFFICIENT_SUPPLIER_BALANCE,
+          });
+        }
+        await serviceClient.rpc('apply_g2bulk_fulfillment', {
+          p_order_id: orderId,
+          p_fulfillment_status: FS_AWAITING_SUPPLIER_FUNDS,
+          p_metadata: {
+            items: itemResults,
+            reason: REASON_INSUFFICIENT_SUPPLIER_BALANCE,
+            detail: firstError,
+            awaiting_funds_checked_at: nowIso,
+            ...(firstWait ? { awaiting_funds_since: nowIso } : {}),
+          },
+        });
+        return jsonResponse({
+          success: true,
+          pending: true,
+          fulfillmentStatus: FS_AWAITING_SUPPLIER_FUNDS,
+          reason: REASON_INSUFFICIENT_SUPPLIER_BALANCE,
+        });
+      }
 
       if (walletFail) {
         await notifyTelegramLowWallet(serviceClient, {

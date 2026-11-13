@@ -94,3 +94,23 @@ describe('orders waiting for the owner', () => {
     expect(canRetryOrderFulfillment(order)).toBe(false);
   });
 });
+
+describe('orders waiting for a G2Bulk top-up', () => {
+  const order = { status: 'completed', fulfillment_status: 'awaiting_supplier_funds', created_at: '2026-01-01T00:00:00Z' };
+
+  it('is processing (never failed), has its own filter and can be sent by hand', async () => {
+    const { getAdminDeliveryStatusDisplay } = await import('./adminOrderFilters');
+    expect(getAdminOrderOutcome(order)).toBe('processing');
+    expect(matchesOrderStatus(order, 'awaiting_supplier_funds')).toBe(true);
+    expect(matchesOrderStatus(order, 'failed')).toBe(false);
+    expect(canRetryOrderFulfillment(order)).toBe(true);
+    expect(getAdminDeliveryStatusDisplay(order, { awaitingSupplierFundsAdmin: 'X' }).label).toBe('X');
+  });
+
+  it('reads as "being prepared" for the customer', async () => {
+    const { getOrderReceiptPresentation } = await import('./orderReceipt');
+    const p = getOrderReceiptPresentation(order, { orderBeingPrepared: 'P' });
+    expect(p.title).toBe('P');
+    expect(p.tone).not.toBe('danger');
+  });
+});

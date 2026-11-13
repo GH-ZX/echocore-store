@@ -8,6 +8,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 // Triggered by pg_cron -> pg_net -> HTTP POST with x-g2bulk-cron-secret.
 
 const BATCH_SIZE = 6;
+const WAITING_BATCH_SIZE = 4;
 const MIN_AGE_MS = 45 * 1000;
 const REQUEST_TIMEOUT_MS = 120 * 1000;
 
@@ -103,7 +104,21 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, message: error.message }, 500);
   }
 
-  const candidates = Array.isArray(orders) ? orders : [];
+  // Paid orders waiting for the store to top up G2Bulk: retry the oldest few each tick. Nothing
+  // was bought for them, so the main function re-checks the wallet and buys only if it is covered.
+  const { data: waiting } = await serviceClient
+    .from('orders')
+    .select('id')
+    .eq('status', 'completed')
+    .eq('fulfillment_status', 'awaiting_supplier_funds')
+    .order('created_at', { ascending: true })
+    .limit(WAITING_BATCH_SIZE);
+  const waitingIds = new Set((waiting || []).map((o: { id: string }) => String(o.id)));
+
+  const candidates = [
+    ...(Array.isArray(orders) ? orders : []),
+    ...[...waitingIds].map((id) => ({ id })),
+  ];
 
   // Service-role auth only (NOT the cron secret header) — the main function
   // blocks cron-secret calls unless action is syncCatalog/checkCatalog.
@@ -119,7 +134,7 @@ Deno.serve(async (req) => {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${serviceRoleKey}`,
             },
-            body: JSON.stringify({ action: 'fulfillOrder', orderId, pollOnly: true }),
+            body: JSON.stringify({ action: 'fulfillOrder', orderId, pollOnly: !waitingIds.has(orderId) }),
           },
           REQUEST_TIMEOUT_MS,
         );

@@ -183,7 +183,8 @@ export default function SuccessView({
 
     const fs0 = orderDetails.fulfillment_status || 'pending';
     const codes0 = extractDeliveryCodes(orderItems, orderDetails.g2bulk_metadata);
-    const alreadyDone = fs0 === 'fulfilled' || fs0 === 'skipped' || fs0 === 'failed' || fs0 === 'awaiting_delivery' || codes0.length > 0;
+    const alreadyDone = fs0 === 'fulfilled' || fs0 === 'skipped' || fs0 === 'failed' || fs0 === 'awaiting_delivery'
+      || fs0 === 'awaiting_supplier_funds' || codes0.length > 0;
     if (alreadyDone) return undefined;
 
     let cancelled = false;
@@ -215,7 +216,8 @@ export default function SuccessView({
         if (cancelled || !result?.order) return;
         const codes = extractDeliveryCodes(result.items, result.order.g2bulk_metadata);
         const fs = result.order.fulfillment_status || 'pending';
-        const done = fs === 'fulfilled' || fs === 'skipped' || fs === 'failed' || fs === 'awaiting_delivery' || codes.length > 0;
+        const done = fs === 'fulfilled' || fs === 'skipped' || fs === 'failed' || fs === 'awaiting_delivery'
+          || fs === 'awaiting_supplier_funds' || codes.length > 0;
         if (done) return;
       } catch {
         /* keep last good snapshot */
@@ -233,7 +235,8 @@ export default function SuccessView({
   }, [loading, orderId, userId, orderDetails?.id]);
 
   // Store-delivered order: re-read it now and then (no supplier calls) so "delivered" shows up live.
-  const awaitingOwner = orderDetails?.fulfillment_status === 'awaiting_delivery';
+  const awaitingOwner = orderDetails?.fulfillment_status === 'awaiting_delivery'
+    || orderDetails?.fulfillment_status === 'awaiting_supplier_funds';
   useEffect(() => {
     if (!awaitingOwner || !orderId || !userId) return undefined;
     const startedAt = Date.now();
@@ -362,7 +365,7 @@ export default function SuccessView({
     && !hasCodes
     && !fulfillmentDone
     && !fulfillmentFailed
-    && ['pending', 'fulfilling', 'processing'].includes(fulfillmentStatus);
+    && ['pending', 'fulfilling', 'processing', 'awaiting_supplier_funds'].includes(fulfillmentStatus);
   // Inline banner for any paid order still waiting on supplier (codes or UID top-up)
   const isPreparingCodes = stillDelivering;
   const showTopupDetails = isOrderPaid(orderDetails) && hasUid && fulfillmentDone;

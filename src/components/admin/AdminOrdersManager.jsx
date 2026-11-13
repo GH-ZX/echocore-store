@@ -30,6 +30,7 @@ import {
   getAdminPaymentStatusTone,
   getOrderStatusFilterOptions,
   isOrderAwaitingDelivery,
+  isOrderAwaitingSupplierFunds,
   isOrderBalanceRefunded,
   isSoftFulfillmentTimeout,
   shouldShowAdminFulfillmentError,
@@ -73,6 +74,13 @@ function formatOrderDate(value, lang) {
 }
 
 function OrderOutcomeBadge({ order, t }) {
+  if (isOrderAwaitingSupplierFunds(order)) {
+    return (
+      <span className="admin-order-status admin-order-status--warning">
+        {t.awaitingSupplierFundsAdmin}
+      </span>
+    );
+  }
   const outcome = getAdminOrderOutcome(order);
   const tone = getAdminOrderOutcomeTone(outcome);
   return (
@@ -691,6 +699,23 @@ export default function AdminOrdersManager({
         </div>
         <button type="submit" className="btn btn-secondary">{t.adminOrdersSearch}</button>
       </form>
+
+      {(() => {
+        const waiting = orders.filter(isOrderAwaitingSupplierFunds);
+        if (waiting.length === 0) return null;
+        return (
+          <button
+            type="button"
+            onClick={() => setStatusFilter(ORDER_STATUS_FILTER_IDS.AWAITING_SUPPLIER_FUNDS)}
+            className="w-full text-start rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 leading-relaxed"
+          >
+            <span className="font-bold block">
+              {formatMessage(t.awaitingSupplierFundsCount, { count: waiting.length })}
+            </span>
+            <span className="text-xs opacity-90">{t.awaitingSupplierFundsAdminHint}</span>
+          </button>
+        );
+      })()}
 
       <div className="space-y-2">
         <div className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">

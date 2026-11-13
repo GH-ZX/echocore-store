@@ -263,6 +263,15 @@ export function getOrderReceiptPresentation(order, t = {}) {
       };
     }
 
+    if (fs === 'awaiting_supplier_funds') {
+      return {
+        tone: 'info',
+        title: t.orderBeingPrepared || 'Your order is being prepared',
+        subtitle: t.orderBeingPreparedDesc || '',
+        showSuccess: false,
+      };
+    }
+
     if (fs === 'awaiting_delivery') {
       return {
         tone: 'info',

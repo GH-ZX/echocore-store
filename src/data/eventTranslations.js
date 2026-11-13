@@ -123,6 +123,14 @@ export const eventTranslations = {
     eventErrDates: 'وقت الانتهاء يجب أن يكون بعد وقت البدء.',
     eventErrSlugTaken: 'هذا الرابط مستخدم لفعالية أخرى.',
 
+    // Orders waiting for a G2Bulk top-up
+    orderBeingPrepared: 'طلبك قيد التجهيز',
+    orderBeingPreparedDesc: 'استلمنا الدفع وطلبك في الطابور الآن. سيصلك تلقائياً خلال وقت قصير، ويصلك إشعار عند التسليم.',
+    awaitingSupplierFundsFilter: 'بانتظار شحن G2Bulk',
+    awaitingSupplierFundsAdmin: 'بانتظار أن تشحن رصيدك في G2Bulk',
+    awaitingSupplierFundsAdminHint: 'الزبون دفع، ورصيد G2Bulk لا يكفي. اشحن رصيدك وسيُرسَل الطلب تلقائياً خلال 5 دقائق، أو اضغط «إعادة التنفيذ».',
+    awaitingSupplierFundsCount: '{count} طلب مدفوع بانتظار شحن رصيد G2Bulk',
+
     // Theme editor
     signatureThemes: 'ثيمات مميّزة',
     signatureThemesHelp: 'كل ثيم له ألوانه وخلفيته وخطه وشكل زواياه.',
@@ -246,6 +254,13 @@ export const eventTranslations = {
     eventErrAlreadyEnded: 'This event has ended. Reuse it as a draft first.',
     eventErrDates: 'The end time must be after the start time.',
     eventErrSlugTaken: 'This link is already used by another event.',
+
+    orderBeingPrepared: 'Your order is being prepared',
+    orderBeingPreparedDesc: 'Payment received and your order is in the queue. It will be delivered automatically shortly, and you will be notified.',
+    awaitingSupplierFundsFilter: 'Waiting for G2Bulk top-up',
+    awaitingSupplierFundsAdmin: 'Waiting for you to top up G2Bulk',
+    awaitingSupplierFundsAdminHint: 'The customer paid but the G2Bulk wallet is too low. Top it up and the order is sent automatically within 5 minutes, or press “Retry”.',
+    awaitingSupplierFundsCount: '{count} paid orders waiting for a G2Bulk top-up',
 
     signatureThemes: 'Signature themes',
     signatureThemesHelp: 'Each one has its own colors, background, font and corner shape.',
