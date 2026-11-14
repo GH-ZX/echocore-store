@@ -1715,6 +1715,7 @@ export default function App() {
 
   const resolveCheckoutOffers = async (items = []) => resolveOffersForCheckout(items, {
     onOffersMerged: (merge) => setOffers(merge),
+    unavailableMessage: t.livePackNotSynced,
   });
 
   const refreshCatalog = async (catalogOnly) => {
