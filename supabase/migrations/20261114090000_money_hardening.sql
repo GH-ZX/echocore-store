@@ -4,7 +4,8 @@
 -- 1. Balances move only inside SQL functions. A direct UPDATE of profiles.balance from the
 --    REST API (role authenticated / anon / service_role) is refused, admins included. Admins
 --    change a balance with admin_adjust_user_balance (the dashboard already does);
---    credit_user_balance now goes through it too.
+--    credit_user_balance (the credit step of "approve recharge") can't be called from the
+--    browser any more.
 -- 2. When an order is refunded (g2bulk_metadata.balance_refunded turns true, whichever path
 --    did it), the influencer commission paid for it is taken back from the influencer's wallet,
 --    with a ledger row. The wallet may go below zero (like an admin debit).
@@ -57,35 +58,12 @@ CREATE TRIGGER zz_profiles_balance_via_rpc_only
   BEFORE UPDATE OF balance ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION public.guard_direct_balance_write();
 
--- Not used by the site any more, but callable by admins: route it through the audited path
--- (limits, ledger row, notification, site log) instead of its own UPDATE.
-CREATE OR REPLACE FUNCTION public.credit_user_balance(p_user_id uuid, p_amount numeric, p_payment_method text, p_reference text DEFAULT NULL::text)
-RETURNS numeric
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-DECLARE
-  v_result jsonb;
-BEGIN
-  IF NOT public.is_admin() THEN
-    RAISE EXCEPTION 'Unauthorized';
-  END IF;
-  IF p_amount IS NULL OR p_amount <= 0 THEN
-    RAISE EXCEPTION 'Amount must be positive';
-  END IF;
-
-  v_result := public.admin_adjust_user_balance(
-    p_user_id,
-    p_amount,
-    'credit',
-    left('Credit (' || COALESCE(NULLIF(trim(p_payment_method), ''), 'manual') || ')'
-         || COALESCE(' ' || NULLIF(trim(p_reference), ''), ''), 200),
-    NULL
-  );
-  RETURN (v_result->>'newBalance')::numeric;
-END;
-$$;
+-- credit_user_balance is the internal credit step of approve_recharge_request (dashboard
+-- "approve recharge") and admin_credit_test_balance: its body stays as it is (a 'recharge'
+-- ledger row). What changes is that the browser can no longer call it, so an admin can't
+-- credit a wallet with it directly; the dashboard's manual credit is admin_adjust_user_balance.
+REVOKE ALL ON FUNCTION public.credit_user_balance(uuid, numeric, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.credit_user_balance(uuid, numeric, text, text) TO service_role;
 
 -- ── 2. Take the influencer commission back when its order is refunded ───────────────────────
 ALTER TABLE public.orders
@@ -248,7 +226,8 @@ CREATE TRIGGER orders_reverse_commission_on_refund
   EXECUTE FUNCTION public.trg_orders_reverse_commission_on_refund();
 
 -- ── 3. One refund for failed orders: Telegram and the dashboard share the guards ────────────
--- Body = the live telegram_refund_failed_order (2026-11-14) with the channel as a parameter.
+-- Body = the live telegram_refund_failed_order (2026-11-14) with the channel as a parameter
+-- and the customer's Telegram message reworded (adds the new balance).
 CREATE OR REPLACE FUNCTION public.refund_failed_order_internal(p_order_id uuid, p_admin_id uuid, p_via text, p_reason text DEFAULT NULL)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -347,10 +326,12 @@ BEGIN
   v_amt := '$' || trim(to_char(v_order.total, 'FM999999990.00'));
   PERFORM public.telegram_dm_user(
     v_order.user_id, 'order_refunded',
-    '💰 <b>تم إرجاع المبلغ إلى رصيدك</b>' || E'\n' || 'الطلب: <code>' || public.telegram_escape(v_order.order_ref) || '</code>' || E'\n'
-      || 'المبلغ: <b>' || v_amt || '</b>',
-    '💰 <b>Your balance has been refunded</b>' || E'\n' || 'Order: <code>' || public.telegram_escape(v_order.order_ref) || '</code>' || E'\n'
-      || 'Amount: <b>' || v_amt || '</b>',
+    '💰 <b>أعدنا مبلغ طلبك إلى رصيدك</b>' || E'\n' || 'الطلب: <code>' || public.telegram_escape(v_order.order_ref) || '</code>' || E'\n'
+      || 'المبلغ: <b>' || chr(8294) || v_amt || chr(8297) || '</b>' || E'\n'
+      || 'رصيدك الآن: <b>' || chr(8294) || '$' || trim(to_char(v_new_balance, 'FM999999990.00')) || chr(8297) || '</b>',
+    '💰 <b>Your order was refunded to your balance</b>' || E'\n' || 'Order: <code>' || public.telegram_escape(v_order.order_ref) || '</code>' || E'\n'
+      || 'Amount: <b>' || v_amt || '</b>' || E'\n'
+      || 'Your balance now: <b>$' || trim(to_char(v_new_balance, 'FM999999990.00')) || '</b>',
     jsonb_build_array(jsonb_build_array(jsonb_build_object('text', '💰 رصيدي', 'callback_data', 'my_balance'))),
     jsonb_build_array(jsonb_build_array(jsonb_build_object('text', '💰 My balance', 'callback_data', 'my_balance')))
   );

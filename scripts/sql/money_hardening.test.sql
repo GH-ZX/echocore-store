@@ -74,9 +74,23 @@ END $$;
 -- Other profile fields stay editable by the admin.
 UPDATE public.profiles SET bio = 'edited by admin' WHERE id = '00000000-0000-4000-8000-0000000000c1';
 
--- admin_adjust_user_balance still works, and credit_user_balance goes through it (ledger row + log).
+-- admin_adjust_user_balance still works; credit_user_balance can't be called from the browser.
 SELECT public.admin_adjust_user_balance('00000000-0000-4000-8000-0000000000c1', 1, 'credit', 'test credit', NULL);
-SELECT public.credit_user_balance('00000000-0000-4000-8000-0000000000c1', 2, 'ShamCash', 'abc');
+DO $$
+BEGIN
+  PERFORM public.credit_user_balance('00000000-0000-4000-8000-0000000000c1', 2, 'ShamCash', 'abc');
+  RAISE EXCEPTION 'FAIL 1f: admin called credit_user_balance from the browser';
+EXCEPTION WHEN insufficient_privilege THEN NULL;
+END $$;
+RESET ROLE;
+
+-- Dashboard "approve recharge" still credits through credit_user_balance: one 'recharge' ledger
+-- row and one in-site notification for the customer.
+INSERT INTO public.recharge_requests (id, user_id, amount, reference, status, payment_method)
+VALUES ('00000000-0000-4000-8000-0000000000d1', '00000000-0000-4000-8000-0000000000c1', 2, 'RCH-TEST-1', 'payment_sent', 'ShamCash');
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+SELECT public.approve_recharge_request('00000000-0000-4000-8000-0000000000d1');
 RESET ROLE;
 
 DO $$
@@ -88,7 +102,14 @@ BEGIN
   IF v <> 3 THEN RAISE EXCEPTION 'FAIL 1b: buyer balance should be 3, is %', v; END IF;
   SELECT count(*) INTO n FROM public.transactions
   WHERE user_id = '00000000-0000-4000-8000-0000000000c1' AND type = 'adjustment' AND payment_method = 'admin_manual';
-  IF n <> 3 THEN RAISE EXCEPTION 'FAIL 1c: expected 3 admin_manual ledger rows, got %', n; END IF;
+  IF n <> 2 THEN RAISE EXCEPTION 'FAIL 1c: expected 2 admin_manual ledger rows, got %', n; END IF;
+  SELECT count(*) INTO n FROM public.transactions
+  WHERE user_id = '00000000-0000-4000-8000-0000000000c1' AND type = 'recharge' AND amount = 2 AND reference = 'RCH-TEST-1';
+  IF n <> 1 THEN RAISE EXCEPTION 'FAIL 1g: approval should write one recharge row, got %', n; END IF;
+  SELECT count(*) INTO n FROM public.notifications
+  WHERE user_id = '00000000-0000-4000-8000-0000000000c1' AND type = 'recharge_approved'
+    AND metadata->>'requestId' = '00000000-0000-4000-8000-0000000000d1';
+  IF n <> 1 THEN RAISE EXCEPTION 'FAIL 1h: approval should notify the customer once, got %', n; END IF;
 END $$;
 
 -- (each REST call is its own transaction: clear the flag the RPCs above set in this one)

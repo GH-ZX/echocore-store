@@ -3,6 +3,7 @@ import { getAdminContactPath, getAdminDashboardPath } from './adminRoutes';
 import { getInvoiceRouteFromNotification } from './invoiceBuilder';
 import { formatMoney as formatMoneyI18n } from './i18n';
 import { isMissingRpc } from './supabaseErrors';
+import { getOrderPaymentMethodLabel } from './paymentMethods';
 
 const RPC_SETUP_MSG =
   'Notifications are not configured. Run supabase_echocore_full.sql in the Supabase SQL Editor.';
@@ -27,39 +28,53 @@ function applyTemplate(template, vars = {}) {
 
 export function formatNotification(item, t = {}, lang = 'ar') {
   const m = item?.metadata || {};
-  const amount = formatMoney(m.amount ?? m.total);
-  const userName = m.userName || (lang === 'ar' ? 'عميل' : 'Customer');
-  const reference = m.reference || '';
-  const newBalance = formatMoney(m.newBalance);
-
-  const currentBalance = formatMoney(m.currentBalance);
+  // Amounts, order numbers, item names and codes stay left-to-right inside Arabic text.
+  const ltr = (value) => {
+    const text = value == null ? '' : String(value);
+    return lang === 'ar' && text ? `\u2066${text}\u2069` : text;
+  };
+  const amount = ltr(formatMoney(m.amount ?? m.total));
+  const userName = m.userName || t.notifCustomerFallback || (lang === 'ar' ? 'عميل' : 'Customer');
+  const reference = ltr(m.reference || '—');
+  const newBalance = ltr(formatMoney(m.newBalance));
+  const method = m.paymentMethod ? getOrderPaymentMethodLabel(m.paymentMethod, t) : '—';
+  // "Order EC-101 (1× 100 Gems). " — empty for old notifications without an order number.
+  const order = m.orderRef
+    ? applyTemplate(m.items ? t.notifOrderLine : t.notifOrderLineNoItems, { ref: ltr(m.orderRef), items: ltr(m.items) })
+    : '';
+  const reason = m.note ? applyTemplate(t.notifReasonLine, { note: m.note }) : '';
+  const requested = Number(m.requestedAmount);
+  const credited = Number(m.creditedAmount ?? m.amount);
+  const partial = Number.isFinite(requested) && Number.isFinite(credited) && credited + 0.001 < requested
+    ? ` ${applyTemplate(t.notifRechargePartial, { requested: ltr(formatMoney(requested)) })}`
+    : '';
 
   const templates = {
     recharge_payment_sent: {
       title: t.notifRechargeQueuedTitle,
-      body: applyTemplate(t.notifRechargeQueuedBody, { amount, balance: currentBalance, reference }),
+      body: applyTemplate(t.notifRechargeQueuedBody, { amount, method, reference }),
       tone: 'info',
     },
     order_payment_sent: {
       title: t.notifOrderQueuedTitle,
-      body: applyTemplate(t.notifOrderQueuedBody, { amount, balance: currentBalance, reference }),
+      body: applyTemplate(t.notifOrderQueuedBody, { amount, method, reference, order }),
       tone: 'info',
     },
     admin_recharge_payment_sent: {
       title: t.notifAdminRechargeTitle,
-      body: applyTemplate(t.notifAdminRechargeBody, { amount, user: userName, reference }),
+      body: applyTemplate(t.notifAdminRechargeBody, { amount, user: userName, reference, method }),
       adminTab: 'recharges',
       tone: 'warning',
     },
     admin_recharge_completed: {
       title: t.notifAdminRechargeCompletedTitle,
-      body: applyTemplate(t.notifAdminRechargeCompletedBody, { amount, user: userName }),
+      body: applyTemplate(t.notifAdminRechargeCompletedBody, { amount, user: userName, method }),
       adminTab: 'recharges',
       tone: 'success',
     },
     admin_order_payment_sent: {
       title: t.notifAdminOrderTitle,
-      body: applyTemplate(t.notifAdminOrderBody, { amount, user: userName, reference }),
+      body: applyTemplate(t.notifAdminOrderBody, { amount, user: userName, reference, method, order }),
       adminTab: 'orders',
       tone: 'warning',
     },
@@ -68,7 +83,7 @@ export function formatNotification(item, t = {}, lang = 'ar') {
       title: t.notifAdminPurchaseTitle || t.notifAdminOrderTitle,
       body: applyTemplate(
         t.notifAdminPurchaseBody || t.notifAdminOrderBody,
-        { amount, user: userName, reference: m.paymentMethod || reference },
+        { amount, user: userName, method, order },
       ),
       adminTab: 'orders',
       tone: 'info',
@@ -77,7 +92,7 @@ export function formatNotification(item, t = {}, lang = 'ar') {
       title: t.notifAdminDeliveryTitle || t.notifDeliveryReadyTitle,
       body: applyTemplate(
         t.notifAdminDeliveryBody || t.notifDeliveryReadyBody,
-        { amount, user: userName },
+        { amount, user: userName, order },
       ),
       adminTab: 'orders',
       tone: 'success',
@@ -86,7 +101,7 @@ export function formatNotification(item, t = {}, lang = 'ar') {
       title: t.notifAdminTopupTitle || t.notifTopupDeliveredTitle,
       body: applyTemplate(
         t.notifAdminTopupBody || t.notifTopupDeliveredBody,
-        { amount, user: userName },
+        { amount, user: userName, order },
       ),
       adminTab: 'orders',
       tone: 'success',
@@ -95,7 +110,7 @@ export function formatNotification(item, t = {}, lang = 'ar') {
       title: t.notifAdminFulfilledTitle || t.notifOrderFulfilledTitle,
       body: applyTemplate(
         t.notifAdminFulfilledBody || t.notifOrderFulfilledBody,
-        { amount, user: userName },
+        { amount, user: userName, order },
       ),
       adminTab: 'orders',
       tone: 'success',
@@ -104,7 +119,7 @@ export function formatNotification(item, t = {}, lang = 'ar') {
       title: t.notifAdminFulfillFailedTitle || t.notifFulfillmentFailedTitle,
       body: applyTemplate(
         t.notifAdminFulfillFailedBody || t.notifFulfillmentFailedBody,
-        { amount, user: userName },
+        { amount, user: userName, order },
       ),
       adminTab: 'orders',
       tone: 'danger',
@@ -156,11 +171,18 @@ export function formatNotification(item, t = {}, lang = 'ar') {
         : applyTemplate(t.notifContactReplyBody, { name: m.name || 'ECHOCORE' }),
       tone: 'info',
     },
-    recharge_approved: {
-      title: t.notifRechargeApprovedTitle,
-      body: applyTemplate(t.notifRechargeApprovedBody, { amount, balance: newBalance }),
-      tone: 'success',
-    },
+    recharge_approved: m.manualCredit
+      ? {
+        // A credit by the store itself (no top-up request behind it)
+        title: t.notifManualCreditTitle,
+        body: applyTemplate(t.notifManualCreditBody, { amount, balance: newBalance }),
+        tone: 'success',
+      }
+      : {
+        title: t.notifRechargeApprovedTitle,
+        body: applyTemplate(t.notifRechargeApprovedBody, { amount, balance: newBalance }) + partial,
+        tone: 'success',
+      },
     admin_balance_debit: {
       title: t.notifAdminBalanceDebitTitle || t.notifRechargeApprovedTitle,
       body: applyTemplate(
@@ -171,22 +193,22 @@ export function formatNotification(item, t = {}, lang = 'ar') {
     },
     recharge_rejected: {
       title: t.notifRechargeRejectedTitle,
-      body: applyTemplate(t.notifRechargeRejectedBody, { amount }),
+      body: applyTemplate(t.notifRechargeRejectedBody, { amount }) + reason,
       tone: 'danger',
     },
     order_completed: {
       title: t.notifOrderCompletedTitle,
-      body: applyTemplate(t.notifOrderCompletedBody, { amount }),
+      body: applyTemplate(t.notifOrderCompletedBody, { amount, order }),
       tone: 'success',
     },
     order_rejected: {
       title: t.notifOrderRejectedTitle,
-      body: applyTemplate(t.notifOrderRejectedBody, { amount }),
+      body: applyTemplate(t.notifOrderRejectedBody, { amount, order }) + reason,
       tone: 'danger',
     },
     purchase_completed: {
       title: t.notifPurchaseCompletedTitle,
-      body: applyTemplate(t.notifPurchaseCompletedBody, { amount, balance: newBalance }),
+      body: applyTemplate(t.notifPurchaseCompletedBody, { amount, balance: newBalance, order }),
       tone: 'success',
     },
     order_gifted: {
@@ -201,31 +223,33 @@ export function formatNotification(item, t = {}, lang = 'ar') {
       body: Array.isArray(m.codes) && m.codes.length > 0
         ? applyTemplate(t.notifDeliveryReadyBodyWithCodes, {
           amount,
-          codes: m.codes.map((code) => String(code)).join(', '),
+          order,
+          codes: ltr(m.codes.map((code) => String(code)).join(', ')),
         })
-        : applyTemplate(t.notifDeliveryReadyBody, { amount }),
+        : applyTemplate(t.notifDeliveryReadyBody, { amount, order }),
       tone: 'success',
     },
     topup_delivered: {
       title: t.notifTopupDeliveredTitle,
-      body: applyTemplate(t.notifTopupDeliveredBody, { amount }),
+      body: applyTemplate(t.notifTopupDeliveredBody, { amount, order }),
       tone: 'success',
     },
     order_fulfilled: {
       title: t.notifOrderFulfilledTitle,
-      body: applyTemplate(t.notifOrderFulfilledBody, { amount }),
+      body: applyTemplate(t.notifOrderFulfilledBody, { amount, order }),
       tone: 'success',
     },
     fulfillment_failed: {
       title: t.notifFulfillmentFailedTitle,
-      body: applyTemplate(t.notifFulfillmentFailedBody, { amount }),
+      body: applyTemplate(t.notifFulfillmentFailedBody, { amount, order }),
       tone: 'danger',
     },
     fulfillment_failed_refunded: {
       title: t.notifFulfillmentRefundedTitle,
       body: applyTemplate(t.notifFulfillmentRefundedBody, {
         amount,
-        newBalance: formatMoney(m.newBalance),
+        order,
+        newBalance,
       }),
       tone: 'warning',
     },

@@ -23,6 +23,14 @@ export const moneyTranslations = {
     notifCommissionReversalFailedTitle: 'تعذّر سحب عمولة',
     notifCommissionReversalFailedBody: 'استُرجع الطلب {ref} لكن عمولة المؤثر {amount} لم تُسحب. راجع السجل.',
     livePackNotSynced: 'هذه الباقة غير متاحة للشراء حالياً. جرّب باقة أخرى أو تواصل معنا.',
+    // Recharge / purchase notifications (2026-11-14): pieces the messages are built from
+    notifOrderLine: 'الطلب {ref} ({items}). ',
+    notifOrderLineNoItems: 'الطلب {ref}. ',
+    notifReasonLine: ' السبب: {note}',
+    notifManualCreditTitle: 'أضاف المتجر رصيداً إلى محفظتك',
+    notifManualCreditBody: 'أُضيف {amount} إلى رصيدك. رصيدك الآن {balance}.',
+    notifRechargePartial: 'أضفنا المبلغ الذي وصلنا فعلاً، وكنت قد طلبت {requested}.',
+    notifCustomerFallback: 'عميل',
   },
   en: {
     refundFailedOrder: 'Refund to balance',
@@ -44,5 +52,12 @@ export const moneyTranslations = {
     notifCommissionReversalFailedTitle: 'Commission not taken back',
     notifCommissionReversalFailedBody: 'Order {ref} was refunded but the influencer\'s {amount} commission was not taken back. Check the logs.',
     livePackNotSynced: 'This pack can\'t be bought right now. Try another pack or contact us.',
+    notifOrderLine: 'Order {ref} ({items}). ',
+    notifOrderLineNoItems: 'Order {ref}. ',
+    notifReasonLine: ' Reason: {note}',
+    notifManualCreditTitle: 'The store added balance to your wallet',
+    notifManualCreditBody: '{amount} was added to your balance. Your balance is now {balance}.',
+    notifRechargePartial: 'We added the amount we actually received; you had asked for {requested}.',
+    notifCustomerFallback: 'Customer',
   },
 };
