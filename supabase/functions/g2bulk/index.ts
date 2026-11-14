@@ -5,6 +5,7 @@ import {
   resolvePointsName,
 } from './gameCurrency.ts';
 import { normalizeRoundStep, priceFromCost, resolveSyncedPrice } from './markupPricing.ts';
+import { fulfillmentGate } from './orderGate.ts';
 import {
   loadIgdbAutoCoverConfig,
   maybeApplyIgdbAutoCover,
@@ -2525,32 +2526,16 @@ Deno.serve(async (req) => {
 
     const admin = serviceAuth || (userId ? await isAdmin(userClient, userId) : false);
 
-    const { data: order, error: orderError } = await serviceClient
+    const caller = { userId, admin, serviceAuth };
+    const { data: orderBeforeLock, error: orderError } = await serviceClient
       .from('orders')
       .select('*')
       .eq('id', orderId)
       .maybeSingle();
 
-    if (orderError || !order) {
-      return jsonResponse({ success: false, message: 'Order not found' }, 404);
-    }
-
-    if (!admin && !serviceAuth && order.user_id !== userId) {
-      return jsonResponse({ success: false, message: 'Unauthorized' }, 403);
-    }
-
-    if (order.status !== 'completed') {
-      return jsonResponse({ success: false, message: 'Order is not completed' }, 400);
-    }
-
-    if (order.fulfillment_status === 'fulfilled') {
-      return jsonResponse({ success: true, skipped: true, fulfillmentStatus: 'fulfilled' });
-    }
-
-    // Manual products are delivered by the store owner from the dashboard (admin_deliver_order).
-    // The database marks their paid orders 'awaiting_delivery'; never send them to the supplier.
-    if (order.fulfillment_status === 'awaiting_delivery') {
-      return jsonResponse({ success: true, skipped: true, fulfillmentStatus: 'awaiting_delivery' });
+    const earlyGate = fulfillmentGate(orderError ? null : orderBeforeLock, caller);
+    if (!earlyGate.proceed) {
+      return jsonResponse(earlyGate.body, earlyGate.status);
     }
 
     // ── Per-order in-flight lock ──────────────────────────────────────────
@@ -2569,7 +2554,7 @@ Deno.serve(async (req) => {
       return jsonResponse({
         success: true,
         pending: true,
-        fulfillmentStatus: order.fulfillment_status || 'fulfilling',
+        fulfillmentStatus: orderBeforeLock.fulfillment_status || 'fulfilling',
         message: 'Another fulfillment is already running for this order.',
         reason: 'fulfillment_in_flight',
         inFlight: true,
@@ -2588,6 +2573,21 @@ Deno.serve(async (req) => {
         /* best effort — lock auto-expires after 120s */
       }
     };
+
+    // Re-read the order now that the lock is held: the copy above may be stale (another
+    // invocation may have fulfilled it, refunded it or stored a supplier order id meanwhile).
+    // Everything below decides on this fresh copy only.
+    const { data: lockedOrder, error: lockedOrderError } = await serviceClient
+      .from('orders')
+      .select('*')
+      .eq('id', orderId)
+      .maybeSingle();
+    const lockedGate = fulfillmentGate(lockedOrderError ? null : lockedOrder, caller);
+    if (!lockedGate.proceed) {
+      await releaseFulfillmentLock();
+      return jsonResponse(lockedGate.body, lockedGate.status);
+    }
+    const order = lockedOrder!;
 
     // Note: do NOT early-return on `fulfilling` — G2Bulk top-ups often need
     // multi-minute polls; a second call continues / re-polls supplier status.
@@ -4569,13 +4569,17 @@ Deno.serve(async (req) => {
   if (action === 'ensureCatalogItems') {
     if (!userId) return jsonResponse({ success: false, message: 'Unauthorized' }, 401);
 
-    // Any signed-in customer reaches this at checkout, so nothing price-related
-    // may come from the request body: costs are re-read from G2Bulk here and an
-    // item whose supplier cost can't be verified is skipped (2026-11-03 incident:
-    // a client-sent price of -1 became a purchasable offer).
+    // Creates games / offers rows from the live supplier catalogue: admins only (2026-11-14).
+    // Customers buy synced packs; a live-only pack is refused at checkout with a clear message.
+    // Nothing price-related comes from the request body: costs are re-read from G2Bulk here and
+    // an item whose supplier cost can't be verified is skipped (2026-11-03 incident: a
+    // client-sent price of -1 became a purchasable offer).
+    const callerIsAdmin = await isAdmin(userClient, userId);
+    if (!callerIsAdmin) {
+      return jsonResponse({ success: false, message: 'Admin only', reason: 'admin_only' }, 403);
+    }
     const items = (Array.isArray(body.items) ? body.items : []).slice(0, 20);
     const now = new Date().toISOString();
-    const callerIsAdmin = await isAdmin(userClient, userId);
 
     const { markup, roundStep } = await loadStorePricingSettings(serviceClient);
 

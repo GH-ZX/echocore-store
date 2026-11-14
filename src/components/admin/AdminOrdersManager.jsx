@@ -13,6 +13,7 @@ import {
   Truck,
   Ban,
   Copy,
+  Undo2,
 } from 'lucide-react';
 import { Spinner } from '../routing/PageLoader';
 import {
@@ -53,6 +54,7 @@ import {
 } from '../../lib/orderReceipt';
 import { isInvoiceReadyForOrder } from '../../lib/invoices';
 import { adminCancelManualOrder, adminDeliverOrder, describeCustomerInputs } from '../../lib/manualProducts';
+import { adminRefundFailedOrder, canRefundFailedOrder, orderHasSupplierOrder, refundErrorKey } from '../../lib/orderRefund';
 import { INVOICE_KIND } from '../../lib/invoiceBuilder';
 import {
   formatProfileUsername,
@@ -347,6 +349,32 @@ export default function AdminOrdersManager({
     }
   };
 
+  const handleRefundFailed = async (order) => {
+    if (fulfillingId || !order?.id) return;
+    const meta = order.g2bulk_metadata || {};
+    const supplierId = order.g2bulk_order_id || meta.g2bulk_order_id || meta.g2bulkOrderId;
+    let message = formatMessage(t.refundFailedOrderConfirm, {
+      amount: formatMoney(Number(order.total)),
+      ref: formatOrderDisplayId(order),
+    });
+    if (orderHasSupplierOrder(order)) {
+      message += formatMessage(t.refundFailedOrderSupplierWarning, { supplierId: `#${supplierId}` });
+    }
+    if (typeof window !== 'undefined' && !window.confirm(message)) return;
+    setFulfillingId(order.id);
+    try {
+      await adminRefundFailedOrder(order.id);
+      onNotify?.(t.refundFailedOrderDone, 'success');
+      await refreshOrders?.();
+    } catch (err) {
+      const key = refundErrorKey(err);
+      onNotify?.((key && t[key]) || err?.message || t.adminOrdersFulfillRetryFailed, 'error');
+      if (key === 'refundErrorAlready') await refreshOrders?.();
+    } finally {
+      setFulfillingId(null);
+    }
+  };
+
   const copyText = async (value) => {
     try {
       await navigator.clipboard.writeText(value);
@@ -363,6 +391,7 @@ export default function AdminOrdersManager({
     const softTimeout = isSoftFulfillmentTimeout(order);
     const refunded = isOrderBalanceRefunded(order);
     const canRetry = canRetryOrderFulfillment(order) && typeof onFulfillOrder === 'function';
+    const canRefund = canRefundFailedOrder(order);
     const canSync = canSyncOrder(order);
     const topup = getOrderTopupDeliveryDetails(order, items);
     const paymentStatusLabel = getAdminPaymentStatusLabel(order, t);
@@ -586,6 +615,19 @@ export default function AdminOrdersManager({
                 ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 : <RotateCcw className="w-3.5 h-3.5" />}
               {t.adminOrdersRetryFulfill}
+            </button>
+          )}
+          {canRefund && (
+            <button
+              type="button"
+              disabled={fulfillingId === order.id}
+              onClick={() => handleRefundFailed(order)}
+              className="btn btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5 text-amber-200"
+            >
+              {fulfillingId === order.id
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <Undo2 className="w-3.5 h-3.5" />}
+              {t.refundFailedOrder}
             </button>
           )}
           {canSync && (
