@@ -18,7 +18,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 MIG=supabase/migrations/20261114090000_money_hardening.sql
 REV=supabase/migrations/revert/20261114090000_revert_money_hardening.sql
-TESTS=supabase/tests/money_hardening.test.sql
+TESTS=scripts/sql/money_hardening.test.sql
 
 run_sql() {
   if [ -n "${PSQL_CONTAINER:-}" ]; then

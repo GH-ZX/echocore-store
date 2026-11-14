@@ -12,7 +12,8 @@ INSERT INTO auth.users (id, email, aud, role) VALUES
 INSERT INTO public.profiles (id, role, name, balance) VALUES
   ('00000000-0000-4000-8000-0000000000a1', 'admin', 'Admin', 0),
   ('00000000-0000-4000-8000-0000000000c1', 'user', 'Buyer', 0),
-  ('00000000-0000-4000-8000-0000000000b1', 'user', 'Influencer', 0);
+  ('00000000-0000-4000-8000-0000000000b1', 'user', 'Influencer', 0)
+ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, name = EXCLUDED.name, balance = 0;
 
 INSERT INTO public.games (id, slug, name_en, name_ar, points_name)
 VALUES ('00000000-0000-4000-8000-0000000000e1', 'test-game', 'Test game', 'Test game', 'Gems');
