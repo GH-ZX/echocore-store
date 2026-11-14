@@ -11,6 +11,12 @@ function formatMoney(value) {
   return formatMoneyI18n(value, { fallback: '' });
 }
 
+const ADMIN_MONEY_CHECK_TYPES = new Set([
+  'admin_balance_ledger_mismatch',
+  'admin_balance_ledger_resolved',
+  'admin_commission_reversal_failed',
+]);
+
 function applyTemplate(template, vars = {}) {
   if (!template) return '';
   return Object.entries(vars).reduce(
@@ -287,6 +293,37 @@ export function formatNotification(item, t = {}, lang = 'ar') {
       }),
       tone: 'success',
     },
+    influencer_commission_reversed: {
+      title: t.notifCommissionReversedTitle,
+      body: applyTemplate(t.notifCommissionReversedBody, {
+        amount: formatMoney(m.amount),
+        balance: formatMoney(m.newBalance),
+        code: m.code || '',
+        ref: m.orderRef || '',
+      }),
+      tone: 'warning',
+    },
+    admin_balance_ledger_mismatch: {
+      title: t.notifBalanceLedgerMismatchTitle,
+      body: applyTemplate(t.notifBalanceLedgerMismatchBody, {
+        count: m.count != null ? String(m.count) : '',
+        gap: formatMoney(m.totalGap),
+      }),
+      tone: 'danger',
+    },
+    admin_balance_ledger_resolved: {
+      title: t.notifBalanceLedgerResolvedTitle,
+      body: t.notifBalanceLedgerResolvedBody,
+      tone: 'success',
+    },
+    admin_commission_reversal_failed: {
+      title: t.notifCommissionReversalFailedTitle,
+      body: applyTemplate(t.notifCommissionReversalFailedBody, {
+        amount: formatMoney(m.amount),
+        ref: m.orderRef || '',
+      }),
+      tone: 'danger',
+    },
   };
 
   const fallback = {
@@ -365,6 +402,9 @@ export function getNotificationDestination(item, formatted, userRole) {
     if (item?.type === 'admin_customer_review') {
       return { path: getAdminDashboardPath('reviews') };
     }
+    if (ADMIN_MONEY_CHECK_TYPES.has(item?.type)) {
+      return { path: getAdminDashboardPath('logs') };
+    }
     // Invoice only for successful delivery / approved recharge notification types
     if (invoicePath) {
       return { path: invoicePath };
@@ -439,6 +479,7 @@ export function getNotificationDestination(item, formatted, userRole) {
     || item?.type === 'verified_thanks'
     || item?.type === 'coupon_redeemed'
     || item?.type === 'influencer_commission'
+    || item?.type === 'influencer_commission_reversed'
   ) {
     return { path: item?.link || '/profile' };
   }

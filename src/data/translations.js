@@ -12,6 +12,7 @@
 import { pageContent } from './pageContent';
 import { manualProductTranslations } from './manualProductTranslations';
 import { eventTranslations } from './eventTranslations';
+import { moneyTranslations } from './moneyTranslations';
 
 export const translations = {
   ar: {
@@ -2807,6 +2808,7 @@ export const translations = {
 
     ...manualProductTranslations.ar,
     ...eventTranslations.ar,
+    ...moneyTranslations.ar,
     ...pageContent.ar,
   },
   en: {
@@ -5602,6 +5604,7 @@ export const translations = {
 
     ...manualProductTranslations.en,
     ...eventTranslations.en,
+    ...moneyTranslations.en,
     ...pageContent.en,
   }
 };
