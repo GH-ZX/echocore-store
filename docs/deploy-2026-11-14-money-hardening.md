@@ -3,9 +3,10 @@
 Nothing here is deployed yet. Money-path rule: tests, a backup from the last 30 hours that you
 restored once, your OK, and the rollback below. Deploy Sunday to Wednesday only.
 
-**Needs the ECHOCORE owner's agreement first:** admins can no longer change a balance by
-editing the profile row; every balance change goes through *Adjust balance*
-(`admin_adjust_user_balance`), which the dashboard already uses. Tell them before shipping.
+**ECHOCORE owner's OK: given 2026-11-14** (passed on in chat), for both the notification texts
+(item 7) and the balance change: admins can no longer change a balance by editing the profile row;
+every balance change goes through *Adjust balance* (`admin_adjust_user_balance`), which the
+dashboard already uses. Still to do before shipping: the backup restore and a Sunday–Wednesday day.
 
 ## First, on its own: paid orders that waited for payment
 
@@ -26,7 +27,7 @@ body is the broken one; it is in `20261107090000_manual_products_and_categories.
 | 4 | Direct `UPDATE profiles.balance` from the API is refused (admins, service role included); the browser can no longer call `credit_user_balance` ("approve recharge" still uses it inside the database) | migration |
 | 5 | Daily 03:15 UTC check that each wallet equals its ledger: `balance_ledger_checks`, admin notification + Telegram when it changes, reminder every 7 days; `admin_record_ledger_correction` to close a gap after looking into it | migration |
 | 6 | Dashboard → Orders → failed order → **Refund to balance**, same guards as the Telegram refund | migration, `AdminOrdersManager.jsx` |
-| 7 | Recharge and purchase notifications reworded (Arabic MSA + English) and fixed: order number and items in every message, admin Telegram alerts in the chat's language, right amounts and methods. Needs the owner's OK on the texts (approval page linked in the PR). Findings: `docs/notifications-2026-11-14.md` | `20261114100000_notification_wording.sql`, `notifications.js`, translations |
+| 7 | Recharge and purchase notifications reworded (Arabic MSA + English) and fixed: order number and items in every message, admin Telegram alerts in the chat's language, right amounts and methods. Texts approved by the owner on 2026-11-14 (approval page linked in the PR). Findings: `docs/notifications-2026-11-14.md` | `20261114100000_notification_wording.sql`, `notifications.js`, translations |
 
 The live store was in **sync** catalog mode on 2026-11-14, so item 3 does not change checkout there.
 Expect the first ledger check to alert: a few wallets don't match their history today (counts in the
@@ -40,7 +41,7 @@ owner's notes, not here: this repo is public).
    `PSQL_CONTAINER=<copy> scripts/test-money-sql.sh` → "money SQL tests passed". `npm test`.
 3. Apply the migrations in order (SQL editor → paste → run; each is one transaction and snapshots
    what it replaces first): `20261114080000` (if not applied already), `20261114090000_money_hardening.sql`,
-   then `20261114100000_notification_wording.sql` once the owner approved the texts.
+   then `20261114100000_notification_wording.sql` (texts approved 2026-11-14).
 4. Check: `select public.run_balance_ledger_check();` (as postgres in the SQL editor) and read the result;
    `select jobname, schedule from cron.job where jobname = 'balance-ledger-daily';`.
 5. Edge Function: `supabase functions deploy g2bulk` (one function). Keep the current version number
