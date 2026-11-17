@@ -70,7 +70,6 @@ export const translations = {
     categoryGiftCardsDesc: "أكواد شحن فورية لعملات الألعاب والقسائم.",
     categoryAccountsDesc: "Xbox و PlayStation و Razer Gold و iTunes وأكواد المنصات.",
     regionsBadge: "مناطق",
-    cardCurrencyLabel: "العملة داخل اللعبة",
     cardRegionLabel: "المنطقة",
     topUp: "شحن",
     regionNames: {
@@ -2898,7 +2897,6 @@ export const translations = {
     categoryGiftCardsDesc: "Instant redeem codes for in-game currency and vouchers.",
     categoryAccountsDesc: "Xbox, PlayStation, Razer Gold, iTunes, and platform codes.",
     regionsBadge: "regions",
-    cardCurrencyLabel: "In-game currency",
     cardRegionLabel: "Region",
     topUp: "Top-up",
     regionNames: {},

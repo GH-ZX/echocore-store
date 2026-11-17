@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Ticket, Gamepad2, Gem, Globe2 } from 'lucide-react';
+import { Ticket, Gamepad2, Globe2 } from 'lucide-react';
 import AdminEditButton from '../admin/AdminEditButton';
 import BorderGlow from './BorderGlow';
 import { getGameCardImageUrl, presetGameCardImage } from '../../lib/gameImages';
@@ -108,20 +108,12 @@ export default function HomeGameCard({
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
 
-          {!teaser && (currency || region) && (
+          {!teaser && region && (
             <div className="home-game-card-cue">
-              {currency && (
-                <span className="home-game-card-cue__chip" title={t.cardCurrencyLabel}>
-                  <Gem className="w-3 h-3" aria-hidden="true" />
-                  <bdi>{currency}</bdi>
-                </span>
-              )}
-              {region && (
-                <span className="home-game-card-cue__chip home-game-card-cue__chip--region" title={t.cardRegionLabel}>
-                  <Globe2 className="w-3 h-3" aria-hidden="true" />
-                  <bdi>{region}</bdi>
-                </span>
-              )}
+              <span className="home-game-card-cue__chip home-game-card-cue__chip--region" title={t.cardRegionLabel}>
+                <Globe2 className="w-3 h-3" aria-hidden="true" />
+                <bdi>{region}</bdi>
+              </span>
             </div>
           )}
 
@@ -140,7 +132,7 @@ export default function HomeGameCard({
                   <Ticket className="w-3.5 h-3.5" aria-hidden="true" />
                 </span>
               )}
-              {!isVoucher && !currency && !region && (
+              {!isVoucher && !region && (
                 <span
                   className="home-game-card-badge home-game-card-badge--icon home-game-card-badge--game"
                   aria-label={t.game}
