@@ -1594,6 +1594,50 @@ html, body {
   backdrop-filter: blur(6px);
 }
 
+/* Product cue on game cards: in-game currency + region (bottom of the art) */
+.home-game-card-cue {
+  position: absolute;
+  inset-inline: 0.5rem;
+  bottom: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  pointer-events: none;
+}
+
+.home-game-card-cue__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 100%;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 999px;
+  background: color-mix(in srgb, #0b1222 62%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 4px 14px -6px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+}
+
+.home-game-card-cue__chip svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.home-game-card-cue__chip--region {
+  border-color: color-mix(in srgb, #fbbf24 50%, transparent);
+}
+
+.home-game-card-cue__chip--region svg {
+  color: #fbbf24;
+}
+
 .home-game-card-badge--icon {
   padding: 0.35rem;
   line-height: 0;
@@ -10896,4 +10940,12 @@ button.profile-list-item {
 .saved-uid-chip:hover {
   border-style: solid;
   background: color-mix(in srgb, var(--accent) 16%, var(--bg-surface));
+}
+
+/* Keyboard focus ring for every interactive element (mouse clicks stay clean).
+   Many components set `outline: none`; this stays last in the file so the ring
+   wins for keyboard users. */
+html :is(a, button, input, select, textarea, summary, [role='button'], [role='tab'], [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

@@ -1,12 +1,13 @@
 import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Ticket, Gamepad2 } from 'lucide-react';
+import { Ticket, Gamepad2, Gem, Globe2 } from 'lucide-react';
 import AdminEditButton from '../admin/AdminEditButton';
 import BorderGlow from './BorderGlow';
 import { getGameCardImageUrl, presetGameCardImage } from '../../lib/gameImages';
 import { isVoucherGame } from '../../lib/catalogUtils';
 import { brandUserText } from '../../lib/branding';
 import { formatCountNoun } from '../../lib/i18n';
+import { getGameCurrency } from '../../lib/gameCurrency';
 
 export default function HomeGameCard({
   game,
@@ -41,6 +42,10 @@ export default function HomeGameCard({
   const gameName = brandUserText(isAr ? game.name_ar : game.name_en);
   const cardImageUrl = getGameCardImageUrl(game);
   const cardBadge = (isAr ? game.card_badge_ar : game.card_badge_en) || game.card_badge_en || game.card_badge_ar || null;
+  const currency = isVoucher ? null : getGameCurrency(game);
+  const region = !isVoucher && game.region_label && game.region_label !== 'Global'
+    ? (t.regionNames?.[game.region_label] || game.region_label)
+    : null;
 
   const metaLabel = isVoucher
     ? (packs != null
@@ -50,7 +55,7 @@ export default function HomeGameCard({
       ? `${regionCount} ${t.regionsBadge || (isAr ? 'مناطق' : 'regions')}`
       : (packs != null
         ? formatCountNoun(t, lang, packs, 'packCount')
-        : `${game.points_name || 'Top-up'} ${isAr ? 'شحن' : 'top-ups'}`);
+        : `${currency || t.topUp || 'Top-up'}`);
 
   const gamePath = `/game/${game.slug || game.id}`;
   const CardElement = teaser ? 'div' : Link;
@@ -103,6 +108,23 @@ export default function HomeGameCard({
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
 
+          {!teaser && (currency || region) && (
+            <div className="home-game-card-cue">
+              {currency && (
+                <span className="home-game-card-cue__chip" title={t.cardCurrencyLabel}>
+                  <Gem className="w-3 h-3" aria-hidden="true" />
+                  <bdi>{currency}</bdi>
+                </span>
+              )}
+              {region && (
+                <span className="home-game-card-cue__chip home-game-card-cue__chip--region" title={t.cardRegionLabel}>
+                  <Globe2 className="w-3 h-3" aria-hidden="true" />
+                  <bdi>{region}</bdi>
+                </span>
+              )}
+            </div>
+          )}
+
           <div className="absolute top-2 left-2 right-2 flex items-start justify-between gap-1.5">
             <div className="flex items-center gap-1.5 flex-wrap">
               {!teaser && cardBadge && (
@@ -118,10 +140,10 @@ export default function HomeGameCard({
                   <Ticket className="w-3.5 h-3.5" aria-hidden="true" />
                 </span>
               )}
-              {!isVoucher && (
+              {!isVoucher && !currency && !region && (
                 <span
                   className="home-game-card-badge home-game-card-badge--icon home-game-card-badge--game"
-                  aria-label={t.game || (isAr ? 'لعبة' : 'Game')}
+                  aria-label={t.game}
                 >
                   <Gamepad2 className="w-3.5 h-3.5" aria-hidden="true" />
                 </span>
@@ -139,7 +161,7 @@ export default function HomeGameCard({
         </div>
 
         <div className="storefront-card__body flex flex-col flex-1 p-2.5 sm:p-3 gap-1 min-w-0">
-          <h3 className="font-semibold text-sm sm:text-[15px] leading-snug text-[var(--text-primary)] truncate">
+          <h3 dir="auto" className={`font-semibold text-sm sm:text-[15px] leading-snug text-[var(--text-primary)] truncate ${isAr ? 'text-right' : 'text-left'}`}>
             {gameName}
           </h3>
           {description && (

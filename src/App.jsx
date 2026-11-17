@@ -1870,7 +1870,7 @@ export default function App() {
       </a>
       <LangSwitchOverlay t={translations[overlayLang] || t} active={langSwitching} />
       <ScrollToTop />
-      <DocumentMeta t={t} lang={lang} />
+      <DocumentMeta t={t} lang={lang} games={games} />
       <Header
         t={t}
         lang={lang}

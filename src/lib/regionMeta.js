@@ -135,6 +135,18 @@ export function normalizeRegionLabel(value = '') {
     .join(' ');
 }
 
+const KNOWN_REGION_LABELS = new Set(Object.values(REGION_TOKENS));
+
+/**
+ * True only for real regions (Global, Turkey, MENA…). Offer names like
+ * "Prime (1 Month)" put a duration in parentheses, which the name parser
+ * would otherwise surface as a "region".
+ */
+export function isKnownRegionLabel(value = '') {
+  if (!value) return false;
+  return Boolean(REGION_TOKENS[normalizeRegionToken(value)]) || KNOWN_REGION_LABELS.has(String(value).trim());
+}
+
 export function slugifyBaseKey(value = '') {
   return String(value)
     .trim()

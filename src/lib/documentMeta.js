@@ -4,6 +4,7 @@
  */
 
 import { getConfiguredSiteHost } from './siteDomain';
+import { brandUserText } from './branding';
 
 const DEFAULT_SITE_NAME = 'ECHOCORE Store';
 
@@ -20,7 +21,7 @@ export function getSiteOrigin() {
  * Map pathname → meta keys resolved from `t` (translations).
  * Returns { title, description } strings ready to set.
  */
-export function resolveRouteMeta(pathname, t = {}, lang = 'ar') {
+export function resolveRouteMeta(pathname, t = {}, lang = 'ar', games = []) {
   const path = (pathname || '/').replace(/\/+$/, '') || '/';
   const site = t.seoSiteName || DEFAULT_SITE_NAME;
 
@@ -114,8 +115,11 @@ export function resolveRouteMeta(pathname, t = {}, lang = 'ar') {
   let meta = map[path];
 
   if (!meta && path.startsWith('/game/')) {
+    const slug = decodeURIComponent(path.split('/')[2] || '');
+    const game = (games || []).find((row) => row.slug === slug || String(row.id) === slug);
+    const gameName = game ? brandUserText(lang === 'ar' ? game.name_ar || game.name_en : game.name_en || game.name_ar) : '';
     meta = {
-      title: t.seoGameTitle || site,
+      title: gameName || t.seoGameTitle || site,
       description: t.seoGamesDescription || t.seoDefaultDescription,
     };
   } else if (!meta && path.startsWith('/dashboard')) {
@@ -178,7 +182,7 @@ export function applyDocumentMeta({
 
   const origin = getSiteOrigin();
   const url = `${origin}${path === '/' ? '/' : path}`;
-  const image = imageUrl || `${origin}/echo-core-logo.png`;
+  const image = imageUrl || `${origin}/og-image.jpg`;
   const site = DEFAULT_SITE_NAME;
 
   document.title = title || site;
@@ -194,7 +198,7 @@ export function applyDocumentMeta({
   upsertMeta('property', 'og:url', url);
   upsertMeta('property', 'og:image', image);
   upsertMeta('property', 'og:locale', lang === 'en' ? 'en_US' : 'ar_SY');
-  upsertMeta('name', 'twitter:card', 'summary');
+  upsertMeta('name', 'twitter:card', 'summary_large_image');
   upsertMeta('name', 'twitter:title', title || site);
   upsertMeta('name', 'twitter:description', description);
   upsertMeta('name', 'twitter:image', image);

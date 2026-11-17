@@ -885,6 +885,7 @@ export default function AdminG2BulkSettings({ t = {}, lang = 'ar', onCatalogSync
               error={testResult && !testResult.ok ? testResult.message : walletError}
               idle={!walletFetched}
               lang={lang}
+              t={t}
               onRefresh={() => refreshG2bulkWallet()}
             />
           )}

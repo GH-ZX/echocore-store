@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Activity } from 'lucide-react';
 import { useRecentPurchaseActivity } from '../../hooks/useRecentPurchaseActivity';
-import { formatMessage } from '../../lib/i18n';
+import { formatCountNoun, formatMessage } from '../../lib/i18n';
 
 /** Auto-rotating "latest top-ups" strip — anonymized game + time only. */
 export default function RecentPurchasesTicker({ t = {}, lang = 'ar', limit = 6 }) {
@@ -23,9 +23,13 @@ export default function RecentPurchasesTicker({ t = {}, lang = 'ar', limit = 6 }
     ? (item.game_name_ar || item.game_name_en)
     : item.game_name_en;
   const minutes = Math.max(1, Number(item.minutes_ago) || 1);
-  const timeAgo = minutes <= 1
-    ? t.tickerMinuteAgo
-    : formatMessage(t.tickerMinutesAgo, { minutes });
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  let timeAgo;
+  if (days >= 1) timeAgo = formatCountNoun(t, lang, days, 'tickerDays');
+  else if (hours >= 1) timeAgo = formatCountNoun(t, lang, hours, 'tickerHours');
+  else if (minutes <= 1) timeAgo = t.tickerMinuteAgo;
+  else timeAgo = formatMessage(t.tickerMinutesAgo, { minutes });
   const text = formatMessage(t.tickerItem, { game, timeAgo });
 
   return (

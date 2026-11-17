@@ -1,4 +1,5 @@
 import { presetImageUrl } from './imageUtils';
+import { localizeImageUrl } from './localImages';
 
 function normalizeImageUrl(url) {
   if (!url || typeof url !== 'string') return '';
@@ -13,7 +14,7 @@ function normalizeImageUrl(url) {
 
 /** Full cover / hero — carousel slides and game page header */
 export function getGameCoverUrl(game) {
-  return game?.image_url || null;
+  return localizeImageUrl(game?.image_url) || null;
 }
 
 export function hasDistinctGameLogo(game) {
@@ -29,8 +30,8 @@ export function hasDistinctGameLogo(game) {
  * for the home carousel and game page hero.
  */
 export function getGameCardImageUrl(game) {
-  if (hasDistinctGameLogo(game)) return game.logo_url;
-  return game?.image_url || null;
+  if (hasDistinctGameLogo(game)) return localizeImageUrl(game.logo_url);
+  return localizeImageUrl(game?.image_url) || null;
 }
 
 export function dedupeGameLogoAgainstCover(logoUrl, coverUrl) {

@@ -19,7 +19,7 @@ export default function TrustStrip({ t = {} }) {
           <span className="p-1.5 rounded-lg bg-[var(--accent)]/12 text-[var(--accent)] shrink-0">
             <Icon className="w-4 h-4" aria-hidden="true" />
           </span>
-          <span className="text-xs sm:text-[13px] font-semibold text-[var(--text-sec)] leading-snug truncate">
+          <span className="text-xs sm:text-[13px] font-semibold text-[var(--text-sec)] leading-snug line-clamp-2">
             {t[key]}
           </span>
         </div>

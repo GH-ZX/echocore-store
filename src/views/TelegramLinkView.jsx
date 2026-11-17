@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 
 const STORAGE_KEY = 'echocore_telegram_link_token';
 
-export default function TelegramLinkView({ t = {}, lang, user, navigate }) {
+export default function TelegramLinkView({ t = {}, user, navigate }) {
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState('loading'); // loading | success | error | need_login
   const [message, setMessage] = useState('');

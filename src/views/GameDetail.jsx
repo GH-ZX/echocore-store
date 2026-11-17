@@ -27,6 +27,13 @@ import {
   topupHasGiftCardAlternative,
   voucherHasTopupAlternative,
 } from '../lib/searchUtils';
+import { isKnownRegionLabel } from '../lib/regionMeta';
+import { getGameCurrency } from '../lib/gameCurrency';
+
+function offerRegion(offer, game) {
+  if (isKnownRegionLabel(offer?.region)) return offer.region;
+  return game?.region_label || '';
+}
 
 export default function GameDetail({
   games,
@@ -67,7 +74,7 @@ export default function GameDetail({
   // Region per card is noise when every offer shares one region (it already
   // shows in the hero badge) — only surface it when regions actually differ.
   const hasMixedRegions = useMemo(() => new Set(
-    gameOffers.map((offer) => offer.region || storefrontGame?.region_label || '').filter(Boolean),
+    gameOffers.map((offer) => offerRegion(offer, storefrontGame)).filter(Boolean),
   ).size > 1, [gameOffers, storefrontGame]);
 
   const showGiftCodeAlt = useMemo(
@@ -123,7 +130,7 @@ export default function GameDetail({
     ? [{ label: t.accountBadge, className: 'border-sky-400/30 bg-sky-500/15 text-sky-200' }]
     : isVoucher
       ? [{ label: t.giftCard, className: 'border-violet-400/30 bg-violet-500/15 text-violet-200' }]
-      : [{ label: `${game.points_name || 'Top-up'}`, className: 'border-[var(--accent)]/30 bg-[var(--accent)]/10 text-[var(--accent)]' }];
+      : [{ label: getGameCurrency(game) || t.topUp, className: 'border-[var(--accent)]/30 bg-[var(--accent)]/10 text-[var(--accent)]' }];
 
   if (game.region_label && !isVoucher) {
     heroBadges.push({
@@ -155,7 +162,7 @@ export default function GameDetail({
           ? t.redeemSubtitle
           : isVoucher
             ? t.giftCardsSubtitle
-            : (gameDescription || `${game.points_name || 'Top-up'} ${t.instantTopUpSuffix}`)}
+            : (gameDescription || `${getGameCurrency(game) || t.topUp} ${t.instantTopUpSuffix}`)}
         meta={isManual
           ? formatMessage(t.manualDeliveryEta, { eta: deliveryEta(game, lang) || t.manualDeliveryDefaultEta })
           : isAccount || isVoucher
@@ -280,7 +287,7 @@ export default function GameDetail({
                   catalogOffers={offers}
                   lang={lang}
                   t={t}
-                  regionLabel={hasMixedRegions ? (offer.region || game.region_label) : null}
+                  regionLabel={hasMixedRegions ? offerRegion(offer, game) : null}
                   isAdmin={isAdmin}
                   unaffordable={unaffordable.has(String(offer.id))}
                   onSelect={onSelectOffer}

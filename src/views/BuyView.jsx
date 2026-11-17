@@ -18,7 +18,6 @@ import {
 } from '../lib/manualProducts';
 import {
   buildPaymentMethods,
-  getDefaultPaymentMethod,
   getManualPaymentDisplay,
   isManualWalletMethod,
   isApiWalletMethod,
@@ -175,7 +174,6 @@ export default function BuyView({
   const usableMethods = paymentMethods.filter((m) => !m.disabled && !m.comingSoon);
 
   const [selectedMethod, setSelectedMethod] = useState(() => {
-    const methods = buildPaymentMethods(t, lang, paymentConfig, { includeBalance: true, currentBalance, isCheckout: true });
     return currentBalance >= (offer ? parseFloat(offer.price) : 0) ? 'balance' : 'WalletRecharge';
   });
 

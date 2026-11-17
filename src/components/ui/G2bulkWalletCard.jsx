@@ -1,6 +1,7 @@
 import { Loader2, RefreshCw, Wallet, AlertCircle, Zap } from 'lucide-react';
 import { SUPPLIER_BRAND } from '../../lib/branding';
 import { formatG2bulkAmount } from '../../lib/g2bulkWalletFormat';
+import { formatMessage } from '../../lib/i18n';
 
 export default function G2bulkWalletCard({
   balance = null,
@@ -9,13 +10,12 @@ export default function G2bulkWalletCard({
   error = null,
   idle = false,
   idleHint = '',
-  lang = 'ar',
+  t = {},
   compact = false,
   onRefresh,
   onManage,
   manageLabel,
 }) {
-  const isAr = lang === 'ar';
   const hasBalance = balance != null && Number.isFinite(Number(balance));
   const lowBalance = !loading && !error && hasBalance && Number(balance) < 5;
 
@@ -37,13 +37,13 @@ export default function G2bulkWalletCard({
     }
     if (!hasBalance) {
       return (
-        <span className="text-xs text-[var(--text-muted)]" title={isAr ? `رصيد ${SUPPLIER_BRAND}` : `${SUPPLIER_BRAND} wallet`}>
+        <span className="text-xs text-[var(--text-muted)]" title={formatMessage(t.supplierWalletTitle, { brand: SUPPLIER_BRAND })}>
           {SUPPLIER_BRAND} —
         </span>
       );
     }
     return (
-      <span className="header-balance font-mono" title={isAr ? `رصيد ${SUPPLIER_BRAND}` : `${SUPPLIER_BRAND} wallet`}>
+      <span className="header-balance font-mono" title={formatMessage(t.supplierWalletTitle, { brand: SUPPLIER_BRAND })}>
         {formatG2bulkAmount(balance)}
       </span>
     );
@@ -61,7 +61,7 @@ export default function G2bulkWalletCard({
               {SUPPLIER_BRAND}
             </p>
             <p className="text-[11px] text-[var(--text-muted)]">
-              {isAr ? 'رصيد المورد للتوريد' : 'Supplier wallet for fulfillment'}
+              {t.supplierWalletSubtitle}
             </p>
           </div>
         </div>
@@ -71,7 +71,7 @@ export default function G2bulkWalletCard({
             onClick={onRefresh}
             disabled={loading}
             className="p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors disabled:opacity-50"
-            aria-label={isAr ? 'تحديث الرصيد' : 'Refresh balance'}
+            aria-label={t.supplierWalletRefresh}
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
@@ -81,7 +81,7 @@ export default function G2bulkWalletCard({
       {loading && !hasBalance ? (
         <div className="flex items-center gap-3 py-6 text-[var(--text-sec)]">
           <Loader2 className="w-6 h-6 animate-spin text-[var(--accent)]" />
-          <span className="text-sm">{isAr ? 'جاري تحميل الرصيد…' : 'Loading wallet…'}</span>
+          <span className="text-sm">{t.supplierWalletLoading}</span>
         </div>
       ) : idle && !hasBalance ? (
         <div className="py-6 text-center">
@@ -94,7 +94,7 @@ export default function G2bulkWalletCard({
         <div className="flex items-start gap-2 text-sm text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-3">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <div>
-            <p className="font-medium">{isAr ? 'تعذر قراءة الرصيد' : 'Could not load balance'}</p>
+            <p className="font-medium">{t.supplierWalletError}</p>
             <p className="text-xs opacity-90 mt-0.5">{error}</p>
           </div>
         </div>
@@ -112,14 +112,14 @@ export default function G2bulkWalletCard({
           </p>
           {username && (
             <p className="text-sm text-[var(--text-sec)] mt-2 truncate">
-              {isAr ? 'الحساب:' : 'Account:'}{' '}
+              {t.supplierWalletAccount}{' '}
               <span className="text-[var(--text-primary)] font-medium">{username}</span>
             </p>
           )}
           {lowBalance && (
             <p className="text-xs text-amber-400 mt-3 flex items-center gap-1.5">
               <AlertCircle className="w-3.5 h-3.5" />
-              {isAr ? `الرصيد منخفض — عبّئ محفظة ${SUPPLIER_BRAND}` : `Low balance — top up your ${SUPPLIER_BRAND} wallet`}
+              {formatMessage(t.supplierWalletLow, { brand: SUPPLIER_BRAND })}
             </p>
           )}
         </>
@@ -132,7 +132,7 @@ export default function G2bulkWalletCard({
           className="action-chip btn btn-primary !h-11 !min-h-11 !border-0 gap-2 px-5 w-full sm:w-auto mt-4"
         >
           <Wallet className="w-4 h-4" />
-          {manageLabel || (isAr ? `إعدادات ${SUPPLIER_BRAND}` : `${SUPPLIER_BRAND} settings`)}
+          {manageLabel || formatMessage(t.supplierWalletSettings, { brand: SUPPLIER_BRAND })}
         </button>
       )}
     </div>

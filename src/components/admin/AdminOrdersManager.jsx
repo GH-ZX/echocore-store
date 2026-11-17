@@ -635,7 +635,7 @@ export default function AdminOrdersManager({
               type="button"
               disabled={fulfillingId === order.id}
               onClick={async () => {
-                if (!window.confirm('Force sync status from G2Bulk?')) return;
+                if (!window.confirm(t.adminForceSyncConfirm)) return;
                 setFulfillingId(order.id);
                 try {
                   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;

@@ -12,6 +12,7 @@ import {
 } from '../../lib/offerDisplay';
 import { getGameOfferPath } from '../../lib/offerRoutes';
 import { EventComparePrice } from '../events/EventParts';
+import { localizeImageUrl } from '../../lib/localImages';
 
 export default function OfferPackCard({
   offer,
@@ -86,7 +87,7 @@ export default function OfferPackCard({
           </div>
           <div className="flex items-start gap-2 shrink-0">
             {game?.logo_url && (
-              <img src={game.logo_url} alt="" className="hidden sm:block w-8 h-8 object-contain opacity-80" />
+              <img src={localizeImageUrl(game.logo_url)} alt="" className="hidden sm:block w-8 h-8 object-contain opacity-80" />
             )}
             {isAdmin && onEdit && (
               <div onClick={(e) => e.stopPropagation()}>

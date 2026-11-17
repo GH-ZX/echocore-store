@@ -1,3 +1,5 @@
+import { localizeImageUrl } from './localImages';
+
 const SUPABASE_OBJECT_PATH =
   /^(https?:\/\/[^/]+)\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/;
 
@@ -5,8 +7,10 @@ const SUPABASE_OBJECT_PATH =
  * Resize/compress Supabase Storage images via the render endpoint.
  * Non-Supabase URLs (placeholders, external CDNs) pass through unchanged.
  */
-export function optimizeImageUrl(url, options = {}) {
-  if (!url || typeof url !== 'string') return url;
+export function optimizeImageUrl(rawUrl, options = {}) {
+  if (!rawUrl || typeof rawUrl !== 'string') return rawUrl;
+  const url = localizeImageUrl(rawUrl);
+  if (url !== rawUrl) return url;
   if (url.startsWith('data:') || url.startsWith('blob:') || url.includes('/render/image/')) {
     return url;
   }

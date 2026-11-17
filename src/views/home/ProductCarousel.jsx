@@ -264,10 +264,10 @@ export default function ProductCarousel({
                     className="absolute inset-0"
                     style={{
                       background: lang === 'ar'
-                        ? `linear-gradient(260deg, rgba(18,11,38,0.82) 0%, rgba(18,11,38,0.42) 45%, rgba(18,11,38,0.06) 100%),
-                           linear-gradient(0deg, rgba(18,11,38,0.5) 0%, transparent 45%)`
-                        : `linear-gradient(100deg, rgba(18,11,38,0.82) 0%, rgba(18,11,38,0.42) 45%, rgba(18,11,38,0.06) 100%),
-                           linear-gradient(0deg, rgba(18,11,38,0.5) 0%, transparent 45%)`,
+                        ? `linear-gradient(260deg, rgba(18,11,38,0.86) 0%, rgba(18,11,38,0.45) 45%, rgba(18,11,38,0.06) 100%),
+                           linear-gradient(0deg, rgba(10,8,24,0.88) 0%, rgba(10,8,24,0.5) 32%, transparent 62%)`
+                        : `linear-gradient(100deg, rgba(18,11,38,0.86) 0%, rgba(18,11,38,0.45) 45%, rgba(18,11,38,0.06) 100%),
+                           linear-gradient(0deg, rgba(10,8,24,0.88) 0%, rgba(10,8,24,0.5) 32%, transparent 62%)`,
                     }}
                   />
 
@@ -429,6 +429,7 @@ export default function ProductCarousel({
                       </span>
                     </div>
                     <span
+                      dir="auto"
                       className={`carousel-thumb__label text-[10px] sm:text-[11px] font-semibold text-center leading-tight truncate whitespace-nowrap w-full px-0.5 transition-colors duration-300 ${
                         isActive ? 'text-[var(--carousel-thumb-text)]' : 'text-[var(--carousel-thumb-text-muted)] group-hover:text-[var(--carousel-thumb-text-hover)]'
                       }`}

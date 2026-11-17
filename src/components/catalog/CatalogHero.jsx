@@ -1,4 +1,5 @@
 import { presetImageUrl } from '../../lib/imageUtils';
+import { localizeImageUrl } from '../../lib/localImages';
 
 export default function CatalogHero({
   imageUrl,
@@ -25,13 +26,13 @@ export default function CatalogHero({
         ) : (
           <div className="absolute inset-0 bg-[var(--bg-elevated)]" />
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/15" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/75 to-black/20" />
 
         <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-7 md:p-8">
           <div className="flex items-end gap-4">
             {logoUrl && (
               <img
-                src={logoUrl}
+                src={localizeImageUrl(logoUrl)}
                 alt=""
                 className="hidden sm:block w-14 h-14 md:w-16 md:h-16 object-contain rounded-xl bg-black/35 border border-white/10 p-1.5 shrink-0"
               />

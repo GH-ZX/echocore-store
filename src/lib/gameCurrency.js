@@ -61,6 +61,12 @@ const BASE_KEY_CURRENCY = {
   fifa: 'FC Points',
   steam: 'Wallet Code',
   nte: 'Riftcrystal',
+  magic_chess_gogo: 'Diamonds',
+  magic_chess: 'Diamonds',
+  arknights_endfield: 'Origeometry',
+  rsm: 'Platinum',
+  rainbow_six_mobile: 'Platinum',
+  telegram: 'Stars',
   neverness_to_everness: 'Riftcrystal',
 };
 
@@ -123,7 +129,11 @@ function compactKey(value = '') {
 
 function keysMatchCurrency(key = '', baseKey = '') {
   if (!key || !baseKey) return false;
-  if (key === baseKey || key.includes(baseKey) || baseKey.includes(key)) return true;
+  if (key === baseKey) return true;
+  // Short keys (gi, lol, hsr…) only match exactly: "magic_chess_gogo" contains
+  // "gi" and was getting Genesis Crystals.
+  if (baseKey.length < 4 || key.length < 4) return false;
+  if (key.includes(baseKey) || baseKey.includes(key)) return true;
   const keyCompact = compactKey(key);
   const baseCompact = compactKey(baseKey);
   return keyCompact === baseCompact
@@ -244,4 +254,17 @@ export function lookupGameCurrencyLabel(game, games = [], relatedOffers = [], of
   }
 
   return '';
+}
+
+/**
+ * Currency noun for game cards / the game hero. The known-game map wins over
+ * the synced points_name, which is sometimes wrong (PUBG Mobile → "WOW Coins").
+ * Returns '' when only a generic "Top-up" is known.
+ */
+export function getGameCurrency(game) {
+  if (!game) return '';
+  const fromKeys = lookupCurrencyFromKeys(game.g2bulk_game_code, game.slug, game.group_base_key);
+  if (fromKeys) return fromKeys;
+  const points = String(game.points_name || '').replace(/^[+\d\s]+/, '').trim();
+  return isGenericCurrencyLabel(points) ? '' : points;
 }

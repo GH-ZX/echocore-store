@@ -1,4 +1,5 @@
 import { getMaxCartLines } from './purchaseLock';
+import { localizeImageUrl } from './localImages';
 
 const CART_STORAGE_KEY = 'echocore-cart';
 const CART_STORAGE_VERSION = 1;
@@ -138,6 +139,10 @@ export function getCartLineKey(item) {
  * Best image for a cart line: offer sale art → offer image → game logo/cover.
  */
 export function getCartItemImageUrl(item, games = [], offers = []) {
+  return localizeImageUrl(resolveCartItemImageUrl(item, games, offers));
+}
+
+function resolveCartItemImageUrl(item, games = [], offers = []) {
   if (!item) return null;
   const offer = (offers || []).find((o) => String(o.id) === String(item.id));
   if (offer?.sale_image_url) return offer.sale_image_url;

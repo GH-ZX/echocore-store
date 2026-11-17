@@ -753,6 +753,7 @@ export default function HomeView({
 
   return (
     <div className="space-y-10 sm:space-y-14 md:space-y-16 animate-fade-in">
+      <h1 className="sr-only">{t.homeHeading}</h1>
       {contactFab}
       {previewFab}
       {storeEvent && <EventDecor event={storeEvent} />}

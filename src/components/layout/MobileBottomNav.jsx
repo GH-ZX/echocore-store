@@ -13,6 +13,7 @@ function isHiddenPath(pathname = '') {
 
 function isItemActive(item, pathname) {
   if (item.exact) return pathname === item.to;
+  if (item.also?.some((prefix) => pathname.startsWith(prefix))) return true;
   return pathname.startsWith(item.to);
 }
 
@@ -22,7 +23,7 @@ export default function MobileBottomNav({ t = {}, user = null, cartCount = 0 }) 
 
   const items = [
     { id: 'home', to: '/', label: t.home, icon: Home, exact: true },
-    { id: 'games', to: '/games', label: t.bottomNavGames, icon: Gamepad2 },
+    { id: 'games', to: '/games', label: t.bottomNavGames, icon: Gamepad2, also: ['/game/', '/offer/', '/gift-cards', '/sale'] },
     { id: 'search', to: '/search', label: t.searchAction, icon: Search },
     { id: 'cart', to: '/cart', label: t.cart, icon: ShoppingCart, badge: cartCount },
     {
